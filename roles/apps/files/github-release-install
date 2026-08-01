@@ -128,11 +128,9 @@ candidates=("$name")
 if [[ $kind != font ]]; then
   mkdir -p "$stage/payload/bin"
   for binary in "${candidates[@]}"; do
-    search_name=$binary
-    [[ $name != localsend ]] || search_name=localsend_app
-    found=$(find "$stage/payload" -type f -name "$search_name" -perm /111 -not -path '*/bin/*' -print -quit)
+    found=$(find "$stage/payload" -type f -name "$binary" -perm /111 -not -path '*/bin/*' -print -quit)
     if [[ -z $found ]]; then
-      found=$(find "$stage/payload" -type f -name "$search_name" -print -quit)
+      found=$(find "$stage/payload" -type f -name "$binary" -print -quit)
     fi
     [[ -n $found ]] || { echo "Archive contains no $binary executable" >&2; exit 1; }
     chmod 0755 "$found"

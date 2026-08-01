@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# LocalSend is installed as a Flatpak; expose it as a plain command for the
+# share helpers, the Nautilus extension, and the terminal.
+exec flatpak run org.localsend.localsend_app "$@"

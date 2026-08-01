@@ -52,6 +52,7 @@
     - screen-ocr
     - clipboard-copy-image
     - clipboard-image-to-file
+    - localsend
     - localsend-share
 
 - name: Install Fedora-specific user helpers
