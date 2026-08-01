@@ -28,9 +28,27 @@
     owner: root
     group: root
     mode: preserve
+    force: false # several files are replaced with our own below; remove the theme dir to re-seed from upstream
   register: boot_cybex_install
   notify: Rebuild Fedora initramfs
   when: not ansible_check_mode
+
+- name: Install custom Cybex theme files
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/share/plymouth/themes/cybex/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - logo.png # custom Cybex logo
+    - entry.png # dark password box with grey border
+    - bullet.png # white password dots
+    - progress_bar.png # white progress bar
+    - progress_box.png # dark-grey progress track
+    - cybex.script # no lock icon, near-black background
+    - cybex.plymouth # matching console-log background color
+  notify: Rebuild Fedora initramfs
 
 - name: Read active Plymouth theme
   ansible.builtin.command: plymouth-set-default-theme
