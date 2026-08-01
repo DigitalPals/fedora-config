@@ -1,0 +1,77 @@
+set -g fish_greeting
+set -g fish_cursor_default underscore
+set -g fish_cursor_insert underscore
+set -g fish_cursor_replace_one underscore
+set -g fish_cursor_visual underscore
+
+fish_add_path --prepend ~/.local/bin ~/.npm-global/bin ~/Android/Sdk/platform-tools ~/Android/Sdk/cmdline-tools/latest/bin
+set -gx EDITOR nvim
+set -gx VISUAL nvim
+set -gx ANDROID_HOME "$HOME/Android/Sdk"
+set -gx ANDROID_SDK_ROOT "$ANDROID_HOME"
+set -gx RUSTC_WRAPPER sccache
+set -gx CARGO_INCREMENTAL 0
+set -gx SCCACHE_DIR "$HOME/.cache/sccache"
+
+# Keep the prompt icon accurate on Fedora and inside each Distrobox.
+set -l posh_os_id (sh -c '. /etc/os-release 2>/dev/null; printf "%s" "$ID"' 2>/dev/null)
+set -l posh_os_like (sh -c '. /etc/os-release 2>/dev/null; printf "%s" "$ID_LIKE"' 2>/dev/null)
+switch $posh_os_id
+    case fedora
+        set -gx POSH_OS_ICON ""
+    case debian
+        set -gx POSH_OS_ICON ""
+    case ubuntu
+        set -gx POSH_OS_ICON ""
+    case arch
+        set -gx POSH_OS_ICON ""
+    case alpine
+        set -gx POSH_OS_ICON ""
+    case opensuse-tumbleweed opensuse-leap opensuse
+        set -gx POSH_OS_ICON ""
+    case '*'
+        if string match -q "*debian*" $posh_os_like
+            set -gx POSH_OS_ICON ""
+        else if string match -q "*rhel*" $posh_os_like; or string match -q "*fedora*" $posh_os_like
+            set -gx POSH_OS_ICON ""
+        else if string match -q "*arch*" $posh_os_like
+            set -gx POSH_OS_ICON ""
+        else
+            set -gx POSH_OS_ICON ""
+        end
+end
+
+if command -q oh-my-posh
+    oh-my-posh init fish --config ~/.config/oh-my-posh/EDM115-newline2.omp.json | source
+end
+if command -q zoxide
+    zoxide init fish | source
+end
+if command -q fzf
+    fzf --fish | source 2>/dev/null
+end
+if command -q direnv
+    direnv hook fish | source
+end
+
+alias ls='eza --icons'
+alias ll='eza --icons -la'
+alias la='eza --icons -A'
+alias l='eza --icons -CF'
+alias fedora-bootstrap='/home/john/Code/fedora-config/bootstrap'
+alias fedora-update='/home/john/Code/fedora-config/update'
+alias fedora-verify='/home/john/Code/fedora-config/verify'
+alias update='fedora-update'
+alias codex='codex --dangerously-bypass-approvals-and-sandbox'
+alias claude='claude --dangerously-skip-permissions'
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline'
+alias lg='lazygit'
+alias hypr-reload='hyprctl reload'
+alias hypr-monitors='hyprctl monitors'
+alias hypr-workspaces='hyprctl workspaces'
+alias ..='cd ..'
+alias ...='cd ../..'

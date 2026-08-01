@@ -1,0 +1,117 @@
+---
+# Non-secret machine contract. Credentials are deliberately resolved at runtime.
+fedora_release: "44"
+machine_hostname: xps
+machine_timezone: Europe/Amsterdam
+machine_locale: en_US.UTF-8
+regional_locale: nl_NL.UTF-8
+primary_user: john
+primary_group: john
+primary_home: /home/john
+# Root of this checkout; the dotfiles role copies wallpapers/scripts from it.
+config_repo: "{{ playbook_dir }}"
+
+expected_hardware:
+  sys_vendor: Dell Inc.
+  product_name_regex: "(?i)(XPS|DA14260)"
+  cpu_regex: "(?i)(Intel.*(Ultra|X7)|Panther Lake)"
+
+# Explicitly accepted local-machine security tradeoffs.
+passwordless_wheel: true
+passwordless_local_polkit: true
+gdm_autologin: false
+
+features:
+  tailscale: true
+  docker: true
+  podman: true
+  steam: true
+  private_hooks: true
+  apple_display: true
+  source_builds: true
+
+private_services:
+  portal_binary: /home/john/Code/portal/target/release/portal
+  sccache_scheduler: 10.10.0.233:10600
+  # The token itself is never read by Ansible. This hook merely tests for this file.
+  sccache_token_file: /etc/sccache/client-token
+
+firewall_zone: xps
+firewall_ports:
+  - { port: "53317", protocol: tcp, comment: LocalSend }
+  - { port: "53317", protocol: udp, comment: LocalSend }
+  - { port: "5353", protocol: udp, comment: mDNS }
+  - { port: "27036-27037", protocol: tcp, comment: Steam Remote Play }
+  - { port: "10400-10401", protocol: udp, comment: Steam Remote Play }
+  - { port: "27031-27036", protocol: udp, comment: Steam Remote Play }
+  - { port: "27015", protocol: tcp, comment: Source dedicated server }
+  - { port: "27015", protocol: udp, comment: Source dedicated server }
+
+elephant_providers:
+  - desktopapplications
+  - calc
+  - websearch
+  - providerlist
+  - runner
+  - files
+  - symbols
+  - clipboard
+  - windows
+
+github_release_apps:
+  - name: lumen
+    repo: DigitalPals/Lumen
+    asset_regex: '^lumen-[0-9].*-[0-9]+[.]fc44[.]x86_64[.]rpm$'
+    kind: rpm
+  - name: walker
+    repo: abenz1267/walker
+    asset_regex: '^walker-.*-x86_64-unknown-linux-gnu[.]tar[.]gz$'
+    kind: archive
+  - name: localsend
+    repo: localsend/localsend
+    asset_regex: 'linux-x86-64[.]tar[.]gz$'
+    kind: archive
+  - name: lazygit
+    repo: jesseduffield/lazygit
+    asset_regex: '^lazygit_.*_linux_x86_64[.]tar[.]gz$'
+    kind: archive
+  - name: lazydocker
+    repo: jesseduffield/lazydocker
+    asset_regex: '^lazydocker_.*_Linux_x86_64[.]tar[.]gz$'
+    kind: archive
+  - name: mdview
+    repo: DigitalPals/mdview
+    asset_regex: '(x86_64|amd64).*(tar[.]gz|rpm)$'
+    kind: archive-auto
+  - name: voxtype
+    repo: peteonrails/voxtype
+    asset_regex: '^voxtype-.*[.]x86_64[.]rpm$'
+    kind: rpm
+  - name: bun
+    repo: oven-sh/bun
+    asset_regex: '^bun-linux-x64[.]zip$'
+    kind: archive
+  - name: balena
+    repo: balena-io/balena-cli
+    asset_regex: '^balena-cli-.*-linux-x64-standalone[.]tar[.]gz$'
+    kind: archive
+  - name: oh-my-posh
+    repo: JanDeDobbeleer/oh-my-posh
+    asset_regex: '^posh-linux-amd64$'
+    kind: binary
+nerd_font_apps:
+  - name: nerd-font-jetbrains-mono
+    repo: ryanoasis/nerd-fonts
+    asset_regex: '^JetBrainsMono[.]tar[.]xz$'
+    kind: font
+  - name: nerd-font-fira-code
+    repo: ryanoasis/nerd-fonts
+    asset_regex: '^FiraCode[.]tar[.]xz$'
+    kind: font
+source_apps:
+  - name: awww
+    repo_url: https://codeberg.org/LGFae/awww.git
+    binary_names: [awww, awww-daemon]
+  - name: wayfreeze
+    repo_url: https://github.com/jappie3/wayfreeze.git
+    binary_names: [wayfreeze]

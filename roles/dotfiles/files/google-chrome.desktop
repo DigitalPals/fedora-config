@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Google Chrome
+Exec=/usr/bin/google-chrome-stable --enable-features=TouchpadOverscrollHistoryNavigation --hide-crash-restore-bubble %U
+Icon=google-chrome
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;

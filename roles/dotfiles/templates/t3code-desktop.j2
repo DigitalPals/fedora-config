@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+appimage="${XDG_DATA_HOME:-$HOME/.local/share}/t3code-nightly/T3-Code-Nightly-x86_64.AppImage"
+[[ -x $appimage ]] || "$HOME/.local/bin/t3code-update"
+exec "$appimage" --appimage-extract-and-run --password-store=gnome-libsecret "$@"

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source /usr/local/libexec/xps-common.sh
+
+# Lumen 0.7.6 expects Hyprland's old `overFullscreen` JSON field. Hyprland
+# 0.56 renamed it to `allowedOverFullscreen`; keep this narrow compatibility
+# backport only while the affected official RPM is installed.
+affected_version=0.7.6
+revision=3a880af15197914f18f7c4d17dcbe543d5c824a3
+patch_id=hyprland-0.56-field-alias-v1
+root=/opt/xps-builds/lumen-compat
+artifact="$revision-$patch_id"
+installed_version=$(rpm -q --qf '%{VERSION}' lumen 2>/dev/null || true)
+
+if [[ $installed_version != "$affected_version" ]]; then
+  emit_unchanged "Lumen $installed_version does not need the $affected_version compatibility backport"
+  exit 0
+fi
+
+if [[ -x $root/current/bin/lumen && $(basename "$(readlink -f "$root/current")") == "$artifact" ]]; then
+  emit_unchanged "Lumen $affected_version compatibility backport ($artifact)"
+  exit 0
+fi
+
+mkdir -p "$root/versions" "$root/logs"
+work=$(mktemp -d "$root/.build.XXXXXX")
+cleanup() { rm -rf "$work"; }
+trap cleanup EXIT
+
+git clone --quiet --depth 1 --branch v0.7.6 https://github.com/DigitalPals/Lumen.git "$work/src"
+fetched_revision=$(git -C "$work/src" rev-parse HEAD)
+if [[ $fetched_revision != "$revision" ]]; then
+  echo "Lumen v0.7.6 resolved to unexpected revision $fetched_revision; previous artifact retained" >&2
+  exit 1
+fi
+
+client_types="$work/src/crates/lumen-hyprland/src/types/client.rs"
+if [[ $(grep -c '^    pub over_fullscreen: bool,$' "$client_types") -ne 1 ]]; then
+  echo "Lumen client schema no longer matches the reviewed source; previous artifact retained" >&2
+  exit 1
+fi
+sed -i '/^    pub over_fullscreen: bool,$/i\    #[serde(alias = "allowedOverFullscreen")]' "$client_types"
+
+mkdir -p "$work/out"
+log="$root/logs/$artifact.log"
+if ! podman run --rm --network=host \
+  -v "$work/src:/src:Z,ro" -v "$work/out:/out:Z" \
+  -e CARGO_PROFILE_RELEASE_LTO=false \
+  docker.io/library/fedora:44 bash -euxo pipefail -c '
+    dnf -y install cargo rust clang cmake fftw-devel gcc gcc-c++ git \
+      gtk4-devel gtk4-layer-shell-devel gtksourceview5-devel \
+      libxkbcommon-devel make pipewire-devel pkgconf-pkg-config \
+      pulseaudio-libs-devel systemd-devel
+    cp -a /src /tmp/source
+    cd /tmp/source
+    cargo build --release --locked --bin lumen
+    install -m 0755 target/release/lumen /out/lumen
+  ' >"$log" 2>&1; then
+  echo "Compatibility build failed; previous Lumen artifact retained. Log: $log" >&2
+  exit 1
+fi
+
+stage="$root/versions/$artifact.new"
+rm -rf "$stage"
+mkdir -p "$stage/bin"
+install -m 0755 "$work/out/lumen" "$stage/bin/lumen"
+rm -rf "$root/versions/$artifact"
+mv "$stage" "$root/versions/$artifact"
+atomic_current_swap "$root" "versions/$artifact"
+xps_restorecon "$root"
+emit_changed "built Lumen $affected_version compatibility backport ($artifact)"

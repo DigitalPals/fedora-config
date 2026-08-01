@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Convert clipboard image to file path and auto-paste
+set -euo pipefail
+
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/clipboard-images"
+mkdir -p "$cache_dir"
+
+mime="$(wl-paste --list-types | grep -E '^image/' | head -n 1 || true)"
+if [[ -z "$mime" ]]; then
+  notify-send "Clipboard" "No image in clipboard"
+  exit 1
+fi
+
+case "$mime" in
+  image/png) ext="png" ;;
+  image/jpeg) ext="jpg" ;;
+  image/webp) ext="webp" ;;
+  image/gif) ext="gif" ;;
+  image/bmp) ext="bmp" ;;
+  image/tiff) ext="tiff" ;;
+  *) ext="bin" ;;
+esac
+
+ts="$(date +%Y%m%d-%H%M%S)"
+outfile="${cache_dir}/clipboard-${ts}.${ext}"
+
+# Save image to file
+wl-paste --type "$mime" --no-newline > "$outfile"
+
+# Write path to 'latest' file for CLI tools that need it
+echo "$outfile" > "${cache_dir}/latest"
+
+# Copy plain file path to clipboard (for terminal apps like Claude Code)
+printf '%s' "$outfile" | wl-copy --type text/plain
+
+# Wait until the compositor clipboard advertises the text path before pasting.
+for _ in {1..20}; do
+  if [[ "$(wl-paste --type text/plain --no-newline 2>/dev/null || true)" == "$outfile" ]]; then
+    break
+  fi
+  sleep 0.02
+done
+
+# Auto-paste into the focused window
+sleep 0.05
+wtype -M shift -k Insert -m shift

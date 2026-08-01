@@ -1,0 +1,37 @@
+[bar]
+inset-edge = 0.5
+inset-ends = 0.5
+padding-ends = 1.2999999523162842
+module-gap = 0.75
+rounding = "md"
+
+[[bar.layout]]
+monitor = "*"
+show = true
+left = ["hyprland-workspaces", "media"]
+center = ["clock"]
+right = ["idle-inhibit", "breaking-news", "battery", "network", "model-usage", "dashboard"]
+
+[modules.bluetooth]
+label-show = false
+
+[modules.clock]
+format = "%e %b %Y %H:%M"
+time-format = "24h"
+icon-show = false
+button-bg-color = "transparent"
+
+[modules.dashboard]
+dropdown-lock-command = "hyprlock --config {{ primary_home }}/.config/hypr/hyprlock.conf --immediate-render --no-fade-in"
+
+[modules.media]
+icon-type = "default"
+hide-when-nothing-playing = true
+
+[wallpaper]
+cycling-directory = "{{ primary_home }}/Pictures/Wallpapers"
+
+[[wallpaper.monitors]]
+name = "eDP-1"
+fit-mode = "fill"
+wallpaper = "{{ primary_home }}/Pictures/Wallpapers/snow-capped-mountains-with-full-moon-lo.jpg"

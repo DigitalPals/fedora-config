@@ -1,0 +1,18 @@
+---
+- name: Configure package repositories
+  ansible.builtin.import_tasks: repos.yml
+
+- name: Install distribution packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Install Flatpak applications
+  ansible.builtin.import_tasks: flatpaks.yml
+
+- name: Install upstream release applications
+  ansible.builtin.import_tasks: upstream.yml
+
+- name: Install the Android SDK
+  ansible.builtin.import_tasks: android.yml
+
+- name: Configure developer tooling
+  ansible.builtin.import_tasks: devtools.yml

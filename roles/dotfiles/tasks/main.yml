@@ -1,0 +1,346 @@
+---
+- name: Create managed user directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ primary_home }}/Code"
+    - "{{ primary_home }}/Pictures/Wallpapers"
+    - "{{ primary_home }}/Pictures/Screenshots"
+    - "{{ primary_home }}/Videos/Screen Recordings"
+    - "{{ primary_home }}/.local/bin"
+    - "{{ primary_home }}/.local/share/applications"
+    - "{{ primary_home }}/.local/share/nautilus-python/extensions"
+    - "{{ primary_home }}/.config/environment.d"
+    - "{{ primary_home }}/.config/fish/conf.d"
+    - "{{ primary_home }}/.config/kitty"
+    - "{{ primary_home }}/.config/fastfetch"
+    - "{{ primary_home }}/.config/oh-my-posh"
+    - "{{ primary_home }}/.config/voxtype"
+    - "{{ primary_home }}/.config/distrobox"
+    - "{{ primary_home }}/.ssh"
+
+- name: Copy wallpapers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/wallpapers/"
+    dest: "{{ primary_home }}/Pictures/Wallpapers/"
+    mode: "0644"
+
+- name: Install user avatar
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/face"
+    dest: "{{ primary_home }}/.face"
+    owner: "{{ primary_user }}"
+    group: "{{ primary_group }}"
+    mode: "0644"
+
+- name: Install screenshot, recording, OCR, clipboard, and LocalSend helpers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/scripts/{{ item }}"
+    dest: "{{ primary_home }}/.local/bin/{{ item }}"
+    mode: "0755"
+  loop:
+    - screenshot
+    - screen-record
+    - screen-ocr
+    - clipboard-copy-image
+    - clipboard-image-to-file
+    - localsend-share
+
+- name: Install Fedora-specific user helpers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ primary_home }}/.local/bin/{{ item }}"
+    mode: "0755"
+  loop:
+    - brightness-control
+    - external-monitor-toggle
+    - portal-launcher
+    - t3code-update
+    - t3code-desktop
+    - spotify
+    - app-backup
+    - fastfetch-link-speed
+
+- name: Install Distrobox container initialization hook
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: dev-distrobox-init
+    dest: "{{ primary_home }}/.local/bin/dev-distrobox-init"
+    mode: "0755"
+
+- name: Install or update T3Code nightly
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: "{{ primary_home }}/.local/bin/t3code-update"
+  register: dotfiles_t3code_update
+  changed_when: (dotfiles_t3code_update.stdout | regex_search('(?m)^CHANGED:')) is not none
+  failed_when: false
+  environment:
+    GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
+  when: not ansible_check_mode
+
+- name: Report a failed T3Code nightly update without removing the installed nightly
+  ansible.builtin.debug:
+    msg: "T3Code update failed; installed nightly retained: {{ dotfiles_t3code_update.stderr | default('unknown failure') }}"
+  when:
+    - not ansible_check_mode
+    - dotfiles_t3code_update.rc | default(0) != 0
+
+- name: Keep browser-backup compatibility command
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    src: app-backup
+    dest: "{{ primary_home }}/.local/bin/browser-backup"
+    state: link
+
+- name: Configure Distrobox to provision lazily created development boxes
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/distrobox/distrobox.conf"
+    mode: "0644"
+    content: |
+      container_init_hook="{{ primary_home }}/.local/bin/dev-distrobox-init"
+
+- name: Install Distrobox lazy launchers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: distrobox-shell.j2
+    dest: "{{ primary_home }}/.local/bin/dev-{{ item.name }}-shell"
+    mode: "0755"
+  loop:
+    - { name: fedora, image: "registry.fedoraproject.org/fedora-toolbox:latest" }
+    - { name: arch, image: "docker.io/library/archlinux:latest" }
+    - { name: debian, image: "docker.io/library/debian:latest" }
+
+- name: Install Nautilus LocalSend extension
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/nautilus-localsend.py"
+    dest: "{{ primary_home }}/.local/share/nautilus-python/extensions/localsend.py"
+    mode: "0644"
+
+- name: Install shell and application configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ primary_home }}/{{ item.dest }}"
+    mode: "{{ item.mode | default('0644') }}"
+  loop:
+    - { src: fish-config.fish, dest: .config/fish/config.fish }
+    - { src: kitty.conf, dest: .config/kitty/kitty.conf }
+    - { src: fastfetch.jsonc, dest: .config/fastfetch/config.jsonc }
+    - { src: voxtype.toml, dest: .config/voxtype/config.toml }
+    - { src: walker.toml, dest: .config/walker/config.toml }
+    - { src: walker-style.css, dest: .config/walker/themes/lumen/style.css }
+    - { src: lumen-style.scss, dest: .config/lumen/styles/index.scss }
+
+- name: Install Oh My Posh theme from the active configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/EDM115-newline2.omp.json"
+    dest: "{{ primary_home }}/.config/oh-my-posh/EDM115-newline2.omp.json"
+    mode: "0644"
+
+- name: Seed mutable Lumen configuration without overwriting user edits
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ primary_home }}/.config/lumen/{{ item }}.default"
+    mode: "0644"
+  loop:
+    - config.toml
+    - runtime.toml
+
+- name: Seed mutable Lumen files on first install
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ primary_home }}/.config/lumen/{{ item }}"
+    force: false
+    mode: "0644"
+  loop:
+    - config.toml
+    - runtime.toml
+
+- name: Configure environment variables
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: environment.conf.j2
+    dest: "{{ primary_home }}/.config/environment.d/10-xps.conf"
+    mode: "0644"
+
+- name: Configure Git identity
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.gitconfig"
+    mode: "0644"
+    content: |
+      [user]
+        name = John
+        email = john@cybex.net
+      [core]
+        pager = delta
+      [interactive]
+        diffFilter = delta --color-only
+      [delta]
+        navigate = true
+        side-by-side = true
+      [credential "https://github.com"]
+        helper =
+        helper = !/usr/bin/gh auth git-credential
+      [credential "https://gist.github.com"]
+        helper =
+        helper = !/usr/bin/gh auth git-credential
+
+- name: Configure SSH to use the 1Password agent without private key references
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.ssh/config"
+    mode: "0600"
+    content: |
+      Host *
+        IdentityAgent ~/.1password/agent.sock
+        StrictHostKeyChecking accept-new
+        HashKnownHosts yes
+
+- name: Configure XDG user directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/user-dirs.dirs"
+    mode: "0644"
+    content: |
+      XDG_DESKTOP_DIR="$HOME/"
+      XDG_DOWNLOAD_DIR="$HOME/Downloads"
+      XDG_TEMPLATES_DIR="$HOME/"
+      XDG_PUBLICSHARE_DIR="$HOME/"
+      XDG_DOCUMENTS_DIR="$HOME/Documents"
+      XDG_MUSIC_DIR="$HOME/"
+      XDG_PICTURES_DIR="$HOME/Pictures"
+      XDG_VIDEOS_DIR="$HOME/"
+      XDG_CODE_DIR="$HOME/Code"
+
+- name: Install MIME defaults and desktop launchers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ primary_home }}/.local/share/applications/{{ item }}"
+    mode: "0644"
+  loop:
+    - mimeapps.list
+    - nvim-kitty.desktop
+    - t3code-nightly.desktop
+    - dev-fedora.desktop
+    - dev-arch.desktop
+    - dev-debian.desktop
+    - google-chrome.desktop
+    - 1password.desktop
+    - localsend-share-clipboard.desktop
+    - localsend-share-file.desktop
+    - localsend-share-folder.desktop
+
+- name: Configure npm user prefix
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.npmrc"
+    mode: "0644"
+    content: "prefix=${HOME}/.npm-global\n"
+
+- name: Create Chrome enterprise policy directory
+  ansible.builtin.file:
+    path: /etc/opt/chrome/policies/managed
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure Chrome managed policies
+  ansible.builtin.copy:
+    dest: /etc/opt/chrome/policies/managed/xps.json
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {
+        "RestoreOnStartup": 1,
+        "ExtensionInstallForcelist": [
+          "aeblfdkhhhdcdjpifhhbdiojplfjncoa;https://clients2.google.com/service/update2/crx"
+        ]
+      }
+
+- name: Create Firefox enterprise policy directory
+  ansible.builtin.file:
+    path: /usr/lib64/firefox/distribution
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enforce 1Password Firefox extension while preserving profiles
+  ansible.builtin.copy:
+    dest: /usr/lib64/firefox/distribution/policies.json
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {
+        "policies": {
+          "ExtensionSettings": {
+            "{d634138d-c276-4fc8-924b-40a0ea21d284}": {
+              "installation_mode": "force_installed",
+              "install_url": "https://addons.mozilla.org/firefox/downloads/latest/1password-x-password-manager/latest.xpi"
+            }
+          }
+        }
+      }
+
+- name: Prefer dark GTK appearance
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: dbus-run-session gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Check whether Neovim configuration already exists
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.config/nvim"
+  register: dotfiles_neovim_config
+
+- name: Install LazyVim starter only when Neovim configuration is absent
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.git:
+    repo: https://github.com/LazyVim/starter
+    dest: "{{ primary_home }}/.config/nvim"
+    version: main
+    depth: 1
+  when: not dotfiles_neovim_config.stat.exists
+
+- name: Restore SELinux user-home labels
+  ansible.builtin.command: "restorecon -RF {{ primary_home }}/.local/bin {{ primary_home }}/.local/share/applications"
+  changed_when: false
+  when: not ansible_check_mode

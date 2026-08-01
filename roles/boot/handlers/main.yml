@@ -1,0 +1,4 @@
+---
+- name: Rebuild Fedora initramfs
+  ansible.builtin.command: dracut --force
+  changed_when: true

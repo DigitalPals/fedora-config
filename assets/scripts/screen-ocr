@@ -1,0 +1,30 @@
+#!/bin/bash
+# Extract text from a selected screen region and copy it to the clipboard.
+
+set -euo pipefail
+
+# Cancel any existing slurp
+pkill slurp && exit 0
+
+cleanup() {
+  if [ -n "${FREEZE_PID:-}" ]; then
+    kill "$FREEZE_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+wayfreeze &
+FREEZE_PID=$!
+sleep 0.1
+
+SELECTION=$(slurp 2>/dev/null || true)
+[ -z "$SELECTION" ] && exit 0
+
+TEXT=$(grim -g "$SELECTION" - | tesseract stdin stdout --oem 1 --psm 6 -l eng --dpi 300 -c preserve_interword_spaces=1 2>/dev/null)
+[ -z "$TEXT" ] && exit 1
+
+printf "%s" "$TEXT" | wl-copy
+
+if command -v notify-send >/dev/null 2>&1; then
+  notify-send "Screen OCR" "Copied text from selection to clipboard"
+fi

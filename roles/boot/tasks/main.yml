@@ -1,0 +1,45 @@
+---
+- name: Install Plymouth script theme support
+  ansible.builtin.dnf:
+    name: plymouth-plugin-script
+    state: present
+
+- name: Checkout pinned Cybex Plymouth artwork
+  ansible.builtin.git:
+    repo: https://github.com/DigitalPals/omarchy-cybex.git
+    dest: /var/cache/xps-upstream/omarchy-cybex
+    version: e76c323ed69baf0efae12b2e7afb42635920607a
+    force: false
+  register: boot_cybex_source
+  when: not ansible_check_mode
+
+- name: Verify pinned Cybex source revision # noqa command-instead-of-module
+  ansible.builtin.command: git -C /var/cache/xps-upstream/omarchy-cybex rev-parse HEAD
+  register: boot_cybex_revision
+  changed_when: false
+  failed_when: boot_cybex_revision.stdout != 'e76c323ed69baf0efae12b2e7afb42635920607a'
+  when: not ansible_check_mode
+
+- name: Install Cybex Plymouth theme files
+  ansible.builtin.copy:
+    remote_src: true
+    src: /var/cache/xps-upstream/omarchy-cybex/config/plymouth/themes/cybex/
+    dest: /usr/share/plymouth/themes/cybex/
+    owner: root
+    group: root
+    mode: preserve
+  register: boot_cybex_install
+  notify: Rebuild Fedora initramfs
+  when: not ansible_check_mode
+
+- name: Read active Plymouth theme
+  ansible.builtin.command: plymouth-set-default-theme
+  register: boot_plymouth_theme
+  changed_when: false
+  check_mode: false
+
+- name: Select Cybex Plymouth theme without touching GRUB or EFI
+  ansible.builtin.command: plymouth-set-default-theme cybex
+  changed_when: true
+  when: boot_plymouth_theme.stdout | trim != 'cybex' and not ansible_check_mode
+  notify: Rebuild Fedora initramfs

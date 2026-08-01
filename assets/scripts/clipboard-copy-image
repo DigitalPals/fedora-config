@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Copy image from stdin to clipboard, then save temp file for CLI tools
+# Used by Satty's copy button
+set -euo pipefail
+
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/clipboard-images"
+mkdir -p "$cache_dir"
+ts="$(date +%Y%m%d-%H%M%S)"
+temp_file="$cache_dir/clipboard-${ts}.png"
+
+# Save image to temp file (unique per screenshot)
+cat > "$temp_file"
+
+# Copy image to clipboard (for GUI apps like WhatsApp)
+wl-copy --type image/png < "$temp_file"
+
+# Keep latest file for scripts that need it
+echo "$temp_file" > "$cache_dir/latest"

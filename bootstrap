@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+# shellcheck source=scripts/ui.sh
+source scripts/ui.sh
+
+if [[ ! -r /etc/fedora-release ]]; then
+  echo "This bootstrap supports Fedora only." >&2
+  exit 1
+fi
+
+ui_header 'XPS Bootstrap'
+if ! command -v ansible-playbook >/dev/null 2>&1; then
+  run_step 'Install ansible-core' /tmp/xps-bootstrap-ansible.log \
+    sudo dnf -y install ansible-core
+fi
+exec ansible-playbook site.yml "$@"

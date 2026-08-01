@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source /usr/local/libexec/xps-common.sh
+
+sdk={{ primary_home }}/Android/Sdk
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/android-sdk
+metadata=$cache/repository2-1.xml
+metadata_state=$sdk/.metadata-sha
+mkdir -p "$sdk/cmdline-tools" "$cache"
+curl --fail --silent --show-error --location \
+  https://dl.google.com/android/repository/repository2-1.xml -o "$metadata"
+
+# Google's repository metadata drives everything below; if it is unchanged and
+# the SDK is intact, skip the slow sdkmanager invocations entirely.
+metadata_sha=$(sha256sum "$metadata" | awk '{print $1}')
+if [[ -r $metadata_state && $(<"$metadata_state") == "$metadata_sha" ]] \
+  && [[ -x $sdk/cmdline-tools/latest/bin/sdkmanager && -x $sdk/platform-tools/adb ]]; then
+  emit_unchanged "Android SDK (repository metadata unchanged)"
+  exit 0
+fi
+
+readarray -t release < <(python3 - "$metadata" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+candidates = []
+for package in root.findall("remotePackage"):
+    path = package.attrib.get("path", "")
+    if not path.startswith("cmdline-tools;") or path.endswith("-rc"):
+        continue
+    revision = package.find("revision")
+    parts = tuple(int(revision.findtext(x, "0")) for x in ("major", "minor", "micro"))
+    for archive in package.findall("./archives/archive"):
+        if archive.findtext("host-os") != "linux":
+            continue
+        complete = archive.find("complete")
+        candidates.append((parts, complete.findtext("url"), complete.findtext("checksum")))
+version, url, checksum = max(candidates)
+print(".".join(map(str, version)))
+print(url)
+print(checksum)
+PY
+)
+version=${release[0]}
+url=${release[1]}
+checksum=${release[2]}
+
+if [[ ! -r $sdk/cmdline-tools/.version || $(<"$sdk/cmdline-tools/.version") != "$version" ]]; then
+  archive="$cache/commandlinetools-$version.zip"
+  [[ -f $archive ]] || curl --fail --location --retry 3 \
+    --output "$archive.partial" "https://dl.google.com/android/repository/$url"
+  [[ -f $archive ]] || mv "$archive.partial" "$archive"
+  actual=$(sha1sum "$archive" | awk '{print $1}')
+  [[ $actual == "$checksum" ]] || { echo "Android command-line tools checksum mismatch" >&2; exit 1; }
+  stage=$(mktemp -d "$sdk/cmdline-tools/.stage.XXXXXX")
+  trap 'rm -rf "$stage"' EXIT
+  unzip -q "$archive" -d "$stage"
+  rm -rf "$sdk/cmdline-tools/latest.new"
+  mv "$stage/cmdline-tools" "$sdk/cmdline-tools/latest.new"
+  rm -rf "$sdk/cmdline-tools/latest"
+  mv "$sdk/cmdline-tools/latest.new" "$sdk/cmdline-tools/latest"
+  printf '%s\n' "$version" > "$sdk/cmdline-tools/.version"
+  emit_changed "Android command-line tools $version"
+fi
+
+sdkmanager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+before=$("$sdkmanager" --sdk_root="$sdk" --list_installed 2>/dev/null || true)
+packages=$("$sdkmanager" --sdk_root="$sdk" --list \
+  | awk -F'|' '/^[[:space:]]*platforms;android-[0-9]+[[:space:]]*\|/ {gsub(/[[:space:]]/,"",$1); p=$1}
+             /^[[:space:]]*build-tools;[0-9.]+[[:space:]]*\|/ {gsub(/[[:space:]]/,"",$1); b=$1}
+             END {print p; print b}')
+mapfile -t selected <<<"$packages"
+[[ -n ${selected[0]:-} && -n ${selected[1]:-} ]] || {
+  echo "Unable to resolve latest platform/build-tools from sdkmanager --list" >&2
+  exit 1
+}
+yes | "$sdkmanager" --sdk_root="$sdk" --licenses >/dev/null || true
+"$sdkmanager" --sdk_root="$sdk" \
+  "platform-tools" "cmdline-tools;latest" "${selected[0]}" "${selected[1]}"
+after=$("$sdkmanager" --sdk_root="$sdk" --list_installed 2>/dev/null || true)
+printf '%s\n' "$metadata_sha" > "$metadata_state"
+[[ $before == "$after" ]] || emit_changed "Android SDK packages"

@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source /usr/local/libexec/xps-common.sh
+
+name=${1:?name required}
+repo=${2:?owner/repository required}
+asset_regex=${3:?asset regex required}
+kind=${4:?rpm, archive, archive-auto, binary, or font required}
+api="https://api.github.com/repos/$repo/releases?per_page=20"
+cache_root="/var/cache/xps-upstream/$name"
+state_root="/var/lib/xps-upstream/$name"
+install_root="/opt/xps-apps/$name"
+# Serializes dnf/rpm transactions when several installers run concurrently.
+dnf_lock="/var/lib/xps-upstream/.dnf.lock"
+
+tmp_json=$(mktemp)
+cleanup() { rm -f "$tmp_json"; }
+trap cleanup EXIT
+
+gh_api_fetch "$api" "$cache_root/api" "$tmp_json"
+
+release=$(jq -er --arg re "$asset_regex" '
+  first(
+    .[]
+    | select(.draft == false and .prerelease == false)
+    | . as $release
+    | first(.assets[] | select(.name | test($re)))
+    | {tag:$release.tag_name,name:.name,url:.browser_download_url,digest:(.digest // "")}
+  )
+' "$tmp_json") || {
+  echo "No stable $repo asset matches $asset_regex" >&2
+  exit 1
+}
+
+tag=$(jq -r .tag <<<"$release")
+asset=$(jq -r .name <<<"$release")
+url=$(jq -r .url <<<"$release")
+digest=$(jq -r .digest <<<"$release")
+safe_tag=$(printf '%s' "$tag" | tr -c 'A-Za-z0-9._+-' _)
+mkdir -p "$cache_root/$safe_tag" "$state_root"
+download="$cache_root/$safe_tag/$asset"
+
+if [[ $kind == font ]]; then
+  install_root="/usr/local/share/fonts/$name"
+fi
+
+if [[ ( $kind == rpm || ( $kind == archive-auto && $asset == *.rpm ) ) ]] \
+  && [[ -r $state_root/version ]] \
+  && [[ $(<"$state_root/version") == "$tag" ]] && rpm -q "$name" >/dev/null 2>&1; then
+  emit_unchanged "$name $tag"
+  exit 0
+fi
+if [[ $kind != rpm && -L $install_root/current ]] \
+  && [[ $(basename "$(readlink -f "$install_root/current")") == "$safe_tag" ]]; then
+  emit_unchanged "$name $tag"
+  exit 0
+fi
+
+if [[ ! -f $download ]]; then
+  partial="$download.partial"
+  curl --fail --location --retry 3 --output "$partial" "$url"
+  mv -f "$partial" "$download"
+fi
+
+expected=${digest#sha256:}
+if [[ -z $expected || $expected == "$digest" ]]; then
+  # The asset carried no sha256: digest; fall back to a release checksum file.
+  checksum_url=$(jq -r --arg tag "$tag" '
+    first(
+      .[] | select(.tag_name == $tag) | .assets[]
+      | select(.name | test("^(SHA-256[.]txt|SHA256SUMS([.]txt)?|checksums([.]txt)?)$"; "i"))
+      | .browser_download_url
+    ) // empty
+  ' "$tmp_json")
+  [[ -n $checksum_url ]] || {
+    echo "Refusing unverified asset $asset: no GitHub digest or release checksum file" >&2
+    exit 1
+  }
+  sums="$cache_root/$safe_tag/checksums.txt"
+  curl --fail --silent --show-error --location "$checksum_url" -o "$sums"
+  expected=$(awk -v file="$asset" '$0 ~ ("[ */]" file "$") {print $1; exit}' "$sums")
+  [[ $expected =~ ^[[:xdigit:]]{64}$ ]] || {
+    echo "No SHA-256 entry for $asset in release checksum file" >&2
+    exit 1
+  }
+fi
+
+verify_sha256 "$download" "$expected" || {
+  echo "SHA-256 mismatch for $asset" >&2
+  exit 1
+}
+
+if [[ $kind == rpm || ( $kind == archive-auto && $asset == *.rpm ) ]]; then
+  rpmkeys --checksig "$download" || true
+  flock "$dnf_lock" dnf -y --nogpgcheck install "$download"
+  printf '%s\n' "$tag" > "$state_root/version.tmp"
+  mv -f "$state_root/version.tmp" "$state_root/version"
+  xps_restorecon /usr/bin /usr/lib /usr/lib64 /usr/share/applications
+  emit_changed "installed $name $tag"
+  exit 0
+fi
+
+if [[ $kind == binary ]]; then
+  version_dir="$install_root/versions/$safe_tag"
+  mkdir -p "$version_dir/bin"
+  install -m 0755 "$download" "$version_dir/bin/$name.new"
+  mv -f "$version_dir/bin/$name.new" "$version_dir/bin/$name"
+  atomic_current_swap "$install_root" "versions/$safe_tag"
+  ln -sfn "$install_root/current/bin/$name" "/usr/local/bin/$name"
+  xps_restorecon "$install_root" /usr/local/bin
+  emit_changed "installed $name $tag"
+  exit 0
+fi
+
+mkdir -p "$install_root"
+version_dir="$install_root/versions/$safe_tag"
+stage=$(mktemp -d "$install_root/.stage.XXXXXX")
+trap 'rm -rf "$stage"; cleanup' EXIT
+mkdir -p "$stage/payload"
+case "$asset" in
+  *.tar.gz|*.tgz) tar -xzf "$download" -C "$stage/payload" ;;
+  *.tar.xz) tar -xJf "$download" -C "$stage/payload" ;;
+  *.zip) unzip -q "$download" -d "$stage/payload" ;;
+  *) echo "Unsupported archive: $asset" >&2; exit 1 ;;
+esac
+
+candidates=("$name")
+if [[ $kind != font ]]; then
+  mkdir -p "$stage/payload/bin"
+  for binary in "${candidates[@]}"; do
+    search_name=$binary
+    [[ $name != localsend ]] || search_name=localsend_app
+    found=$(find "$stage/payload" -type f -name "$search_name" -perm /111 -not -path '*/bin/*' -print -quit)
+    if [[ -z $found ]]; then
+      found=$(find "$stage/payload" -type f -name "$search_name" -print -quit)
+    fi
+    [[ -n $found ]] || { echo "Archive contains no $binary executable" >&2; exit 1; }
+    chmod 0755 "$found"
+    if [[ $found != "$stage/payload/bin/$binary" ]]; then
+      relative=$(realpath --relative-to="$stage/payload/bin" "$found")
+      ln -s "$relative" "$stage/payload/bin/$binary"
+    fi
+  done
+fi
+
+mkdir -p "$install_root/versions"
+rm -rf "$version_dir.new"
+mv "$stage/payload" "$version_dir.new"
+rm -rf "$version_dir"
+mv "$version_dir.new" "$version_dir"
+atomic_current_swap "$install_root" "versions/$safe_tag"
+
+if [[ $kind != font ]]; then
+  for binary in "${candidates[@]}"; do
+    ln -sfn "$install_root/current/bin/$binary" "/usr/local/bin/$binary"
+  done
+fi
+xps_restorecon "$install_root" /usr/local/bin
+emit_changed "installed $name $tag"

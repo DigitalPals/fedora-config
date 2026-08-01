@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=T3Code Nightly
+Exec=/home/john/.local/bin/t3code-desktop %U
+Icon=visual-studio-code
+Comment=A minimal GUI for coding agents
+Categories=Development;
+Terminal=false
+Type=Application

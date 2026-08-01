@@ -1,0 +1,26 @@
+[Default Applications]
+text/html=google-chrome.desktop
+x-scheme-handler/http=google-chrome.desktop
+x-scheme-handler/https=google-chrome.desktop
+x-scheme-handler/about=google-chrome.desktop
+x-scheme-handler/unknown=google-chrome.desktop
+image/png=imv.desktop
+image/jpeg=imv.desktop
+image/gif=imv.desktop
+image/webp=imv.desktop
+image/bmp=imv.desktop
+image/tiff=imv.desktop
+application/pdf=org.gnome.Evince.desktop
+video/mp4=mpv.desktop
+video/x-matroska=mpv.desktop
+video/webm=mpv.desktop
+video/x-msvideo=mpv.desktop
+video/quicktime=mpv.desktop
+text/plain=nvim-kitty.desktop
+application/json=nvim-kitty.desktop
+application/x-yaml=nvim-kitty.desktop
+application/xml=nvim-kitty.desktop
+text/markdown=dev.codex.mdview.desktop
+text/x-markdown=dev.codex.mdview.desktop
+text/x-python=nvim-kitty.desktop
+text/x-shellscript=nvim-kitty.desktop

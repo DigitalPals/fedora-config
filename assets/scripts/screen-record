@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Toggle a selected-area screen recording.
+
+set -euo pipefail
+
+OUTPUT_DIR="$HOME/Videos/Screen Recordings"
+STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/screen-record"
+PID_FILE="$STATE_DIR/wf-recorder.pid"
+OUTPUT_FILE_STATE="$STATE_DIR/output-file"
+LOG_FILE="$STATE_DIR/wf-recorder.log"
+
+mkdir -p "$OUTPUT_DIR" "$STATE_DIR"
+
+notify() {
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "$@"
+  fi
+}
+
+process_name() {
+  ps -p "$1" -o comm= 2>/dev/null | tr -d '[:space:]'
+}
+
+stop_recording() {
+  if [ ! -f "$PID_FILE" ]; then
+    return 1
+  fi
+
+  local pid
+  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+
+  if ! [[ "$pid" =~ ^[0-9]+$ ]] || [ "$(process_name "$pid")" != "wf-recorder" ]; then
+    rm -f "$PID_FILE" "$OUTPUT_FILE_STATE"
+    return 1
+  fi
+
+  local output_file
+  output_file="$(cat "$OUTPUT_FILE_STATE" 2>/dev/null || true)"
+
+  kill -INT "$pid" 2>/dev/null || true
+
+  for _ in {1..50}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  if [ -n "$output_file" ]; then
+    notify "Screen Recording" "Saved to $output_file"
+  else
+    notify "Screen Recording" "Stopped recording"
+  fi
+
+  rm -f "$PID_FILE" "$OUTPUT_FILE_STATE"
+  exit 0
+}
+
+normalize_geometry() {
+  local geometry="$1"
+
+  if [[ "$geometry" =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]+([0-9]+)x([0-9]+)$ ]]; then
+    local x="${BASH_REMATCH[1]}"
+    local y="${BASH_REMATCH[2]}"
+    local width="${BASH_REMATCH[3]}"
+    local height="${BASH_REMATCH[4]}"
+
+    width=$((width - width % 2))
+    height=$((height - height % 2))
+
+    if [ "$width" -lt 2 ] || [ "$height" -lt 2 ]; then
+      return 1
+    fi
+
+    printf '%s,%s %sx%s\n' "$x" "$y" "$width" "$height"
+    return 0
+  fi
+
+  printf '%s\n' "$geometry"
+}
+
+stop_recording || true
+
+# Cancel any existing slurp.
+pkill slurp && exit 0
+
+cleanup() {
+  if [ -n "${FREEZE_PID:-}" ]; then
+    kill "$FREEZE_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+wayfreeze &
+FREEZE_PID=$!
+sleep 0.1
+
+SELECTION="$(slurp 2>/dev/null || true)"
+[ -z "$SELECTION" ] && exit 0
+
+SELECTION="$(normalize_geometry "$SELECTION")"
+
+kill "$FREEZE_PID" 2>/dev/null || true
+unset FREEZE_PID
+
+TS="$(date +'%Y-%m-%d_%H-%M-%S')"
+OUTPUT_FILE="$OUTPUT_DIR/screen-recording-${TS}.mp4"
+
+wf-recorder -g "$SELECTION" -f "$OUTPUT_FILE" >"$LOG_FILE" 2>&1 &
+RECORD_PID=$!
+
+sleep 0.2
+
+if ! kill -0 "$RECORD_PID" 2>/dev/null; then
+  rm -f "$PID_FILE" "$OUTPUT_FILE_STATE"
+  notify "Screen Recording" "Failed to start recording"
+  exit 1
+fi
+
+printf '%s\n' "$RECORD_PID" > "$PID_FILE"
+printf '%s\n' "$OUTPUT_FILE" > "$OUTPUT_FILE_STATE"
+
+notify "Screen Recording" "Recording selected area. Press Super+Shift+~ to stop."

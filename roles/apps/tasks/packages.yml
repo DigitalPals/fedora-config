@@ -1,0 +1,50 @@
+---
+- name: Resolve packages available for Fedora 44
+  ansible.builtin.command:
+    argv: "{{ ['dnf', '-q', 'repoquery', '--available', '--qf', '%{name}\\n'] + apps_fedora_packages }}"
+  register: apps_available_package_query
+  changed_when: false
+  check_mode: false
+
+- name: Record available and unavailable package names
+  ansible.builtin.set_fact:
+    apps_available_fedora_packages: "{{ apps_available_package_query.stdout_lines | unique | list }}"
+    apps_unavailable_fedora_packages: "{{ apps_fedora_packages | difference(apps_available_package_query.stdout_lines) }}"
+
+- name: Report optional packages absent from enabled repositories
+  ansible.builtin.debug:
+    msg: "Unavailable Fedora package (upstream installer or Mason may cover it): {{ item }}"
+  loop: "{{ apps_unavailable_fedora_packages }}"
+
+- name: Install Fedora and RPM Fusion application packages
+  ansible.builtin.dnf:
+    name: "{{ apps_available_fedora_packages }}"
+    state: present
+    allowerasing: true
+  when: apps_available_fedora_packages | length > 0
+
+- name: Install Steam 32-bit graphics userspace
+  ansible.builtin.dnf:
+    name:
+      - mesa-dri-drivers.i686
+      - mesa-vulkan-drivers.i686
+      - vulkan-loader.i686
+    state: present
+  when: features.steam | bool and not ansible_check_mode
+
+- name: Install signed vendor applications
+  ansible.builtin.dnf:
+    name:
+      - google-chrome-stable
+      - 1password
+      - 1password-cli
+      - tailscale
+    state: present
+  when: not ansible_check_mode
+
+- name: Enable Tailscale without authorizing the node
+  ansible.builtin.systemd_service:
+    name: tailscaled.service
+    enabled: true
+    state: started
+  when: features.tailscale | bool and not ansible_check_mode

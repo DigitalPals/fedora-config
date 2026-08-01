@@ -1,0 +1,203 @@
+---
+- name: Enable the selected Hyprland COPR only
+  ansible.builtin.command: dnf -y copr enable sdegler/hyprland
+  args:
+    creates: /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo
+  when: not ansible_check_mode
+
+- name: Install stable Hyprland and desktop integration packages
+  ansible.builtin.dnf:
+    name:
+      - gdm
+      - gnome-keyring
+      - hyprland
+      - hypridle
+      - hyprlock
+      - hyprpicker
+      - hyprpolkitagent
+      - xdg-desktop-portal
+      - xdg-desktop-portal-gtk
+      - xdg-desktop-portal-hyprland
+      - satty
+      - nwg-look
+      - grim
+      - slurp
+      - wf-recorder
+      - wl-clipboard
+      - wtype
+      - brightnessctl
+      - playerctl
+      - socat
+      - tesseract
+      - tesseract-langpack-eng
+      - libnotify
+      - libinput-utils
+      - vulkan-loader
+      - vulkan-tools
+    state: present
+  when: not ansible_check_mode
+
+- name: Install Fedora fuzzel and matugen rather than COPR variants
+  ansible.builtin.dnf:
+    name:
+      - fuzzel
+      - matugen
+    state: present
+    disablerepo:
+      - _copr:copr.fedorainfracloud.org:sdegler:hyprland
+  when: not ansible_check_mode
+
+- name: Ensure GDM is the display manager while preserving GNOME
+  ansible.builtin.systemd_service:
+    name: gdm.service
+    enabled: true
+
+- name: Install Hyprland Lumen session launcher
+  ansible.builtin.template:
+    src: hyprland-lumen.j2
+    dest: /usr/local/bin/hyprland-lumen
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Register Hyprland Lumen GDM session
+  ansible.builtin.copy:
+    dest: /usr/share/wayland-sessions/hyprland-lumen.desktop
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Desktop Entry]
+      Name=Hyprland (Lumen)
+      Comment=Hyprland with Lumen Desktop Shell
+      Exec=/usr/local/bin/hyprland-lumen
+      TryExec=/usr/local/bin/hyprland-lumen
+      Type=Application
+      DesktopNames=Hyprland
+
+- name: Create desktop configuration directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ primary_home }}/.config/hypr"
+    - "{{ primary_home }}/.config/lumen/styles"
+    - "{{ primary_home }}/.config/walker/themes/lumen"
+    - "{{ primary_home }}/.config/xdg-desktop-portal"
+    - "{{ primary_home }}/.config/systemd/user"
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
+    - "{{ primary_home }}/.local/state/hyprland"
+
+- name: Install Hyprland Lua configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ primary_home }}/.config/hypr/{{ item }}"
+    mode: "0644"
+  loop:
+    - hyprland.lua
+    - monitors.lua
+    - input.lua
+    - looknfeel.lua
+    - bindings.lua
+    - autostart.lua
+
+- name: Install rendered Hyprland helper configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ primary_home }}/.config/hypr/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: hypridle.conf.j2, dest: hypridle.conf }
+    - { src: hyprlock.conf.j2, dest: hyprlock.conf }
+
+- name: Configure portal preference without patching Fedora files
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/xdg-desktop-portal/hyprland-portals.conf"
+    mode: "0644"
+    content: |
+      [preferred]
+      default=hyprland;gtk
+      org.freedesktop.impl.portal.FileChooser=gtk
+      org.freedesktop.impl.portal.Secret=gnome-keyring
+
+- name: Install Hyprland graphical-session target
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/systemd/user/hyprland-session.target"
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Hyprland graphical session
+      BindsTo=graphical-session.target
+      Wants=graphical-session-pre.target
+      After=graphical-session-pre.target
+      Before=graphical-session.target
+
+- name: Install restartable desktop user units
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: "{{ item }}.service.j2"
+    dest: "{{ primary_home }}/.config/systemd/user/{{ item }}.service"
+    mode: "0644"
+  loop:
+    - lumen
+    - elephant
+    - walker
+    - hypridle
+    - hyprpolkitagent
+    - voxtype
+  notify: Reload user systemd
+
+- name: Install external monitor watcher unit
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/systemd/user/external-monitor-toggle.service"
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Apply XPS lid and external display policy
+      PartOf=hyprland-session.target
+
+      [Service]
+      Type=simple
+      ExecStart=%h/.local/bin/external-monitor-toggle
+      Restart=on-failure
+      RestartSec=2
+
+      [Install]
+      WantedBy=hyprland-session.target
+
+- name: Enable desktop units for the Hyprland target
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    src: "../{{ item }}.service"
+    dest: "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/{{ item }}.service"
+    state: link
+    force: true
+  loop:
+    - lumen
+    - elephant
+    - walker
+    - hypridle
+    - hyprpolkitagent
+    - voxtype
+    - external-monitor-toggle
+  notify: Reload user systemd
+
+- name: Preserve SELinux labels on local session executable
+  ansible.builtin.command: restorecon -F /usr/local/bin/hyprland-lumen
+  changed_when: false
+  when: not ansible_check_mode

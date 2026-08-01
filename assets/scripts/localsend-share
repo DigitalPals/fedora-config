@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Share clipboard text, files, or folders through LocalSend.
+
+set -euo pipefail
+
+mode="${1:-}"
+shift || true
+
+if [ -z "$mode" ]; then
+  echo "Usage: localsend-share <clipboard|file|folder> [path...]" >&2
+  exit 1
+fi
+
+case "$mode" in
+  clipboard)
+    temp_file="$(mktemp --suffix=.txt)"
+    wl-paste > "$temp_file"
+    systemd-run --user --quiet --collect localsend --headless send "$temp_file"
+    ;;
+  file|folder)
+    if [ "$#" -gt 0 ]; then
+      systemd-run --user --quiet --collect localsend --headless send "$@"
+      exit 0
+    fi
+
+    if [ "$mode" = "folder" ]; then
+      selection="$(find "$HOME" -type d 2>/dev/null | fzf --prompt 'Folder> ' --height 40% --reverse || true)"
+    else
+      selection="$(find "$HOME" -type f 2>/dev/null | fzf --multi --prompt 'Files> ' --height 40% --reverse || true)"
+    fi
+
+    [ -z "$selection" ] && exit 0
+    mapfile -t paths <<< "$selection"
+    systemd-run --user --quiet --collect localsend --headless send "${paths[@]}"
+    ;;
+  *)
+    echo "Unknown share mode: $mode" >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,48 @@
+---
+- name: Import RPM Fusion release-package signing keys
+  ansible.builtin.rpm_key:
+    key: "https://download1.rpmfusion.org/{{ item.scope }}/fedora/RPM-GPG-KEY-rpmfusion-{{ item.scope }}-fedora-2020"
+    fingerprint:
+      - "{{ item.fingerprint }}"
+    state: present
+  loop:
+    - scope: free
+      fingerprint: E9A491A3DE247814E7E067EAE06F8ECDD651FF2E
+    - scope: nonfree
+      fingerprint: 79BDB88F9BBF73910FD4095B6A2AF96194843C65
+
+- name: Enable RPM Fusion free repository
+  ansible.builtin.dnf:
+    name: "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{{ fedora_release }}.noarch.rpm"
+    state: present
+    disable_gpg_check: false
+  register: apps_rpmfusion_free
+
+- name: Enable RPM Fusion nonfree repository
+  ansible.builtin.dnf:
+    name: "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{{ fedora_release }}.noarch.rpm"
+    state: present
+    disable_gpg_check: false
+  register: apps_rpmfusion_nonfree
+
+- name: Install signed vendor repository definitions
+  ansible.builtin.copy:
+    src: "{{ item }}.repo"
+    dest: "/etc/yum.repos.d/{{ item }}.repo"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - google-chrome
+    - 1password
+    - tailscale
+  register: apps_vendor_repos
+
+- name: Refresh DNF metadata after repository changes
+  ansible.builtin.command: dnf -q makecache
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - apps_rpmfusion_free is changed
+      or apps_rpmfusion_nonfree is changed
+      or apps_vendor_repos is changed

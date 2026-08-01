@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -uo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+# shellcheck source=scripts/ui.sh
+source scripts/ui.sh
+
+log_root="${XDG_STATE_HOME:-$HOME/.local/state}/xps-update/logs/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$log_root"
+start=$SECONDS
+
+fedora_version=$(. /etc/os-release && echo "$VERSION_ID")
+ui_header "XPS Update — Fedora $fedora_version"
+
+# Cache sudo credentials once so the parallel steps below never prompt.
+# `sudo -n true` succeeds silently on passwordless/cached setups; only fall
+# back to an interactive prompt when a password is genuinely needed.
+sudo -n true 2>/dev/null || sudo -v
+
+dnf_detail() {
+  local log=$1 n
+  grep -q '^Nothing to do' "$log" && { echo "already up to date"; return; }
+  n=$(awk '/^ *(Installing|Upgrading|Reinstalling|Downgrading|Removing|Replacing):/ { sum += $2 } END { print sum + 0 }' "$log")
+  if (( n > 0 )); then echo "$n packages"; else echo "completed"; fi
+}
+
+flatpak_detail() {
+  local log=$1 n
+  grep -qi '^Nothing to' "$log" && { echo "already up to date"; return; }
+  n=$(grep -cE '^ *[0-9]+\.[[:space:]]' "$log" || true)
+  if (( n > 0 )); then echo "$n apps"; else echo "completed"; fi
+}
+
+# System packages and Flatpaks update concurrently.
+sudo dnf -y upgrade --refresh >"$log_root/dnf.log" 2>&1 &
+dnf_pid=$!
+sudo flatpak update --system --noninteractive >"$log_root/flatpak.log" 2>&1 &
+flatpak_pid=$!
+
+ui_spin_while 'System packages + Flatpaks' "$dnf_pid" "$flatpak_pid"
+
+dnf_rc=0 flatpak_rc=0
+wait "$dnf_pid" || dnf_rc=$?
+wait "$flatpak_pid" || flatpak_rc=$?
+sys_dur=$(ui_duration $((SECONDS - start)))
+
+if (( dnf_rc == 0 )); then
+  ui_ok 'System packages' "$(dnf_detail "$log_root/dnf.log") ($sys_dur)"
+else
+  ui_fail 'System packages' "dnf upgrade failed"
+  ui_tail_log "$log_root/dnf.log"
+  printf '\nFull log: %s\n' "$log_root/dnf.log"
+  exit "$dnf_rc"
+fi
+
+if (( flatpak_rc == 0 )); then
+  ui_ok 'Flatpaks' "$(flatpak_detail "$log_root/flatpak.log")"
+else
+  # A transient Flathub failure should not block the configuration run.
+  ui_warn 'Flatpaks' "update failed — continuing (log: $log_root/flatpak.log)"
+fi
+
+ui_section 'Configuration'
+ansible_rc=0
+ansible-playbook site.yml --skip-tags boot,finalize "$@" || ansible_rc=$?
+
+echo
+ui_rule
+total=$(ui_duration $((SECONDS - start)))
+if (( ansible_rc == 0 && flatpak_rc == 0 )); then
+  printf '%s✓%s Update complete in %s\n' "$UI_GREEN" "$UI_RESET" "$total"
+elif (( ansible_rc == 0 )); then
+  printf '%s!%s Update finished in %s with warnings %s(logs: %s)%s\n' \
+    "$UI_YELLOW" "$UI_RESET" "$total" "$UI_DIM" "$log_root" "$UI_RESET"
+else
+  printf '%s✗%s Update failed after %s %s(logs: %s)%s\n' \
+    "$UI_RED" "$UI_RESET" "$total" "$UI_DIM" "$log_root" "$UI_RESET"
+fi
+exit "$ansible_rc"

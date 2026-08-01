@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+for command in hyprctl jq socat; do
+  command -v "$command" >/dev/null || exit 0
+done
+
+external_connected() {
+  for status in /sys/class/drm/card*-*/status; do
+    [[ -e $status ]] || continue
+    [[ $status == *-eDP-*/status ]] && continue
+    [[ $(<"$status") == connected ]] && return 0
+  done
+  return 1
+}
+lid_closed() {
+  for state in /proc/acpi/button/lid/*/state; do
+    [[ -r $state ]] || continue
+    [[ $(<"$state") == *closed* ]] && return 0
+  done
+  return 1
+}
+apply_state() {
+  local monitors
+  monitors=$(hyprctl monitors -j 2>/dev/null) || return 0
+  local edp_active=false xreal=false
+  jq -e '.[] | select(.name == "eDP-1") | select((.disabled // false) | not)' <<<"$monitors" >/dev/null && edp_active=true
+  jq -e '.[] | select(((.disabled // false) | not) and (((.description // "") | test("XREAL|Nreal";"i")) or ((.make // "") | test("XREAL|Nreal";"i"))))' <<<"$monitors" >/dev/null && xreal=true
+
+  if ! external_connected; then
+    $edp_active || timeout 5s hyprctl reload >/dev/null || true
+  elif lid_closed || $xreal; then
+    $edp_active && hyprctl eval 'hl.monitor({ output = "eDP-1", disabled = true })' >/dev/null || true
+  else
+    $edp_active || timeout 5s hyprctl reload >/dev/null || true
+  fi
+}
+
+apply_state
+[[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || exit 0
+socket="${XDG_RUNTIME_DIR:?}/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+upower_pid=""
+if command -v upower >/dev/null 2>&1; then
+  while read -r _line; do apply_state; done < <(upower --monitor) &
+  upower_pid=$!
+fi
+cleanup() {
+  [[ -z $upower_pid ]] || kill "$upower_pid" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+while IFS= read -r line; do
+  case "$line" in
+    monitoradded'>>'*|monitorremoved'>>'*) sleep 2; apply_state ;;
+  esac
+done < <(socat -U - "UNIX-CONNECT:$socket")

@@ -1,0 +1,97 @@
+---
+- name: Read Voxtype backend status
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: >-
+    voxtype --config {{ primary_home }}/.config/voxtype/config.toml
+    setup gpu --status
+  register: apps_voxtype_status
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Select Voxtype GPU backend
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: >-
+    voxtype --config {{ primary_home }}/.config/voxtype/config.toml
+    setup gpu --enable
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - apps_voxtype_status.rc | default(1) == 0
+    - "'Active backend: GPU' not in apps_voxtype_status.stdout"
+
+- name: Download Voxtype base English model when absent
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: voxtype setup --download --model base --no-post-install
+  args:
+    creates: "{{ primary_home }}/.local/share/voxtype/models/ggml-base.bin"
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Initialize the user Rustup installation
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/rustup-init
+      - -y
+      - --no-modify-path
+      - --default-toolchain
+      - nightly
+      - --component
+      - rustfmt
+      - --component
+      - rust-analyzer
+  args:
+    creates: "{{ primary_home }}/.cargo/bin/rustup"
+  register: apps_rustup_init
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Install nightly Rust toolchain and components
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ primary_home }}/.cargo/bin/rustup"
+      - toolchain
+      - install
+      - nightly
+      - --profile
+      - default
+      - --component
+      - rustfmt
+      - --component
+      - rust-analyzer
+  register: apps_rustup_nightly
+  changed_when: "'unchanged' not in (apps_rustup_nightly.stdout | lower)"
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - apps_rustup_init.rc | default(0) == 0
+
+- name: Report Rust nightly update failure while retaining the installed toolchain
+  ansible.builtin.debug:
+    msg: "Rust nightly update failed; installed toolchain retained: {{ apps_rustup_nightly.stderr | default('unknown failure') }}"
+  when:
+    - not ansible_check_mode
+    - apps_rustup_nightly.rc | default(0) != 0
+
+- name: Install user CLI updater
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: update-user-tools
+    dest: "{{ primary_home }}/.local/bin/update-user-tools"
+    mode: "0755"
+
+- name: Install or update user-managed CLIs
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: "{{ primary_home }}/.local/bin/update-user-tools"
+  register: apps_user_tools_update
+  changed_when: (apps_user_tools_update.stdout | regex_search('(?m)^CHANGED:')) is not none
+  when: not ansible_check_mode

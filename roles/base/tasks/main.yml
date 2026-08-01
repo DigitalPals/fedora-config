@@ -1,0 +1,297 @@
+---
+- name: Install Fedora baseline packages
+  ansible.builtin.dnf:
+    name:
+      - acl
+      - bash-completion
+      - btrfs-progs
+      - bolt
+      - docker-compose
+      - firewalld
+      - fish
+      - flatpak
+      - fwupd
+      - gvfs
+      - gvfs-fuse
+      - moby-engine
+      - intel-lpmd
+      - mokutil
+      - NetworkManager
+      - pipewire
+      - pipewire-alsa
+      - pipewire-pulseaudio
+      - policycoreutils-python-utils
+      - polkit
+      - powertop
+      - thermald
+      - tuned-ppd
+      - udisks2
+      - upower
+      - zram-generator-defaults
+    state: present
+    allowerasing: true
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ machine_hostname }}"
+
+- name: Set timezone
+  ansible.builtin.file:
+    src: "/usr/share/zoneinfo/{{ machine_timezone }}"
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: Read generated locale archive
+  ansible.builtin.command: localedef --list-archive
+  register: base_locale_archive
+  changed_when: false
+  check_mode: false
+
+- name: Generate required locales
+  ansible.builtin.command: "localedef -i {{ item.split('.')[0] }} -f UTF-8 {{ item }}"
+  changed_when: true
+  loop:
+    - "{{ machine_locale }}"
+    - "{{ regional_locale }}"
+  when: (item.split('.')[0] + '.utf8') not in base_locale_archive.stdout_lines
+
+- name: Configure language and regional locale categories
+  ansible.builtin.template:
+    src: locale.conf.j2
+    dest: /etc/locale.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure portable kernel hardening
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/60-xps-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      kernel.kptr_restrict = 2
+      kernel.dmesg_restrict = 1
+      kernel.perf_event_paranoid = 3
+      kernel.yama.ptrace_scope = 1
+      vm.mmap_min_addr = 65536
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+  notify: Reload sysctl
+
+- name: Configure strict firewalld zone
+  ansible.builtin.template:
+    src: xps-zone.xml.j2
+    dest: "/etc/firewalld/zones/{{ firewall_zone }}.xml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload firewalld
+
+- name: Enable core services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - NetworkManager.service
+    - firewalld.service
+    - bluetooth.service
+    - avahi-daemon.service
+    - cups.service
+    - docker.service
+    - fstrim.timer
+    - fwupd-refresh.timer
+    - thermald.service
+    - tuned.service
+    - tuned-ppd.service
+
+- name: Enable available Panther Lake power service
+  ansible.builtin.systemd_service:
+    name: intel_lpmd.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  failed_when: false
+
+- name: Disable services intentionally excluded from the Fedora XPS baseline
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - NetworkManager-wait-online.service
+    - sshd.service
+  failed_when: false
+
+- name: Read default firewall zone
+  ansible.builtin.command: firewall-cmd --get-default-zone
+  register: base_current_firewall_zone
+  changed_when: false
+  check_mode: false
+
+- name: Set xps as the default firewall zone
+  ansible.builtin.command: "firewall-cmd --set-default-zone={{ firewall_zone }}"
+  changed_when: true
+  when: base_current_firewall_zone.stdout | trim != firewall_zone and not ansible_check_mode
+
+- name: Find Ethernet and Wi-Fi profiles outside the strict zone
+  ansible.builtin.shell: |
+    set -o pipefail
+    nmcli -t -f UUID,TYPE connection show |
+      while IFS=: read -r uuid type; do
+        case "$type" in
+          802-3-ethernet|802-11-wireless)
+            zone=$(nmcli -g connection.zone connection show "$uuid")
+            [[ $zone == {{ firewall_zone | quote }} ]] || printf '%s\n' "$uuid"
+            ;;
+        esac
+      done
+  args:
+    executable: /bin/bash
+  register: base_network_profiles_outside_zone
+  changed_when: false
+  check_mode: false
+
+- name: Bind physical NetworkManager profiles to the strict zone
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - connection
+      - modify
+      - "{{ item }}"
+      - connection.zone
+      - "{{ firewall_zone }}"
+  loop: "{{ base_network_profiles_outside_zone.stdout_lines }}"
+  changed_when: true
+  when: not ansible_check_mode
+
+- name: Read active physical network devices
+  ansible.builtin.shell: |
+    set -o pipefail
+    nmcli -t -f DEVICE,TYPE device status |
+      awk -F: '$2 == "ethernet" || $2 == "wifi" {print $1}'
+  args:
+    executable: /bin/bash
+  register: base_active_physical_devices
+  changed_when: false
+  check_mode: false
+
+- name: Reapply changed firewall zone bindings without reconnecting
+  ansible.builtin.command:
+    argv: [nmcli, device, reapply, "{{ item }}"]
+  loop: "{{ base_active_physical_devices.stdout_lines }}"
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - base_network_profiles_outside_zone.stdout_lines | length > 0
+
+- name: Keep Tailscale traffic isolated to tailscale0
+  ansible.builtin.command: >-
+    firewall-cmd --permanent --zone={{ firewall_zone }} --add-interface=tailscale0
+  register: base_firewall_tailscale
+  changed_when: "'ALREADY_ENABLED' not in base_firewall_tailscale.stderr"
+  notify: Reload firewalld
+  when: features.tailscale | bool and not ansible_check_mode
+
+- name: Ensure local privilege groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: [wheel, video, input, docker]
+
+- name: Configure primary user groups and Fish login shell
+  ansible.builtin.user:
+    name: "{{ primary_user }}"
+    groups: wheel,video,input,docker
+    append: true
+    shell: /usr/bin/fish
+
+- name: Enable user lingering
+  ansible.builtin.command: "loginctl enable-linger {{ primary_user }}"
+  args:
+    creates: "/var/lib/systemd/linger/{{ primary_user }}"
+
+- name: Configure passwordless wheel sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/10-wheel-nopasswd
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+    content: "%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n"
+  when: passwordless_wheel | bool
+
+- name: Configure active local wheel Polkit authorization
+  ansible.builtin.copy:
+    dest: /etc/polkit-1/rules.d/49-wheel-local.rules
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      polkit.addRule(function(action, subject) {
+        if (subject.isInGroup("wheel") && subject.active && subject.local) {
+          return polkit.Result.YES;
+        }
+      });
+  when: passwordless_local_polkit | bool
+
+- name: Install weekly Btrfs scrub unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/xps-btrfs-scrub.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Scrub all mounted Btrfs filesystems
+      ConditionPathIsMountPoint=/
+
+      [Service]
+      Type=oneshot
+      Nice=19
+      IOSchedulingClass=idle
+      ExecStart=/usr/bin/btrfs scrub start -B -d /
+  notify: Reload systemd
+
+- name: Install weekly Btrfs scrub timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/xps-btrfs-scrub.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Weekly Btrfs scrub
+
+      [Timer]
+      OnCalendar=Sun *-*-* 03:30:00
+      RandomizedDelaySec=45m
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: Reload systemd
+
+- name: Enable weekly Btrfs scrub
+  ansible.builtin.systemd_service:
+    name: xps-btrfs-scrub.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Disable GNOME automatic idle suspend without changing blank or lock settings
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: >-
+    dbus-run-session gsettings set org.gnome.settings-daemon.plugins.power
+    {{ item }} 0
+  loop:
+    - sleep-inactive-ac-timeout
+    - sleep-inactive-battery-timeout
+  changed_when: false
+  when: not ansible_check_mode

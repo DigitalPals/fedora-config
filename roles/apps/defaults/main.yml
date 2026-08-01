@@ -1,0 +1,93 @@
+---
+apps_fedora_packages:
+  # Development and containers
+  - git
+  - git-lfs
+  - gh
+  - gcc
+  - gcc-c++
+  - cmake
+  - make
+  - mold
+  - sccache
+  - rustup
+  - nodejs24
+  - nodejs24-npm
+  - python3
+  - python3-pip
+  - tree-sitter-cli
+  - android-tools
+  - distrobox
+  - podman
+  - podman-compose
+  - inkscape
+  - intel-compute-runtime
+  - libva-intel-media-driver
+  - igt-gpu-tools
+  - libva-utils
+  # Desktop and media
+  - firefox
+  - nautilus
+  - nautilus-python
+  - sushi
+  - libreoffice
+  - evince
+  - file-roller
+  - gnome-calculator
+  - gnome-text-editor
+  - pinta
+  - mpv
+  - yt-dlp
+  - imv
+  - ffmpeg
+  - ffmpegthumbnailer
+  - webp-pixbuf-loader
+  # Shell and diagnostics
+  - kitty
+  - neovim
+  - fish
+  - zoxide
+  - direnv
+  - fzf
+  - eza
+  - jq
+  - ripgrep
+  - fd-find
+  - du-dust
+  - bat
+  - tree
+  - zip
+  - unzip
+  - yq
+  - git-delta
+  - btop
+  - glow
+  - fastfetch
+  - duf
+  - file
+  - pciutils
+  - usbutils
+  - strace
+  - net-tools
+  - lm_sensors
+  - dmidecode
+  - efibootmgr
+  - age
+  - v4l-utils
+  # Gaming
+  - steam
+  - gamemode
+  - mangohud
+  # Fonts and themes
+  - rsms-inter-fonts
+  - fontawesome-fonts-all
+  - google-noto-sans-fonts
+  - google-noto-color-emoji-fonts
+  - adwaita-icon-theme
+  - adw-gtk3-theme
+  - fira-code-fonts
+  - jetbrains-mono-fonts
+
+apps_flatpaks:
+  - com.spotify.Client
+  - net.davidotek.pupgui2

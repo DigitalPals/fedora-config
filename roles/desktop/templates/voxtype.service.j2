@@ -1,0 +1,14 @@
+[Unit]
+Description=Voxtype push-to-talk dictation daemon
+PartOf=hyprland-session.target
+After=pipewire.service pipewire-pulse.service
+Wants=pipewire.service pipewire-pulse.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/voxtype daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=hyprland-session.target

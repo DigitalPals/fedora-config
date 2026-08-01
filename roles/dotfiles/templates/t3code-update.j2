@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source /usr/local/libexec/xps-common.sh
+
+install_dir="${XDG_DATA_HOME:-$HOME/.local/share}/t3code-nightly"
+appimage="$install_dir/T3-Code-Nightly-x86_64.AppImage"
+api_cache="${XDG_CACHE_HOME:-$HOME/.cache}/xps-upstream/t3code/api"
+json=$(mktemp)
+tmp=""
+trap 'rm -f "$json" "$tmp"' EXIT
+gh_api_fetch 'https://api.github.com/repos/pingdotgg/t3code/releases?per_page=30' "$api_cache" "$json"
+release=$(jq -ec 'first(.[] | select(.prerelease and (.tag_name | contains("-nightly."))) as $r | $r.assets[] | select(.name | endswith("-x86_64.AppImage")) | {tag:$r.tag_name,url:.browser_download_url,digest:.digest})' "$json")
+tag=$(jq -r .tag <<<"$release")
+url=$(jq -r .url <<<"$release")
+expected=$(jq -r .digest <<<"$release")
+expected=${expected#sha256:}
+[[ $expected =~ ^[[:xdigit:]]{64}$ ]] || { echo "T3Code nightly asset has no GitHub digest" >&2; exit 1; }
+if [[ -x $appimage && -r $install_dir/version && $(<"$install_dir/version") == "$tag" ]]; then
+  emit_unchanged "T3Code $tag"
+  exit 0
+fi
+mkdir -p "$install_dir"
+tmp=$(mktemp "$install_dir/.T3-Code.XXXXXX")
+curl --fail --location --retry 3 --output "$tmp" "$url"
+verify_sha256 "$tmp" "$expected" || { echo "T3Code digest mismatch" >&2; exit 1; }
+chmod 0755 "$tmp"
+mv -f "$tmp" "$appimage"
+tmp=""
+printf '%s\n' "$tag" > "$install_dir/version"
+emit_changed "T3Code $tag"

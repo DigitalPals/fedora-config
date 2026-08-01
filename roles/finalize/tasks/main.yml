@@ -1,0 +1,61 @@
+---
+- name: Keep autologin disabled during ordinary convergence
+  ansible.builtin.debug:
+    msg: "GDM autologin remains disabled; run fedora/finalize after a successful manual Hyprland login."
+  when: not gdm_autologin | bool
+
+- name: Require the finalize verification gate
+  ansible.builtin.assert:
+    that:
+      - manual_hyprland_verified | default(false) | bool
+      - gdm_autologin | bool
+    fail_msg: "Use ./finalize from a verified Hyprland (Lumen) session."
+  when: gdm_autologin | bool
+
+- name: Ensure GDM daemon section exists
+  ansible.builtin.lineinfile:
+    path: /etc/gdm/custom.conf
+    regexp: "^\\[daemon\\]$"
+    line: "[daemon]"
+    insertbefore: BOF
+    create: true
+    mode: "0644"
+  when: gdm_autologin | bool
+
+- name: Enable GDM autologin for the selected user
+  ansible.builtin.lineinfile:
+    path: /etc/gdm/custom.conf
+    regexp: "^\\s*#?\\s*{{ item.key }}\\s*="
+    line: "{{ item.key }}={{ item.value }}"
+    insertafter: "^\\[daemon\\]$"
+    firstmatch: true
+  loop:
+    - { key: AutomaticLoginEnable, value: "True" }
+    - { key: AutomaticLogin, value: "{{ primary_user }}" }
+  when: gdm_autologin | bool
+
+- name: Ensure AccountsService user file exists
+  ansible.builtin.file:
+    path: "/var/lib/AccountsService/users/{{ primary_user }}"
+    state: touch
+    access_time: preserve
+    modification_time: preserve
+    mode: "0600"
+  when: gdm_autologin | bool
+
+- name: Ensure AccountsService User section exists
+  ansible.builtin.lineinfile:
+    path: "/var/lib/AccountsService/users/{{ primary_user }}"
+    regexp: "^\\[User\\]$"
+    line: "[User]"
+    insertbefore: BOF
+  when: gdm_autologin | bool
+
+- name: Make Hyprland Lumen the autologin session
+  ansible.builtin.lineinfile:
+    path: "/var/lib/AccountsService/users/{{ primary_user }}"
+    regexp: "^\\s*XSession\\s*="
+    line: XSession=hyprland-lumen
+    insertafter: "^\\[User\\]$"
+    firstmatch: true
+  when: gdm_autologin | bool

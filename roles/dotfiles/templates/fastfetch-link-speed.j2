@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+iface=$(ip route get 1.1.1.1 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -n1)
+if [ -z "$iface" ]; then printf '%s\n' Unavailable; exit 0; fi
+if [ -r "/sys/class/net/$iface/speed" ]; then
+  speed=$(cat "/sys/class/net/$iface/speed" 2>/dev/null)
+  case "$speed" in ''|-*|*[!0-9]*) ;; *) awk -v i="$iface" -v s="$speed" 'BEGIN {if(s>=1000) printf "%s: %g Gbps\n",i,s/1000; else printf "%s: %d Mbps\n",i,s}'; exit 0;; esac
+fi
+iw dev "$iface" link 2>/dev/null | awk -v i="$iface" -F': ' '/tx bitrate:/ {print i ": " $2; found=1; exit} END {if(!found) print i ": unknown"}'

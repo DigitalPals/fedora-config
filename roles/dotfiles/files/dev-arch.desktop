@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Dev Arch
+Exec=kitty -e /home/john/.local/bin/dev-arch-shell
+Icon=distributor-logo-archlinux
+Categories=Development;System;
+Terminal=false
+Type=Application

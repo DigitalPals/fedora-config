@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export SCCACHE_CACHE_SIZE=100G
+token_file={{ private_services.sccache_token_file | quote }}
+scheduler={{ private_services.sccache_scheduler | quote }}
+host=${scheduler%:*}
+port=${scheduler##*:}
+
+if [[ -r $token_file ]] && timeout 1 bash -c "</dev/tcp/$host/$port" 2>/dev/null; then
+  export SCCACHE_DIST_SCHEDULER_URL="http://$scheduler"
+  export SCCACHE_DIST_AUTH_TOKEN="$(<"$token_file")"
+fi
+exec /usr/bin/sccache "$@"

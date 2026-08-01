@@ -1,0 +1,76 @@
+---
+- name: Ensure private hook directory exists
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/bin"
+    state: directory
+    mode: "0755"
+
+- name: Install network-aware sccache wrapper
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: sccache.j2
+    dest: "{{ primary_home }}/.local/bin/sccache"
+    mode: "0755"
+
+- name: Install narrow Apple display USB permissions
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/70-apple-studio-display.rules
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Apple Studio/Pro Display only; no blanket Apple USB permissions.
+      SUBSYSTEM=="usbmisc", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1114", GROUP="video", MODE="0660"
+      SUBSYSTEM=="usbmisc", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="1116", GROUP="video", MODE="0660"
+  notify: Reload udev
+  when: features.apple_display | bool
+
+- name: Checkout pinned asdcontrol source
+  ansible.builtin.git:
+    repo: https://github.com/nikosdion/asdcontrol.git
+    dest: /var/cache/xps-upstream/asdcontrol/source
+    version: 0ee8bd576d4e93513027d713e688988cb0d827ef
+    force: false
+  when: features.apple_display | bool and not ansible_check_mode
+
+- name: Install patched asdcontrol build helper
+  ansible.builtin.copy:
+    src: build-asdcontrol
+    dest: /usr/local/libexec/xps-build-asdcontrol
+    owner: root
+    group: root
+    mode: "0755"
+  when: features.apple_display | bool
+
+- name: Build patched asdcontrol only when revision changes
+  ansible.builtin.command: /usr/local/libexec/xps-build-asdcontrol
+  register: asdcontrol_build
+  changed_when: (asdcontrol_build.stdout | regex_search('(?m)^CHANGED:')) is not none
+  when: features.apple_display | bool and not ansible_check_mode
+
+- name: Download licensed redistributable Conthrax archive
+  ansible.builtin.get_url:
+    url: https://dl.dafont.com/dl/?f=conthrax
+    dest: /var/cache/xps-upstream/conthrax.zip
+    checksum: sha256:586c09a14079f4a59f36c6836d05ba87a324b9dc6c28b602cf85df040636fb8e
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create Conthrax font and license directory
+  ansible.builtin.file:
+    path: /usr/local/share/fonts/conthrax
+    state: directory
+    mode: "0755"
+
+- name: Install Conthrax font and its desktop EULA # noqa command-instead-of-module
+  ansible.builtin.command: >-
+    unzip -o /var/cache/xps-upstream/conthrax.zip
+    Conthrax-SemiBold.otf 'Typodermic Desktop EULA 2023.pdf'
+    -d /usr/local/share/fonts/conthrax
+  args:
+    creates: /usr/local/share/fonts/conthrax/Conthrax-SemiBold.otf
+  notify: Refresh fonts

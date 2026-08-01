@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<zone target="DROP">
+  <short>XPS</short>
+  <description>Strict XPS workstation policy managed by Ansible</description>
+{% for rule in firewall_ports %}
+  <!-- {{ rule.comment }} -->
+  <port port="{{ rule.port }}" protocol="{{ rule.protocol }}"/>
+{% endfor %}
+  <interface name="tailscale0"/>
+</zone>

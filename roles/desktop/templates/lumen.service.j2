@@ -1,0 +1,13 @@
+[Unit]
+Description=Lumen desktop shell
+PartOf=hyprland-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/xps-lumen-launch shell
+Environment=PATH={{ primary_home }}/.local/bin:{{ primary_home }}/.npm-global/bin:/usr/local/bin:/usr/bin
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=hyprland-session.target

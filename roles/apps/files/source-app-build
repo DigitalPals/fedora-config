@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source /usr/local/libexec/xps-common.sh
+
+name=${1:?name required}
+repo=${2:?repository URL required}
+IFS=, read -r -a binaries <<<"${3:?comma separated binaries required}"
+root="/opt/xps-builds/$name"
+mkdir -p "$root/versions" "$root/logs"
+
+# Unpeeled + peeled tag listing: resolves the winning tag's commit without cloning.
+ls_remote=$(git ls-remote --tags "$repo")
+tag=$(awk -F/ '{print $NF}' <<<"$ls_remote" \
+  | sed 's/\^{}$//' \
+  | grep -E '^v?[0-9]+([.][0-9]+){1,3}$' \
+  | sort -uV | tail -n1 || true)
+[[ -n $tag ]] || { echo "No stable tag found for $repo" >&2; exit 1; }
+revision=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<<"$ls_remote")
+[[ -n $revision ]] || revision=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<<"$ls_remote")
+[[ -n $revision ]] || { echo "Unable to resolve commit for $repo tag $tag" >&2; exit 1; }
+
+if [[ -L $root/current && $(basename "$(readlink -f "$root/current")") == "$revision" ]]; then
+  emit_unchanged "$name $tag ($revision)"
+  exit 0
+fi
+
+work=$(mktemp -d "$root/.build.XXXXXX")
+cleanup() { rm -rf "$work"; }
+trap cleanup EXIT
+git clone --quiet --depth 1 --branch "$tag" "$repo" "$work/src"
+cloned=$(git -C "$work/src" rev-parse HEAD)
+[[ $cloned == "$revision" ]] || {
+  echo "Clone of $repo tag $tag resolved to $cloned, expected $revision; previous version retained" >&2
+  exit 1
+}
+
+mkdir -p "$work/out"
+log="$root/logs/$revision.log"
+if ! podman run --rm --network=host \
+  -v "$work/src:/src:Z,ro" -v "$work/out:/out:Z" \
+  docker.io/library/fedora:44 bash -euxo pipefail -c '
+    dnf -y install cargo rust gcc gcc-c++ make pkgconf-pkg-config \
+      wayland-devel libxkbcommon-devel libjpeg-turbo-devel libpng-devel \
+      wayland-protocols-devel lz4-devel libgcc libstdc++
+    cp -a /src /tmp/source
+    cd /tmp/source
+    cargo build --release --locked
+    cp -a target/release/. /out/
+  ' >"$log" 2>&1; then
+  echo "Build failed; previous $name remains active. Log: $log" >&2
+  exit 1
+fi
+
+stage="$root/versions/$revision.new"
+rm -rf "$stage"
+mkdir -p "$stage/bin"
+for binary in "${binaries[@]}"; do
+  candidate="$work/out/$binary"
+  [[ -x $candidate ]] || { echo "Build produced no $binary; previous version retained" >&2; exit 1; }
+  install -m 0755 "$candidate" "$stage/bin/$binary"
+done
+rm -rf "$root/versions/$revision"
+mv "$stage" "$root/versions/$revision"
+atomic_current_swap "$root" "versions/$revision"
+for binary in "${binaries[@]}"; do
+  ln -sfn "$root/current/bin/$binary" "/usr/local/bin/$binary"
+done
+xps_restorecon "$root" /usr/local/bin
+emit_changed "built $name $tag ($revision)"

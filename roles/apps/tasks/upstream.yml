@@ -1,0 +1,185 @@
+---
+- name: Install shared installer helper library
+  ansible.builtin.copy:
+    src: xps-common.sh
+    dest: /usr/local/libexec/xps-common.sh
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install verified upstream release helper
+  ansible.builtin.copy:
+    src: github-release-install
+    dest: /usr/local/libexec/xps-github-release-install
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install verified Elephant bundle helper
+  ansible.builtin.template:
+    src: elephant-install.j2
+    dest: /usr/local/libexec/xps-elephant-install
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install version-gated Lumen compatibility helpers
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - src: lumen-compat-build
+      dest: /usr/local/libexec/xps-lumen-compat-build
+    - src: lumen-launch
+      dest: /usr/local/libexec/xps-lumen-launch
+
+- name: Install source build helper
+  ansible.builtin.copy:
+    src: source-app-build
+    dest: /usr/local/libexec/xps-source-app-build
+    owner: root
+    group: root
+    mode: "0755"
+
+# The installers below are network-bound and independent; launch them all as
+# async jobs, then collect. Real change/failure status is applied at collection.
+- name: Launch upstream application installs
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/xps-github-release-install
+      - "{{ item.name }}"
+      - "{{ item.repo }}"
+      - "{{ item.asset_regex }}"
+      - "{{ item.kind }}"
+  async: 900
+  poll: 0
+  register: apps_upstream_jobs
+  changed_when: false
+  loop: "{{ github_release_apps + nerd_font_apps }}"
+  loop_control:
+    label: "{{ item.name }}"
+  environment:
+    GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
+  when: not ansible_check_mode
+
+- name: Launch Lumen compatibility build
+  ansible.builtin.command: /usr/local/libexec/xps-lumen-compat-build
+  async: 2400
+  poll: 0
+  register: apps_lumen_compat_job
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Launch Elephant bundle install
+  ansible.builtin.command: /usr/local/libexec/xps-elephant-install
+  async: 900
+  poll: 0
+  register: apps_elephant_job
+  changed_when: false
+  environment:
+    GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
+  when: not ansible_check_mode
+
+- name: Launch source-only application builds
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/xps-source-app-build
+      - "{{ item.name }}"
+      - "{{ item.repo_url }}"
+      - "{{ item.binary_names | join(',') }}"
+  async: 2400
+  poll: 0
+  register: apps_source_jobs
+  changed_when: false
+  loop: "{{ source_apps }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: features.source_builds | bool and not ansible_check_mode
+
+- name: Collect upstream application installs
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  register: apps_upstream_install
+  until: apps_upstream_install.finished
+  retries: 200
+  delay: 5
+  changed_when: (apps_upstream_install.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
+  failed_when: false
+  loop: "{{ apps_upstream_jobs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - not ansible_check_mode
+    - item.ansible_job_id is defined
+
+- name: Collect source-only application builds
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  register: apps_source_build
+  until: apps_source_build.finished
+  retries: 500
+  delay: 5
+  changed_when: (apps_source_build.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
+  failed_when: false
+  loop: "{{ apps_source_jobs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - not ansible_check_mode
+    - item.ansible_job_id is defined
+
+- name: Collect Lumen compatibility build
+  ansible.builtin.async_status:
+    jid: "{{ apps_lumen_compat_job.ansible_job_id }}"
+  register: apps_lumen_compat_install
+  until: apps_lumen_compat_install.finished
+  retries: 500
+  delay: 5
+  changed_when: (apps_lumen_compat_install.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - apps_lumen_compat_job.ansible_job_id is defined
+
+- name: Collect Elephant bundle install
+  ansible.builtin.async_status:
+    jid: "{{ apps_elephant_job.ansible_job_id }}"
+  register: apps_elephant_install
+  until: apps_elephant_install.finished
+  retries: 200
+  delay: 5
+  changed_when: (apps_elephant_install.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - apps_elephant_job.ansible_job_id is defined
+
+- name: Report upstream update failures while retaining previous versions
+  ansible.builtin.debug:
+    msg: "{{ item.item.item.name }} update failed; previous version retained: {{ item.stderr | default('unknown failure') }}"
+  loop: "{{ (apps_upstream_install.results | default([])) + (apps_source_build.results | default([])) }}"
+  loop_control:
+    label: "{{ item.item.item.name | default('unknown') }}"
+  when: item.rc | default(0) != 0 or not item.finished | default(1)
+
+- name: Report singleton upstream update failures while retaining previous versions
+  ansible.builtin.debug:
+    msg: "{{ item.name }} update failed; previous version retained: {{ item.res.stderr | default('unknown failure') }}"
+  loop:
+    - { name: lumen-compat, res: "{{ apps_lumen_compat_install | default({}) }}" }
+    - { name: elephant, res: "{{ apps_elephant_install | default({}) }}" }
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.res.rc | default(0) != 0 or not item.res.finished | default(1)
+
+- name: Refresh font cache
+  ansible.builtin.command: fc-cache -f
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - apps_upstream_install.results | default([])
+      | selectattr('changed', 'defined') | selectattr('changed')
+      | selectattr('item.item.kind', 'equalto', 'font') | list | length > 0

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+# shellcheck source=scripts/ui.sh
+source scripts/ui.sh
+
+ui_header 'XPS Finalize'
+./verify --pre-finalize
+exec ansible-playbook site.yml --tags finalize \
+  -e gdm_autologin=true -e manual_hyprland_verified=true "$@"

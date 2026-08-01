@@ -1,0 +1,43 @@
+---
+- name: Fedora 44 parity for the Dell XPS
+  hosts: xps
+  gather_facts: true
+  become: true
+  pre_tasks:
+    - name: Refuse unsupported operating systems
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Fedora'
+          - ansible_facts.distribution_major_version == fedora_release
+          - ansible_facts.architecture == 'x86_64'
+        fail_msg: >-
+          This playbook targets Fedora {{ fedora_release }} x86_64 only; found
+          {{ ansible_facts.distribution }} {{ ansible_facts.distribution_major_version }}
+          {{ ansible_facts.architecture }}.
+      tags: [always]
+
+    - name: Verify target user exists
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ primary_user }}"
+      tags: [always]
+
+    - name: Refuse a non-XPS hardware target
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.system_vendor == expected_hardware.sys_vendor
+          - ansible_facts.product_name is regex(expected_hardware.product_name_regex)
+          - ansible_facts.processor | join(' ') is regex(expected_hardware.cpu_regex)
+        fail_msg: >-
+          Hardware does not match the configured Dell XPS contract:
+          {{ ansible_facts.system_vendor }} {{ ansible_facts.product_name }}.
+      tags: [always]
+
+  roles:
+    - { role: base, tags: [base] }
+    - { role: desktop, tags: [desktop] }
+    - { role: apps, tags: [apps] }
+    - { role: dotfiles, tags: [dotfiles] }
+    - { role: private-hooks, tags: [private-hooks], when: features.private_hooks | bool }
+    - { role: boot, tags: [boot] }
+    - { role: finalize, tags: [finalize] }

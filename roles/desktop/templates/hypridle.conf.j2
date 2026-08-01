@@ -1,0 +1,16 @@
+general {
+  lock_cmd = hyprlock --config {{ primary_home }}/.config/hypr/hyprlock.conf --immediate-render --no-fade-in
+  before_sleep_cmd = hyprlock --config {{ primary_home }}/.config/hypr/hyprlock.conf --immediate-render --no-fade-in
+  after_sleep_cmd = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
+}
+
+listener {
+  timeout = 300
+  on-timeout = hyprlock --config {{ primary_home }}/.config/hypr/hyprlock.conf --immediate-render --no-fade-in
+}
+
+listener {
+  timeout = 600
+  on-timeout = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "off" }))'
+  on-resume = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
+}
