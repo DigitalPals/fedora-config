@@ -6,3 +6,5 @@ Comment=A minimal GUI for coding agents
 Categories=Development;
 Terminal=false
 Type=Application
+StartupWMClass=t3code
+MimeType=x-scheme-handler/t3code;x-scheme-handler/t3code-dev;

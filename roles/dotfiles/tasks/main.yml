@@ -237,6 +237,15 @@
     - localsend-share-file.desktop
     - localsend-share-folder.desktop
 
+- name: Refresh the per-user desktop application database
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - update-desktop-database
+      - "{{ primary_home }}/.local/share/applications"
+  changed_when: false
+
 - name: Configure npm user prefix
   become: true
   become_user: "{{ primary_user }}"

@@ -19,6 +19,7 @@
       - xdg-desktop-portal
       - xdg-desktop-portal-gtk
       - xdg-desktop-portal-hyprland
+      - desktop-file-utils
       - satty
       - nwg-look
       - grim

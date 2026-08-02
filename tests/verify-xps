@@ -134,6 +134,13 @@ check 'Android platform-tools' test -x "$HOME/Android/Sdk/platform-tools/adb"
 check 'Chrome restore and 1Password policy' jq -e '.RestoreOnStartup == 1 and (.ExtensionInstallForcelist | length == 1)' /etc/opt/chrome/policies/managed/xps.json
 check 'Firefox 1Password policy' jq -e '.policies.ExtensionSettings["{d634138d-c276-4fc8-924b-40a0ea21d284}"].installation_mode == "force_installed"' /usr/lib64/firefox/distribution/policies.json
 check 'Chrome is default HTTPS handler' grep -q '^x-scheme-handler/https=google-chrome.desktop' "$HOME/.local/share/applications/mimeapps.list"
+check 'T3 Code desktop file advertises OAuth callback handlers' \
+  grep -q '^MimeType=.*x-scheme-handler/t3code.*x-scheme-handler/t3code-dev' \
+  "$HOME/.local/share/applications/t3code-nightly.desktop"
+check 'T3 Code handles production OAuth callbacks' bash -c \
+  '[[ $(xdg-mime query default x-scheme-handler/t3code) == t3code-nightly.desktop ]]'
+check 'T3 Code handles development OAuth callbacks' bash -c \
+  '[[ $(xdg-mime query default x-scheme-handler/t3code-dev) == t3code-nightly.desktop ]]'
 if [[ -d $HOME/.config/mozilla/firefox || -d $HOME/.mozilla/firefox ]]; then
   pass 'existing Firefox profile is present'
 else
