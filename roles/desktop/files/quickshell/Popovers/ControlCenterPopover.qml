@@ -1,46 +1,32 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
-import Quickshell.Widgets
 import Quickshell.Networking
 import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
-import Quickshell.Services.UPower
 import "../Common"
 
-// Control Center (design t5): quick toggles with an inline wallpaper
-// expander, sliders, battery + power profile, session actions. Lives as
-// a connected popout fused to the left island; the Wi-Fi and Bluetooth
-// chevrons morph this surface to the detail views in place.
+// Control Center v2 (design 1f): DMS-style density — compact toggle
+// grid, blocked volume/brightness meters, CPU/RAM/temp stats, capture
+// actions, and a quiet session footer.
 Surface {
     id: root
 
-    implicitWidth: 440
-
-    property bool wpOpen: false
-
-    function wpName(path) {
-        return path.split("/").pop().replace(/\.[^.]+$/, "");
-    }
+    implicitWidth: 380
+    padding: 10
+    spacing: 8
 
     readonly property var wifiDevice: Networking.devices.values.find(d => d.networks !== undefined) ?? null
     readonly property var wifiActive: wifiDevice ? (wifiDevice.networks.values.find(n => n.connected) ?? null) : null
     readonly property var btAdapter: Bluetooth.defaultAdapter
-    readonly property var btConnected: btAdapter !== null && btAdapter.enabled ? (Bluetooth.devices.values.find(d => d.connected) ?? null) : null
 
     readonly property var sink: Pipewire.defaultAudioSink
-    readonly property var source: Pipewire.defaultAudioSource
-    readonly property bool micMuted: source && source.audio ? source.audio.muted : false
-
-    readonly property var battery: UPower.displayDevice
-    readonly property real pct: battery ? (battery.percentage <= 1 ? battery.percentage * 100 : battery.percentage) : 0
-    readonly property bool charging: battery && (battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.PendingCharge)
-    readonly property bool full: battery && battery.state === UPowerDeviceState.FullyCharged
+    readonly property int volume: sink && sink.audio ? Math.round(sink.audio.volume * 100) : 0
 
     readonly property string lockCmd: "hyprlock --config " + Quickshell.env("HOME") + "/.config/hypr/hyprlock.conf --immediate-render --no-fade-in"
+    readonly property string binDir: Quickshell.env("HOME") + "/.local/bin/"
 
     PwObjectTracker {
-        objects: [Pipewire.defaultAudioSink, Pipewire.defaultAudioSource]
+        objects: [Pipewire.defaultAudioSink]
     }
 
     function run(cmd) {
@@ -48,44 +34,32 @@ Surface {
         Popouts.close();
     }
 
-    function fmtDuration(secs) {
-        if (!secs || secs <= 0)
-            return "";
-        const h = Math.floor(secs / 3600);
-        const m = Math.round((secs % 3600) / 60);
-        return h > 0 ? `${h} h ${String(m).padStart(2, "0")} m` : `${m} m`;
-    }
-
-    // Quick-toggle tile
+    // Compact quick-toggle tile: stacked icon + label, brand-lit when on.
     component Tile: Rectangle {
         id: tile
 
         property string glyph: ""
         property string iconSource: ""
         property string title
-        property string subtitle
         property bool on: false
-        property bool alert: false
         property bool chevron: false
         signal toggled
         signal expanded
 
-        width: (root.width - 16 - 4 - 6) / 2
-        height: 46
-        radius: 10
-        color: alert ? (tileMouse.containsMouse ? Qt.rgba(232 / 255, 131 / 255, 122 / 255, 0.2) : Qt.rgba(232 / 255, 131 / 255, 122 / 255, 0.12))
-             : on ? (tileMouse.containsMouse ? Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.2) : Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.14))
-             : (tileMouse.containsMouse ? Theme.hoverFillStrong : Theme.cardFill)
+        width: (root.width - 2 * root.padding - 12) / 3
+        height: 48
+        radius: Theme.rowRadius
+        color: tile.on ? (tileMouse.containsMouse ? Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.14) : Theme.accentBgSoft)
+             : (tileMouse.containsMouse ? Theme.hoverFill : Theme.cardFill)
 
-        Row {
-            anchors.verticalCenter: parent.verticalCenter
-            x: 12
-            spacing: 10
+        Column {
+            anchors.centerIn: parent
+            spacing: 4
 
             Item {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                height: 18
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 16
+                height: 16
 
                 Text {
                     visible: tile.glyph !== ""
@@ -93,150 +67,164 @@ Surface {
                     text: tile.glyph
                     font.family: Theme.fontIcon
                     font.pixelSize: 14
-                    color: tile.alert ? Theme.redText : tile.on ? Theme.accent : Theme.textLow
+                    color: tile.on ? Theme.accent : Theme.textFaint
                 }
 
                 Image {
                     visible: tile.iconSource !== ""
                     anchors.centerIn: parent
-                    width: 14
-                    height: 14
-                    sourceSize: Qt.size(28, 28)
+                    width: 13
+                    height: 13
+                    sourceSize: Qt.size(26, 26)
                     source: tile.iconSource
                 }
             }
 
-            Column {
-                anchors.verticalCenter: parent.verticalCenter
-                width: tile.width - 62 - (tile.chevron ? 18 : 0)
-                spacing: 1
-
-                Text {
-                    width: parent.width
-                    text: tile.title
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: 500
-                    color: tile.alert ? Theme.redText : tile.on ? Theme.textHi : Theme.textMid
-                    elide: Text.ElideRight
-                }
-
-                Text {
-                    width: parent.width
-                    text: tile.subtitle
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
-                    color: tile.on || tile.alert ? Theme.textLow : Theme.textDim
-                    elide: Text.ElideRight
-                }
-            }
-        }
-
-        Text {
-            visible: tile.chevron
-            anchors.right: parent.right
-            anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            text: "\uf054"
-            font.family: Theme.fontIcon
-            font.pixelSize: 9
-            color: chevMouse.containsMouse ? Theme.textHi : Theme.textDim
-
-            MouseArea {
-                id: chevMouse
-                anchors.fill: parent
-                anchors.margins: -8
-                hoverEnabled: true
-                onClicked: tile.expanded()
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: tile.title
+                font.family: Theme.fontSans
+                font.pixelSize: 10
+                font.weight: 500
+                color: tile.on ? Theme.textHi : Theme.textLow
             }
         }
 
         MouseArea {
             id: tileMouse
             anchors.fill: parent
-            anchors.rightMargin: tile.chevron ? 30 : 0
             hoverEnabled: true
-            onClicked: tile.toggled()
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: mouse => {
+                if (mouse.button === Qt.RightButton && tile.chevron)
+                    tile.expanded();
+                else
+                    tile.toggled();
+            }
         }
     }
 
-    // ---- Header -----------------------------------------------------
-    Item {
+    // Small labelled meter row for the sliders card.
+    component MeterRow: Column {
+        id: meterRow
+
+        property string glyph
+        property string label
+        property int percent: 0
+        property bool ready: true
+        signal moved(real value)
+
         width: parent.width
-        height: 46
+        spacing: 6
+        opacity: ready ? 1 : 0.4
 
-        Row {
-            x: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 10
+        Item {
+            width: parent.width
+            height: 14
 
-            Text {
+            Row {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "\uf30a"
-                font.family: Theme.fontIcon
-                font.pixelSize: 16
-                color: Theme.textMid
-            }
-
-            Column {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 1
+                spacing: 6
 
                 Text {
-                    text: SysInfo.user + "@" + SysInfo.host
-                    font.family: Theme.fontSans
-                    font.pixelSize: 13
-                    font.weight: 600
-                    color: Theme.textHi
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: meterRow.glyph
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 12
+                    color: Theme.textLow
                 }
 
                 Text {
-                    text: "up " + SysInfo.uptime + " · linux " + SysInfo.kernel
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: meterRow.label
                     font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.pixelSize: 10
+                    font.weight: 600
+                    font.letterSpacing: 0.6
                     color: Theme.textDim
                 }
             }
-        }
-
-        Rectangle {
-            anchors.right: parent.right
-            anchors.rightMargin: 6
-            anchors.verticalCenter: parent.verticalCenter
-            width: 28
-            height: 24
-            radius: Theme.chipRadius
-            color: gearMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
 
             Text {
-                anchors.centerIn: parent
-                text: "\uf013"
-                font.family: Theme.fontIcon
-                font.pixelSize: 12
-                color: gearMouse.containsMouse ? Theme.textHi : Theme.textLow
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: meterRow.percent >= 0 ? meterRow.percent + "%" : "--"
+                font.family: Theme.fontMono
+                font.pixelSize: 11
+                font.weight: 600
+                color: Theme.textMid
+            }
+        }
+
+        BlockMeter {
+            width: parent.width
+            height: 10
+            interactive: meterRow.ready
+            value: Math.max(0, meterRow.percent) / 100
+            onMoved: v => meterRow.moved(v)
+        }
+    }
+
+    // Small stat card for the CPU / RAM / TEMP row.
+    component StatCard: Rectangle {
+        id: stat
+
+        property string label
+        property string display
+        property real fraction: 0
+        property color tone: Theme.textHi
+        property color barTone: Theme.accent
+
+        width: (root.width - 2 * root.padding - 12) / 3
+        height: statCol.implicitHeight + 18
+        radius: 10
+        color: Theme.cardFill
+
+        Column {
+            id: statCol
+            x: 11
+            y: 9
+            width: parent.width - 22
+            spacing: 5
+
+            Text {
+                text: stat.label
+                font.family: Theme.fontSans
+                font.pixelSize: 9
+                font.weight: 600
+                font.letterSpacing: 0.6
+                color: Theme.textDim
             }
 
-            MouseArea {
-                id: gearMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: root.run("gnome-control-center")
+            Text {
+                text: stat.display
+                font.family: Theme.fontMono
+                font.pixelSize: 14
+                font.weight: 600
+                color: stat.tone
+            }
+
+            BlockMeter {
+                width: parent.width
+                height: 6
+                blockWidth: 3
+                gap: 2
+                value: stat.fraction
+                fillColor: stat.barTone
             }
         }
     }
 
-    // ---- Quick toggles ---------------------------------------------
+    // ---- Quick toggles -------------------------------------------------
     Grid {
-        columns: 2
+        columns: 3
         columnSpacing: 6
         rowSpacing: 6
-        width: parent.width - 4
-        x: 2
+        width: parent.width
 
         Tile {
-            glyph: "\uf1eb"
+            glyph: ""
             title: "Wi-Fi"
-            subtitle: Networking.wifiEnabled ? (root.wifiActive ? root.wifiActive.name : "On") : "Off"
             on: Networking.wifiEnabled
             chevron: true
             onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
@@ -244,15 +232,8 @@ Surface {
         }
 
         Tile {
-            glyph: "\uf293"
+            glyph: ""
             title: "Bluetooth"
-            subtitle: {
-                if (root.btAdapter === null || !root.btAdapter.enabled)
-                    return "Off";
-                if (root.btConnected)
-                    return root.btConnected.deviceName + (root.btConnected.batteryAvailable ? " · " + Math.round(root.btConnected.battery * 100) + "%" : "");
-                return "On";
-            }
             on: root.btAdapter !== null && root.btAdapter.enabled
             chevron: true
             onToggled: {
@@ -265,158 +246,32 @@ Surface {
         Tile {
             iconSource: Quickshell.shellDir + "/assets/tailscale" + (SysInfo.tsRunning ? "" : "-dim") + ".svg"
             title: "Tailscale"
-            subtitle: SysInfo.tsRunning ? SysInfo.tsNet : "Stopped"
             on: SysInfo.tsRunning
-            chevron: true
             onToggled: {
                 Quickshell.execDetached(["sh", "-c", SysInfo.tsRunning ? "tailscale down" : "tailscale up"]);
                 tsRefresh.restart();
             }
-            onExpanded: root.run("xdg-open https://login.tailscale.com/admin/machines")
         }
 
         Tile {
-            glyph: "\uf0f4"
+            glyph: ""
             title: "Idle inhibit"
-            subtitle: SysInfo.idleInhibited ? "Display stays awake" : "Off"
             on: SysInfo.idleInhibited
             onToggled: SysInfo.idleInhibited = !SysInfo.idleInhibited
         }
 
         Tile {
-            glyph: "\uf1f6"
-            title: "Do Not Disturb"
-            subtitle: Notifs.dnd ? "On" : "Off"
+            glyph: ""
+            title: "Do not disturb"
             on: Notifs.dnd
             onToggled: Notifs.dnd = !Notifs.dnd
         }
 
         Tile {
-            glyph: root.micMuted ? "\uf131" : "\uf130"
-            title: "Microphone"
-            subtitle: root.micMuted ? "Muted · click to unmute" : "On · click to mute"
-            alert: root.micMuted
-            onToggled: {
-                if (root.source && root.source.audio)
-                    root.source.audio.muted = !root.source.audio.muted;
-            }
-        }
-
-        Tile {
-            glyph: "\uf03e"
-            title: "Wallpaper"
-            subtitle: Wallpaper.current !== "" ? root.wpName(Wallpaper.current) : "None"
-            chevron: true
-            onToggled: root.wpOpen = !root.wpOpen
-            onExpanded: root.wpOpen = !root.wpOpen
-        }
-    }
-
-    // Inline wallpaper expander (t5): collapses to zero height, reveals a
-    // three-column grid of choices below the toggle grid.
-    Item {
-        width: parent.width - 4
-        x: 2
-        height: root.wpOpen ? wpGrid.implicitHeight + 8 : 0
-        clip: true
-
-        Grid {
-            id: wpGrid
-            y: 8
-            columns: 3
-            columnSpacing: 6
-            rowSpacing: 6
-            width: parent.width
-
-            Repeater {
-                model: Wallpaper.files.slice(0, 6)
-
-                delegate: Rectangle {
-                    required property string modelData
-                    readonly property bool current: Wallpaper.current === modelData
-
-                    width: (root.width - 16 - 4 - 12) / 3
-                    height: 68
-                    radius: Theme.rowRadius
-                    color: "transparent"
-                    border.width: current ? 2 : 1
-                    border.color: current ? Theme.accent : wpMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.25) : Theme.hairlineSoft
-
-                    ClippingRectangle {
-                        x: 3
-                        y: 3
-                        width: parent.width - 6
-                        height: 44
-                        radius: Theme.chipRadius
-                        color: Theme.cardFill
-
-                        Image {
-                            anchors.fill: parent
-                            source: modelData
-                            fillMode: Image.PreserveAspectCrop
-                            sourceSize: Qt.size(160, 100)
-                            asynchronous: true
-                        }
-                    }
-
-                    Text {
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 4
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: parent.width - 10
-                        horizontalAlignment: Text.AlignHCenter
-                        text: root.wpName(modelData)
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
-                        font.weight: 500
-                        color: current ? Theme.textMid : Theme.textLow
-                        elide: Text.ElideMiddle
-                    }
-
-                    MouseArea {
-                        id: wpMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: Wallpaper.set(modelData)
-                    }
-                }
-            }
-
-            Rectangle {
-                width: (root.width - 16 - 4 - 12) / 3
-                height: 68
-                radius: Theme.rowRadius
-                color: shufMouse.containsMouse ? Theme.hoverFillStrong : Theme.cardFill
-
-                Column {
-                    anchors.centerIn: parent
-                    spacing: 6
-
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "\uf074"
-                        font.family: Theme.fontIcon
-                        font.pixelSize: 13
-                        color: shufMouse.containsMouse ? Theme.textHi : Theme.textLow
-                    }
-
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Shuffle"
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
-                        font.weight: 500
-                        color: shufMouse.containsMouse ? Theme.textHi : Theme.textLow
-                    }
-                }
-
-                MouseArea {
-                    id: shufMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: Wallpaper.shuffle()
-                }
-            }
+            glyph: ""
+            title: "Night light"
+            on: SysInfo.nightLight
+            onToggled: SysInfo.nightLight = !SysInfo.nightLight
         }
     }
 
@@ -426,271 +281,182 @@ Surface {
         onTriggered: SysInfo.refreshTailscale()
     }
 
-    HDivider {}
-
-    // ---- Sliders ----------------------------------------------------
-    Row {
+    // ---- Volume / brightness meters -------------------------------------
+    Rectangle {
         width: parent.width
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 2
-        spacing: 10
+        height: metersCol.implicitHeight + 24
+        radius: 10
+        color: Theme.cardFill
 
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            width: 18
-            horizontalAlignment: Text.AlignHCenter
-            text: root.sink && root.sink.audio && root.sink.audio.muted ? "\uf026" : "\uf028"
-            font.family: Theme.fontIcon
-            font.pixelSize: 13
-            color: Theme.textMid
+        Column {
+            id: metersCol
+            x: 12
+            y: 12
+            width: parent.width - 24
+            spacing: 11
 
-            MouseArea {
-                anchors.fill: parent
-                onClicked: {
+            MeterRow {
+                glyph: ""
+                label: "VOLUME"
+                percent: root.sink && root.sink.audio ? root.volume : -1
+                ready: root.sink !== null && root.sink.audio !== null
+                onMoved: v => {
                     if (root.sink && root.sink.audio)
-                        root.sink.audio.muted = !root.sink.audio.muted;
+                        root.sink.audio.volume = v;
                 }
             }
-        }
 
-        HSlider {
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - 84
-            value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
-            onMoved: v => {
-                if (root.sink && root.sink.audio)
-                    root.sink.audio.volume = v;
+            MeterRow {
+                glyph: ""
+                label: "BRIGHTNESS"
+                percent: SysInfo.brightness
+                ready: SysInfo.brightness >= 0
+                onMoved: v => SysInfo.setBrightness(v * 100)
             }
-        }
-
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            width: 26
-            horizontalAlignment: Text.AlignRight
-            text: root.sink && root.sink.audio ? Math.round(root.sink.audio.volume * 100) : "--"
-            font.family: Theme.fontMono
-            font.pixelSize: 11
-            font.weight: 500
-            color: Theme.textLow
         }
     }
 
-    Row {
+    // ---- System stats ----------------------------------------------------
+    Grid {
+        columns: 3
+        columnSpacing: 6
+        rowSpacing: 6
         width: parent.width
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 8
-        spacing: 10
 
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            width: 18
-            horizontalAlignment: Text.AlignHCenter
-            text: root.micMuted ? "\uf131" : "\uf130"
-            font.family: Theme.fontIcon
-            font.pixelSize: 13
-            color: root.micMuted ? Theme.redText : Theme.textMid
-
-            MouseArea {
-                anchors.fill: parent
-                onClicked: {
-                    if (root.source && root.source.audio)
-                        root.source.audio.muted = !root.source.audio.muted;
-                }
-            }
+        StatCard {
+            label: "CPU"
+            display: Math.round(SysInfo.cpuUsage) + "%"
+            fraction: SysInfo.cpuUsage / 100
         }
 
-        HSlider {
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - 84
-            dimmed: root.micMuted
-            value: root.source && root.source.audio ? root.source.audio.volume : 0
-            onMoved: v => {
-                if (root.source && root.source.audio)
-                    root.source.audio.volume = v;
-            }
+        StatCard {
+            label: "RAM"
+            display: Math.round(SysInfo.memUsage) + "%"
+            fraction: SysInfo.memUsage / 100
         }
 
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            width: 26
-            horizontalAlignment: Text.AlignRight
-            text: root.source && root.source.audio ? Math.round(root.source.audio.volume * 100) : "--"
-            font.family: Theme.fontMono
-            font.pixelSize: 11
-            font.weight: 500
-            color: root.micMuted ? Theme.textDim : Theme.textLow
+        StatCard {
+            label: "TEMP"
+            display: SysInfo.cpuTemp + "°"
+            fraction: SysInfo.cpuTemp / 100
+            tone: SysInfo.cpuTemp >= 80 ? Theme.redText : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.textHi
+            barTone: SysInfo.cpuTemp >= 80 ? Theme.red : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.accent
         }
     }
 
-    HDivider {
-        visible: root.battery !== null && root.battery.isLaptopBattery
-    }
-
-    // ---- Battery + power profile ------------------------------------
-    Item {
-        visible: root.battery !== null && root.battery.isLaptopBattery
+    // ---- Capture actions ---------------------------------------------------
+    Grid {
+        columns: 3
+        columnSpacing: 6
+        rowSpacing: 6
         width: parent.width
-        height: 32
-
-        Row {
-            x: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 6
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.charging || root.full ? "\uf0e7" : "\uf240"
-                font.family: Theme.fontIcon
-                font.pixelSize: 12
-                color: root.pct <= 10 && !root.charging ? Theme.redText : Theme.accent
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: {
-                    let s = Math.round(root.pct) + "%";
-                    if (root.charging && root.battery.timeToFull > 0)
-                        s += " · " + root.fmtDuration(root.battery.timeToFull) + " to full";
-                    else if (!root.charging && !root.full && root.battery.timeToEmpty > 0)
-                        s += " · " + root.fmtDuration(root.battery.timeToEmpty) + " left";
-                    else if (root.full)
-                        s += " · fully charged";
-                    return s;
-                }
-                font.family: Theme.fontSans
-                font.pixelSize: 12
-                font.weight: 500
-                color: Theme.textMid
-            }
-        }
-
-        Row {
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 3
-
-            Repeater {
-                model: [
-                    { label: "Saver", profile: PowerProfile.PowerSaver, available: true },
-                    { label: "Balanced", profile: PowerProfile.Balanced, available: true },
-                    { label: "Perf", profile: PowerProfile.Performance, available: PowerProfiles.hasPerformanceProfile }
-                ]
-
-                delegate: Rectangle {
-                    required property var modelData
-                    readonly property bool current: PowerProfiles.profile === modelData.profile
-
-                    visible: modelData.available
-                    width: profText.implicitWidth + 18
-                    height: 22
-                    radius: Theme.chipRadius
-                    color: current ? Theme.accent : profMouse.containsMouse ? Theme.hoverFillStrong : Theme.cardFill
-
-                    Text {
-                        id: profText
-                        anchors.centerIn: parent
-                        text: parent.modelData.label
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
-                        font.weight: parent.current ? 600 : 500
-                        color: parent.current ? Theme.accentFg : profMouse.containsMouse ? Theme.textHi : Theme.textLow
-                    }
-
-                    MouseArea {
-                        id: profMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: PowerProfiles.profile = parent.modelData.profile
-                    }
-                }
-            }
-        }
-    }
-
-    HDivider {}
-
-    // ---- Session ----------------------------------------------------
-    Row {
-        width: parent.width - 4
-        x: 2
-        spacing: 6
 
         Repeater {
             model: [
-                { glyph: "\uf023", label: "Lock", danger: false, cmd: root.lockCmd },
-                { glyph: "\uf186", label: "Suspend", danger: false, cmd: "systemctl suspend" },
-                { glyph: "\uf021", label: "Reboot", danger: false, cmd: "systemctl reboot" },
-                { glyph: "\uf011", label: "Shut down", danger: true, cmd: "systemctl poweroff" }
+                { glyph: "", tone: Theme.icon, label: "Screenshot", cmd: root.binDir + "screenshot region" },
+                { glyph: "", tone: Theme.red, label: "Record", cmd: root.binDir + "screen-record" },
+                { glyph: "", tone: Theme.icon, label: "OCR", cmd: root.binDir + "screen-ocr" }
             ]
 
             delegate: Rectangle {
+                id: action
+
                 required property var modelData
 
-                width: (root.width - 16 - 4 - 18) / 4
-                height: 58
-                radius: 10
-                color: modelData.danger
-                    ? (sessMouse.containsMouse ? Qt.rgba(232 / 255, 131 / 255, 122 / 255, 0.18) : Qt.rgba(232 / 255, 131 / 255, 122 / 255, 0.10))
-                    : (sessMouse.containsMouse ? Theme.hoverFillStrong : Theme.cardFill)
+                width: (root.width - 2 * root.padding - 12) / 3
+                height: 32
+                radius: 8
+                color: actionMouse.containsMouse ? Theme.hoverFillStrong : Theme.hoverFill
 
-                Column {
+                Row {
                     anchors.centerIn: parent
                     spacing: 6
 
                     Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: modelData.glyph
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: action.modelData.glyph
                         font.family: Theme.fontIcon
-                        font.pixelSize: 15
-                        color: modelData.danger ? Theme.redText : Theme.textMid
+                        font.pixelSize: 12
+                        color: action.modelData.tone
                     }
 
                     Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: modelData.label
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: action.modelData.label
                         font.family: Theme.fontSans
                         font.pixelSize: 11
                         font.weight: 500
-                        color: modelData.danger ? Theme.redText : Theme.textLow
+                        color: Theme.textMid
                     }
                 }
 
                 MouseArea {
-                    id: sessMouse
+                    id: actionMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: root.run(parent.modelData.cmd)
+                    onClicked: root.run(action.modelData.cmd)
                 }
             }
         }
     }
 
-    // ---- Footer -----------------------------------------------------
+    HDivider {}
+
+    // ---- Session footer ------------------------------------------------------
     Item {
         width: parent.width
-        height: 26
+        height: 24
 
         Text {
-            x: 10
+            x: 6
             anchors.verticalCenter: parent.verticalCenter
-            text: "Toggles: click = toggle · chevron = expand"
+            text: SysInfo.user + " @ " + SysInfo.host
             font.family: Theme.fontSans
-            font.pixelSize: 11
-            color: Theme.textDim
+            font.pixelSize: 10
+            color: Theme.textLow
         }
 
-        Text {
+        Row {
             anchors.right: parent.right
-            anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            text: "esc to close"
-            font.family: Theme.fontMono
-            font.pixelSize: 11
-            font.weight: 500
-            color: Theme.textDim
+            spacing: 4
+
+            Repeater {
+                model: [
+                    { glyph: "", tip: "Lock", danger: false, cmd: root.lockCmd },
+                    { glyph: "", tip: "Suspend", danger: false, cmd: "systemctl suspend" },
+                    { glyph: "", tip: "Reboot", danger: false, cmd: "systemctl reboot" },
+                    { glyph: "", tip: "Shut down", danger: true, cmd: "systemctl poweroff" }
+                ]
+
+                delegate: Rectangle {
+                    id: sess
+
+                    required property var modelData
+
+                    width: 26
+                    height: 24
+                    radius: 6
+                    color: sessMouse.containsMouse
+                        ? (sess.modelData.danger ? Theme.redBg : Theme.hoverFillStrong)
+                        : "transparent"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: sess.modelData.glyph
+                        font.family: Theme.fontIcon
+                        font.pixelSize: 13
+                        color: sess.modelData.danger ? Theme.redText : sessMouse.containsMouse ? Theme.textHi : Theme.textLow
+                    }
+
+                    MouseArea {
+                        id: sessMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.run(sess.modelData.cmd)
+                    }
+                }
+            }
         }
     }
 }

@@ -23,6 +23,7 @@ Item {
             control: "../Popovers/ControlCenterPopover.qml",
             calendar: "../Popovers/CalendarPopover.qml",
             media: "../Popovers/MediaPopover.qml",
+            weather: "../Popovers/WeatherPopover.qml",
             usage: "../Popovers/UsagePopover.qml",
             audio: "../Popovers/AudioPopover.qml",
             wifi: "../Popovers/WifiPopover.qml",

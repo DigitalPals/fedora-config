@@ -8,6 +8,9 @@ Surface {
     // Right-island popouts run a touch wider (design t5).
     implicitWidth: 380
 
+    // Output device list stays collapsed behind a disclosure row.
+    property bool devicesOpen: false
+
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
     // Default sink first, then local (ALSA) devices, then network sinks;
@@ -54,9 +57,11 @@ Surface {
             }
         }
 
-        HSlider {
+        BlockMeter {
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - 84
+            height: 10
+            interactive: true
             value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
             onMoved: v => {
                 if (root.sink && root.sink.audio)
@@ -76,51 +81,98 @@ Surface {
         }
     }
 
-    // Output devices
-    Repeater {
-        model: root.sinks
+    // Device disclosure: the current output, click to reveal the list.
+    Rectangle {
+        width: parent.width - 4
+        x: 2
+        height: 30
+        radius: Theme.rowRadius
+        color: discMouse.containsMouse ? Theme.hoverFill : "transparent"
 
-        delegate: Rectangle {
-            required property var modelData
-            readonly property bool isDefault: modelData === Pipewire.defaultAudioSink
+        Row {
+            anchors.verticalCenter: parent.verticalCenter
+            x: 10
+            spacing: 10
 
-            width: parent.width - 4
-            x: 2
-            height: 34
-            radius: Theme.rowRadius
-            color: devMouse.containsMouse ? Theme.hoverFill : "transparent"
-
-            Row {
+            Text {
                 anchors.verticalCenter: parent.verticalCenter
-                x: 10
-                spacing: 10
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 18
-                    horizontalAlignment: Text.AlignHCenter
-                    text: isDefault ? "\uf00c" : ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: 12
-                    color: Theme.accent
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: root.width - 70
-                    text: modelData.description || modelData.nickname || modelData.name
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    color: isDefault ? Theme.textHi : Theme.textLow
-                    elide: Text.ElideRight
-                }
+                width: 18
+                horizontalAlignment: Text.AlignHCenter
+                text: root.devicesOpen ? "\uf077" : "\uf078"
+                font.family: Theme.fontIcon
+                font.pixelSize: 9
+                color: discMouse.containsMouse ? Theme.textHi : Theme.textDim
             }
 
-            MouseArea {
-                id: devMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: Pipewire.preferredDefaultAudioSink = modelData
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: root.width - 70
+                text: root.sink ? (root.sink.description || root.sink.nickname || root.sink.name) : "No output device"
+                font.family: Theme.fontSans
+                font.pixelSize: 12
+                color: discMouse.containsMouse ? Theme.textMid : Theme.textLow
+                elide: Text.ElideRight
+            }
+        }
+
+        MouseArea {
+            id: discMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: root.devicesOpen = !root.devicesOpen
+        }
+    }
+
+    // Output devices (collapsed until the disclosure row is opened)
+    Column {
+        visible: root.devicesOpen
+        width: parent.width
+
+        Repeater {
+            model: root.sinks
+
+            delegate: Rectangle {
+                required property var modelData
+                readonly property bool isDefault: modelData === Pipewire.defaultAudioSink
+
+                width: parent.width - 4
+                x: 2
+                height: 34
+                radius: Theme.rowRadius
+                color: devMouse.containsMouse ? Theme.hoverFill : "transparent"
+
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 10
+                    spacing: 10
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 18
+                        horizontalAlignment: Text.AlignHCenter
+                        text: isDefault ? "\uf00c" : ""
+                        font.family: Theme.fontIcon
+                        font.pixelSize: 12
+                        color: Theme.accent
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: root.width - 70
+                        text: modelData.description || modelData.nickname || modelData.name
+                        font.family: Theme.fontSans
+                        font.pixelSize: 12
+                        color: isDefault ? Theme.textHi : Theme.textLow
+                        elide: Text.ElideRight
+                    }
+                }
+
+                MouseArea {
+                    id: devMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: Pipewire.preferredDefaultAudioSink = modelData
+                }
             }
         }
     }
@@ -164,10 +216,13 @@ Surface {
             }
         }
 
-        HSlider {
+        BlockMeter {
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - 84
-            dimmed: root.source && root.source.audio ? root.source.audio.muted : false
+            height: 10
+            interactive: true
+            opacity: root.source && root.source.audio && root.source.audio.muted ? 0.45 : 1
+            fillColor: root.source && root.source.audio && root.source.audio.muted ? Theme.textLow : Theme.accent
             value: root.source && root.source.audio ? root.source.audio.volume : 0
             onMoved: v => {
                 if (root.source && root.source.audio)

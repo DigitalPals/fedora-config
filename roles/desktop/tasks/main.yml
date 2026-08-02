@@ -15,6 +15,7 @@
       - hyprlock
       - hyprpicker
       - hyprpolkitagent
+      - hyprsunset
       - xdg-desktop-portal
       - xdg-desktop-portal-gtk
       - xdg-desktop-portal-hyprland

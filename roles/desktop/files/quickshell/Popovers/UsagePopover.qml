@@ -2,6 +2,9 @@ import QtQuick
 import Quickshell
 import "../Common"
 
+// Per-provider usage view (design 1a + 1c): brand header with mini
+// provider tabs, blocked-bar window cards with status borders and
+// absolute reset times, credits card, usage-history block chart.
 Surface {
     id: root
 
@@ -21,10 +24,21 @@ Surface {
 
     // Right-island popouts run a touch wider (design t5).
     implicitWidth: 380
+    padding: 10
+    spacing: 8
 
     readonly property string sel: Usage.selected
     readonly property var p: Usage.provider(sel)
     readonly property var info: Usage.meta[sel]
+
+    // 24H / 7D history range toggle.
+    property string histMode: "h24"
+    readonly property var histBars: {
+        const h = Usage.history; // dependency: refresh on new samples
+        return Usage.histBars(sel, histMode);
+    }
+
+    readonly property real cardW: (width - 2 * padding - 6) / 2
 
     function cardLabel(label) {
         const m = label.match(/^Weekly \((\w+)\)$/);
@@ -75,131 +89,131 @@ Surface {
         }
     }
 
-    // Provider tabs
-    Row {
-        width: parent.width
-        spacing: 4
-
-        Repeater {
-            model: Usage.providerKeys
-
-            delegate: Rectangle {
-                required property string modelData
-                readonly property bool active: Usage.selected === modelData
-                readonly property var prov: Usage.provider(modelData)
-                readonly property int remaining: Usage.minRemaining(modelData)
-                readonly property bool errored: prov !== null && prov.status !== "ok"
-
-                width: (root.width - 16 - 8) / 3
-                height: 32
-                radius: Theme.rowRadius
-                color: active ? Theme.activeFill : tabMouse.containsMouse ? Theme.hoverFill : "transparent"
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 6
-
-                    Image {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: modelData === "codex" ? 12 : 11
-                        height: width
-                        sourceSize: Qt.size(24, 24)
-                        source: Quickshell.shellDir + "/assets/" + Usage.meta[modelData].icon + ".svg"
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Usage.meta[modelData].name
-                        font.family: Theme.fontSans
-                        font.pixelSize: 12
-                        font.weight: active ? 600 : 500
-                        color: active ? Theme.textHi : Theme.textLow
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: errored || remaining < 0 ? "--%" : remaining + "%"
-                        font.family: Theme.fontMono
-                        font.pixelSize: 11
-                        font.weight: active ? 600 : 500
-                        color: errored ? (active ? Theme.redText : Theme.textDim) : active ? Theme.accent : Theme.textDim
-                    }
-                }
-
-                MouseArea {
-                    id: tabMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: Usage.selected = modelData
-                }
-            }
-        }
-    }
-
-    // Title + refresh
+    // ---- Header: brand mark, meta, mini tabs, refresh ------------------
     Item {
         width: parent.width
         height: 34
 
-        Text {
-            x: 10
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.info.title
-            font.family: Theme.fontSans
-            font.pixelSize: 13
-            font.weight: 600
-            color: Theme.textHi
-        }
-
         Rectangle {
-            anchors.right: parent.right
-            anchors.rightMargin: 6
+            id: brandSquare
+            x: 4
             anchors.verticalCenter: parent.verticalCenter
             width: 26
-            height: 22
-            radius: 6
-            color: refreshMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+            height: 26
+            radius: 7
+            color: root.info.brand
+
+            Image {
+                anchors.centerIn: parent
+                width: root.sel === "codex" ? 15 : 14
+                height: width
+                sourceSize: Qt.size(28, 28)
+                source: Quickshell.shellDir + "/assets/" + root.info.icon + "-white.svg"
+            }
+        }
+
+        Row {
+            id: tabsRow
+            anchors.right: parent.right
+            anchors.rightMargin: 2
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 3
+
+            Repeater {
+                model: Usage.providerKeys
+
+                delegate: Rectangle {
+                    id: miniTab
+
+                    required property string modelData
+                    readonly property bool active: Usage.selected === modelData
+
+                    width: 22
+                    height: 22
+                    radius: 6
+                    color: active ? Theme.hoverFillStrong : miniTabMouse.containsMouse ? Theme.hoverFill : "transparent"
+
+                    Image {
+                        anchors.centerIn: parent
+                        width: miniTab.modelData === "codex" ? 12 : 11
+                        height: width
+                        sourceSize: Qt.size(24, 24)
+                        source: Quickshell.shellDir + "/assets/" + Usage.meta[miniTab.modelData].icon + ".svg"
+                        opacity: miniTab.active ? 1 : 0.45
+                    }
+
+                    MouseArea {
+                        id: miniTabMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        // Hover-through: mirroring the bar chips, hovering a
+                        // tab switches the whole view to that provider.
+                        onEntered: Usage.selected = miniTab.modelData
+                        onClicked: Usage.selected = miniTab.modelData
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 26
+                height: 22
+                radius: 6
+                color: refreshMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: ""
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 11
+                    color: refreshMouse.containsMouse ? Theme.textHi : Theme.textLow
+                }
+
+                MouseArea {
+                    id: refreshMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: Usage.refresh()
+                }
+            }
+        }
+
+        Column {
+            anchors.left: brandSquare.right
+            anchors.leftMargin: 10
+            anchors.right: tabsRow.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 1
 
             Text {
-                anchors.centerIn: parent
-                text: "\uf021"
-                font.family: Theme.fontIcon
-                font.pixelSize: 11
-                color: refreshMouse.containsMouse ? Theme.textHi : Theme.textLow
-
+                width: parent.width
+                text: root.info.title
+                font.family: Theme.fontSans
+                font.pixelSize: 13
+                font.weight: 600
+                color: Theme.textHi
+                elide: Text.ElideRight
             }
 
-            MouseArea {
-                id: refreshMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: Usage.refresh()
+            Text {
+                width: parent.width
+                text: {
+                    if (!root.p || root.p.status !== "ok")
+                        return root.p && root.p.status !== "ok" ? root.info.cmd.split(" ")[0] + "-oauth" : "";
+                    return [root.p.plan, root.p.account, root.p.source].filter(Boolean).join(" · ");
+                }
+                font.family: Theme.fontSans
+                font.pixelSize: 10
+                color: Theme.textDim
+                elide: Text.ElideRight
             }
         }
     }
 
-    // Plan / account / source meta
-    Text {
-        visible: text !== ""
-        x: 10
-        bottomPadding: 8
-        width: parent.width - 20
-        text: {
-            if (!root.p || root.p.status !== "ok")
-                return root.p && root.p.status !== "ok" ? root.info.cmd.split(" ")[0] + "-oauth" : "";
-            return [root.p.plan, root.p.account, root.p.source].filter(Boolean).join(" · ");
-        }
-        font.family: Theme.fontSans
-        font.pixelSize: 11
-        color: Theme.textDim
-        elide: Text.ElideRight
-    }
-
-    // Error panel
+    // ---- Error panel ---------------------------------------------------
     Rectangle {
         visible: root.p !== null && root.p.status !== "ok"
-        width: parent.width - 4
-        x: 2
+        width: parent.width
         height: errRow.implicitHeight + 24
         radius: 10
         color: Theme.redBgSoft
@@ -214,7 +228,7 @@ Surface {
             Text {
                 width: 18
                 horizontalAlignment: Text.AlignHCenter
-                text: "\uf071"
+                text: ""
                 font.family: Theme.fontIcon
                 font.pixelSize: 13
                 color: Theme.redText
@@ -247,88 +261,101 @@ Surface {
         }
     }
 
-    // Usage window cards
+    // ---- Usage window cards ---------------------------------------------
     Grid {
         visible: root.p !== null && root.p.status === "ok"
         columns: 2
         columnSpacing: 6
         rowSpacing: 6
-        width: parent.width - 4
-        x: 2
+        width: parent.width
 
         Repeater {
             model: root.p && root.p.status === "ok" ? root.p.windows : []
 
             delegate: Rectangle {
+                id: card
+
                 required property var modelData
                 readonly property int remaining: Math.round(100 - modelData.used)
+                readonly property bool crit: remaining <= 10
+                readonly property bool low: remaining > 10 && remaining <= 25
 
-                width: (root.width - 16 - 4 - 6) / 2
-                height: 92
+                width: root.cardW
+                height: cardCol.implicitHeight + 20
                 radius: 10
-                color: Theme.cardFill
+                color: crit ? Theme.redBgSoft : Theme.cardFill
+                border.width: 1
+                border.color: crit ? Theme.redBorder : low ? Theme.amberBorder : "transparent"
 
                 Column {
+                    id: cardCol
                     x: 12
                     y: 10
                     width: parent.width - 24
-                    spacing: 0
-
-                    Text {
-                        width: parent.width
-                        text: root.cardLabel(modelData.label)
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
-                        font.weight: 600
-                        font.letterSpacing: 0.63
-                        color: Theme.textDim
-                        elide: Text.ElideRight
-                    }
+                    spacing: 7
 
                     Item {
-                        width: 1
-                        height: 4
-                    }
-
-                    Text {
-                        textFormat: Text.RichText
-                        text: `<span style="font-size:20px">${remaining}</span><span style="font-size:12px;color:${Theme.textLow}">%</span> <span style="font-size:10.5px;color:${Theme.textLow};font-weight:400">left</span>`
-                        font.family: Theme.fontMono
-                        font.weight: 600
-                        color: root.remainColor(remaining)
-                    }
-
-                    Item {
-                        width: 1
-                        height: 8
-                    }
-
-                    Rectangle {
                         width: parent.width
-                        height: 4
-                        radius: 2
-                        color: Qt.rgba(1, 1, 1, 0.08)
+                        height: 14
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.cardLabel(card.modelData.label)
+                            font.family: Theme.fontSans
+                            font.pixelSize: 10
+                            font.weight: 600
+                            font.letterSpacing: 0.6
+                            color: Theme.textDim
+                            width: parent.width - (badge.visible ? badge.width + 6 : 0)
+                            elide: Text.ElideRight
+                        }
 
                         Rectangle {
-                            width: parent.width * remaining / 100
-                            height: parent.height
-                            radius: 2
-                            color: root.barColor(remaining)
+                            id: badge
+                            visible: card.crit || card.low
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: badgeText.implicitWidth + 10
+                            height: 14
+                            radius: 4
+                            color: card.crit ? Theme.redBg : Theme.amberBg
+
+                            Text {
+                                id: badgeText
+                                anchors.centerIn: parent
+                                text: card.crit ? "CRITICAL" : "LOW"
+                                font.family: Theme.fontSans
+                                font.pixelSize: 9
+                                font.weight: 600
+                                font.letterSpacing: 0.5
+                                color: card.crit ? Theme.redText : Theme.amber
+                            }
                         }
                     }
 
-                    Item {
-                        width: 1
-                        height: 6
+                    Text {
+                        textFormat: Text.RichText
+                        text: `<span style="font-size:20px;color:${root.remainColor(card.remaining)}">${card.remaining}</span><span style="font-size:12px;color:${Theme.textLow}">%</span> <span style="font-size:11px;color:${Theme.textLow}">left</span>`
+                        font.family: Theme.fontMono
+                        font.weight: 600
+                    }
+
+                    BlockMeter {
+                        width: parent.width
+                        height: 10
+                        value: card.remaining / 100
+                        fillColor: root.barColor(card.remaining)
                     }
 
                     Text {
-                        visible: modelData.resetsAt !== null && modelData.resetsAt !== undefined
+                        visible: card.modelData.resetsAt !== null && card.modelData.resetsAt !== undefined
+                        width: parent.width
                         textFormat: Text.RichText
-                        text: `resets in <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatReset(modelData.resetsAt)}</font>`
+                        text: `resets in <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatReset(card.modelData.resetsAt)}</font> · <font color="${Theme.textFaint}">${Usage.formatResetAbs(card.modelData.resetsAt)}</font>`
                         font.family: Theme.fontSans
                         font.pixelSize: 10
                         color: Theme.textDim
+                        elide: Text.ElideRight
                     }
                 }
             }
@@ -336,59 +363,72 @@ Surface {
 
         // Extra usage / credits card
         Rectangle {
-            visible: root.p !== null && root.p.status === "ok" && root.p.credits !== null && root.p.credits !== undefined
-            width: (root.width - 16 - 4 - 6) / 2
-            height: 92
+            id: creditsCard
+
+            readonly property var c: root.p && root.p.status === "ok" ? root.p.credits : null
+            readonly property bool hasMeter: c !== null && c !== undefined
+                && c.used !== null && c.used !== undefined
+                && c.limit !== null && c.limit !== undefined && c.limit > 0
+            readonly property bool creditsStyle: c !== null && c !== undefined && !hasMeter
+                && c.remaining !== null && c.remaining !== undefined
+
+            visible: root.p !== null && root.p.status === "ok" && c !== null && c !== undefined
+            width: root.cardW
+            height: creditsCol.implicitHeight + 20
             radius: 10
             color: Theme.cardFill
 
             Column {
+                id: creditsCol
                 x: 12
                 y: 10
                 width: parent.width - 24
-
-                Text {
-                    text: "EXTRA USAGE"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
-                    font.weight: 600
-                    font.letterSpacing: 0.63
-                    color: Theme.textDim
-                }
+                spacing: 7
 
                 Item {
-                    width: 1
-                    height: 6
+                    width: parent.width
+                    height: 14
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: creditsCard.creditsStyle ? "CREDITS" : "EXTRA USAGE"
+                        font.family: Theme.fontSans
+                        font.pixelSize: 10
+                        font.weight: 600
+                        font.letterSpacing: 0.6
+                        color: Theme.textDim
+                    }
                 }
 
                 Text {
                     textFormat: Text.RichText
                     text: {
-                        const c = root.p && root.p.credits ? root.p.credits : null;
+                        const c = creditsCard.c;
                         if (!c)
                             return "";
                         if (c.unlimited)
-                            return "Unlimited";
-                        if (c.used !== null && c.used !== undefined && c.limit !== null && c.limit !== undefined)
-                            return `$${c.used.toFixed(2)} <span style="font-size:11px;color:${Theme.textLow}">/ $${c.limit.toFixed(2)}</span>`;
+                            return `<span style="font-size:17px;color:${Theme.textHi}">Unlimited</span>`;
+                        if (creditsCard.hasMeter)
+                            return `<span style="font-size:17px;color:${Theme.textHi}">$${c.used.toFixed(2)}</span> <span style="font-size:11px;color:${Theme.textLow}">/ $${c.limit.toFixed(2)}</span>`;
                         if (c.remaining !== null && c.remaining !== undefined)
-                            return `${c.remaining.toFixed(2)} <span style="font-size:11px;color:${Theme.textLow}">left</span>`;
+                            return `<span style="font-size:17px;color:${Theme.textHi}">${Number(c.remaining).toLocaleString(Qt.locale("en_US"), "f", c.remaining % 1 === 0 ? 0 : 2)}</span> <span style="font-size:11px;color:${Theme.textLow}">left</span>`;
                         return "—";
                     }
                     font.family: Theme.fontMono
-                    font.pixelSize: 17
                     font.weight: 600
-                    color: Theme.textHi
                 }
 
-                Item {
-                    width: 1
-                    height: 9
+                BlockMeter {
+                    visible: creditsCard.hasMeter
+                    width: parent.width
+                    height: 10
+                    value: creditsCard.hasMeter ? creditsCard.c.used / creditsCard.c.limit : 0
+                    fillColor: Theme.textLow
                 }
 
                 Text {
                     width: parent.width
-                    text: "Pay-as-you-go on top of the plan limits"
+                    text: creditsCard.creditsStyle ? "use credits beyond plan limits" : "pay-as-you-go beyond plan limits"
                     font.family: Theme.fontSans
                     font.pixelSize: 10
                     color: Theme.textDim
@@ -398,30 +438,167 @@ Surface {
         }
     }
 
-    HDivider {}
+    // ---- Usage history ---------------------------------------------------
+    Rectangle {
+        visible: root.p !== null && root.p.status === "ok"
+        width: parent.width
+        height: histCol.implicitHeight + 20
+        radius: 10
+        color: Theme.cardFill
 
-    // Footer
+        Column {
+            id: histCol
+            x: 12
+            y: 10
+            width: parent.width - 24
+            spacing: 8
+
+            Item {
+                width: parent.width
+                height: 17
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "USAGE HISTORY"
+                    font.family: Theme.fontSans
+                    font.pixelSize: 10
+                    font.weight: 600
+                    font.letterSpacing: 0.6
+                    color: Theme.textDim
+                }
+
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 3
+
+                    Repeater {
+                        model: [{ key: "h24", label: "24H" }, { key: "d7", label: "7D" }]
+
+                        delegate: Rectangle {
+                            id: rangeChip
+
+                            required property var modelData
+                            readonly property bool active: root.histMode === modelData.key
+
+                            width: rangeText.implicitWidth + 14
+                            height: 17
+                            radius: 5
+                            color: active ? Theme.hoverFillStrong : rangeMouse.containsMouse ? Theme.hoverFill : "transparent"
+
+                            Text {
+                                id: rangeText
+                                anchors.centerIn: parent
+                                text: rangeChip.modelData.label
+                                font.family: Theme.fontMono
+                                font.pixelSize: 9
+                                font.weight: 600
+                                color: rangeChip.active ? Theme.textHi : Theme.textDim
+                            }
+
+                            MouseArea {
+                                id: rangeMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: root.histMode = rangeChip.modelData.key
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Block chart: vertical dashed bars in the provider's brand
+            // color, bottom-aligned.
+            Row {
+                width: parent.width
+                height: 52
+                spacing: 2
+
+                Repeater {
+                    model: root.histBars
+
+                    delegate: Item {
+                        id: bar
+
+                        required property var modelData
+                        readonly property real barH: 4 + Math.max(0, Math.min(100, bar.modelData)) * 0.48
+
+                        width: (parent.width - (root.histBars.length - 1) * 2) / root.histBars.length
+                        height: 52
+
+                        Repeater {
+                            model: Math.ceil(bar.barH / 5)
+
+                            delegate: Rectangle {
+                                required property int index
+                                readonly property real segH: Math.min(3, bar.barH - index * 5)
+
+                                width: bar.width
+                                height: segH
+                                y: bar.height - index * 5 - segH
+                                color: root.info.brand
+                            }
+                        }
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 12
+
+                Text {
+                    anchors.left: parent.left
+                    text: root.histMode === "h24" ? "-24h" : "-7d"
+                    font.family: Theme.fontMono
+                    font.pixelSize: 9
+                    color: Theme.textFaint
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: root.histMode === "h24" ? "-12h" : "-3d"
+                    font.family: Theme.fontMono
+                    font.pixelSize: 9
+                    color: Theme.textFaint
+                }
+
+                Text {
+                    anchors.right: parent.right
+                    text: "now"
+                    font.family: Theme.fontMono
+                    font.pixelSize: 9
+                    color: Theme.textFaint
+                }
+            }
+        }
+    }
+
+    // ---- Footer -----------------------------------------------------------
     Item {
         width: parent.width
-        height: 24
+        height: 20
 
         Text {
-            x: 10
+            x: 6
             anchors.verticalCenter: parent.verticalCenter
-            text: Usage.updatedAt > 0 ? "Updated " + Qt.formatTime(new Date(Usage.updatedAt), "h:mm:ss AP") : "Loading…"
+            textFormat: Text.RichText
+            text: Usage.updatedAt > 0
+                ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Usage.updatedAt), "h:mm:ss AP")}</font>`
+                : "Loading…"
             font.family: Theme.fontSans
-            font.pixelSize: 11
+            font.pixelSize: 10
             color: Theme.textDim
         }
 
         Text {
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.RichText
             text: `next poll <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatCountdown(Usage.nextPollSecs)}</font>`
             font.family: Theme.fontSans
-            font.pixelSize: 11
+            font.pixelSize: 10
             color: Theme.textDim
         }
     }

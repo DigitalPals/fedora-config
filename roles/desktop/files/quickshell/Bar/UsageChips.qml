@@ -3,13 +3,14 @@ import Quickshell
 import "../Common"
 
 // Model Usage bar module: one mini chip per provider (brand mark +
-// min-remaining %), the whole group a single click target (design 3a).
-Rectangle {
+// min-remaining %). Each chip is its own hover/click target and opens
+// that provider's usage view (design 1d: per-provider popovers).
+Item {
     id: root
 
-    signal clicked
-    signal entered
-    signal exited
+    signal chipClicked(string key)
+    signal chipEntered(string key)
+    signal chipExited(string key)
 
     // The usage popout is expanded below this module (t5 open-state).
     property bool held: false
@@ -39,37 +40,53 @@ Rectangle {
     readonly property bool empty: visibleKeys.length === 0
 
     implicitHeight: 22
-    implicitWidth: row.implicitWidth + 12
-    radius: Theme.chipRadius
-    color: root.held || groupMouse.containsMouse ? Theme.hoverFill : "transparent"
+    implicitWidth: row.implicitWidth
     anchors.verticalCenter: parent.verticalCenter
 
     Row {
         id: row
-        anchors.centerIn: parent
+        anchors.verticalCenter: parent.verticalCenter
         spacing: 3
 
         // Offline / loading state
-        Row {
+        Rectangle {
             visible: root.empty
-            spacing: 8
+            height: 22
+            width: emptyRow.implicitWidth + 14
+            radius: Theme.chipRadius
+            color: root.held ? Theme.hoverFillStrong : emptyMouse.containsMouse ? Theme.hoverFill : "transparent"
             anchors.verticalCenter: parent.verticalCenter
 
-            Image {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 12
-                height: 12
-                sourceSize: Qt.size(24, 24)
-                source: Quickshell.shellDir + "/assets/claude-dim.svg"
+            Row {
+                id: emptyRow
+                anchors.centerIn: parent
+                spacing: 8
+
+                Image {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 12
+                    height: 12
+                    sourceSize: Qt.size(24, 24)
+                    source: Quickshell.shellDir + "/assets/claude-dim.svg"
+                }
+
+                Text {
+                    visible: root.displayMode > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Usage.loading && !Usage.anyOk ? "Models…" : "Models offline"
+                    font.family: Theme.fontSans
+                    font.pixelSize: 11
+                    color: Theme.textFaint
+                }
             }
 
-            Text {
-                visible: root.displayMode > 0
-                anchors.verticalCenter: parent.verticalCenter
-                text: Usage.loading && !Usage.anyOk ? "Models…" : "Models offline"
-                font.family: Theme.fontSans
-                font.pixelSize: 11
-                color: Theme.textFaint
+            MouseArea {
+                id: emptyMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onEntered: root.chipEntered("claude")
+                onExited: root.chipExited("claude")
+                onClicked: root.chipClicked("claude")
             }
         }
 
@@ -77,15 +94,22 @@ Rectangle {
             model: root.visibleKeys
 
             delegate: Rectangle {
+                id: chip
+
                 required property string modelData
                 readonly property string status: Usage.chipStatus(modelData)
                 readonly property int remaining: Usage.minRemaining(modelData)
                 readonly property bool stressed: status === "warn" || status === "crit"
+                // This provider's view is expanded below the bar.
+                readonly property bool current: root.held && Usage.selected === modelData
 
                 height: 22
                 width: chipRow.implicitWidth + 14
                 radius: Theme.chipRadius
-                color: status === "crit" ? Theme.redBg : status === "warn" ? Theme.amberBg : Theme.hoverFill
+                color: status === "crit" ? Theme.redBg
+                     : status === "warn" ? Theme.amberBg
+                     : current || chipMouse.containsMouse ? Theme.hoverFillStrong
+                     : Theme.hoverFill
                 anchors.verticalCenter: parent.verticalCenter
 
                 Row {
@@ -95,44 +119,44 @@ Rectangle {
 
                     Image {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: modelData === "codex" ? 12 : 11
+                        width: chip.modelData === "codex" ? 12 : 11
                         height: width
                         sourceSize: Qt.size(24, 24)
-                        source: Quickshell.shellDir + "/assets/" + Usage.meta[modelData].icon
-                                + (status === "error" ? "-dim" : "") + ".svg"
+                        source: Quickshell.shellDir + "/assets/" + Usage.meta[chip.modelData].icon
+                                + (chip.status === "error" ? "-dim" : "") + ".svg"
                     }
 
                     Text {
                         visible: root.displayMode > 0
                         anchors.verticalCenter: parent.verticalCenter
-                        text: status === "error" || remaining < 0 ? "--%" : remaining + "%"
+                        text: chip.status === "error" || chip.remaining < 0 ? "--%" : chip.remaining + "%"
                         font.family: Theme.fontMono
                         font.pixelSize: 11
-                        font.weight: stressed || status === "error" ? 600 : 500
-                        color: status === "crit" ? Theme.redText
-                             : status === "warn" ? Theme.amber
-                             : status === "error" ? Theme.redText
+                        font.weight: chip.stressed || chip.status === "error" ? 600 : 500
+                        color: chip.status === "crit" ? Theme.redText
+                             : chip.status === "warn" ? Theme.amber
+                             : chip.status === "error" ? Theme.redText
                              : Theme.textMid
                     }
                 }
+
+                MouseArea {
+                    id: chipMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onEntered: root.chipEntered(chip.modelData)
+                    onExited: root.chipExited(chip.modelData)
+                    onClicked: root.chipClicked(chip.modelData)
+                }
+
+                BarTooltip {
+                    hovered: chipMouse.containsMouse
+                    text: Usage.meta[chip.modelData].title + " usage"
+                    align: 1
+                    y: chip.height + 6
+                    x: chip.width - width
+                }
             }
         }
-    }
-
-    MouseArea {
-        id: groupMouse
-        anchors.fill: parent
-        hoverEnabled: true
-        onEntered: root.entered()
-        onExited: root.exited()
-        onClicked: root.clicked()
-    }
-
-    BarTooltip {
-        hovered: groupMouse.containsMouse
-        text: "Model usage"
-        align: 1
-        y: root.height + 6
-        x: root.width - width
     }
 }

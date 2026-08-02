@@ -5,4 +5,5 @@ singleton Launcher Launcher.qml
 singleton Usage Usage.qml
 singleton Notifs Notifs.qml
 singleton SysInfo SysInfo.qml
+singleton Weather Weather.qml
 singleton Wallpaper Wallpaper.qml

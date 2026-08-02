@@ -8,6 +8,7 @@ Item {
     id: root
 
     property int padding: 8
+    property alias spacing: column.spacing
     // The popover host draws the surface itself when morphing the modal
     // out of the bar; it disables this to avoid a doubled background.
     property bool drawBackground: true

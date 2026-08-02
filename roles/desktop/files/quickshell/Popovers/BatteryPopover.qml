@@ -82,22 +82,15 @@ Surface {
     // Charge bar
     Item {
         width: parent.width
-        height: 18
+        height: 22
 
-        Rectangle {
+        BlockMeter {
             x: 12
             width: parent.width - 24
             anchors.verticalCenter: parent.verticalCenter
-            height: 6
-            radius: 3
-            color: Qt.rgba(1, 1, 1, 0.08)
-
-            Rectangle {
-                width: parent.width * root.pct / 100
-                height: parent.height
-                radius: 3
-                color: root.pct <= 10 && !root.charging ? Theme.red : root.pct <= 20 && !root.charging ? Theme.amber : Theme.accent
-            }
+            height: 10
+            value: root.pct / 100
+            fillColor: root.pct <= 10 && !root.charging ? Theme.red : root.pct <= 20 && !root.charging ? Theme.amber : Theme.accent
         }
     }
 

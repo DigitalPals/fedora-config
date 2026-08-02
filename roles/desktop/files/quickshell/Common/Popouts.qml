@@ -23,6 +23,7 @@ Singleton {
             control: "right",
             calendar: "center",
             media: "center",
+            weather: "center",
             usage: "right",
             audio: "right",
             wifi: "right",

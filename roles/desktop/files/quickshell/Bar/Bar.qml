@@ -275,6 +275,61 @@ PanelWindow {
             }
 
             Divider {
+                visible: Weather.ready
+            }
+
+            // Quiet weather chip next to the clock (design 1g).
+            Rectangle {
+                id: weatherChip
+                visible: Weather.ready
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: weatherRow.implicitWidth + 16
+                implicitHeight: 26
+                radius: Theme.chipRadius
+                color: barWindow.popoutOpen("weather") ? Theme.hoverFillStrong : weatherMouse.containsMouse ? Theme.hoverFill : "transparent"
+
+                Row {
+                    id: weatherRow
+                    anchors.centerIn: parent
+                    spacing: 6
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Weather.temp + "°"
+                        font.family: Theme.fontMono
+                        font.pixelSize: 12
+                        font.weight: 600
+                        color: Theme.textMid
+                    }
+
+                    Text {
+                        visible: barWindow.layoutMode >= 1
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Weather.condition
+                        font.family: Theme.fontSans
+                        font.pixelSize: 11
+                        color: barWindow.popoutOpen("weather") || weatherMouse.containsMouse ? Theme.textMid : Theme.textLow
+                    }
+                }
+
+                MouseArea {
+                    id: weatherMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onEntered: barWindow.hoverOpen("weather", "center")
+                    onExited: barWindow.cancelHover("weather")
+                    onClicked: Popouts.toggle("weather", "center")
+                }
+
+                BarTooltip {
+                    hovered: weatherMouse.containsMouse
+                    text: Weather.place + " · " + Weather.condition
+                    y: parent.height + 6
+                    x: (parent.width - width) / 2
+                }
+            }
+
+            Divider {
                 visible: barWindow.mediaVisible
             }
 
@@ -345,9 +400,22 @@ PanelWindow {
             UsageChips {
                 displayMode: barWindow.layoutMode
                 held: barWindow.popoutOpen("usage")
-                onClicked: Popouts.toggle("usage", "right")
-                onEntered: barWindow.hoverOpen("usage", "right")
-                onExited: barWindow.cancelHover("usage")
+                onChipClicked: key => {
+                    if (barWindow.popoutOpen("usage") && Usage.selected === key) {
+                        Popouts.close();
+                    } else {
+                        Usage.selected = key;
+                        Popouts.openPanel("usage", "right");
+                    }
+                }
+                onChipEntered: key => {
+                    // Hover-through: with any popout open, hovering a chip
+                    // shows that provider's usage view (design 1d).
+                    if (Popouts.open)
+                        Usage.selected = key;
+                    barWindow.hoverOpen("usage", "right");
+                }
+                onChipExited: barWindow.cancelHover("usage")
             }
 
             Divider {}
@@ -370,15 +438,6 @@ PanelWindow {
                 }
                 onEntered: barWindow.hoverOpen("audio", "right")
                 onExited: barWindow.cancelHover("audio")
-            }
-
-            BarIcon {
-                glyph: ""
-                active: SysInfo.idleInhibited
-                idleColor: Theme.textLow
-                tooltip: SysInfo.idleInhibited ? "Idle inhibit on" : "Idle inhibit off"
-                tooltipAlign: 1
-                onClicked: SysInfo.idleInhibited = !SysInfo.idleInhibited
             }
 
             BarIcon {
@@ -457,7 +516,7 @@ PanelWindow {
             Divider {}
 
             BarIcon {
-                glyph: "" // fedora
+                glyph: "󰀻" // apps grid — Control Center trigger (design prototype)
                 glyphSize: 15
                 hPadding: 9
                 active: barWindow.popoutOpen("control")

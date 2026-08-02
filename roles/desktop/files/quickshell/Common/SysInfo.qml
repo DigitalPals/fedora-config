@@ -8,6 +8,9 @@ Singleton {
     id: root
 
     property int cpuTemp: 0
+    property real cpuUsage: 0 // percent
+    property real memUsage: 0 // percent
+    property int brightness: -1 // percent, -1 while unknown
     property string uptime: ""
     property string kernel: ""
     readonly property string user: Quickshell.env("USER") || "user"
@@ -15,7 +18,12 @@ Singleton {
 
     // Shared idle-inhibit state (bar module + control center toggle).
     property bool idleInhibited: true
+
+    // Night light: hyprsunset warms the screen while enabled and restores
+    // neutral gamma when the process is killed.
+    property bool nightLight: false
     property string tempPath: ""
+    property var cpuPrev: null
 
     // Hypridle honors systemd's idle inhibitors directly. Keep this process
     // alive while the toggle is enabled because the Wayland inhibitor tied to
@@ -25,6 +33,11 @@ Singleton {
             "--why=Idle inhibit enabled from the menubar", "--mode=block",
             "sleep", "infinity"]
         running: root.idleInhibited
+    }
+
+    Process {
+        command: ["hyprsunset", "--temperature", "4000"]
+        running: root.nightLight
     }
 
     // Tailscale status
@@ -77,12 +90,52 @@ Singleton {
         onLoaded: root.readUptime()
     }
 
+    FileView {
+        id: statView
+        path: "/proc/stat"
+        onLoaded: root.readCpu()
+    }
+
+    FileView {
+        id: memView
+        path: "/proc/meminfo"
+        onLoaded: root.readMem()
+    }
+
     function readTemperature() {
         if (tempPath === "")
             return;
         const value = parseInt(tempView.text().trim());
         if (!isNaN(value))
             cpuTemp = Math.round(value / 1000);
+    }
+
+    function readCpu() {
+        const fields = statView.text().split("\n")[0].trim().split(/\s+/).slice(1).map(Number);
+        if (fields.length < 5 || fields.some(isNaN))
+            return;
+        const total = fields.reduce((a, b) => a + b, 0);
+        const idle = fields[3] + (fields[4] || 0);
+        if (cpuPrev !== null) {
+            const dTotal = total - cpuPrev.total;
+            if (dTotal > 0)
+                cpuUsage = Math.max(0, Math.min(100, (dTotal - (idle - cpuPrev.idle)) / dTotal * 100));
+        }
+        cpuPrev = { total: total, idle: idle };
+    }
+
+    function readMem() {
+        const text = memView.text();
+        const total = parseInt((text.match(/MemTotal:\s+(\d+)/) || [])[1]);
+        const avail = parseInt((text.match(/MemAvailable:\s+(\d+)/) || [])[1]);
+        if (total > 0 && !isNaN(avail))
+            memUsage = Math.max(0, Math.min(100, (total - avail) / total * 100));
+    }
+
+    function setBrightness(pct) {
+        pct = Math.max(1, Math.min(100, Math.round(pct)));
+        brightness = pct;
+        Quickshell.execDetached(["brightnessctl", "set", pct + "%"]);
     }
 
     function readUptime() {
@@ -133,9 +186,35 @@ Singleton {
         }
     }
 
+    Process {
+        id: brightnessProc
+        command: ["brightnessctl", "-m"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const pct = parseInt((text.trim().split(",")[3] || "").replace("%", ""));
+                if (!isNaN(pct))
+                    root.brightness = pct;
+            }
+        }
+    }
+
     function refreshTailscale() {
         tsProc.running = false;
         tsProc.running = true;
+    }
+
+    // CPU / RAM sampling for the Control Center stat cards.
+    Timer {
+        interval: 5000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            statView.reload();
+            root.readCpu();
+            memView.reload();
+            root.readMem();
+        }
     }
 
     Timer {
@@ -169,6 +248,7 @@ Singleton {
         triggeredOnStart: true
         onTriggered: {
             tsProc.running = true;
+            brightnessProc.running = true;
             if (root.wifiDevice)
                 bitrateProc.running = true;
         }
