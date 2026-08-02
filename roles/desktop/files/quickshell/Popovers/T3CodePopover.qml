@@ -2,8 +2,9 @@ import QtQuick
 import Quickshell
 import "../Common"
 
-// T3 Code detail view: live agent sessions on the remote server,
-// ranked needs-attention → running → recently finished → idle.
+// T3 Code detail view: the active agent sessions on the remote server,
+// ranked needs-attention → running → recently finished → idle. Settled
+// and snoozed threads are left to the web client — this is the inbox.
 // Clicking a session expands it in place: pending approvals can be
 // answered directly, a quick prompt starts a new turn, and running
 // turns can be interrupted — the web client is one click away for
@@ -15,6 +16,20 @@ Surface {
     property string expandedId: ""
 
     Component.onDestruction: T3Code.closeDetail()
+
+    Connections {
+        target: T3Code
+
+        // The expanded row can leave the list under you — settled from
+        // another client, snoozed, or aged out. Drop its subscription too.
+        function onThreadsChanged() {
+            if (root.expandedId !== ""
+                    && !T3Code.threads.some(t => t.id === root.expandedId)) {
+                root.expandedId = "";
+                T3Code.closeDetail();
+            }
+        }
+    }
 
     function toggleRow(threadId) {
         if (expandedId === threadId) {
@@ -184,7 +199,13 @@ Surface {
         width: parent.width
         topPadding: 14
         bottomPadding: 14
-        text: "No sessions"
+        text: {
+            if (T3Code.settledCount > 0)
+                return "All caught up · " + T3Code.settledCount + " settled";
+            if (T3Code.snoozedCount > 0)
+                return "All caught up · " + T3Code.snoozedCount + " snoozed";
+            return "No sessions";
+        }
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontSans
         font.pixelSize: 11

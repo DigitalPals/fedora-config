@@ -27,11 +27,14 @@ Singleton {
     property var threadMap: ({})
     property var projectMap: ({})
 
-    // Derived, popover-ready: sorted by urgency then recency.
+    // Derived, popover-ready: the active inbox only (settled and snoozed
+    // threads are dropped), sorted by urgency then recency.
     property var threads: []
     property int runningCount: 0
     property int attentionCount: 0
     property int doneCount: 0
+    property int settledCount: 0
+    property int snoozedCount: 0
 
     // Expanded-thread detail (orchestration.subscribeThread).
     property string detailThreadId: ""
@@ -43,7 +46,115 @@ Singleton {
 
     // ---- classification ------------------------------------------------
 
-    // "attention" | "running" | "error" | "done" | "idle"
+    // Days of quiet after which a thread settles itself. Mirrors the web
+    // client's sidebar setting (its default is 3); 0 disables auto-settle.
+    property int autoSettleAfterDays: 3
+
+    readonly property int dayMs: 86400000
+    // A turn.start is adopted by a session within seconds; past this the
+    // message is a failed start, not pending work.
+    readonly property int queuedTurnGraceMs: 120000
+
+    // Bumped once a minute so settledness and the relative time labels
+    // follow the clock — both move without any server event.
+    property double nowMs: Date.now()
+
+    function parseMs(iso) {
+        return iso ? Date.parse(iso) : NaN;
+    }
+
+    // Newest real activity on a thread (reference: threadLastActivityAt).
+    function lastActivityMs(t) {
+        const turn = t.latestTurn;
+        const stamps = [t.latestUserMessageAt,
+                        turn ? turn.requestedAt : null,
+                        turn ? turn.startedAt : null,
+                        turn ? turn.completedAt : null];
+        let latest = NaN;
+        for (const s of stamps) {
+            const ms = parseMs(s);
+            if (!isNaN(ms) && (isNaN(latest) || ms > latest))
+                latest = ms;
+        }
+        return latest;
+    }
+
+    // A user message no session has adopted yet: the turn exists but none
+    // of the status fields show it, so it has to be detected as a message
+    // strictly newer than every timestamp on the latest turn.
+    function hasQueuedTurnStart(t, now) {
+        const msg = parseMs(t.latestUserMessageAt);
+        if (isNaN(msg))
+            return false;
+        // A failed start is already visible as an error.
+        if (t.session && t.session.status === "error")
+            return false;
+        // Bounded both ways: the sender's clock may run ahead of ours.
+        if (Math.abs(now - msg) > queuedTurnGraceMs)
+            return false;
+        const turn = t.latestTurn;
+        if (!turn)
+            return true;
+        for (const stamp of [turn.requestedAt, turn.startedAt, turn.completedAt]) {
+            const ms = parseMs(stamp);
+            if (!isNaN(ms) && ms >= msg)
+                return false;
+        }
+        return true;
+    }
+
+    // Mirrors the reference client's effectiveSettled, which is what the
+    // web sidebar partitions on: blocked or live work stays active whatever
+    // the flags say, then an explicit settle/unsettle wins, then a thread
+    // quiet past the window settles itself. The reference's third input —
+    // pull request state — isn't subscribed here, so a merged PR only
+    // settles its thread once the thread also goes quiet.
+    function isSettled(t, now) {
+        if (t.hasPendingApprovals || t.hasPendingUserInput)
+            return false;
+        const sess = t.session ? t.session.status : "";
+        if (sess === "starting" || sess === "running")
+            return false;
+        if (hasQueuedTurnStart(t, now)) {
+            // Unless the server already ruled on that message by accepting
+            // a settle stamped after it.
+            const adjudicated = t.settledOverride === "settled"
+                && parseMs(t.settledAt) >= parseMs(t.latestUserMessageAt);
+            if (!adjudicated)
+                return false;
+        }
+        if (t.settledOverride === "settled")
+            return true;
+        if (t.settledOverride === "active")
+            return false;
+        if (autoSettleAfterDays <= 0)
+            return false;
+        const last = lastActivityMs(t);
+        return !isNaN(last) && last < now - autoSettleAfterDays * dayMs;
+    }
+
+    // Shelved until its wake time — unless the thread raises its hand:
+    // blocked on the user, freshly failed, or finished a run after the
+    // snooze was set.
+    function isSnoozed(t, now) {
+        const wake = parseMs(t.snoozedUntil);
+        if (isNaN(wake) || wake <= now)
+            return false;
+        if (t.hasPendingApprovals || t.hasPendingUserInput)
+            return false;
+        const since = parseMs(t.snoozedAt);
+        if (t.session && t.session.status === "error"
+                && (isNaN(since) || parseMs(t.session.updatedAt) > since))
+            return false;
+        const turn = t.latestTurn;
+        if (!isNaN(since) && turn && turn.state === "completed"
+                && parseMs(turn.completedAt) > since)
+            return false;
+        return true;
+    }
+
+    // "attention" | "running" | "error" | "done" | "idle". Only ever asked
+    // of active threads — settledness is decided before this runs.
     function threadClass(t) {
         if (t.hasPendingApprovals || t.hasPendingUserInput)
             return "attention";
@@ -51,11 +162,9 @@ Singleton {
         const turn = t.latestTurn ? t.latestTurn.state : "";
         if (sess === "starting" || sess === "running" || turn === "running")
             return "running";
-        const settled = t.settledOverride === "settled"
-            || (t.settledAt !== null && t.settledOverride !== "active");
-        if (sess === "error" || (turn === "error" && !settled))
+        if (sess === "error" || turn === "error")
             return "error";
-        if (turn === "completed" && !settled)
+        if (turn === "completed")
             return "done";
         return "idle";
     }
@@ -71,10 +180,11 @@ Singleton {
         return host + "/" + environmentId + "/" + threadId;
     }
 
+    // Reads nowMs so callers' bindings re-run on the minute tick.
     function relTime(iso) {
         if (!iso)
             return "";
-        let s = (Date.now() - Date.parse(iso)) / 1000;
+        let s = (nowMs - Date.parse(iso)) / 1000;
         if (s < 90)
             return "now";
         if (s < 3600)
@@ -86,15 +196,30 @@ Singleton {
 
     // Previous class per thread, for transition notifications.
     property var lastClass: ({})
+    // Last published list, so a no-op rebuild leaves the popover's
+    // delegates (and a half-typed prompt) alone.
+    property string listSignature: ""
 
     function rebuild() {
         const rank = { attention: 0, error: 1, running: 2, done: 3, idle: 4 };
-        let running = 0, attention = 0, done = 0;
-        const list = [];
+        const now = Date.now();
+        let running = 0, attention = 0, done = 0, settled = 0, snoozed = 0;
+        const list = [], hidden = [];
         for (const id in threadMap) {
             const t = threadMap[id];
             if (t.archivedAt)
                 continue;
+            // Put-away threads belong to the web client's tail, not here.
+            if (isSnoozed(t, now)) {
+                snoozed++;
+                hidden.push(t.id);
+                continue;
+            }
+            if (isSettled(t, now)) {
+                settled++;
+                hidden.push(t.id);
+                continue;
+            }
             const cls = threadClass(t);
             if (cls === "running")
                 running++;
@@ -116,7 +241,17 @@ Singleton {
         list.sort((a, b) => (rank[a.cls] - rank[b.cls])
             || (Date.parse(b.updatedAt) - Date.parse(a.updatedAt)));
 
+        const sig = settled + "/" + snoozed + "/" + JSON.stringify(list);
+        if (sig === listSignature)
+            return;
+        listSignature = sig;
+
+        // Hidden threads keep a class of their own so one that comes back —
+        // the server un-settles on a new approval or question — reads as a
+        // transition and still raises its toast.
         const next = {};
+        for (const id of hidden)
+            next[id] = "hidden";
         for (const th of list) {
             next[th.id] = th.cls;
             const prev = lastClass[th.id];
@@ -129,6 +264,20 @@ Singleton {
         runningCount = running;
         attentionCount = attention;
         doneCount = done;
+        settledCount = settled;
+        snoozedCount = snoozed;
+    }
+
+    // Auto-settle and snooze wake are clock-driven: without a tick a thread
+    // would sit in the list until the next server event.
+    Timer {
+        interval: 60000
+        repeat: true
+        running: root.state === "connected"
+        onTriggered: {
+            root.nowMs = Date.now();
+            root.rebuild();
+        }
     }
 
     // A session asking for input is always worth a toast; finishing or
@@ -286,6 +435,7 @@ Singleton {
         projectMap = {};
         detailThreadId = "";
         detailApprovals = [];
+        nowMs = Date.now();
         rebuild();
         sendRequest(shellReqId, "orchestration.subscribeShell", {});
     }
