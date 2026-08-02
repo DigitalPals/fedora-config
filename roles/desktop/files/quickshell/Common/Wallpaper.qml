@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Wallpaper management (took over from Lumen): quickshell draws the image
+// Wallpaper management: quickshell draws the image
 // on the background layer; this singleton tracks the directory, the
 // current selection, and persists it across sessions.
 Singleton {
@@ -52,7 +52,7 @@ Singleton {
                 root.current = saved;
         }
         onLoadFailed: {
-            // First run: fall back to the wallpaper Lumen had configured.
+            // First run: fall back to the previously configured wallpaper.
             root.current = root.dir + "/snowy-mountain-lake-purple-sunset-fk.jpg";
         }
     }

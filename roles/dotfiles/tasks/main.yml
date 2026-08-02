@@ -148,8 +148,7 @@
     - { src: fastfetch.jsonc, dest: .config/fastfetch/config.jsonc }
     - { src: voxtype.toml, dest: .config/voxtype/config.toml }
     - { src: walker.toml, dest: .config/walker/config.toml }
-    - { src: walker-style.css, dest: .config/walker/themes/lumen/style.css }
-    - { src: lumen-style.scss, dest: .config/lumen/styles/index.scss }
+    - { src: walker-style.css, dest: .config/walker/themes/xps/style.css }
 
 - name: Install Oh My Posh theme from the active configuration
   become: true
@@ -158,29 +157,6 @@
     src: "{{ config_repo }}/assets/EDM115-newline2.omp.json"
     dest: "{{ primary_home }}/.config/oh-my-posh/EDM115-newline2.omp.json"
     mode: "0644"
-
-- name: Seed mutable Lumen configuration without overwriting user edits
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "{{ primary_home }}/.config/lumen/{{ item }}.default"
-    mode: "0644"
-  loop:
-    - config.toml
-    - runtime.toml
-
-- name: Seed mutable Lumen files on first install
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "{{ primary_home }}/.config/lumen/{{ item }}"
-    force: false
-    mode: "0644"
-  loop:
-    - config.toml
-    - runtime.toml
 
 - name: Configure environment variables
   become: true

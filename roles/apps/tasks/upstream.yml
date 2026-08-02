@@ -23,19 +23,6 @@
     group: root
     mode: "0755"
 
-- name: Install version-gated Lumen compatibility helpers
-  ansible.builtin.copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    owner: root
-    group: root
-    mode: "0755"
-  loop:
-    - src: lumen-compat-build
-      dest: /usr/local/libexec/xps-lumen-compat-build
-    - src: lumen-launch
-      dest: /usr/local/libexec/xps-lumen-launch
-
 - name: Install source build helper
   ansible.builtin.copy:
     src: source-app-build
@@ -63,14 +50,6 @@
     label: "{{ item.name }}"
   environment:
     GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
-  when: not ansible_check_mode
-
-- name: Launch Lumen compatibility build
-  ansible.builtin.command: /usr/local/libexec/xps-lumen-compat-build
-  async: 2400
-  poll: 0
-  register: apps_lumen_compat_job
-  changed_when: false
   when: not ansible_check_mode
 
 - name: Launch Elephant bundle install
@@ -131,19 +110,6 @@
     - not ansible_check_mode
     - item.ansible_job_id is defined
 
-- name: Collect Lumen compatibility build
-  ansible.builtin.async_status:
-    jid: "{{ apps_lumen_compat_job.ansible_job_id }}"
-  register: apps_lumen_compat_install
-  until: apps_lumen_compat_install.finished
-  retries: 500
-  delay: 5
-  changed_when: (apps_lumen_compat_install.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
-  failed_when: false
-  when:
-    - not ansible_check_mode
-    - apps_lumen_compat_job.ansible_job_id is defined
-
 - name: Collect Elephant bundle install
   ansible.builtin.async_status:
     jid: "{{ apps_elephant_job.ansible_job_id }}"
@@ -169,7 +135,6 @@
   ansible.builtin.debug:
     msg: "{{ item.name }} update failed; previous version retained: {{ item.res.stderr | default('unknown failure') }}"
   loop:
-    - { name: lumen-compat, res: "{{ apps_lumen_compat_install | default({}) }}" }
     - { name: elephant, res: "{{ apps_elephant_install | default({}) }}" }
   loop_control:
     label: "{{ item.name }}"

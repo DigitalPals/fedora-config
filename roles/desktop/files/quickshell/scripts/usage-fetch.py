@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Model-usage fetcher for the Quickshell menubar.
 
-Ported from Lumen's lumen-model-usage crate: reads the credential files the
+Reads the credential files the
 provider CLIs (Claude Code, Codex CLI, Kimi Code) write locally and polls
 each provider's own usage endpoint. Tokens are never refreshed here — the
 CLIs own that; expired tokens surface as an error and recover once the user

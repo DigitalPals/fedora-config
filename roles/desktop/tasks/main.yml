@@ -75,16 +75,27 @@
       Type=Application
       DesktopNames=Hyprland
 
-- name: Retire the Lumen session launcher and unit
+- name: Retire Lumen entirely
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
   loop:
     - /usr/local/bin/hyprland-lumen
     - /usr/share/wayland-sessions/hyprland-lumen.desktop
+    - /usr/local/libexec/xps-lumen-compat-build
+    - /usr/local/libexec/xps-lumen-launch
+    - /opt/xps-builds/lumen-compat
     - "{{ primary_home }}/.config/systemd/user/lumen.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/lumen.service"
+    - "{{ primary_home }}/.config/lumen"
+    - "{{ primary_home }}/.config/walker/themes/lumen"
   notify: Reload user systemd
+
+- name: Remove the Lumen package
+  ansible.builtin.dnf:
+    name: lumen
+    state: absent
+  when: not ansible_check_mode
 
 - name: Create desktop configuration directories
   become: true
@@ -95,8 +106,7 @@
     mode: "0755"
   loop:
     - "{{ primary_home }}/.config/hypr"
-    - "{{ primary_home }}/.config/lumen/styles"
-    - "{{ primary_home }}/.config/walker/themes/lumen"
+    - "{{ primary_home }}/.config/walker/themes/xps"
     - "{{ primary_home }}/.config/xdg-desktop-portal"
     - "{{ primary_home }}/.config/systemd/user"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"

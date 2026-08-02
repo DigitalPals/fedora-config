@@ -9,7 +9,7 @@
     that:
       - manual_hyprland_verified | default(false) | bool
       - gdm_autologin | bool
-    fail_msg: "Use ./finalize from a verified Hyprland (Lumen) session."
+    fail_msg: "Use ./finalize from a verified Hyprland (Quickshell) session."
   when: gdm_autologin | bool
 
 - name: Ensure GDM daemon section exists

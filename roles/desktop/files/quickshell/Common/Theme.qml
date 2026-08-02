@@ -36,7 +36,7 @@ Singleton {
     readonly property color amberBg: Qt.rgba(211 / 255, 180 / 255, 126 / 255, 0.14)
     readonly property color accentBgSoft: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.09)
 
-    // Provider brand colors (from Lumen source)
+    // Provider brand colors
     readonly property color brandClaude: "#d97757"
     readonly property color brandCodex: "#4fb8a8"
     readonly property color brandKimi: "#4d6bfe"

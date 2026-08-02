@@ -6,7 +6,7 @@ import "Popovers"
 import "Common"
 
 ShellRoot {
-    // Wallpaper on the background layer (took over from Lumen).
+    // Wallpaper on the background layer.
     PanelWindow {
         anchors {
             top: true
