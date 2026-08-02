@@ -36,6 +36,14 @@ hl.animation({ leaf = "borderangle", enabled = true, speed = 8, bezier = "defaul
 hl.animation({ leaf = "fade", enabled = true, speed = 7, bezier = "default" })
 hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "default" })
 
+-- Quickshell surfaces resize and remap as views open. Keep those operations
+-- instantaneous so the menubar itself never replays a layer animation.
+hl.layer_rule({
+  name = "quickshell-no-animation",
+  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|wallpaper)$]] },
+  no_anim = true,
+})
+
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Open.*]] }, float = true })

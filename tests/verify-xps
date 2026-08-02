@@ -107,12 +107,16 @@ check 'no Hyprland git packages are installed' bash -c "! rpm -qa | grep -Eq '^(
 check 'portal preference exists' test -r "$HOME/.config/xdg-desktop-portal/hyprland-portals.conf"
 check 'Hyprland Lua entry point is a regular file' bash -c '[[ -f $HOME/.config/hypr/hyprland.lua && ! -L $HOME/.config/hypr/hyprland.lua ]]'
 
-for command in Hyprland start-hyprland hypridle hyprlock hyprpicker satty walker elephant qs \
+for command in Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc \
   wayfreeze awww voxtype localsend lazygit lazydocker mdview bun balena t3code-update \
   git gh gcc g++ cmake rustup mold sccache node npm python3 distrobox docker podman \
   kitty nvim fish zoxide fzf eza jq rg fd dust bat btop glow fastfetch duf ffmpeg mpv yt-dlp imv; do
   command_exists "$command" && pass "command: $command" || fail "missing command: $command"
 done
+check 'Walker command is absent' bash -c '! command -v walker'
+check 'Elephant command is absent' bash -c '! command -v elephant'
+check 'Walker user unit is absent' bash -c '! systemctl --user list-unit-files walker.service --no-legend 2>/dev/null | grep -q walker'
+check 'Elephant user unit is absent' bash -c '! systemctl --user list-unit-files elephant.service --no-legend 2>/dev/null | grep -q elephant'
 if command_exists hyprpolkitagent || [[ -x /usr/libexec/hyprpolkitagent ]]; then
   pass 'Hyprland Polkit agent executable'
 else
@@ -146,16 +150,17 @@ done
 if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyprctl monitors >/dev/null 2>&1; then
   errors=$(hyprctl configerrors 2>/dev/null || true)
   [[ -z $errors || $errors == 'no errors' ]] && pass 'Hyprland has no config errors' || fail "Hyprland config errors: $errors"
-  for unit in quickshell elephant walker hypridle hyprpolkitagent voxtype external-monitor-toggle; do
+  for unit in quickshell hypridle hyprpolkitagent voxtype external-monitor-toggle; do
     check "user unit active: $unit" user_unit_active "$unit.service"
   done
   quickshell_invocation=$(systemctl --user show -p InvocationID --value quickshell.service 2>/dev/null || true)
   quickshell_log=$(journalctl --user "_SYSTEMD_INVOCATION_ID=$quickshell_invocation" --no-pager 2>/dev/null || true)
-  if [[ -n $quickshell_invocation ]] && grep -Eq 'Failed to load|Syntax error|Cannot open' <<<"$quickshell_log"; then
+  if [[ -n $quickshell_invocation ]] && grep -Eqi 'Failed to load|Syntax error|Cannot open|Binding loop|invalid (width|height|size)|larger than the maximum texture size|requested buffer size is too big|oversized' <<<"$quickshell_log"; then
     fail 'Quickshell loaded its configuration without errors'
   else
     pass 'Quickshell loaded its configuration without errors'
   fi
+  check 'Quickshell launcher IPC responds' qs ipc call launcher close
   check 'portal service active' user_unit_active xdg-desktop-portal.service
   check 'Hyprland portal active' user_unit_active xdg-desktop-portal-hyprland.service
   check 'Quickshell notification service owns the desktop bus name' \
@@ -180,7 +185,8 @@ systemctl is-active --quiet thermald.service && pass 'thermald active' || fail '
 
 printf '\nManual acceptance still required (these checks are intentionally non-destructive):\n'
 printf '%s\n' \
-  '  - Walker providers, notifications, Polkit, Secret Service, screenshots, recording, OCR, and dictation' \
+  '  - Quickshell launcher modes/navigation, notification toasts/actions/DND, Polkit, Secret Service, screenshots, recording, OCR, and dictation' \
+  '  - focused-monitor bar migration, launcher placement, responsive widths, audio wheel/mute, and popout hover switching' \
   '  - lid close/open and Apple/AORUS/XREAL hotplug behavior' \
   '  - touchpad/haptics, Wi-Fi 7 throughput, audio, Snapshot/video-call camera, and mic LED' \
   '  - fan response under load, suspend/resume, docked-lid behavior, LocalSend transfer, and Steam launch' \

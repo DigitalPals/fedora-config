@@ -47,22 +47,7 @@ firewall_ports:
   - { port: "27015", protocol: tcp, comment: Source dedicated server }
   - { port: "27015", protocol: udp, comment: Source dedicated server }
 
-elephant_providers:
-  - desktopapplications
-  - calc
-  - websearch
-  - providerlist
-  - runner
-  - files
-  - symbols
-  - clipboard
-  - windows
-
 github_release_apps:
-  - name: walker
-    repo: abenz1267/walker
-    asset_regex: '^walker-.*-x86_64-unknown-linux-gnu[.]tar[.]gz$'
-    kind: archive
   - name: lazygit
     repo: jesseduffield/lazygit
     asset_regex: '^lazygit_.*_linux_x86_64[.]tar[.]gz$'

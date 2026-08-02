@@ -9,11 +9,13 @@ Rectangle {
 
     signal clicked
     signal entered
+    signal exited
 
     // The usage popout is expanded below this module (t5 open-state).
     property bool held: false
+    property int displayMode: 2
 
-    readonly property var visibleKeys: Usage.providerKeys.filter(k => {
+    readonly property var availableKeys: Usage.providerKeys.filter(k => {
         const p = Usage.provider(k);
         if (!p)
             return false;
@@ -21,6 +23,16 @@ Rectangle {
         // tab in the popover still shows the sign-in hint.
         return p.status === "ok" || p.kind !== "nocreds";
     })
+    readonly property var visibleKeys: {
+        if (displayMode >= 2 || availableKeys.length <= 1)
+            return availableKeys;
+        const ranked = availableKeys.slice().sort((a, b) => {
+            const ar = Usage.minRemaining(a);
+            const br = Usage.minRemaining(b);
+            return (ar < 0 ? 101 : ar) - (br < 0 ? 101 : br);
+        });
+        return ranked.slice(0, 1);
+    }
     readonly property bool empty: visibleKeys.length === 0
 
     implicitHeight: 22
@@ -49,6 +61,7 @@ Rectangle {
             }
 
             Text {
+                visible: root.displayMode > 0
                 anchors.verticalCenter: parent.verticalCenter
                 text: Usage.loading && !Usage.anyOk ? "Models…" : "Models offline"
                 font.family: Theme.fontSans
@@ -87,6 +100,7 @@ Rectangle {
                     }
 
                     Text {
+                        visible: root.displayMode > 0
                         anchors.verticalCenter: parent.verticalCenter
                         text: status === "error" || remaining < 0 ? "--%" : remaining + "%"
                         font.family: Theme.fontMono
@@ -107,6 +121,15 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         onEntered: root.entered()
+        onExited: root.exited()
         onClicked: root.clicked()
+    }
+
+    BarTooltip {
+        hovered: groupMouse.containsMouse
+        text: "Model usage"
+        align: 1
+        y: root.height + 6
+        x: root.width - width
     }
 }

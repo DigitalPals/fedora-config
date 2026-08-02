@@ -49,16 +49,6 @@ Singleton {
     readonly property string fontMono: "JetBrains Mono"
     readonly property string fontIcon: "JetBrainsMono Nerd Font"
 
-    // Motion — Material 3 curves (as used by caelestia/end-4 quickshells).
-    // Spatial: springy enter with slight overshoot; accel: quick exit.
-    readonly property var curveSpatial: [0.38, 1.21, 0.22, 1, 1, 1]
-    readonly property var curveDecel: [0.05, 0.7, 0.1, 1, 1, 1]
-    readonly property var curveAccel: [0.3, 0, 0.8, 0.15, 1, 1]
-    readonly property int animOpen: 330
-    readonly property int animClose: 140
-
-    // Connected popouts are unanimated: they appear and dismiss instantly.
-
     // Metrics
     readonly property int barHeight: 34
     readonly property int barTopMargin: 8

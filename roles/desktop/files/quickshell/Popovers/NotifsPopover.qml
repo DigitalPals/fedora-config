@@ -7,6 +7,11 @@ import "../Common"
 Surface {
     id: root
 
+    SystemClock {
+        id: relativeClock
+        precision: SystemClock.Seconds
+    }
+
     // Header
     Item {
         width: parent.width
@@ -59,8 +64,7 @@ Surface {
 
         delegate: Rectangle {
             required property var modelData
-            readonly property var notif: modelData.notif
-            readonly property bool urgent: notif.urgency === NotificationUrgency.Critical
+            readonly property bool urgent: modelData.urgency === NotificationUrgency.Critical
 
             width: parent.width - 4
             x: 2
@@ -79,10 +83,13 @@ Surface {
                     width: 18
                     height: 18
 
-                    IconImage {
+                    Image {
                         id: appIconImg
                         anchors.fill: parent
-                        source: notif.appIcon ? Quickshell.iconPath(notif.appIcon, true) : ""
+                        source: modelData.appIcon ? Quickshell.iconPath(modelData.appIcon, true) : ""
+                        sourceSize: Qt.size(18, 18)
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
                         visible: source != ""
                     }
 
@@ -107,7 +114,7 @@ Surface {
                         Text {
                             id: sumText
                             width: parent.width - 30
-                            text: notif.summary
+                            text: modelData.summary
                             font.family: Theme.fontSans
                             font.pixelSize: 12
                             font.weight: 500
@@ -117,7 +124,7 @@ Surface {
 
                         Text {
                             anchors.right: parent.right
-                            text: Notifs.timeAgo(modelData.arrived)
+                            text: Notifs.timeAgo(modelData.arrived, relativeClock.date.getTime())
                             font.family: Theme.fontSans
                             font.pixelSize: 10
                             color: Theme.textDim
@@ -127,7 +134,7 @@ Surface {
                     Text {
                         visible: text !== ""
                         width: parent.width
-                        text: notif.body.replace(/<[^>]*>/g, "")
+                        text: modelData.body.replace(/<[^>]*>/g, "")
                         font.family: Theme.fontSans
                         font.pixelSize: 11
                         color: Theme.textLow
@@ -148,7 +155,7 @@ Surface {
                         anchors.fill: parent
                         anchors.margins: -4
                         hoverEnabled: true
-                        onClicked: notif.dismiss()
+                        onClicked: Notifs.dismiss(modelData)
                     }
                 }
             }

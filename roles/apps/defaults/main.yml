@@ -34,6 +34,7 @@ apps_fedora_packages:
   - evince
   - file-roller
   - gnome-calculator
+  - qalculate
   - gnome-text-editor
   - pinta
   - mpv

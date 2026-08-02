@@ -15,13 +15,21 @@
     group: root
     mode: "0755"
 
-- name: Install verified Elephant bundle helper
-  ansible.builtin.template:
-    src: elephant-install.j2
-    dest: /usr/local/libexec/xps-elephant-install
-    owner: root
-    group: root
-    mode: "0755"
+- name: Remove retired Walker and Elephant installations and caches
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/bin/walker
+    - /usr/local/bin/elephant
+    - /usr/local/libexec/xps-elephant-install
+    - /opt/xps-apps/walker
+    - /opt/xps-apps/elephant
+    - /var/cache/xps-upstream/walker
+    - /var/cache/xps-upstream/elephant
+    - /var/lib/xps-upstream/walker
+    - /var/lib/xps-upstream/elephant
+    - /tmp/elephant.sock
 
 - name: Install source build helper
   ansible.builtin.copy:
@@ -48,16 +56,6 @@
   loop: "{{ github_release_apps + nerd_font_apps }}"
   loop_control:
     label: "{{ item.name }}"
-  environment:
-    GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
-  when: not ansible_check_mode
-
-- name: Launch Elephant bundle install
-  ansible.builtin.command: /usr/local/libexec/xps-elephant-install
-  async: 900
-  poll: 0
-  register: apps_elephant_job
-  changed_when: false
   environment:
     GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
   when: not ansible_check_mode
@@ -110,19 +108,6 @@
     - not ansible_check_mode
     - item.ansible_job_id is defined
 
-- name: Collect Elephant bundle install
-  ansible.builtin.async_status:
-    jid: "{{ apps_elephant_job.ansible_job_id }}"
-  register: apps_elephant_install
-  until: apps_elephant_install.finished
-  retries: 200
-  delay: 5
-  changed_when: (apps_elephant_install.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
-  failed_when: false
-  when:
-    - not ansible_check_mode
-    - apps_elephant_job.ansible_job_id is defined
-
 - name: Report upstream update failures while retaining previous versions
   ansible.builtin.debug:
     msg: "{{ item.item.item.name }} update failed; previous version retained: {{ item.stderr | default('unknown failure') }}"
@@ -130,15 +115,6 @@
   loop_control:
     label: "{{ item.item.item.name | default('unknown') }}"
   when: item.rc | default(0) != 0 or not item.finished | default(1)
-
-- name: Report singleton upstream update failures while retaining previous versions
-  ansible.builtin.debug:
-    msg: "{{ item.name }} update failed; previous version retained: {{ item.res.stderr | default('unknown failure') }}"
-  loop:
-    - { name: elephant, res: "{{ apps_elephant_install | default({}) }}" }
-  loop_control:
-    label: "{{ item.name }}"
-  when: item.res.rc | default(0) != 0 or not item.res.finished | default(1)
 
 - name: Refresh font cache
   ansible.builtin.command: fc-cache -f

@@ -1,11 +1,26 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import "Bar"
-import "Popovers"
 import "Common"
 
 ShellRoot {
+    id: shell
+
+    readonly property var desiredBarScreen: Screens.focused
+    property var barScreen: null
+
+    function migrateBar() {
+        if (barScreen === desiredBarScreen)
+            return;
+        Popouts.close();
+        barScreen = desiredBarScreen;
+    }
+
+    onDesiredBarScreenChanged: migrateBar()
+    Component.onCompleted: migrateBar()
+
     // Wallpaper on the background layer, one per output. Instantiated
     // through Variants so outputs appearing/disappearing (dock, lid)
     // create and destroy the windows instead of stranding them on Qt's
@@ -31,22 +46,29 @@ ShellRoot {
 
             Image {
                 anchors.fill: parent
-                source: Wallpaper.current !== "" ? "file://" + Wallpaper.current : ""
+                source: Wallpaper.current !== "" ? Wallpaper.url(Wallpaper.current) : ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-                cache: false
+                cache: true
+                sourceSize: Qt.size(
+                    Math.ceil(modelData.width * modelData.devicePixelRatio),
+                    Math.ceil(modelData.height * modelData.devicePixelRatio))
             }
         }
     }
 
-    // Single bar, pinned to the first available output. The binding
-    // re-evaluates when outputs change, so the bar migrates to a real
-    // screen instead of staying on the placeholder.
     Bar {
-        screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+        id: bar
+        screen: shell.barScreen
     }
 
-    PopoverWindow {}
+    BarPopoutWindow {
+        bar: bar
+        screen: shell.barScreen
+    }
+
+    LauncherWindow {}
+    NotificationToasts {}
 
     // Touch the singletons so notifications collect and usage polls from
     // session start, not first popover open.

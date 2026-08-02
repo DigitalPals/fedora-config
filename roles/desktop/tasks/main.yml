@@ -88,7 +88,6 @@
     - "{{ primary_home }}/.config/systemd/user/lumen.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/lumen.service"
     - "{{ primary_home }}/.config/lumen"
-    - "{{ primary_home }}/.config/walker/themes/lumen"
   notify: Reload user systemd
 
 - name: Remove the Lumen package
@@ -96,6 +95,39 @@
     name: lumen
     state: absent
   when: not ansible_check_mode
+
+- name: Stop and disable retired Walker and Elephant user services
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - "--machine={{ primary_user }}@.host"
+      - disable
+      - --now
+      - walker.service
+      - elephant.service
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Remove retired Walker and Elephant user configuration and state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ primary_home }}/.config/systemd/user/walker.service"
+    - "{{ primary_home }}/.config/systemd/user/elephant.service"
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/walker.service"
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/elephant.service"
+    - "{{ primary_home }}/.config/walker"
+    - "{{ primary_home }}/.config/elephant"
+    - "{{ primary_home }}/.cache/walker"
+    - "{{ primary_home }}/.cache/elephant"
+    - "{{ primary_home }}/.local/state/walker"
+    - "{{ primary_home }}/.local/state/elephant"
+    - "{{ primary_home }}/.local/share/walker"
+    - "{{ primary_home }}/.local/share/elephant"
+  notify: Reload user systemd
 
 - name: Create desktop configuration directories
   become: true
@@ -106,7 +138,6 @@
     mode: "0755"
   loop:
     - "{{ primary_home }}/.config/hypr"
-    - "{{ primary_home }}/.config/walker/themes/xps"
     - "{{ primary_home }}/.config/xdg-desktop-portal"
     - "{{ primary_home }}/.config/systemd/user"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
@@ -147,6 +178,15 @@
     mode: "0644"
     directory_mode: "0755"
 
+- name: Remove retired generic Quickshell launcher components
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/quickshell/{{ item }}"
+    state: absent
+  loop:
+    - Common/Popovers.qml
+    - Popovers/LauncherPopover.qml
+    - Popovers/PopoverWindow.qml
+
 - name: Configure portal preference without patching Fedora files
   become: true
   become_user: "{{ primary_user }}"
@@ -182,8 +222,6 @@
     mode: "0644"
   loop:
     - quickshell
-    - elephant
-    - walker
     - hypridle
     - hyprpolkitagent
     - voxtype
@@ -219,8 +257,6 @@
     force: true
   loop:
     - quickshell
-    - elephant
-    - walker
     - hypridle
     - hyprpolkitagent
     - voxtype

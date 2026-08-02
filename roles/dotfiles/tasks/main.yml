@@ -147,8 +147,6 @@
     - { src: kitty.conf, dest: .config/kitty/kitty.conf }
     - { src: fastfetch.jsonc, dest: .config/fastfetch/config.jsonc }
     - { src: voxtype.toml, dest: .config/voxtype/config.toml }
-    - { src: walker.toml, dest: .config/walker/config.toml }
-    - { src: walker-style.css, dest: .config/walker/themes/xps/style.css }
 
 - name: Install Oh My Posh theme from the active configuration
   become: true

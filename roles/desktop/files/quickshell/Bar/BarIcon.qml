@@ -18,8 +18,12 @@ Rectangle {
     property color hoverColor: Theme.textHi
     property int hPadding: 8
     property string tooltip: ""
+    property int tooltipAlign: 0
     signal clicked(real mouseX)
+    signal middleClicked
+    signal wheeled(int steps)
     signal entered
+    signal exited
 
     readonly property color fg: active ? Theme.accentFg : alert ? Theme.redText : held || mouse.hovered ? hoverColor : idleColor
 
@@ -59,11 +63,32 @@ Rectangle {
         property bool hovered: false
         anchors.fill: parent
         hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         onEntered: {
             hovered = true;
             root.entered();
         }
-        onExited: hovered = false
-        onClicked: mouse => root.clicked(mouse.x)
+        onExited: {
+            hovered = false;
+            root.exited();
+        }
+        onClicked: mouse => {
+            if (mouse.button === Qt.MiddleButton)
+                root.middleClicked();
+            else
+                root.clicked(mouse.x);
+        }
+        onWheel: wheel => {
+            root.wheeled(wheel.angleDelta.y > 0 ? 1 : -1);
+            wheel.accepted = true;
+        }
+    }
+
+    BarTooltip {
+        hovered: mouse.hovered
+        text: root.tooltip
+        align: root.tooltipAlign
+        y: root.height + 6
+        x: align < 0 ? 0 : align > 0 ? root.width - width : (root.width - width) / 2
     }
 }

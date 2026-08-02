@@ -20,12 +20,6 @@ Rectangle {
         radius: 8
         color: root.checked ? Theme.accentFg : Theme.textLow
 
-        Behavior on x {
-            NumberAnimation {
-                duration: 120
-                easing.type: Easing.OutCubic
-            }
-        }
     }
 
     MouseArea {

@@ -12,7 +12,7 @@ import "../Common"
 Item {
     id: host
 
-    required property Item island
+    required property rect islandRect
     required property string isle // "left" | "center" | "right"
 
     anchors.fill: parent
@@ -59,15 +59,6 @@ Item {
 
     // ---- geometry -----------------------------------------------------
 
-    // Island rect in host coordinates (tracks bar layout changes).
-    readonly property rect islandRect: {
-        void island.x;
-        void island.width;
-        void host.width;
-        const p = island.mapToItem(host, 0, 0);
-        return Qt.rect(p.x, p.y, island.width, island.height);
-    }
-
     readonly property real contentW: loader.item ? loader.item.implicitWidth : Theme.popWidth
     readonly property real contentH: loader.item ? loader.item.implicitHeight : 0
 
@@ -91,6 +82,7 @@ Item {
 
     // Zero gap: flush against the island's bottom edge.
     readonly property real surfaceY: islandRect.y + islandRect.height
+    readonly property real requiredHeight: shown ? surfaceY + contentH + 34 : 0
 
     readonly property alias maskItem: surface
 

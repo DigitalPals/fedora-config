@@ -20,10 +20,9 @@ PanelWindow {
         left: true
         right: true
     }
-    // Tall stable surface: the bar strip at the top plus room for the
-    // connected popouts. The native window never animates; only items
-    // inside it do. Input is masked to the bar strip + open popout.
-    implicitHeight: 760
+    readonly property int layoutMode: width >= 1600 ? 2 : width >= 1100 ? 1 : 0
+    readonly property int closedHeight: Theme.barTopMargin + Theme.barHeight + 34
+    implicitHeight: closedHeight
     // Balanced spacing: with Hyprland's gaps_out (10) on top of the
     // exclusive zone, windows end up exactly barTopMargin (8) below the
     // bar's bottom edge — the same gap as above the bar.
@@ -33,26 +32,10 @@ PanelWindow {
     mask: Region {
         item: barStrip
 
-        regions: [
-            Region {
-                item: leftPopout.maskItem
-            },
-            Region {
-                item: centerPopout.maskItem
-            },
-            Region {
-                item: rightPopout.maskItem
-            }
-        ]
     }
 
-    WlrLayershell.keyboardFocus: Popouts.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-
-    HyprlandFocusGrab {
-        active: Popouts.open
-        windows: [barWindow]
-        onCleared: Popouts.close()
-    }
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    WlrLayershell.namespace: "qs-bar"
 
     IpcHandler {
         target: "popouts"
@@ -137,12 +120,49 @@ PanelWindow {
         return Popouts.open && Popouts.currentName === name;
     }
 
+    // Published in window coordinates for the independent popout layer.
+    // Keeping the menu in another Wayland surface prevents its Loader and
+    // height changes from resizing/remapping the menubar itself.
+    readonly property rect leftIslandRect: islandRect(leftCluster)
+    readonly property rect centerIslandRect: islandRect(centerCluster)
+    readonly property rect rightIslandRect: islandRect(rightCluster)
+
+    function islandRect(item) {
+        if (!item)
+            return Qt.rect(0, Theme.barTopMargin, 0, Theme.barHeight);
+        const p = item.mapToItem(null, 0, 0);
+        return Qt.rect(p.x, p.y, item.width, item.height);
+    }
+
     // Hover-to-open (caelestia): once a popout is open, hovering another
     // module switches straight to its popout — no click needed until the
     // popout is dismissed again.
     function hoverOpen(name, isle) {
-        if (Popouts.open && Popouts.currentName !== name)
-            Popouts.openPanel(name, isle);
+        if (!Popouts.open || Popouts.currentName === name)
+            return;
+        pendingHoverName = name;
+        pendingHoverIsland = isle;
+        hoverSwitch.restart();
+    }
+
+    function cancelHover(name) {
+        if (pendingHoverName !== name)
+            return;
+        hoverSwitch.stop();
+        pendingHoverName = "";
+    }
+
+    property string pendingHoverName: ""
+    property string pendingHoverIsland: ""
+
+    Timer {
+        id: hoverSwitch
+        interval: 120
+        onTriggered: {
+            if (barWindow.pendingHoverName !== "" && Popouts.open)
+                Popouts.openPanel(barWindow.pendingHoverName, barWindow.pendingHoverIsland);
+            barWindow.pendingHoverName = "";
+        }
     }
 
     // Input region for the bar strip itself.
@@ -179,28 +199,6 @@ PanelWindow {
             radius: Theme.clusterRadius
             color: Theme.barBg
         }
-    }
-
-    // ---- connected popouts (design t5) --------------------------------
-    // One popout surface per section, fused to the bar slab's bottom
-    // edge and rendered under the cluster contents.
-
-    IslandPopout {
-        id: leftPopout
-        island: leftCluster
-        isle: "left"
-    }
-
-    IslandPopout {
-        id: centerPopout
-        island: centerCluster
-        isle: "center"
-    }
-
-    IslandPopout {
-        id: rightPopout
-        island: rightCluster
-        isle: "right"
     }
 
     // ---- layout ------------------------------------------------------
@@ -251,6 +249,7 @@ PanelWindow {
                     }
 
                     Text {
+                        visible: barWindow.layoutMode >= 2
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDateTime(clock.date, "ddd MMM d")
                         font.family: Theme.fontSans
@@ -264,7 +263,15 @@ PanelWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     onEntered: barWindow.hoverOpen("calendar", "center")
+                    onExited: barWindow.cancelHover("calendar")
                     onClicked: Popouts.toggle("calendar", "center")
+                }
+
+                BarTooltip {
+                    hovered: clockMouse.containsMouse
+                    text: Qt.formatDateTime(clock.date, "dddd, MMMM d")
+                    y: parent.height + 6
+                    x: (parent.width - width) / 2
                 }
             }
 
@@ -295,6 +302,7 @@ PanelWindow {
                     }
 
                     Text {
+                        visible: barWindow.layoutMode > 0
                         anchors.verticalCenter: parent.verticalCenter
                         text: {
                             if (!barWindow.player)
@@ -306,7 +314,7 @@ PanelWindow {
                         font.pixelSize: 12
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
-                        width: Math.min(implicitWidth, 190)
+                        width: barWindow.layoutMode >= 2 ? implicitWidth : 120
                     }
                 }
 
@@ -315,7 +323,15 @@ PanelWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     onEntered: barWindow.hoverOpen("media", "center")
+                    onExited: barWindow.cancelHover("media")
                     onClicked: Popouts.toggle("media", "center")
+                }
+
+                BarTooltip {
+                    hovered: mediaMouse.containsMouse
+                    text: barWindow.player ? barWindow.player.trackTitle : "Media"
+                    y: parent.height + 6
+                    x: (parent.width - width) / 2
                 }
             }
         }
@@ -328,17 +344,41 @@ PanelWindow {
             spacing: 1
 
             UsageChips {
+                displayMode: barWindow.layoutMode
                 held: barWindow.popoutOpen("usage")
                 onClicked: Popouts.toggle("usage", "right")
                 onEntered: barWindow.hoverOpen("usage", "right")
+                onExited: barWindow.cancelHover("usage")
             }
 
             Divider {}
 
             BarIcon {
+                glyph: barWindow.sinkMuted || barWindow.volume === 0 ? "" : barWindow.volume < 50 ? "" : ""
+                label: barWindow.layoutMode === 0 ? "" : barWindow.volume + "%"
+                held: barWindow.popoutOpen("audio")
+                alert: barWindow.sinkMuted
+                tooltip: "Audio · wheel volume · middle mute"
+                tooltipAlign: 1
+                onClicked: Popouts.toggle("audio", "right")
+                onMiddleClicked: {
+                    if (barWindow.sink && barWindow.sink.audio)
+                        barWindow.sink.audio.muted = !barWindow.sink.audio.muted;
+                }
+                onWheeled: steps => {
+                    if (barWindow.sink && barWindow.sink.audio)
+                        barWindow.sink.audio.volume = Math.max(0, Math.min(1, barWindow.sink.audio.volume + steps * 0.05));
+                }
+                onEntered: barWindow.hoverOpen("audio", "right")
+                onExited: barWindow.cancelHover("audio")
+            }
+
+            BarIcon {
                 glyph: ""
                 active: SysInfo.idleInhibited
                 idleColor: Theme.textLow
+                tooltip: SysInfo.idleInhibited ? "Idle inhibit on" : "Idle inhibit off"
+                tooltipAlign: 1
                 onClicked: SysInfo.idleInhibited = !SysInfo.idleInhibited
             }
 
@@ -346,19 +386,36 @@ PanelWindow {
                 glyph: ""
                 held: barWindow.popoutOpen("wifi")
                 idleColor: Networking.wifiEnabled ? (barWindow.wifiActive !== null ? Theme.icon : Theme.textLow) : Theme.textFaint
+                tooltip: barWindow.wifiActive ? "Wi-Fi · " + barWindow.wifiActive.name : "Wi-Fi"
+                tooltipAlign: 1
                 onClicked: Popouts.toggle("wifi", "right")
                 onEntered: barWindow.hoverOpen("wifi", "right")
+                onExited: barWindow.cancelHover("wifi")
+            }
+
+            BarIcon {
+                visible: barWindow.btConnected
+                glyph: ""
+                held: barWindow.popoutOpen("bluetooth")
+                tooltip: "Bluetooth connected"
+                tooltipAlign: 1
+                onClicked: Popouts.toggle("bluetooth", "right")
+                onEntered: barWindow.hoverOpen("bluetooth", "right")
+                onExited: barWindow.cancelHover("bluetooth")
             }
 
             BarIcon {
                 glyph: barWindow.batteryGlyph(barWindow.batteryPct)
-                label: "" + Math.round(barWindow.batteryPct)
+                label: barWindow.layoutMode === 0 ? "" : "" + Math.round(barWindow.batteryPct)
                 alert: !barWindow.charging && barWindow.batteryPct <= 10
                 held: barWindow.popoutOpen("battery")
                 idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon
                 visible: barWindow.battery !== null && barWindow.battery.isLaptopBattery
+                tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%"
+                tooltipAlign: 1
                 onClicked: Popouts.toggle("battery", "right")
                 onEntered: barWindow.hoverOpen("battery", "right")
+                onExited: barWindow.cancelHover("battery")
             }
 
             Item {
@@ -369,9 +426,12 @@ PanelWindow {
                 BarIcon {
                     id: bellIcon
                     glyph: ""
+                    tooltip: Notifs.count + (Notifs.count === 1 ? " notification" : " notifications")
+                    tooltipAlign: 1
                     held: barWindow.popoutOpen("notifications")
                     onClicked: Popouts.toggle("notifications", "right")
                     onEntered: barWindow.hoverOpen("notifications", "right")
+                    onExited: barWindow.cancelHover("notifications")
                 }
 
                 Rectangle {
@@ -402,8 +462,11 @@ PanelWindow {
                 glyphSize: 15
                 hPadding: 9
                 active: barWindow.popoutOpen("control")
+                tooltip: "Control Center"
+                tooltipAlign: 1
                 onClicked: Popouts.toggle("control", "right")
                 onEntered: barWindow.hoverOpen("control", "right")
+                onExited: barWindow.cancelHover("control")
             }
         }
     }

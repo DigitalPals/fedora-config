@@ -111,12 +111,5 @@ Singleton {
         }
     }
 
-    Timer {
-        interval: 1000
-        running: true
-        repeat: true
-        onTriggered: root.nextPollSecs = Math.max(0, root.nextPollSecs - 1)
-    }
-
     Component.onCompleted: fetchProc.running = true
 }

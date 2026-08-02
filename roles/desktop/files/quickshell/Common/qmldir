@@ -1,6 +1,7 @@
 singleton Theme Theme.qml
-singleton Popovers Popovers.qml
 singleton Popouts Popouts.qml
+singleton Screens Screens.qml
+singleton Launcher Launcher.qml
 singleton Usage Usage.qml
 singleton Notifs Notifs.qml
 singleton SysInfo SysInfo.qml

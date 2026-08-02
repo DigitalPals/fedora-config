@@ -5,6 +5,20 @@ import "../Common"
 Surface {
     id: root
 
+    Component.onCompleted: {
+        if (Usage.updatedAt > 0) {
+            const elapsed = Math.floor((Date.now() - Usage.updatedAt) / 1000);
+            Usage.nextPollSecs = Math.max(0, Usage.pollIntervalSecs - elapsed);
+        }
+    }
+
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: Usage.nextPollSecs = Math.max(0, Usage.nextPollSecs - 1)
+    }
+
     // Right-island popouts run a touch wider (design t5).
     implicitWidth: 380
 
@@ -153,13 +167,6 @@ Surface {
                 font.pixelSize: 11
                 color: refreshMouse.containsMouse ? Theme.textHi : Theme.textLow
 
-                RotationAnimation on rotation {
-                    running: Usage.loading
-                    from: 0
-                    to: 360
-                    duration: 900
-                    loops: Animation.Infinite
-                }
             }
 
             MouseArea {

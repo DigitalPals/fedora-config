@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Networking
 
 Singleton {
     id: root
@@ -13,7 +14,8 @@ Singleton {
     property string host: "linux"
 
     // Shared idle-inhibit state (bar module + control center toggle).
-    property bool idleInhibited: false
+    property bool idleInhibited: true
+    property string tempPath: ""
 
     // Tailscale status
     property bool tsRunning: false
@@ -24,6 +26,7 @@ Singleton {
 
     // Wi-Fi link speed, e.g. "1152 Mb/s"
     property string wifiBitrate: ""
+    readonly property var wifiDevice: Networking.devices.values.find(device => device.networks !== undefined) ?? null
 
     Process {
         command: ["cat", "/etc/hostname"]
@@ -41,57 +44,80 @@ Singleton {
         }
     }
 
+    // Discover the CPU sensor once, then use cheap FileView reloads.
     Process {
-        id: tempProc
-        command: ["bash", "-c", "for h in /sys/class/hwmon/hwmon*; do if [ \"$(cat $h/name 2>/dev/null)\" = coretemp ]; then cat $h/temp1_input; exit 0; fi; done; echo 0"]
+        id: sensorDiscovery
+        command: ["sh", "-c", "for h in /sys/class/hwmon/hwmon*; do [ \"$(cat \"$h/name\" 2>/dev/null)\" = coretemp ] && { printf '%s' \"$h/temp1_input\"; exit; }; done"]
+        running: true
         stdout: StdioCollector {
-            onStreamFinished: {
-                const v = parseInt(text.trim());
-                if (!isNaN(v))
-                    root.cpuTemp = Math.round(v / 1000);
-            }
+            onStreamFinished: root.tempPath = text.trim()
         }
     }
 
-    Process {
-        id: uptimeProc
-        command: ["cat", "/proc/uptime"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const secs = parseFloat(text.split(" ")[0]);
-                if (isNaN(secs))
-                    return;
-                const d = Math.floor(secs / 86400);
-                const h = Math.floor((secs % 86400) / 3600);
-                const m = Math.floor((secs % 3600) / 60);
-                root.uptime = d > 0 ? `${d} d ${h} h` : (h > 0 ? `${h} h ${m} m` : `${m} m`);
-            }
+    FileView {
+        id: tempView
+        path: root.tempPath
+        printErrors: false
+        onLoaded: root.readTemperature()
+    }
+
+    FileView {
+        id: uptimeView
+        path: "/proc/uptime"
+        onLoaded: root.readUptime()
+    }
+
+    function readTemperature() {
+        if (tempPath === "")
+            return;
+        const value = parseInt(tempView.text().trim());
+        if (!isNaN(value))
+            cpuTemp = Math.round(value / 1000);
+    }
+
+    function readUptime() {
+        const secs = parseFloat(uptimeView.text().split(" ")[0]);
+        if (isNaN(secs))
+            return;
+        const d = Math.floor(secs / 86400);
+        const h = Math.floor((secs % 86400) / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        uptime = d > 0 ? `${d} d ${h} h` : (h > 0 ? `${h} h ${m} m` : `${m} m`);
+    }
+
+    onTempPathChanged: {
+        if (tempPath !== "") {
+            tempView.reload();
+            readTemperature();
         }
     }
 
     Process {
         id: tsProc
-        command: ["bash", "-c", "tailscale status --json 2>/dev/null | jq -c '{state:.BackendState,host:.Self.HostName,net:.MagicDNSSuffix,ip:.Self.TailscaleIPs[0],exit:(.ExitNodeStatus.Online // false)}' || echo '{}'"]
+        command: ["tailscale", "status", "--json"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
                     const s = JSON.parse(text);
-                    root.tsRunning = s.state === "Running";
-                    root.tsHost = s.host || "";
-                    root.tsNet = s.net || "";
-                    root.tsIp = s.ip || "";
-                    root.tsExitNode = !!s.exit;
-                } catch (e) {}
+                    root.tsRunning = s.BackendState === "Running";
+                    root.tsHost = s.Self && s.Self.HostName || "";
+                    root.tsNet = s.MagicDNSSuffix || "";
+                    root.tsIp = s.Self && s.Self.TailscaleIPs && s.Self.TailscaleIPs[0] || "";
+                    root.tsExitNode = !!(s.ExitNodeStatus && s.ExitNodeStatus.Online);
+                } catch (e) {
+                    root.tsRunning = false;
+                }
             }
         }
     }
 
     Process {
         id: bitrateProc
-        command: ["bash", "-c", "wl=$(ls /sys/class/net | grep -m1 '^wl'); [ -n \"$wl\" ] && iw dev \"$wl\" link 2>/dev/null | grep -oP 'tx bitrate: \\K[0-9.]+' | head -1 || true"]
+        command: root.wifiDevice ? ["iw", "dev", root.wifiDevice.name, "link"] : []
         stdout: StdioCollector {
             onStreamFinished: {
-                const v = parseFloat(text.trim());
+                const match = text.match(/tx bitrate:\s*([0-9.]+)/);
+                const v = match ? parseFloat(match[1]) : NaN;
                 root.wifiBitrate = isNaN(v) ? "" : Math.round(v) + " Mb/s";
             }
         }
@@ -103,24 +129,38 @@ Singleton {
     }
 
     Timer {
-        interval: 5000
+        interval: 10000
         running: true
         repeat: true
         triggeredOnStart: true
         onTriggered: {
-            tempProc.running = true;
-            uptimeProc.running = true;
+            if (root.tempPath !== "") {
+                tempView.reload();
+                root.readTemperature();
+            }
         }
     }
 
     Timer {
-        interval: 15000
+        interval: 60000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            uptimeView.reload();
+            root.readUptime();
+        }
+    }
+
+    Timer {
+        interval: 30000
         running: true
         repeat: true
         triggeredOnStart: true
         onTriggered: {
             tsProc.running = true;
-            bitrateProc.running = true;
+            if (root.wifiDevice)
+                bitrateProc.running = true;
         }
     }
 }
