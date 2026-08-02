@@ -25,6 +25,7 @@ Singleton {
             media: "center",
             weather: "center",
             usage: "right",
+            t3code: "right",
             audio: "right",
             wifi: "right",
             bluetooth: "right",

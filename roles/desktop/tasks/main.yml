@@ -35,6 +35,9 @@
       - libinput-utils
       - vulkan-loader
       - vulkan-tools
+      # QtWebSockets QML module for the T3 Code bar client; Fedora ships
+      # the QML plugin in the -devel subpackage.
+      - qt6-qtwebsockets-devel
     state: present
   when: not ansible_check_mode
 

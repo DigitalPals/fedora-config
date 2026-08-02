@@ -397,6 +397,16 @@ PanelWindow {
             padding: 8
             spacing: 1
 
+            T3Chip {
+                displayMode: barWindow.layoutMode
+                held: barWindow.popoutOpen("t3code")
+                onClicked: Popouts.toggle("t3code", "right")
+                onEntered: barWindow.hoverOpen("t3code", "right")
+                onExited: barWindow.cancelHover("t3code")
+            }
+
+            Divider {}
+
             UsageChips {
                 displayMode: barWindow.layoutMode
                 held: barWindow.popoutOpen("usage")

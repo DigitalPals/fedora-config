@@ -3,6 +3,7 @@ singleton Popouts Popouts.qml
 singleton Screens Screens.qml
 singleton Launcher Launcher.qml
 singleton Usage Usage.qml
+singleton T3Code T3Code.qml
 singleton Notifs Notifs.qml
 singleton SysInfo SysInfo.qml
 singleton Weather Weather.qml

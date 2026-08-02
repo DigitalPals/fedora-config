@@ -25,6 +25,7 @@ Item {
             media: "../Popovers/MediaPopover.qml",
             weather: "../Popovers/WeatherPopover.qml",
             usage: "../Popovers/UsagePopover.qml",
+            t3code: "../Popovers/T3CodePopover.qml",
             audio: "../Popovers/AudioPopover.qml",
             wifi: "../Popovers/WifiPopover.qml",
             bluetooth: "../Popovers/BluetoothPopover.qml",
