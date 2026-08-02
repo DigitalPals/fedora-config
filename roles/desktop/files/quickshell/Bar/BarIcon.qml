@@ -8,6 +8,10 @@ Rectangle {
 
     property string glyph
     property real glyphSize: 13
+    // Fixed column for the glyph. The right cluster is right-anchored, so
+    // a module that changes width slides every module beside it: pin the
+    // width for icons that differ between states. 0 sizes to the glyph.
+    property real glyphWidth: 0
     property string label: ""
     property real labelSize: 11.5
     property bool active: false
@@ -38,13 +42,23 @@ Rectangle {
         anchors.centerIn: parent
         spacing: 4
 
-        Text {
+        // The column is pinned on the wrapper, never on the Text: these
+        // glyphs' ink overflows their advance box, so giving the Text an
+        // explicit width shifts what it draws.
+        Item {
             visible: root.glyph !== ""
             anchors.verticalCenter: parent.verticalCenter
-            text: root.glyph
-            font.family: Theme.fontIcon
-            font.pixelSize: root.glyphSize
-            color: root.fg
+            width: root.glyphWidth > 0 ? root.glyphWidth : glyphText.implicitWidth
+            height: glyphText.implicitHeight
+
+            Text {
+                id: glyphText
+                anchors.centerIn: parent
+                text: root.glyph
+                font.family: Theme.fontIcon
+                font.pixelSize: root.glyphSize
+                color: root.fg
+            }
         }
 
         Text {

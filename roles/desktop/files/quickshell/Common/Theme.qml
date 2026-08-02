@@ -41,6 +41,16 @@ Singleton {
     readonly property color amberBorder: Qt.rgba(211 / 255, 180 / 255, 126 / 255, 0.35)
     readonly property color accentBgSoft: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.09)
 
+    // Weather icon tints — the one place the bar carries real color, so
+    // they stay a shade below full saturation to sit inside the palette.
+    readonly property color wxSun: "#e5b558"
+    readonly property color wxMoon: "#bfc6da"
+    readonly property color wxCloud: "#98a1b5"
+    readonly property color wxFog: "#828896"
+    readonly property color wxRain: "#6ab0ea"
+    readonly property color wxSnow: "#c8e2f5"
+    readonly property color wxStorm: "#a992e0"
+
     // Provider brand colors
     readonly property color brandClaude: "#d97757"
     readonly property color brandCodex: "#4fb8a8"

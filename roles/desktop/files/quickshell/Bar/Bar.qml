@@ -3,7 +3,6 @@ import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
-import Quickshell.Io
 import Quickshell.Services.Pipewire
 import Quickshell.Services.Mpris
 import Quickshell.Services.UPower
@@ -37,23 +36,14 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     WlrLayershell.namespace: "qs-bar"
 
-    IpcHandler {
-        target: "popouts"
-
-        function toggle(name: string): void {
-            Popouts.toggle(name);
-        }
-
-        function close(): void {
-            Popouts.close();
-        }
-    }
-
     // ---- shared service state ----------------------------------------
 
+    // One bar exists per output; only the mapped one can carry a Wayland
+    // inhibitor. SysInfo's systemd-inhibit is what actually holds the
+    // session awake, so nothing is lost while this one is idle.
     IdleInhibitor {
         window: barWindow
-        enabled: SysInfo.idleInhibited
+        enabled: SysInfo.idleInhibited && barWindow.visible
     }
 
     PwObjectTracker {
@@ -84,18 +74,6 @@ PanelWindow {
         return ps.find(p => p.isPlaying) ?? ps.find(p => p.playbackState === MprisPlaybackState.Paused) ?? (ps.length > 0 ? ps[0] : null);
     }
     readonly property bool mediaVisible: player !== null && player.trackTitle !== ""
-
-    function batteryGlyph(pct) {
-        if (pct <= 12)
-            return "";
-        if (pct <= 37)
-            return "";
-        if (pct <= 62)
-            return "";
-        if (pct <= 87)
-            return "";
-        return "";
-    }
 
     function playerGlyph(p) {
         if (!p)
@@ -295,6 +273,14 @@ PanelWindow {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
+                        text: Weather.glyph(Weather.code, Weather.isDay)
+                        font.family: Theme.fontIcon
+                        font.pixelSize: 14
+                        color: Weather.glyphColor(Weather.code, Weather.isDay)
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
                         text: Weather.temp + "°"
                         font.family: Theme.fontMono
                         font.pixelSize: 12
@@ -430,6 +416,17 @@ PanelWindow {
 
             Divider {}
 
+            // Keep-awake toggle. Lit while inhibiting; no popout, so it
+            // deliberately skips the hover-switch wiring.
+            BarIcon {
+                glyph: "" // coffee
+                active: SysInfo.idleInhibited
+                idleColor: Theme.textLow
+                tooltip: SysInfo.idleInhibited ? "Idle inhibit on" : "Idle inhibit off"
+                tooltipAlign: 1
+                onClicked: SysInfo.idleInhibited = !SysInfo.idleInhibited
+            }
+
             BarIcon {
                 glyph: barWindow.sinkMuted || barWindow.volume === 0 ? "" : barWindow.volume < 50 ? "" : ""
                 label: barWindow.layoutMode === 0 ? "" : barWindow.volume + "%"
@@ -472,38 +469,24 @@ PanelWindow {
                 onExited: barWindow.cancelHover("bluetooth")
             }
 
-            Item {
+            BarIcon {
                 visible: barWindow.battery !== null && barWindow.battery.isLaptopBattery
-                width: batteryIcon.width
-                height: Theme.barHeight
-                anchors.verticalCenter: parent.verticalCenter
-
-                BarIcon {
-                    id: batteryIcon
-                    glyph: barWindow.batteryGlyph(barWindow.batteryPct)
-                    label: barWindow.layoutMode === 0 ? "" : "" + Math.round(barWindow.batteryPct)
-                    alert: !barWindow.charging && barWindow.batteryPct <= 10
-                    held: barWindow.popoutOpen("battery")
-                    idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon
-                    tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%" + (barWindow.charging ? " · charging" : "")
-                    tooltipAlign: 1
-                    onClicked: Popouts.toggle("battery", "right")
-                    onEntered: barWindow.hoverOpen("battery", "right")
-                    onExited: barWindow.cancelHover("battery")
-                }
-
-                // Charging bolt, overlaid on the battery glyph.
-                Text {
-                    visible: barWindow.charging
-                    x: 12
-                    anchors.verticalCenter: batteryIcon.verticalCenter
-                    text: "\uf0e7"
-                    font.family: Theme.fontIcon
-                    font.pixelSize: 8
-                    style: Text.Outline
-                    styleColor: Theme.barBg
-                    color: Theme.accentFg
-                }
+                // md-battery_high / md-battery_charging_high. The charging
+                // glyph carries its own bolt, so nothing is overlaid; it is
+                // also wider, hence the fixed column below — 13.5 is what
+                // the previous Font Awesome glyph laid out at, so the rest
+                // of the cluster keeps its position.
+                glyph: barWindow.charging ? "󱊦" : "󱊣"
+                glyphWidth: 13.5
+                label: barWindow.layoutMode === 0 ? "" : Math.round(barWindow.batteryPct) + "%"
+                alert: !barWindow.charging && barWindow.batteryPct <= 10
+                held: barWindow.popoutOpen("battery")
+                idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon
+                tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%" + (barWindow.charging ? " · charging" : "")
+                tooltipAlign: 1
+                onClicked: Popouts.toggle("battery", "right")
+                onEntered: barWindow.hoverOpen("battery", "right")
+                onExited: barWindow.cancelHover("battery")
             }
 
             Item {

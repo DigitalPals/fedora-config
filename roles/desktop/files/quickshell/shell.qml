@@ -1,6 +1,6 @@
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
+import Quickshell.Io
 import Quickshell.Wayland
 import "Bar"
 import "Common"
@@ -8,18 +8,30 @@ import "Common"
 ShellRoot {
     id: shell
 
-    readonly property var desiredBarScreen: Screens.focused
-    property var barScreen: null
+    // Popout IPC lives here rather than in Bar: the bar is instantiated
+    // once per output, and an IpcHandler target may only be registered
+    // once shell-wide.
+    IpcHandler {
+        target: "popouts"
 
-    function migrateBar() {
-        if (barScreen === desiredBarScreen)
-            return;
-        Popouts.close();
-        barScreen = desiredBarScreen;
+        function toggle(name: string): void {
+            Popouts.toggle(name);
+        }
+
+        function close(): void {
+            Popouts.close();
+        }
     }
 
-    onDesiredBarScreenChanged: migrateBar()
-    Component.onCompleted: migrateBar()
+    // A popout belongs to the bar that spawned it; when focus moves to
+    // another output that bar goes away, so dismiss the panel with it.
+    Connections {
+        target: Screens
+
+        function onFocusedChanged() {
+            Popouts.close();
+        }
+    }
 
     // Wallpaper on the background layer, one per output. Instantiated
     // through Variants so outputs appearing/disappearing (dock, lid)
@@ -29,6 +41,8 @@ ShellRoot {
         model: Quickshell.screens
 
         PanelWindow {
+            id: wallpaperWindow
+
             required property ShellScreen modelData
 
             screen: modelData
@@ -50,21 +64,43 @@ ShellRoot {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 cache: true
-                sourceSize: Qt.size(
-                    Math.ceil(modelData.width * modelData.devicePixelRatio),
-                    Math.ceil(modelData.height * modelData.devicePixelRatio))
+                // modelData is briefly null while an output is torn down;
+                // 0 falls back to the image's own size for that instant.
+                sourceSize.width: wallpaperWindow.modelData
+                    ? Math.ceil(wallpaperWindow.modelData.width * wallpaperWindow.modelData.devicePixelRatio) : 0
+                sourceSize.height: wallpaperWindow.modelData
+                    ? Math.ceil(wallpaperWindow.modelData.height * wallpaperWindow.modelData.devicePixelRatio) : 0
             }
         }
     }
 
-    Bar {
-        id: bar
-        screen: shell.barScreen
-    }
+    // The bar shows on one output at a time, but it is built per output
+    // and only shown on the focused one. The bar used to be a single
+    // window whose `screen` was reassigned on focus change, and it could
+    // end up unmapped after a hotplug or after external-monitor-toggle
+    // disabled eDP-1. Binding each window to one output for its lifetime
+    // removes the migration entirely: outputs coming and going create and
+    // destroy windows, exactly as the wallpaper above already does.
+    Variants {
+        model: Quickshell.screens
 
-    BarPopoutWindow {
-        bar: bar
-        screen: shell.barScreen
+        Scope {
+            id: barScope
+
+            required property ShellScreen modelData
+            readonly property bool onFocusedScreen: modelData !== null && modelData === Screens.focused
+
+            Bar {
+                id: bar
+                screen: barScope.modelData
+                visible: barScope.onFocusedScreen
+            }
+
+            BarPopoutWindow {
+                bar: bar
+                screen: barScope.modelData
+            }
+        }
     }
 
     LauncherWindow {}

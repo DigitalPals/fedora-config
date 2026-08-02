@@ -14,6 +14,9 @@ Item {
 
     required property rect islandRect
     required property string isle // "left" | "center" | "right"
+    // False on outputs whose bar is currently hidden: keeps their panels
+    // unloaded instead of building a second copy of every popover.
+    required property bool live
 
     anchors.fill: parent
 
@@ -40,7 +43,7 @@ Item {
     property bool shown: false
 
     function sync() {
-        const want = Popouts.open && Popouts.island === isle;
+        const want = live && Popouts.open && Popouts.island === isle;
         if (want) {
             panelName = Popouts.currentName;
             shown = true;
@@ -58,6 +61,7 @@ Item {
         }
     }
 
+    onLiveChanged: sync()
     Component.onCompleted: sync()
 
     // ---- geometry -----------------------------------------------------

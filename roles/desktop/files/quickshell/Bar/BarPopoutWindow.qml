@@ -11,7 +11,11 @@ PanelWindow {
 
     required property Bar bar
 
-    visible: Popouts.open
+    // Every output has a popout window, but only the one under the mapped
+    // bar may show a panel or take the focus grab.
+    readonly property bool live: bar.visible
+
+    visible: live && Popouts.open
     anchors {
         top: true
         left: true
@@ -31,29 +35,32 @@ PanelWindow {
     }
 
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: Popouts.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: root.visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     WlrLayershell.namespace: "qs-bar-popout"
 
     HyprlandFocusGrab {
-        active: Popouts.open
+        active: root.live && Popouts.open
         windows: [root.bar, root]
         onCleared: Popouts.close()
     }
 
     IslandPopout {
         id: leftPopout
+        live: root.live
         islandRect: root.bar.leftIslandRect
         isle: "left"
     }
 
     IslandPopout {
         id: centerPopout
+        live: root.live
         islandRect: root.bar.centerIslandRect
         isle: "center"
     }
 
     IslandPopout {
         id: rightPopout
+        live: root.live
         islandRect: root.bar.rightIslandRect
         isle: "right"
     }

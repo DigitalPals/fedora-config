@@ -25,6 +25,15 @@ Surface {
             spacing: 10
 
             Text {
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 4
+                text: Weather.glyph(Weather.code, Weather.isDay)
+                font.family: Theme.fontIcon
+                font.pixelSize: 26
+                color: Weather.glyphColor(Weather.code, Weather.isDay)
+            }
+
+            Text {
                 text: Weather.temp + "°"
                 font.family: Theme.fontMono
                 font.pixelSize: 26
@@ -89,10 +98,21 @@ Surface {
                         color: Theme.textLow
                     }
 
+                    // Daily codes summarise a whole day, so always the day
+                    // variant of the icon.
+                    Text {
+                        x: 34
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Weather.glyph(dayRow.modelData.code, true)
+                        font.family: Theme.fontIcon
+                        font.pixelSize: 12
+                        color: Weather.glyphColor(dayRow.modelData.code, true)
+                    }
+
                     Item {
                         id: range
-                        x: 40
-                        width: parent.width - 40 - loHi.implicitWidth - 8
+                        x: 56
+                        width: parent.width - 56 - loHi.implicitWidth - 8
                         height: 6
                         anchors.verticalCenter: parent.verticalCenter
 
