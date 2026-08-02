@@ -17,6 +17,16 @@ Singleton {
     property bool idleInhibited: true
     property string tempPath: ""
 
+    // Hypridle honors systemd's idle inhibitors directly. Keep this process
+    // alive while the toggle is enabled because the Wayland inhibitor tied to
+    // the bar layer surface is not consistently observed by Hypridle.
+    Process {
+        command: ["systemd-inhibit", "--what=idle", "--who=Quickshell",
+            "--why=Idle inhibit enabled from the menubar", "--mode=block",
+            "sleep", "infinity"]
+        running: root.idleInhibited
+    }
+
     // Tailscale status
     property bool tsRunning: false
     property string tsHost: ""

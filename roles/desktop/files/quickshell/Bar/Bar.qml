@@ -123,16 +123,15 @@ PanelWindow {
     // Published in window coordinates for the independent popout layer.
     // Keeping the menu in another Wayland surface prevents its Loader and
     // height changes from resizing/remapping the menubar itself.
-    readonly property rect leftIslandRect: islandRect(leftCluster)
-    readonly property rect centerIslandRect: islandRect(centerCluster)
-    readonly property rect rightIslandRect: islandRect(rightCluster)
-
-    function islandRect(item) {
-        if (!item)
-            return Qt.rect(0, Theme.barTopMargin, 0, Theme.barHeight);
-        const p = item.mapToItem(null, 0, 0);
-        return Qt.rect(p.x, p.y, item.width, item.height);
-    }
+    readonly property rect leftIslandRect: Qt.rect(
+        Theme.barSideMargin, Theme.barTopMargin,
+        leftCluster.width, leftCluster.height)
+    readonly property rect centerIslandRect: Qt.rect(
+        Math.round((barWindow.width - centerCluster.width) / 2), Theme.barTopMargin,
+        centerCluster.width, centerCluster.height)
+    readonly property rect rightIslandRect: Qt.rect(
+        barWindow.width - Theme.barSideMargin - rightCluster.width, Theme.barTopMargin,
+        rightCluster.width, rightCluster.height)
 
     // Hover-to-open (caelestia): once a popout is open, hovering another
     // module switches straight to its popout — no click needed until the
