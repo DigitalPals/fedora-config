@@ -8,8 +8,11 @@ Singleton {
     // Palette — design tokens from "Menubar Directions" (2a/3a, t5)
     // Bar islands and their fused popouts share one surface color so the
     // connected shapes read as a single slab (t5).
-    readonly property color barBg: Qt.rgba(19 / 255, 20 / 255, 25 / 255, 0.96)
-    readonly property color popBg: Qt.rgba(19 / 255, 20 / 255, 25 / 255, 0.96)
+    // Fully opaque: the fused popout surface hangs over its own drop
+    // shadow, and any translucency shows the shadow's edge through the
+    // surface as a banded seam under the bar.
+    readonly property color barBg: "#131419"
+    readonly property color popBg: "#131419"
     readonly property color popBorder: Qt.rgba(1, 1, 1, 0.08)
     readonly property color hairline: Qt.rgba(1, 1, 1, 0.08)
     readonly property color hairlineSoft: Qt.rgba(1, 1, 1, 0.06)

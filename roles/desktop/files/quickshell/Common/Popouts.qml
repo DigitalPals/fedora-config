@@ -18,9 +18,9 @@ Singleton {
 
     // Island a popout opens on when the caller does not say (IPC, bar
     // modules). Panels opened from inside another popout may override —
-    // e.g. the Control Center morphs to Wi-Fi details on the left island.
+    // e.g. the Control Center morphs to Wi-Fi details on the right island.
     readonly property var defaultIsland: ({
-            control: "left",
+            control: "right",
             calendar: "center",
             media: "center",
             usage: "right",

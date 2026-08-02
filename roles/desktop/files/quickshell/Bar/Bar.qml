@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
@@ -153,9 +154,36 @@ PanelWindow {
         height: Theme.barTopMargin + Theme.barHeight + 4
     }
 
+    // One continuous menubar slab behind all three sections, rendered
+    // beneath the popout surfaces so its shadow never falls on an open
+    // panel.
+    Item {
+        anchors.fill: parent
+        anchors.topMargin: Theme.barTopMargin
+        anchors.leftMargin: Theme.barSideMargin
+        anchors.rightMargin: Theme.barSideMargin
+
+        RectangularShadow {
+            anchors.fill: barSlab
+            radius: Theme.clusterRadius
+            blur: 16
+            spread: 0
+            offset.y: 4
+            color: Qt.rgba(0, 0, 0, 0.35)
+        }
+
+        Rectangle {
+            id: barSlab
+            width: parent.width
+            height: Theme.barHeight
+            radius: Theme.clusterRadius
+            color: Theme.barBg
+        }
+    }
+
     // ---- connected popouts (design t5) --------------------------------
-    // One fused surface per island, rendered under the clusters so each
-    // island sits on top of its own popout's fused-shape shadow.
+    // One popout surface per section, fused to the bar slab's bottom
+    // edge and rendered under the cluster contents.
 
     IslandPopout {
         id: leftPopout
@@ -183,26 +211,12 @@ PanelWindow {
         anchors.leftMargin: Theme.barSideMargin
         anchors.rightMargin: Theme.barSideMargin
 
-        // LEFT — Control Center + workspaces
+        // LEFT — workspaces
         Cluster {
             id: leftCluster
             anchors.left: parent.left
             padding: 6
             spacing: 2
-            fused: leftPopout.shown
-            joinBL: leftPopout.shown && leftPopout.joinLeft
-            joinBR: leftPopout.shown && leftPopout.joinRight
-
-            BarIcon {
-                glyph: "" // fedora
-                glyphSize: 15
-                hPadding: 9
-                active: barWindow.popoutOpen("control")
-                onClicked: Popouts.toggle("control", "left")
-                onEntered: barWindow.hoverOpen("control", "left")
-            }
-
-            Divider {}
 
             Workspaces {}
         }
@@ -213,9 +227,6 @@ PanelWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             padding: 6
             spacing: 4
-            fused: centerPopout.shown
-            joinBL: centerPopout.shown && centerPopout.joinLeft
-            joinBR: centerPopout.shown && centerPopout.joinRight
 
             Rectangle {
                 id: clockChip
@@ -309,15 +320,12 @@ PanelWindow {
             }
         }
 
-        // RIGHT — model usage + audio + status modules
+        // RIGHT — model usage + audio + status modules + Control Center
         Cluster {
             id: rightCluster
             anchors.right: parent.right
             padding: 8
             spacing: 1
-            fused: rightPopout.shown
-            joinBL: rightPopout.shown && rightPopout.joinLeft
-            joinBR: rightPopout.shown && rightPopout.joinRight
 
             UsageChips {
                 held: barWindow.popoutOpen("usage")
@@ -328,12 +336,10 @@ PanelWindow {
             Divider {}
 
             BarIcon {
-                glyph: barWindow.sinkMuted ? "" : ""
-                label: "" + barWindow.volume
-                held: barWindow.popoutOpen("audio")
-                idleColor: barWindow.sinkMuted ? Theme.textLow : Theme.icon
-                onClicked: Popouts.toggle("audio", "right")
-                onEntered: barWindow.hoverOpen("audio", "right")
+                glyph: ""
+                active: SysInfo.idleInhibited
+                idleColor: Theme.textLow
+                onClicked: SysInfo.idleInhibited = !SysInfo.idleInhibited
             }
 
             BarIcon {
@@ -387,6 +393,17 @@ PanelWindow {
                         color: Notifs.hasUrgent ? Theme.red : Theme.accent
                     }
                 }
+            }
+
+            Divider {}
+
+            BarIcon {
+                glyph: "" // fedora
+                glyphSize: 15
+                hPadding: 9
+                active: barWindow.popoutOpen("control")
+                onClicked: Popouts.toggle("control", "right")
+                onEntered: barWindow.hoverOpen("control", "right")
             }
         }
     }

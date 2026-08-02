@@ -6,30 +6,45 @@ import "Popovers"
 import "Common"
 
 ShellRoot {
-    // Wallpaper on the background layer.
-    PanelWindow {
-        anchors {
-            top: true
-            left: true
-            right: true
-            bottom: true
-        }
-        exclusionMode: ExclusionMode.Ignore
-        color: "#101116"
+    // Wallpaper on the background layer, one per output. Instantiated
+    // through Variants so outputs appearing/disappearing (dock, lid)
+    // create and destroy the windows instead of stranding them on Qt's
+    // placeholder screen.
+    Variants {
+        model: Quickshell.screens
 
-        WlrLayershell.layer: WlrLayer.Background
-        WlrLayershell.namespace: "qs-wallpaper"
+        PanelWindow {
+            required property ShellScreen modelData
 
-        Image {
-            anchors.fill: parent
-            source: Wallpaper.current !== "" ? "file://" + Wallpaper.current : ""
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            cache: false
+            screen: modelData
+            anchors {
+                top: true
+                left: true
+                right: true
+                bottom: true
+            }
+            exclusionMode: ExclusionMode.Ignore
+            color: "#101116"
+
+            WlrLayershell.layer: WlrLayer.Background
+            WlrLayershell.namespace: "qs-wallpaper"
+
+            Image {
+                anchors.fill: parent
+                source: Wallpaper.current !== "" ? "file://" + Wallpaper.current : ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: false
+            }
         }
     }
 
-    Bar {}
+    // Single bar, pinned to the first available output. The binding
+    // re-evaluates when outputs change, so the bar migrates to a real
+    // screen instead of staying on the placeholder.
+    Bar {
+        screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    }
 
     PopoverWindow {}
 

@@ -240,7 +240,7 @@ Surface {
             on: Networking.wifiEnabled
             chevron: true
             onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
-            onExpanded: Popouts.openPanel("wifi", "left")
+            onExpanded: Popouts.openPanel("wifi", "right")
         }
 
         Tile {
@@ -259,7 +259,7 @@ Surface {
                 if (root.btAdapter)
                     root.btAdapter.enabled = !root.btAdapter.enabled;
             }
-            onExpanded: Popouts.openPanel("bluetooth", "left")
+            onExpanded: Popouts.openPanel("bluetooth", "right")
         }
 
         Tile {

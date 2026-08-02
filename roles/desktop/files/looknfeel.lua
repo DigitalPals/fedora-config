@@ -2,9 +2,9 @@ hl.config({
   general = {
     gaps_in = 5,
     gaps_out = 10,
-    border_size = 1,
+    border_size = 0,
     layout = "dwindle",
-    col = { active_border = "rgb(cba6f7)", inactive_border = "rgb(1e1e2e)" },
+    col = { active_border = "rgb(131419)", inactive_border = "rgb(131419)" },
   },
   cursor = { no_hardware_cursors = false },
   decoration = {
@@ -17,12 +17,12 @@ hl.config({
   xwayland = { force_zero_scaling = true },
   group = {
     col = {
-      border_active = "rgb(fab387)", border_inactive = "rgb(1e1e2e)",
-      border_locked_active = "rgb(f38ba8)", border_locked_inactive = "rgb(1e1e2e)",
+      border_active = "rgb(9ecbeb)", border_inactive = "rgb(131419)",
+      border_locked_active = "rgb(e8837a)", border_locked_inactive = "rgb(131419)",
     },
     groupbar = { col = {
-      active = "rgb(fab387)", inactive = "rgb(1e1e2e)",
-      locked_active = "rgb(f38ba8)", locked_inactive = "rgb(1e1e2e)",
+      active = "rgb(9ecbeb)", inactive = "rgb(131419)",
+      locked_active = "rgb(e8837a)", locked_inactive = "rgb(131419)",
     } },
   },
   dwindle = { preserve_split = true, split_width_multiplier = 1.0 },
