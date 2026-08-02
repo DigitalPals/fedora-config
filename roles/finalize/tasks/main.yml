@@ -51,11 +51,11 @@
     insertbefore: BOF
   when: gdm_autologin | bool
 
-- name: Make Hyprland Lumen the autologin session
+- name: Make Hyprland Quickshell the autologin session
   ansible.builtin.lineinfile:
     path: "/var/lib/AccountsService/users/{{ primary_user }}"
     regexp: "^\\s*XSession\\s*="
-    line: XSession=hyprland-lumen
+    line: XSession=hyprland-quickshell
     insertafter: "^\\[User\\]$"
     firstmatch: true
   when: gdm_autologin | bool

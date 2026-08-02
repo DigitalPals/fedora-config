@@ -4,13 +4,13 @@ set -euo pipefail
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=Hyprland
 export XDG_SESSION_DESKTOP=Hyprland
-export DESKTOP_SESSION=hyprland-lumen
-export DESKTOP_SHELL=lumen
+export DESKTOP_SESSION=hyprland-quickshell
+export DESKTOP_SHELL=quickshell
 export MOZ_ENABLE_WAYLAND=1
 export QT_QPA_PLATFORM=wayland
 
 mkdir -p "$XDG_RUNTIME_DIR" "${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
-printf '%s\n' lumen > "$XDG_RUNTIME_DIR/desktop-shell"
+printf '%s\n' quickshell > "$XDG_RUNTIME_DIR/desktop-shell"
 session_log="${XDG_STATE_HOME:-$HOME/.local/state}/hyprland/session.log"
 
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \

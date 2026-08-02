@@ -52,28 +52,39 @@
     name: gdm.service
     enabled: true
 
-- name: Install Hyprland Lumen session launcher
+- name: Install Hyprland Quickshell session launcher
   ansible.builtin.template:
-    src: hyprland-lumen.j2
-    dest: /usr/local/bin/hyprland-lumen
+    src: hyprland-quickshell.j2
+    dest: /usr/local/bin/hyprland-quickshell
     owner: root
     group: root
     mode: "0755"
 
-- name: Register Hyprland Lumen GDM session
+- name: Register Hyprland Quickshell GDM session
   ansible.builtin.copy:
-    dest: /usr/share/wayland-sessions/hyprland-lumen.desktop
+    dest: /usr/share/wayland-sessions/hyprland-quickshell.desktop
     owner: root
     group: root
     mode: "0644"
     content: |
       [Desktop Entry]
-      Name=Hyprland (Lumen)
-      Comment=Hyprland with Lumen Desktop Shell
-      Exec=/usr/local/bin/hyprland-lumen
-      TryExec=/usr/local/bin/hyprland-lumen
+      Name=Hyprland (Quickshell)
+      Comment=Hyprland with Quickshell Desktop Shell
+      Exec=/usr/local/bin/hyprland-quickshell
+      TryExec=/usr/local/bin/hyprland-quickshell
       Type=Application
       DesktopNames=Hyprland
+
+- name: Retire the Lumen session launcher and unit
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/bin/hyprland-lumen
+    - /usr/share/wayland-sessions/hyprland-lumen.desktop
+    - "{{ primary_home }}/.config/systemd/user/lumen.service"
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/lumen.service"
+  notify: Reload user systemd
 
 - name: Create desktop configuration directories
   become: true
@@ -160,7 +171,7 @@
     dest: "{{ primary_home }}/.config/systemd/user/{{ item }}.service"
     mode: "0644"
   loop:
-    - lumen
+    - quickshell
     - elephant
     - walker
     - hypridle
@@ -197,7 +208,7 @@
     state: link
     force: true
   loop:
-    - lumen
+    - quickshell
     - elephant
     - walker
     - hypridle
@@ -207,6 +218,6 @@
   notify: Reload user systemd
 
 - name: Preserve SELinux labels on local session executable
-  ansible.builtin.command: restorecon -F /usr/local/bin/hyprland-lumen
+  ansible.builtin.command: restorecon -F /usr/local/bin/hyprland-quickshell
   changed_when: false
   when: not ansible_check_mode

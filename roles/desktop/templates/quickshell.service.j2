@@ -1,10 +1,10 @@
 [Unit]
-Description=Lumen desktop shell
+Description=Quickshell desktop shell
 PartOf=hyprland-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/libexec/xps-lumen-launch shell
+ExecStart=/usr/bin/qs
 Environment=PATH={{ primary_home }}/.local/bin:{{ primary_home }}/.npm-global/bin:/usr/local/bin:/usr/bin
 Restart=on-failure
 RestartSec=2
