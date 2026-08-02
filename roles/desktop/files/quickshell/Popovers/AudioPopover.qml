@@ -1,0 +1,189 @@
+import QtQuick
+import Quickshell.Services.Pipewire
+import "../Common"
+
+Surface {
+    id: root
+
+    // Right-island popouts run a touch wider (design t5).
+    implicitWidth: 380
+
+    readonly property var sink: Pipewire.defaultAudioSink
+    readonly property var source: Pipewire.defaultAudioSource
+    // Default sink first, then local (ALSA) devices, then network sinks;
+    // capped so the popover stays compact with many cast targets around.
+    readonly property var sinks: {
+        const all = Pipewire.nodes.values.filter(n => n.isSink && !n.isStream);
+        const rank = n => n === Pipewire.defaultAudioSink ? 0 : (n.name || "").startsWith("alsa") ? 1 : 2;
+        return all.sort((a, b) => rank(a) - rank(b)
+            || (a.description || a.name).localeCompare(b.description || b.name)).slice(0, 6);
+    }
+
+    PwObjectTracker {
+        objects: [Pipewire.defaultAudioSink, Pipewire.defaultAudioSource].concat(root.sinks)
+    }
+
+    SectionLabel {
+        text: "OUTPUT"
+    }
+
+    // Output volume
+    Row {
+        width: parent.width
+        leftPadding: 10
+        rightPadding: 10
+        topPadding: 6
+        bottomPadding: 6
+        spacing: 10
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: 18
+            horizontalAlignment: Text.AlignHCenter
+            text: root.sink && root.sink.audio && root.sink.audio.muted ? "\uf026" : "\uf028"
+            font.family: Theme.fontIcon
+            font.pixelSize: 13
+            color: Theme.textMid
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    if (root.sink && root.sink.audio)
+                        root.sink.audio.muted = !root.sink.audio.muted;
+                }
+            }
+        }
+
+        HSlider {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - 84
+            value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
+            onMoved: v => {
+                if (root.sink && root.sink.audio)
+                    root.sink.audio.volume = v;
+            }
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: 26
+            horizontalAlignment: Text.AlignRight
+            text: root.sink && root.sink.audio ? Math.round(root.sink.audio.volume * 100) : "--"
+            font.family: Theme.fontMono
+            font.pixelSize: 11
+            font.weight: 500
+            color: Theme.textLow
+        }
+    }
+
+    // Output devices
+    Repeater {
+        model: root.sinks
+
+        delegate: Rectangle {
+            required property var modelData
+            readonly property bool isDefault: modelData === Pipewire.defaultAudioSink
+
+            width: parent.width - 4
+            x: 2
+            height: 34
+            radius: Theme.rowRadius
+            color: devMouse.containsMouse ? Theme.hoverFill : "transparent"
+
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                x: 10
+                spacing: 10
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 18
+                    horizontalAlignment: Text.AlignHCenter
+                    text: isDefault ? "\uf00c" : ""
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 12
+                    color: Theme.accent
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: root.width - 70
+                    text: modelData.description || modelData.nickname || modelData.name
+                    font.family: Theme.fontSans
+                    font.pixelSize: 12
+                    color: isDefault ? Theme.textHi : Theme.textLow
+                    elide: Text.ElideRight
+                }
+            }
+
+            MouseArea {
+                id: devMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: Pipewire.preferredDefaultAudioSink = modelData
+            }
+        }
+    }
+
+    HDivider {}
+
+    SectionLabel {
+        text: "INPUT"
+    }
+
+    // Mic
+    Row {
+        width: parent.width
+        leftPadding: 10
+        rightPadding: 10
+        topPadding: 6
+        bottomPadding: 10
+        spacing: 10
+
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: 18
+            height: 22
+            radius: 6
+            color: root.source && root.source.audio && root.source.audio.muted ? Theme.redBg : "transparent"
+
+            Text {
+                anchors.centerIn: parent
+                text: root.source && root.source.audio && root.source.audio.muted ? "\uf131" : "\uf130"
+                font.family: Theme.fontIcon
+                font.pixelSize: 13
+                color: root.source && root.source.audio && root.source.audio.muted ? Theme.redText : Theme.textMid
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    if (root.source && root.source.audio)
+                        root.source.audio.muted = !root.source.audio.muted;
+                }
+            }
+        }
+
+        HSlider {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - 84
+            dimmed: root.source && root.source.audio ? root.source.audio.muted : false
+            value: root.source && root.source.audio ? root.source.audio.volume : 0
+            onMoved: v => {
+                if (root.source && root.source.audio)
+                    root.source.audio.volume = v;
+            }
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: 26
+            horizontalAlignment: Text.AlignRight
+            text: root.source && root.source.audio ? Math.round(root.source.audio.volume * 100) : "--"
+            font.family: Theme.fontMono
+            font.pixelSize: 11
+            font.weight: 500
+            color: root.source && root.source.audio && root.source.audio.muted ? Theme.textDim : Theme.textLow
+        }
+    }
+}

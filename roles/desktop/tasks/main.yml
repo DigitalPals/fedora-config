@@ -117,6 +117,15 @@
     - { src: hypridle.conf.j2, dest: hypridle.conf }
     - { src: hyprlock.conf.j2, dest: hyprlock.conf }
 
+- name: Install Quickshell menubar configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: quickshell/
+    dest: "{{ primary_home }}/.config/quickshell/"
+    mode: "0644"
+    directory_mode: "0755"
+
 - name: Configure portal preference without patching Fedora files
   become: true
   become_user: "{{ primary_user }}"
