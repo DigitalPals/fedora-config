@@ -102,6 +102,35 @@ Surface {
                     tile.toggled();
             }
         }
+
+        // Corner chevron: morphs the surface to the detail view in place.
+        Rectangle {
+            visible: tile.chevron
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 3
+            anchors.rightMargin: 3
+            width: 16
+            height: 16
+            radius: 5
+            color: chevMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+
+            Text {
+                anchors.centerIn: parent
+                text: ""
+                font.family: Theme.fontIcon
+                font.pixelSize: 7
+                color: chevMouse.containsMouse ? Theme.textHi : tile.on ? Theme.textLow : Theme.textFaint
+            }
+
+            MouseArea {
+                id: chevMouse
+                anchors.fill: parent
+                anchors.margins: -3
+                hoverEnabled: true
+                onClicked: tile.expanded()
+            }
+        }
     }
 
     // Small labelled meter row for the sliders card.
@@ -247,10 +276,12 @@ Surface {
             iconSource: Quickshell.shellDir + "/assets/tailscale" + (SysInfo.tsRunning ? "" : "-dim") + ".svg"
             title: "Tailscale"
             on: SysInfo.tsRunning
+            chevron: true
             onToggled: {
                 Quickshell.execDetached(["sh", "-c", SysInfo.tsRunning ? "tailscale down" : "tailscale up"]);
                 tsRefresh.restart();
             }
+            onExpanded: Popouts.openPanel("tailscale", "right")
         }
 
         Tile {

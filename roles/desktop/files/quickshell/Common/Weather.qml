@@ -8,9 +8,9 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property string latitude: Quickshell.env("QS_WEATHER_LAT") || "52.37"
-    readonly property string longitude: Quickshell.env("QS_WEATHER_LON") || "4.89"
-    readonly property string place: Quickshell.env("QS_WEATHER_PLACE") || "Amsterdam"
+    readonly property string latitude: Quickshell.env("QS_WEATHER_LAT") || "52.78"
+    readonly property string longitude: Quickshell.env("QS_WEATHER_LON") || "6.90"
+    readonly property string place: Quickshell.env("QS_WEATHER_PLACE") || "Emmen"
 
     readonly property int pollIntervalSecs: 1200
 

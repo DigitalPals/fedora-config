@@ -150,7 +150,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.RichText
             text: Weather.updatedAt > 0
-                ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Weather.updatedAt), "h:mm AP")}</font>`
+                ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Weather.updatedAt), "HH:mm")}</font>`
                 : "loading…"
             font.family: Theme.fontSans
             font.pixelSize: 10

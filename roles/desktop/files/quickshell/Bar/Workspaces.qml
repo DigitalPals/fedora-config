@@ -19,7 +19,9 @@ Row {
             readonly property bool exists: ws !== null
             readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === wsId
             readonly property bool urgent: exists && ws.urgent
-            readonly property bool showNumber: exists || wsId <= 3
+            // Only workspaces that actually exist get a numbered chip;
+            // empty slots stay compact dots.
+            readonly property bool showNumber: exists
 
             width: showNumber ? (focused ? 26 : 22) : 18
             height: 22

@@ -87,14 +87,14 @@ Singleton {
         return `${m}:${String(s).padStart(2, "0")}`;
     }
 
-    // Absolute reset moment: "2:12 PM" within 24h, else "Aug 5, 8:00 AM".
+    // Absolute reset moment: "14:12" within 24h, else "Aug 5, 08:00".
     function formatResetAbs(resetsAt) {
         if (!resetsAt)
             return "";
         const d = new Date(resetsAt * 1000);
         if (resetsAt - Date.now() / 1000 < 86400)
-            return Qt.formatTime(d, "h:mm AP");
-        return Qt.formatDateTime(d, "MMM d, h:mm AP");
+            return Qt.formatTime(d, "HH:mm");
+        return Qt.formatDateTime(d, "MMM d, HH:mm");
     }
 
     // ---- usage history ------------------------------------------------

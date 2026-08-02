@@ -584,7 +584,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.RichText
             text: Usage.updatedAt > 0
-                ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Usage.updatedAt), "h:mm:ss AP")}</font>`
+                ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Usage.updatedAt), "HH:mm:ss")}</font>`
                 : "Loading…"
             font.family: Theme.fontSans
             font.pixelSize: 10

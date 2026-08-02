@@ -28,6 +28,7 @@ Singleton {
             audio: "right",
             wifi: "right",
             bluetooth: "right",
+            tailscale: "right",
             battery: "right",
             notifications: "right"
         })

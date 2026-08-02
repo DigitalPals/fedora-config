@@ -28,6 +28,7 @@ Item {
             audio: "../Popovers/AudioPopover.qml",
             wifi: "../Popovers/WifiPopover.qml",
             bluetooth: "../Popovers/BluetoothPopover.qml",
+            tailscale: "../Popovers/TailscalePopover.qml",
             battery: "../Popovers/BatteryPopover.qml",
             notifications: "../Popovers/NotifsPopover.qml"
         })
