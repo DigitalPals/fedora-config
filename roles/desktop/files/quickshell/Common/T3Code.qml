@@ -3,9 +3,11 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// T3 Code session monitor: keeps a live WebSocket subscription to the
-// orchestration shell of the remote T3 Code server (t3.codes) and
-// exposes project/thread state for the bar chip and popover.
+// T3 Code session monitor and remote control: keeps a live WebSocket
+// subscription to the orchestration shell of the remote T3 Code server
+// (t3.codes) and exposes project/thread state for the bar chip and
+// popover, plus command dispatch (approvals, prompts, settle,
+// interrupt) and desktop notifications on session transitions.
 //
 // Auth model: `scripts/t3-pair.py <pairing-url>` exchanges a one-time
 // pairing code for a ~30-day bearer token stored in
@@ -30,6 +32,11 @@ Singleton {
     property int runningCount: 0
     property int attentionCount: 0
     property int doneCount: 0
+
+    // Expanded-thread detail (orchestration.subscribeThread).
+    property string detailThreadId: ""
+    property bool detailLoading: false
+    property var detailApprovals: []
 
     readonly property bool paired: host !== "" && accessToken !== ""
     readonly property string pairHint: "python3 ~/.config/quickshell/scripts/t3-pair.py '<pairing-url>'"
@@ -77,6 +84,9 @@ Singleton {
         return Math.round(s / 86400) + "d";
     }
 
+    // Previous class per thread, for transition notifications.
+    property var lastClass: ({})
+
     function rebuild() {
         const rank = { attention: 0, error: 1, running: 2, done: 3, idle: 4 };
         let running = 0, attention = 0, done = 0;
@@ -98,15 +108,43 @@ Singleton {
                 project: projectTitle(t.projectId),
                 cls: cls,
                 model: t.modelSelection ? t.modelSelection.model : "",
+                pendingApprovals: t.hasPendingApprovals === true,
+                pendingInput: t.hasPendingUserInput === true,
                 updatedAt: t.updatedAt
             });
         }
         list.sort((a, b) => (rank[a.cls] - rank[b.cls])
             || (Date.parse(b.updatedAt) - Date.parse(a.updatedAt)));
+
+        const next = {};
+        for (const th of list) {
+            next[th.id] = th.cls;
+            const prev = lastClass[th.id];
+            if (prev !== undefined && prev !== th.cls)
+                notifyTransition(prev, th);
+        }
+        lastClass = next;
+
         threads = list;
         runningCount = running;
         attentionCount = attention;
         doneCount = done;
+    }
+
+    // A session asking for input is always worth a toast; finishing or
+    // failing only when it was actually working a moment ago.
+    function notifyTransition(prev, th) {
+        let what;
+        if (th.cls === "attention")
+            what = th.pendingApprovals ? "waiting for approval" : "has a question";
+        else if (th.cls === "error" && (prev === "running" || prev === "attention"))
+            what = "failed";
+        else if (th.cls === "done" && (prev === "running" || prev === "attention"))
+            what = "finished";
+        else
+            return;
+        Quickshell.execDetached(["notify-send", "-a", "T3 Code", "-i", "utilities-terminal",
+            th.title, th.project + " · " + what]);
     }
 
     // ---- state file ------------------------------------------------------
@@ -137,7 +175,6 @@ Singleton {
     // ---- connection ------------------------------------------------------
 
     property int retrySecs: 5
-    property string wsRequestId: "1"
 
     function connect() {
         if (!paired || socketLoader.status !== Loader.Ready) {
@@ -220,17 +257,37 @@ Singleton {
 
     // ---- protocol --------------------------------------------------------
 
-    function subscribe() {
-        threadMap = {};
-        projectMap = {};
-        rebuild();
+    readonly property string shellReqId: "1"
+    property int nextReqId: 2
+    // requestId → { item(value), exit(msg) } for non-shell streams.
+    property var rpcHandlers: ({})
+
+    function genId() {
+        let s = "";
+        for (let i = 0; i < 32; i++)
+            s += Math.floor(Math.random() * 16).toString(16);
+        return s;
+    }
+
+    function sendRequest(id, tag, payload) {
         socketLoader.item.sendText(JSON.stringify({
             _tag: "Request",
-            id: wsRequestId,
-            tag: "orchestration.subscribeShell",
-            payload: {},
+            id: id,
+            tag: tag,
+            payload: payload,
             headers: []
         }));
+    }
+
+    function subscribe() {
+        rpcHandlers = {};
+        nextReqId = 2;
+        threadMap = {};
+        projectMap = {};
+        detailThreadId = "";
+        detailApprovals = [];
+        rebuild();
+        sendRequest(shellReqId, "orchestration.subscribeShell", {});
     }
 
     function handleMessage(text) {
@@ -244,13 +301,24 @@ Singleton {
             msgs = [msgs];
         let dirty = false;
         for (const msg of msgs) {
+            const reqId = msg.requestId !== undefined ? String(msg.requestId) : "";
             if (msg._tag === "Chunk") {
                 socketLoader.item.sendText(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
-                for (const item of msg.values)
-                    dirty = applyItem(item) || dirty;
+                if (reqId === shellReqId) {
+                    for (const item of msg.values)
+                        dirty = applyItem(item) || dirty;
+                } else if (rpcHandlers[reqId]) {
+                    for (const item of msg.values)
+                        rpcHandlers[reqId].item?.(item);
+                }
             } else if (msg._tag === "Exit") {
-                // Stream ended server-side (shutdown/restart): reconnect.
-                scheduleRetry();
+                if (reqId === shellReqId) {
+                    // Stream ended server-side (shutdown/restart): reconnect.
+                    scheduleRetry();
+                } else if (rpcHandlers[reqId]) {
+                    rpcHandlers[reqId].exit?.(msg);
+                    delete rpcHandlers[reqId];
+                }
             }
         }
         if (dirty)
@@ -283,6 +351,155 @@ Singleton {
             return true;
         default:
             return false;
+        }
+    }
+
+    // ---- commands --------------------------------------------------------
+
+    function dispatch(command) {
+        if (state !== "connected")
+            return;
+        const id = String(nextReqId++);
+        rpcHandlers[id] = {
+            exit: msg => {
+                if (msg.exit && msg.exit._tag === "Failure")
+                    console.warn("t3code: command rejected:", JSON.stringify(msg.exit).slice(0, 300));
+            }
+        };
+        sendRequest(id, "orchestration.dispatchCommand", command);
+    }
+
+    // decision: "accept" | "acceptForSession" | "decline"
+    function respondApproval(threadId, requestId, decision) {
+        dispatch({
+            type: "thread.approval.respond",
+            commandId: genId(),
+            threadId: threadId,
+            requestId: requestId,
+            decision: decision,
+            createdAt: new Date().toISOString()
+        });
+    }
+
+    function settle(threadId) {
+        dispatch({
+            type: "thread.settle",
+            commandId: genId(),
+            threadId: threadId
+        });
+    }
+
+    function interrupt(threadId) {
+        dispatch({
+            type: "thread.turn.interrupt",
+            commandId: genId(),
+            threadId: threadId,
+            createdAt: new Date().toISOString()
+        });
+    }
+
+    function startTurn(threadId, text) {
+        const t = threadMap[threadId];
+        if (!t || text.trim() === "")
+            return;
+        dispatch({
+            type: "thread.turn.start",
+            commandId: genId(),
+            threadId: threadId,
+            message: {
+                messageId: genId(),
+                role: "user",
+                text: text,
+                attachments: []
+            },
+            runtimeMode: t.runtimeMode ?? "full-access",
+            interactionMode: t.interactionMode ?? "default",
+            createdAt: new Date().toISOString()
+        });
+    }
+
+    // ---- thread detail (pending approvals) --------------------------------
+
+    property string detailReqId: ""
+    property var detailActivities: []
+
+    function openDetail(threadId) {
+        closeDetail();
+        if (state !== "connected")
+            return;
+        detailThreadId = threadId;
+        detailLoading = true;
+        detailActivities = [];
+        detailApprovals = [];
+        const id = String(nextReqId++);
+        detailReqId = id;
+        rpcHandlers[id] = {
+            item: item => {
+                if (item.kind === "snapshot") {
+                    root.detailActivities = (item.snapshot.thread.activities ?? []).slice();
+                    root.detailLoading = false;
+                    root.recomputeApprovals();
+                } else if (item.kind === "event" && item.event.type === "thread.activity-appended") {
+                    root.detailActivities.push(item.event.payload.activity);
+                    root.recomputeApprovals();
+                }
+            },
+            exit: () => {
+                if (root.detailReqId === id)
+                    root.detailReqId = "";
+            }
+        };
+        sendRequest(id, "orchestration.subscribeThread", { threadId: threadId });
+    }
+
+    function closeDetail() {
+        if (detailReqId !== "") {
+            socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: detailReqId }));
+            delete rpcHandlers[detailReqId];
+            detailReqId = "";
+        }
+        detailThreadId = "";
+        detailLoading = false;
+        detailActivities = [];
+        detailApprovals = [];
+    }
+
+    // Mirrors the web client's derivePendingApprovals: open approval
+    // requests are activity entries not yet matched by a resolution.
+    function recomputeApprovals() {
+        const open = {};
+        for (const act of detailActivities) {
+            const p = act.payload && typeof act.payload === "object" ? act.payload : {};
+            const rid = typeof p.requestId === "string" ? p.requestId : null;
+            if (!rid)
+                continue;
+            if (act.kind === "approval.requested") {
+                open[rid] = {
+                    requestId: rid,
+                    kind: p.requestKind ?? approvalKind(p.requestType),
+                    detail: typeof p.detail === "string" ? p.detail : "",
+                    createdAt: act.createdAt
+                };
+            } else if (act.kind === "approval.resolved") {
+                delete open[rid];
+            } else if (act.kind === "provider.approval.respond.failed"
+                       && /stale pending|unknown pending/i.test(p.detail ?? "")) {
+                delete open[rid];
+            }
+        }
+        detailApprovals = Object.values(open)
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    }
+
+    function approvalKind(requestType) {
+        switch (requestType) {
+        case "file_read_approval":
+            return "file-read";
+        case "file_change_approval":
+        case "apply_patch_approval":
+            return "file-change";
+        default:
+            return "command";
         }
     }
 
