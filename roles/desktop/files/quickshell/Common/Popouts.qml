@@ -12,6 +12,13 @@ Singleton {
     property string currentName: ""
     property string island: ""
 
+    // Window-coordinate rect of the module the popout hangs under, so the
+    // surface can sit at the module instead of at the edge of the section
+    // that happens to hold it. Zero width means "no anchor given" — fall
+    // back to the island alignment. Snapshotted at open: a bar re-layout
+    // while a panel is open leaves it where it was drawn.
+    property rect anchorRect: Qt.rect(0, 0, 0, 0)
+
     // Emitted once per state change, after every property has settled, so
     // the island hosts never observe a half-updated (name, island) pair.
     signal changed
@@ -34,18 +41,25 @@ Singleton {
             notifications: "right"
         })
 
-    function openPanel(name, isle) {
+    function openPanel(name, isle, anchor) {
         island = isle ?? defaultIsland[name] ?? "right";
+        // Callers with no module to point at — the IPC handler, or one
+        // popover morphing into another — keep the surface where it is
+        // rather than making it jump to the section edge.
+        if (anchor !== undefined)
+            anchorRect = anchor;
+        else if (!open)
+            anchorRect = Qt.rect(0, 0, 0, 0);
         currentName = name;
         open = true;
         changed();
     }
 
-    function toggle(name, isle) {
+    function toggle(name, isle, anchor) {
         if (open && currentName === name)
             close();
         else
-            openPanel(name, isle);
+            openPanel(name, isle, anchor);
     }
 
     function close() {

@@ -111,14 +111,27 @@ PanelWindow {
         barWindow.width - Theme.barSideMargin - rightCluster.width, Theme.barTopMargin,
         rightCluster.width, rightCluster.height)
 
+    // Where a module sits, in the window coordinates the popout layer
+    // uses: its panel hangs under the module itself rather than under the
+    // section the module happens to live in.
+    function anchorOf(item) {
+        const p = item.mapToItem(null, 0, 0);
+        return Qt.rect(p.x, p.y, item.width, item.height);
+    }
+
+    function togglePopout(name, isle, item) {
+        Popouts.toggle(name, isle, anchorOf(item));
+    }
+
     // Hover-to-open (caelestia): once a popout is open, hovering another
     // module switches straight to its popout — no click needed until the
     // popout is dismissed again.
-    function hoverOpen(name, isle) {
+    function hoverOpen(name, isle, item) {
         if (!Popouts.open || Popouts.currentName === name)
             return;
         pendingHoverName = name;
         pendingHoverIsland = isle;
+        pendingHoverAnchor = anchorOf(item);
         hoverSwitch.restart();
     }
 
@@ -131,13 +144,15 @@ PanelWindow {
 
     property string pendingHoverName: ""
     property string pendingHoverIsland: ""
+    property rect pendingHoverAnchor: Qt.rect(0, 0, 0, 0)
 
     Timer {
         id: hoverSwitch
         interval: 120
         onTriggered: {
             if (barWindow.pendingHoverName !== "" && Popouts.open)
-                Popouts.openPanel(barWindow.pendingHoverName, barWindow.pendingHoverIsland);
+                Popouts.openPanel(barWindow.pendingHoverName, barWindow.pendingHoverIsland,
+                    barWindow.pendingHoverAnchor);
             barWindow.pendingHoverName = "";
         }
     }
@@ -239,9 +254,9 @@ PanelWindow {
                     id: clockMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("calendar", "center")
+                    onEntered: barWindow.hoverOpen("calendar", "center", clockChip)
                     onExited: barWindow.cancelHover("calendar")
-                    onClicked: Popouts.toggle("calendar", "center")
+                    onClicked: barWindow.togglePopout("calendar", "center", clockChip)
                 }
 
                 BarTooltip {
@@ -302,9 +317,9 @@ PanelWindow {
                     id: weatherMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("weather", "center")
+                    onEntered: barWindow.hoverOpen("weather", "center", weatherChip)
                     onExited: barWindow.cancelHover("weather")
-                    onClicked: Popouts.toggle("weather", "center")
+                    onClicked: barWindow.togglePopout("weather", "center", weatherChip)
                 }
 
                 BarTooltip {
@@ -362,9 +377,9 @@ PanelWindow {
                     id: mediaMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("media", "center")
+                    onEntered: barWindow.hoverOpen("media", "center", mediaChip)
                     onExited: barWindow.cancelHover("media")
-                    onClicked: Popouts.toggle("media", "center")
+                    onClicked: barWindow.togglePopout("media", "center", mediaChip)
                 }
 
                 BarTooltip {
@@ -384,16 +399,21 @@ PanelWindow {
             spacing: 1
 
             T3Chip {
+                id: t3Chip
                 displayMode: barWindow.layoutMode
                 held: barWindow.popoutOpen("t3code")
-                onClicked: Popouts.toggle("t3code", "right")
-                onEntered: barWindow.hoverOpen("t3code", "right")
+                onClicked: barWindow.togglePopout("t3code", "right", t3Chip)
+                onEntered: barWindow.hoverOpen("t3code", "right", t3Chip)
                 onExited: barWindow.cancelHover("t3code")
             }
 
             Divider {}
 
+            // Anchored as one module rather than per provider chip: the
+            // panel should not slide sideways as hover-through switches
+            // between providers.
             UsageChips {
+                id: usageChips
                 displayMode: barWindow.layoutMode
                 held: barWindow.popoutOpen("usage")
                 onChipClicked: key => {
@@ -401,7 +421,7 @@ PanelWindow {
                         Popouts.close();
                     } else {
                         Usage.selected = key;
-                        Popouts.openPanel("usage", "right");
+                        Popouts.openPanel("usage", "right", barWindow.anchorOf(usageChips));
                     }
                 }
                 onChipEntered: key => {
@@ -409,7 +429,7 @@ PanelWindow {
                     // shows that provider's usage view (design 1d).
                     if (Popouts.open)
                         Usage.selected = key;
-                    barWindow.hoverOpen("usage", "right");
+                    barWindow.hoverOpen("usage", "right", usageChips);
                 }
                 onChipExited: barWindow.cancelHover("usage")
             }
@@ -428,13 +448,14 @@ PanelWindow {
             }
 
             BarIcon {
+                id: audioIcon
                 glyph: barWindow.sinkMuted || barWindow.volume === 0 ? "" : barWindow.volume < 50 ? "" : ""
                 label: barWindow.layoutMode === 0 ? "" : barWindow.volume + "%"
                 held: barWindow.popoutOpen("audio")
                 alert: barWindow.sinkMuted
                 tooltip: "Audio · wheel volume · middle mute"
                 tooltipAlign: 1
-                onClicked: Popouts.toggle("audio", "right")
+                onClicked: barWindow.togglePopout("audio", "right", audioIcon)
                 onMiddleClicked: {
                     if (barWindow.sink && barWindow.sink.audio)
                         barWindow.sink.audio.muted = !barWindow.sink.audio.muted;
@@ -443,33 +464,36 @@ PanelWindow {
                     if (barWindow.sink && barWindow.sink.audio)
                         barWindow.sink.audio.volume = Math.max(0, Math.min(1, barWindow.sink.audio.volume + steps * 0.05));
                 }
-                onEntered: barWindow.hoverOpen("audio", "right")
+                onEntered: barWindow.hoverOpen("audio", "right", audioIcon)
                 onExited: barWindow.cancelHover("audio")
             }
 
             BarIcon {
+                id: wifiIcon
                 glyph: ""
                 held: barWindow.popoutOpen("wifi")
                 idleColor: Networking.wifiEnabled ? (barWindow.wifiActive !== null ? Theme.icon : Theme.textLow) : Theme.textFaint
                 tooltip: barWindow.wifiActive ? "Wi-Fi · " + barWindow.wifiActive.name : "Wi-Fi"
                 tooltipAlign: 1
-                onClicked: Popouts.toggle("wifi", "right")
-                onEntered: barWindow.hoverOpen("wifi", "right")
+                onClicked: barWindow.togglePopout("wifi", "right", wifiIcon)
+                onEntered: barWindow.hoverOpen("wifi", "right", wifiIcon)
                 onExited: barWindow.cancelHover("wifi")
             }
 
             BarIcon {
+                id: btIcon
                 visible: barWindow.btConnected
                 glyph: ""
                 held: barWindow.popoutOpen("bluetooth")
                 tooltip: "Bluetooth connected"
                 tooltipAlign: 1
-                onClicked: Popouts.toggle("bluetooth", "right")
-                onEntered: barWindow.hoverOpen("bluetooth", "right")
+                onClicked: barWindow.togglePopout("bluetooth", "right", btIcon)
+                onEntered: barWindow.hoverOpen("bluetooth", "right", btIcon)
                 onExited: barWindow.cancelHover("bluetooth")
             }
 
             BarIcon {
+                id: batteryIcon
                 visible: barWindow.battery !== null && barWindow.battery.isLaptopBattery
                 // md-battery_high / md-battery_charging_high. The charging
                 // glyph carries its own bolt, so nothing is overlaid; it is
@@ -484,8 +508,8 @@ PanelWindow {
                 idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon
                 tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%" + (barWindow.charging ? " · charging" : "")
                 tooltipAlign: 1
-                onClicked: Popouts.toggle("battery", "right")
-                onEntered: barWindow.hoverOpen("battery", "right")
+                onClicked: barWindow.togglePopout("battery", "right", batteryIcon)
+                onEntered: barWindow.hoverOpen("battery", "right", batteryIcon)
                 onExited: barWindow.cancelHover("battery")
             }
 
@@ -500,8 +524,8 @@ PanelWindow {
                     tooltip: Notifs.count + (Notifs.count === 1 ? " notification" : " notifications")
                     tooltipAlign: 1
                     held: barWindow.popoutOpen("notifications")
-                    onClicked: Popouts.toggle("notifications", "right")
-                    onEntered: barWindow.hoverOpen("notifications", "right")
+                    onClicked: barWindow.togglePopout("notifications", "right", bellIcon)
+                    onEntered: barWindow.hoverOpen("notifications", "right", bellIcon)
                     onExited: barWindow.cancelHover("notifications")
                 }
 
@@ -529,14 +553,15 @@ PanelWindow {
             Divider {}
 
             BarIcon {
+                id: controlIcon
                 glyph: "\uf30a" // fedora logo — Control Center trigger
                 glyphSize: 15
                 hPadding: 9
                 active: barWindow.popoutOpen("control")
                 tooltip: "Control Center"
                 tooltipAlign: 1
-                onClicked: Popouts.toggle("control", "right")
-                onEntered: barWindow.hoverOpen("control", "right")
+                onClicked: barWindow.togglePopout("control", "right", controlIcon)
+                onEntered: barWindow.hoverOpen("control", "right", controlIcon)
                 onExited: barWindow.cancelHover("control")
             }
         }

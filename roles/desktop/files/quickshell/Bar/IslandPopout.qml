@@ -69,21 +69,28 @@ Item {
     readonly property real contentW: loader.item ? loader.item.implicitWidth : Theme.popWidth
     readonly property real contentH: loader.item ? loader.item.implicitHeight : 0
 
-    // Left island anchors left, right island anchors right, the center
-    // island expands to (at least) its own full width.
+    // The panel hangs under the module that opened it. Panels opened
+    // without one (IPC, a keybind) fall back to the island: left anchors
+    // left, right anchors right, center expands to its own full width.
+    readonly property bool anchored: Popouts.anchorRect.width > 0
+
     readonly property real surfaceW: {
-        const w = isle === "center" ? Math.max(islandRect.width, contentW) : contentW;
+        const w = !anchored && isle === "center" ? Math.max(islandRect.width, contentW) : contentW;
         return Math.min(w, host.width - 2 * Theme.barSideMargin);
     }
 
     readonly property real surfaceX: {
         let x;
-        if (isle === "left")
+        if (anchored)
+            x = Popouts.anchorRect.x + (Popouts.anchorRect.width - surfaceW) / 2;
+        else if (isle === "left")
             x = islandRect.x;
         else if (isle === "right")
             x = islandRect.x + islandRect.width - surfaceW;
         else
             x = islandRect.x + (islandRect.width - surfaceW) / 2;
+        // Never off the screen edge: a module near a corner pulls its
+        // panel back to the bar's own margin.
         return Math.max(Theme.barSideMargin, Math.min(host.width - Theme.barSideMargin - surfaceW, x));
     }
 
@@ -133,10 +140,12 @@ Item {
 
             Keys.onEscapePressed: Popouts.close()
 
-            // Content pinned to the anchor edge.
+            // Content pinned to the anchor edge. An anchored surface is
+            // already the content's width, so it only matters for the
+            // island fallback.
             Item {
                 id: contentBox
-                x: host.isle === "right" ? surface.width - host.contentW : 0
+                x: !host.anchored && host.isle === "right" ? surface.width - host.contentW : 0
                 y: 0
                 width: host.contentW
                 height: host.contentH
