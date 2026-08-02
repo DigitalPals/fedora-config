@@ -2,9 +2,10 @@ import QtQuick
 import Quickshell
 import "../Common"
 
-// T3 Code bar module: one chip with the "t3" mark and the state of the
-// remote agent sessions — sessions needing approval/input win (amber),
-// then running turns, then a quiet idle mark. Opens the T3 popover.
+// T3 Code bar module (design 2b): the official T3 mark (pingdotgg/t3code,
+// MIT) plus a status word — sessions needing approval/input win (amber),
+// then running turns, then a quiet idle mark. The mark is white while
+// connected and dimmed while off/connecting. Opens the T3 popover.
 Item {
     id: root
 
@@ -17,9 +18,10 @@ Item {
 
     readonly property bool live: T3Code.state === "connected"
     readonly property bool stressed: live && T3Code.attentionCount > 0
+    readonly property bool busy: live && !stressed && T3Code.runningCount > 0
     readonly property string label: {
         if (!live)
-            return T3Code.state === "connecting" ? "…" : "off";
+            return T3Code.state === "connecting" ? "connecting…" : "off";
         if (T3Code.attentionCount > 0)
             return T3Code.attentionCount + " waiting";
         if (T3Code.runningCount > 0)
@@ -48,21 +50,18 @@ Item {
             anchors.centerIn: parent
             spacing: 5
 
-            Text {
+            Image {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "t3"
-                font.family: Theme.fontMono
-                font.pixelSize: 11
-                font.weight: 700
-                color: !root.live ? Theme.textFaint
-                     : root.stressed ? Theme.amber
-                     : T3Code.runningCount > 0 ? Theme.accent
-                     : Theme.textMid
+                height: 9
+                width: 15
+                sourceSize: Qt.size(30, 18)
+                fillMode: Image.PreserveAspectFit
+                source: Quickshell.shellDir + "/assets/" + (root.live ? "t3.svg" : "t3-dim.svg")
             }
 
             // Running pulse: a quiet dot that breathes while agents work.
             Rectangle {
-                visible: root.live && T3Code.runningCount > 0 && !root.stressed
+                visible: root.busy
                 anchors.verticalCenter: parent.verticalCenter
                 width: 5
                 height: 5
@@ -83,10 +82,18 @@ Item {
                 text: root.label
                 font.family: Theme.fontSans
                 font.pixelSize: 11
-                font.weight: root.stressed ? 600 : 500
-                color: !root.live ? Theme.textFaint
-                     : root.stressed ? Theme.amber
-                     : Theme.textMid
+                font.weight: root.stressed ? 600
+                           : root.live && (T3Code.runningCount > 0 || T3Code.doneCount > 0) ? 500
+                           : 400
+                color: {
+                    if (!root.live)
+                        return T3Code.state === "connecting" ? Theme.textLow : Theme.textFaint;
+                    if (root.stressed)
+                        return Theme.amber;
+                    if (T3Code.runningCount > 0 || T3Code.doneCount > 0)
+                        return Theme.textMid;
+                    return Theme.textLow;
+                }
             }
         }
 

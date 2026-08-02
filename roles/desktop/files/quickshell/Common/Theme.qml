@@ -38,7 +38,9 @@ Singleton {
     readonly property color redBorder: Qt.rgba(232 / 255, 131 / 255, 122 / 255, 0.35)
     readonly property color amber: "#d3b47e"
     readonly property color amberBg: Qt.rgba(211 / 255, 180 / 255, 126 / 255, 0.14)
+    readonly property color amberBgSoft: Qt.rgba(211 / 255, 180 / 255, 126 / 255, 0.08)
     readonly property color amberBorder: Qt.rgba(211 / 255, 180 / 255, 126 / 255, 0.35)
+    readonly property color accentBg: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.14)
     readonly property color accentBgSoft: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.09)
 
     // Weather icon tints — the one place the bar carries real color, so
