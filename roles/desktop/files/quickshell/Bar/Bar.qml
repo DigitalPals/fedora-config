@@ -516,7 +516,7 @@ PanelWindow {
             Divider {}
 
             BarIcon {
-                glyph: "󰀻" // apps grid — Control Center trigger (design prototype)
+                glyph: "\uf30a" // fedora logo — Control Center trigger
                 glyphSize: 15
                 hPadding: 9
                 active: barWindow.popoutOpen("control")
