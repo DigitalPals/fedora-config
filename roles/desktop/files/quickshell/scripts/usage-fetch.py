@@ -103,6 +103,46 @@ CLAUDE_PLANS = {"pro": "Claude Pro", "max": "Claude Max", "team": "Claude Team",
                 "enterprise": "Claude Enterprise"}
 
 
+def claude_limit_window(raw):
+    """Convert the current structured Claude usage rows into UI windows."""
+    if not isinstance(raw, dict):
+        return None
+    used = lenient_num(raw.get("percent"))
+    if used is None:
+        return None
+
+    kind = raw.get("kind") or ""
+    group = raw.get("group") or ""
+    scope = raw.get("scope") if isinstance(raw.get("scope"), dict) else {}
+
+    scoped_name = None
+    for scope_kind in ("model", "surface"):
+        scoped = scope.get(scope_kind)
+        if isinstance(scoped, dict):
+            scoped_name = scoped.get("display_name") or scoped.get("name")
+        elif isinstance(scoped, str):
+            scoped_name = scoped
+        if scoped_name:
+            break
+
+    if kind == "session" or group == "session":
+        label = "5 hour limit"
+        window_secs = FIVE_HOURS
+    elif kind == "weekly_scoped" and scoped_name:
+        label = f"Weekly ({scoped_name})"
+        window_secs = SEVEN_DAYS
+    elif kind.startswith("weekly") or group == "weekly":
+        label = "Weekly limit"
+        window_secs = SEVEN_DAYS
+    else:
+        label = scoped_name or kind.replace("_", " ").strip().title() or "Usage limit"
+        window_secs = None
+
+    return {"label": label, "used": min(max(used, 0.0), 100.0),
+            "windowSecs": window_secs,
+            "resetsAt": parse_rfc3339(raw.get("resets_at"))}
+
+
 def fetch_claude():
     cfg_dir = os.environ.get("CLAUDE_CONFIG_DIR") or home(".claude")
     path = os.path.join(cfg_dir, ".credentials.json")
@@ -132,21 +172,29 @@ def fetch_claude():
     if e:
         return e
 
-    windows = []
-    for key, label, secs in (("five_hour", "5 hour limit", FIVE_HOURS),
-                             ("seven_day", "Weekly limit", SEVEN_DAYS),
-                             ("seven_day_opus", "Weekly (Opus)", SEVEN_DAYS),
-                             ("seven_day_sonnet", "Weekly (Sonnet)", SEVEN_DAYS)):
-        raw = data.get(key)
-        if not isinstance(raw, dict):
-            continue
-        used = raw.get("utilization")
-        if not isinstance(used, (int, float)):
-            continue
-        windows.append({"label": label,
-                        "used": min(max(float(used), 0.0), 100.0),
-                        "windowSecs": secs,
-                        "resetsAt": parse_rfc3339(raw.get("resets_at"))})
+    # Newer Claude usage responses expose a structured list, including
+    # account-specific scoped limits such as Fable. Prefer it so new model
+    # limits appear automatically without hard-coding their API field names.
+    windows = [window for window in
+               (claude_limit_window(row) for row in data.get("limits") or [])
+               if window]
+
+    # Compatibility with older endpoint responses.
+    if not windows:
+        for key, label, secs in (("five_hour", "5 hour limit", FIVE_HOURS),
+                                 ("seven_day", "Weekly limit", SEVEN_DAYS),
+                                 ("seven_day_opus", "Weekly (Opus)", SEVEN_DAYS),
+                                 ("seven_day_sonnet", "Weekly (Sonnet)", SEVEN_DAYS)):
+            raw = data.get(key)
+            if not isinstance(raw, dict):
+                continue
+            used = raw.get("utilization")
+            if not isinstance(used, (int, float)):
+                continue
+            windows.append({"label": label,
+                            "used": min(max(float(used), 0.0), 100.0),
+                            "windowSecs": secs,
+                            "resetsAt": parse_rfc3339(raw.get("resets_at"))})
 
     credits = None
     extra = data.get("extra_usage")

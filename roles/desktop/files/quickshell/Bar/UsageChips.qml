@@ -24,7 +24,10 @@ Rectangle {
         return p.status === "ok" || p.kind !== "nocreds";
     })
     readonly property var visibleKeys: {
-        if (displayMode >= 2 || availableKeys.length <= 1)
+        // Medium and wide bars have room for every authenticated provider.
+        // Only the narrow icon-only layout collapses to the most constrained
+        // provider.
+        if (displayMode >= 1 || availableKeys.length <= 1)
             return availableKeys;
         const ranked = availableKeys.slice().sort((a, b) => {
             const ar = Usage.minRemaining(a);
