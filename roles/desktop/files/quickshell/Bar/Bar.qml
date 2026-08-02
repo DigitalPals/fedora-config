@@ -462,18 +462,38 @@ PanelWindow {
                 onExited: barWindow.cancelHover("bluetooth")
             }
 
-            BarIcon {
-                glyph: barWindow.batteryGlyph(barWindow.batteryPct)
-                label: barWindow.layoutMode === 0 ? "" : "" + Math.round(barWindow.batteryPct)
-                alert: !barWindow.charging && barWindow.batteryPct <= 10
-                held: barWindow.popoutOpen("battery")
-                idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon
+            Item {
                 visible: barWindow.battery !== null && barWindow.battery.isLaptopBattery
-                tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%"
-                tooltipAlign: 1
-                onClicked: Popouts.toggle("battery", "right")
-                onEntered: barWindow.hoverOpen("battery", "right")
-                onExited: barWindow.cancelHover("battery")
+                width: batteryIcon.width
+                height: Theme.barHeight
+                anchors.verticalCenter: parent.verticalCenter
+
+                BarIcon {
+                    id: batteryIcon
+                    glyph: barWindow.batteryGlyph(barWindow.batteryPct)
+                    label: barWindow.layoutMode === 0 ? "" : "" + Math.round(barWindow.batteryPct)
+                    alert: !barWindow.charging && barWindow.batteryPct <= 10
+                    held: barWindow.popoutOpen("battery")
+                    idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon
+                    tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%" + (barWindow.charging ? " · charging" : "")
+                    tooltipAlign: 1
+                    onClicked: Popouts.toggle("battery", "right")
+                    onEntered: barWindow.hoverOpen("battery", "right")
+                    onExited: barWindow.cancelHover("battery")
+                }
+
+                // Charging bolt, overlaid on the battery glyph.
+                Text {
+                    visible: barWindow.charging
+                    x: 12
+                    anchors.verticalCenter: batteryIcon.verticalCenter
+                    text: "\uf0e7"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 8
+                    style: Text.Outline
+                    styleColor: Theme.barBg
+                    color: Theme.accentFg
+                }
             }
 
             Item {
