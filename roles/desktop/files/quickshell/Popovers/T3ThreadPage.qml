@@ -928,6 +928,164 @@ Column {
                         }
                     }
                 }
+
+                // Git status and stacked actions for the thread's checkout.
+                // Only actions that currently apply are shown, mirroring the
+                // reference client: commit needs a dirty tree, push needs
+                // unpushed work, View PR needs an actual PR.
+                Rectangle {
+                    id: gitCard
+
+                    readonly property var vcs: T3Code.detailVcs.status
+                    readonly property var git: T3Code.detailGit
+                    readonly property bool gitPending:
+                        T3Code.actionPending("git", root.threadId, "")
+                    readonly property string prUrl: git.prUrl !== "" ? git.prUrl
+                        : vcs && vcs.pr ? vcs.pr.url : ""
+                    readonly property bool showCommit: T3Code.canOperate
+                        && (T3Code.gitActionApplies("commit_push")
+                            || gitPending && git.action === "commit_push")
+                    readonly property bool showPush: T3Code.canOperate
+                        && (T3Code.gitActionApplies("push")
+                            || gitPending && git.action === "push")
+
+                    visible: vcs !== null && vcs.isRepo || T3Code.detailVcs.error !== ""
+                    width: parent.width
+                    height: gitColumn.implicitHeight + 14
+                    radius: 8
+                    color: Theme.cardFill
+                    border.width: 1
+                    border.color: Theme.hairlineSoft
+
+                    Column {
+                        id: gitColumn
+                        x: 7
+                        y: 7
+                        width: parent.width - 14
+                        spacing: 5
+
+                        Column {
+                            width: parent.width
+                            spacing: 1
+
+                            Text {
+                                text: "GIT"
+                                font.family: Theme.fontSans
+                                font.pixelSize: 9
+                                font.weight: 650
+                                font.letterSpacing: 0.45
+                                color: Theme.textDim
+                            }
+
+                            Text {
+                                width: parent.width
+                                visible: gitCard.vcs !== null
+                                text: {
+                                    const vcs = gitCard.vcs;
+                                    if (!vcs)
+                                        return "";
+                                    const parts = [];
+                                    if (vcs.refName !== "")
+                                        parts.push(vcs.refName);
+                                    parts.push(vcs.hasWorkingTreeChanges
+                                        ? vcs.fileCount + " changed · +" + vcs.insertions
+                                            + " −" + vcs.deletions
+                                        : "clean");
+                                    if (vcs.aheadCount > 0)
+                                        parts.push("↑" + vcs.aheadCount);
+                                    if (vcs.behindCount > 0)
+                                        parts.push("↓" + vcs.behindCount);
+                                    return parts.join(" · ");
+                                }
+                                elide: Text.ElideRight
+                                font.family: Theme.fontMono
+                                font.pixelSize: 9
+                                color: Theme.textMid
+                            }
+                        }
+
+                        Flow {
+                            visible: gitCard.showCommit || gitCard.showPush
+                                || gitCard.prUrl !== ""
+                            width: parent.width
+                            spacing: 4
+
+                            Action {
+                                visible: gitCard.showCommit
+                                label: gitCard.gitPending && gitCard.git.action === "commit_push"
+                                    && gitCard.git.label !== ""
+                                    ? gitCard.git.label : "Commit & Push"
+                                enabled: T3Code.canDispatch && !gitCard.gitPending
+                                tint: Theme.accentFg
+                                fill: Theme.accent
+                                onTriggered: T3Code.runGitAction(root.threadId, "commit_push")
+                            }
+
+                            Action {
+                                visible: gitCard.showPush
+                                label: gitCard.gitPending && gitCard.git.action === "push"
+                                    && gitCard.git.label !== ""
+                                    ? gitCard.git.label : "Push"
+                                enabled: T3Code.canDispatch && !gitCard.gitPending
+                                tint: Theme.accent
+                                fill: Theme.accentBg
+                                onTriggered: T3Code.runGitAction(root.threadId, "push")
+                            }
+
+                            Action {
+                                visible: gitCard.prUrl !== ""
+                                label: "View PR ↗"
+                                tint: Theme.accent
+                                onTriggered: {
+                                    Quickshell.execDetached(["xdg-open", gitCard.prUrl]);
+                                    Popouts.close();
+                                }
+                            }
+                        }
+
+                        Text {
+                            visible: gitCard.git.summary !== "" && !gitCard.gitPending
+                            width: parent.width
+                            text: gitCard.git.summary
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                            font.family: Theme.fontSans
+                            font.pixelSize: 9
+                            color: Theme.textDim
+                        }
+
+                        Text {
+                            visible: gitCard.git.error !== "" && !gitCard.gitPending
+                            width: parent.width
+                            text: gitCard.git.error
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                            font.family: Theme.fontSans
+                            font.pixelSize: 9
+                            color: Theme.redText
+                        }
+
+                        Flow {
+                            visible: T3Code.detailVcs.error !== ""
+                            width: parent.width
+                            spacing: 4
+
+                            Text {
+                                text: T3Code.detailVcs.error
+                                font.family: Theme.fontSans
+                                font.pixelSize: 9
+                                color: Theme.textDim
+                            }
+
+                            Action {
+                                label: "Retry"
+                                onTriggered: T3Code.refreshVcsStatus(root.threadId, true)
+                            }
+                        }
+                    }
+                }
             }
         }
 

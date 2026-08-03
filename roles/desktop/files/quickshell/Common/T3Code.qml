@@ -90,6 +90,13 @@ Singleton {
     property var detailDiff: ({ checkpointRef: "", loading: false, error: "",
         text: "", fullText: "", truncated: false, totalChars: 0, totalLines: 0 })
 
+    // Repository status for the selected thread (vcs.refreshStatus), fetched
+    // per detail open and after git actions; drives which git actions are
+    // shown at all. detailGit tracks the one in-flight/last stacked action.
+    property var detailVcs: ({ cwd: "", loading: false, error: "", status: null, fetchedAt: 0 })
+    property var detailGit: ({ actionId: "", action: "", label: "", summary: "",
+        prUrl: "", error: "" })
+
     // Action state is keyed by kind/thread/request. Generic commands clear
     // when dispatch succeeds; approvals and structured input wait for the
     // provider's matching resolution activity.
@@ -111,6 +118,8 @@ Singleton {
     property var pendingDraftMessages: ({})
     property string pendingNewThreadId: ""
     property string pendingNewThreadActionKey: ""
+    readonly property string newThreadDefaultModel: "gpt-5.6-sol"
+    readonly property string newThreadDefaultEffort: "high"
 
     signal newThreadConfirmed(string threadId)
 
@@ -128,6 +137,9 @@ Singleton {
     // message is a failed start, not pending work.
     readonly property int queuedTurnGraceMs: Helpers.QUEUED_TURN_GRACE_MS
     readonly property int actionTimeoutMs: 15000
+    // Stacked git actions stream progress while the server generates a
+    // commit message and runs hooks; the deadline slides on each chunk.
+    readonly property int gitActionTimeoutMs: 120000
     readonly property int maxPromptChars: Helpers.MAX_PROMPT_CHARS
 
     // Bumped once a minute so settledness and the relative time labels
@@ -500,16 +512,25 @@ Singleton {
             value: undefined,
             deadline: Date.now() + (opts.timeoutMs ?? actionTimeoutMs),
             actionKey: opts.actionKey ?? "",
-            item: value => { handler.value = value; },
+            item: value => {
+                handler.value = value;
+                // Streams that report progress (git.runStackedAction) stay
+                // alive as long as chunks keep arriving.
+                if (opts.slidingDeadline === true)
+                    handler.deadline = Date.now() + (opts.timeoutMs ?? actionTimeoutMs);
+                opts.onItem?.(value);
+            },
             exit: msg => {
                 if (msg.exit && msg.exit._tag === "Failure")
                     onFailure?.(root.failureMessage(msg, opts.fallback ?? "Request failed"));
                 else {
                     // Unary Effect RPCs (including server.getConfig and the
                     // full-diff request) return their result on Success.value.
-                    // Streams instead populate `handler.value` through Chunk.
-                    const value = msg.exit && msg.exit.value !== undefined
-                        ? msg.exit.value : handler.value;
+                    // Streams exit with a null value and instead populate
+                    // `handler.value` through their final Chunk.
+                    const exitValue = msg.exit ? msg.exit.value : undefined;
+                    const value = exitValue !== undefined && exitValue !== null
+                        ? exitValue : handler.value;
                     onSuccess?.(value);
                 }
             },
@@ -722,14 +743,17 @@ Singleton {
         actionStates = next;
     }
 
-    function beginAction(key, commandId, awaitResolution) {
-        putActionState(key, {
+    function beginAction(key, commandId, awaitResolution, timeoutMs) {
+        const state = {
             pending: true,
             error: "",
             commandId: commandId,
             awaitResolution: awaitResolution === true,
             startedAt: Date.now()
-        });
+        };
+        if (typeof timeoutMs === "number" && timeoutMs > 0)
+            state.timeoutMs = timeoutMs;
+        putActionState(key, state);
     }
 
     function failAllPendingActions(message) {
@@ -774,25 +798,8 @@ Singleton {
         clearAction(key);
     }
 
-    function findErrorText(value, depth) {
-        if (depth > 5 || value === null || value === undefined)
-            return "";
-        if (typeof value === "string")
-            return value.trim();
-        if (typeof value !== "object")
-            return "";
-        for (const key of ["message", "detail", "reason", "error", "cause", "failure"]) {
-            if (value[key] !== undefined) {
-                const found = findErrorText(value[key], depth + 1);
-                if (found !== "" && found !== "Failure")
-                    return found;
-            }
-        }
-        return "";
-    }
-
     function failureMessage(msg, fallback) {
-        const found = findErrorText(msg ? msg.exit : null, 0);
+        const found = Helpers.findErrorText(msg ? msg.exit : null, 0);
         return found !== "" ? found.slice(0, 240) : fallback;
     }
 
@@ -1091,6 +1098,13 @@ Singleton {
         };
     }
 
+    function defaultNewThreadSelection(project) {
+        return Helpers.selectionForNewThread(project, providerConfigurations, {
+            model: newThreadDefaultModel,
+            effort: newThreadDefaultEffort
+        });
+    }
+
     function reconcileDraftSelections() {
         let draftsChanged = false;
         const drafts = Object.assign({}, threadDrafts);
@@ -1123,8 +1137,7 @@ Singleton {
                 && newThreadDraft.projectId !== "") {
             let newSelection = selectionFromDraft(newThreadDraft);
             if (!newSelection)
-                newSelection = Helpers.selectionForProject(
-                    projectMap[newThreadDraft.projectId], providerConfigurations);
+                newSelection = defaultNewThreadSelection(projectMap[newThreadDraft.projectId]);
             if (newSelection) {
                 const currentNew = {
                     instanceId: newThreadDraft.instanceId ?? "",
@@ -1292,7 +1305,7 @@ Singleton {
 
     function buildNewDraft(projectId, prompt, sourceProposedPlan, projectFixed, modeFixed) {
         const project = projectMap[projectId];
-        const selection = Helpers.selectionForProject(project, providerConfigurations);
+        const selection = defaultNewThreadSelection(project);
         return {
             projectId: projectId,
             projectFixed: projectFixed === true,
@@ -1684,6 +1697,8 @@ Singleton {
         detailCheckpointSummary = null;
         detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "", fullText: "",
             truncated: false, totalChars: 0, totalLines: 0 });
+        detailVcs = ({ cwd: "", loading: false, error: "", status: null, fetchedAt: 0 });
+        detailGit = ({ actionId: "", action: "", label: "", summary: "", prUrl: "", error: "" });
     }
 
     function historyCompare(left, right) {
@@ -2022,6 +2037,115 @@ Singleton {
         }, { actionKey: key, fallback: "Diff unavailable" });
     }
 
+    // ---- git actions -----------------------------------------------------
+
+    function threadCwd(threadId) {
+        const thread = threadMap[threadId];
+        return Helpers.resolveThreadCwd(thread, thread ? projectMap[thread.projectId] : null);
+    }
+
+    // Reads detailVcs so QML visibility bindings refresh with the status.
+    function gitActionApplies(action) {
+        return Helpers.gitActionVisible(detailVcs.status, action);
+    }
+
+    function refreshVcsStatus(threadId, force) {
+        if (state !== "connected" || !canRead || detailThreadId !== threadId)
+            return;
+        if (force !== true && detailVcs.fetchedAt > 0
+                && Date.now() - detailVcs.fetchedAt < 10000)
+            return;
+        const cwd = threadCwd(threadId);
+        if (cwd === "") {
+            // No worktree and no project root: nothing to show, hide the card.
+            detailVcs = ({ cwd: "", loading: false, error: "", status: null,
+                fetchedAt: Date.now() });
+            return;
+        }
+        detailVcs = Object.assign({}, detailVcs, { cwd: cwd, loading: true, error: "" });
+        requestOnce("vcs.refreshStatus", { cwd: cwd }, value => {
+            if (root.detailThreadId !== threadId)
+                return;
+            root.detailVcs = ({ cwd: cwd, loading: false, error: "",
+                status: Helpers.sanitizeVcsStatus(value), fetchedAt: Date.now() });
+        }, error => {
+            if (root.detailThreadId !== threadId)
+                return;
+            root.detailVcs = Object.assign({}, root.detailVcs, {
+                loading: false, error: error, fetchedAt: Date.now()
+            });
+        }, { fallback: "Repository status unavailable" });
+    }
+
+    // action: "commit_push" (commit on the current branch + push — the
+    // default flow) or "push". The commit message is generated server-side.
+    function runGitAction(threadId, action) {
+        const key = actionKey("git", threadId, "");
+        if (!Helpers.canBeginAction(actionStates, key))
+            return "";
+        if (!canOperate)
+            return rejectAction(key, "This pairing is read-only", false);
+        if (state !== "connected" || !socketLoader.item)
+            return rejectAction(key, "Not connected", false);
+        const payload = Helpers.buildGitActionPayload({
+            actionId: genId(), cwd: threadCwd(threadId), action: action });
+        if (!payload)
+            return rejectAction(key, "No repository folder for this thread", false);
+        beginAction(key, "", false, gitActionTimeoutMs);
+        detailGit = ({ actionId: payload.actionId, action: action,
+            label: action === "push" ? "Pushing…" : "Committing…",
+            summary: "", prUrl: "", error: "" });
+        // The terminal chunk (action_finished/action_failed) is what
+        // requestOnce retains; a Failure exit prefers the streamed message.
+        let streamedFailure = "";
+        const finish = fields => {
+            if (root.detailThreadId === threadId
+                    && root.detailGit.actionId === payload.actionId)
+                root.detailGit = Object.assign({ actionId: "", action: "", label: "",
+                    summary: "", prUrl: "", error: "" }, fields);
+            root.refreshVcsStatus(threadId, true);
+        };
+        return requestOnce("git.runStackedAction", payload, value => {
+            root.clearAction(key);
+            const failure = streamedFailure !== "" ? streamedFailure
+                : value && value.kind === "action_finished" ? "" : "Git action failed";
+            if (failure !== "") {
+                finish({ error: failure });
+                return;
+            }
+            const summary = Helpers.gitResultSummary(value.result);
+            finish({ summary: summary.text, prUrl: summary.prUrl });
+        }, error => {
+            const message = streamedFailure !== "" ? streamedFailure : error;
+            root.failAction(key, message);
+            finish({ error: message });
+        }, {
+            actionKey: key,
+            timeoutMs: gitActionTimeoutMs,
+            slidingDeadline: true,
+            fallback: "Git action failed",
+            onItem: event => {
+                const failure = Helpers.gitFailureMessage(event);
+                if (failure !== "")
+                    streamedFailure = failure;
+                // Keep the expiry sweep fed while progress is flowing.
+                const current = root.actionStates[key];
+                if (current && current.pending === true)
+                    root.putActionState(key, Object.assign({}, current,
+                        { startedAt: Date.now() }));
+                if (root.detailThreadId !== threadId
+                        || root.detailGit.actionId !== payload.actionId)
+                    return;
+                const label = Helpers.gitProgressLabel(event);
+                if (label !== "")
+                    root.detailGit = Object.assign({}, root.detailGit, { label: label });
+            }
+        });
+        // Deliberately not interrupted on detail close/switch: interrupting
+        // could abort a server-side push mid-flight. Late results are no-ops
+        // behind the detailThreadId/actionId guards above.
+    }
+
     function reconcileCommandEvent(event) {
         if (!event || typeof event.commandId !== "string" || event.commandId === "")
             return;
@@ -2099,6 +2223,9 @@ Singleton {
                 completedAt: payload.completedAt ?? event.occurredAt ?? ""
             };
             detailCheckpoints = upsertHistory(detailCheckpoints, checkpoint, "checkpointRef");
+            // A finished turn usually changed the working tree.
+            if (payload.status === "ready")
+                refreshVcsStatus(threadId, true);
             break;
         }
         case "thread.session-set":
@@ -2184,6 +2311,7 @@ Singleton {
             }
         };
         sendRequest(id, "orchestration.subscribeThread", { threadId: threadId });
+        refreshVcsStatus(threadId, true);
     }
 
     function openDetail(threadId) {

@@ -232,6 +232,33 @@ test("project defaults win when ready and fallback uses first ready provider def
     assert.equal(fallback.model, "gpt-5.6-sol");
 });
 
+test("new threads prefer GPT-5.6 Sol with high effort across project defaults", () => {
+    const ready = providers();
+    const preferred = H.selectionForNewThread({ defaultModelSelection: {
+        instanceId: "codex", model: "gpt-5.6-terra", options: [],
+    } }, ready, { model: "gpt-5.6-sol", effort: "high" });
+    assert.deepEqual(preferred, {
+        instanceId: "codex",
+        model: "gpt-5.6-sol",
+        options: [
+            { id: "effort", value: "high" },
+            { id: "fastMode", value: false },
+        ],
+    });
+
+    const compatible = H.selectionForNewThread({ defaultModelSelection: {
+        instanceId: "codex_work", model: "gpt-5.6-sol", options: [],
+    } }, ready, { model: "gpt-5.6-sol", effort: "high" });
+    assert.equal(compatible.instanceId, "codex");
+    assert.deepEqual(compatible.options.find((option) => option.id === "effort"),
+        { id: "effort", value: "high" });
+
+    const fallback = H.selectionForNewThread({ defaultModelSelection: {
+        instanceId: "codex", model: "gpt-5.6-terra", options: [],
+    } }, ready, { model: "unavailable", effort: "high" });
+    assert.equal(fallback.model, "gpt-5.6-terra");
+});
+
 test("thread selection follows the live session and repairs unavailable persisted choices", () => {
     const ready = providers();
     const current = thread({
@@ -427,6 +454,19 @@ test("pending actions time out after fifteen seconds and duplicate starts are bl
     assert.equal(expired.states.send.error, "Action timed out");
 });
 
+test("a per-state timeout outlives the default budget but still expires", () => {
+    const states = {
+        git: { pending: true, error: "", startedAt: 1000, timeoutMs: 120000 },
+        send: { pending: true, error: "", startedAt: 1000 },
+    };
+    const atDefault = H.expireActionStates(states, 16000, 15000);
+    assert.deepEqual(atDefault.expiredKeys, ["send"]);
+    assert.equal(atDefault.states.git.pending, true);
+    const atOwnLimit = H.expireActionStates(states, 121000, 15000);
+    assert.ok(atOwnLimit.expiredKeys.includes("git"));
+    assert.equal(atOwnLimit.states.git.error, "Action timed out");
+});
+
 test("history paginates chronologically in batches of ten", () => {
     const messages = Array.from({ length: 25 }, (_, index) => ({ id: index + 1 }));
     const first = H.historyPage(messages, 10);
@@ -473,4 +513,158 @@ test("diff rendering stops at both the character and line limits", () => {
     const byChars = H.truncateDiff("x".repeat(110000));
     assert.equal(byChars.truncated, true);
     assert.equal(byChars.text.length, 100000);
+});
+
+test("thread cwd prefers the worktree and falls back to the project root", () => {
+    const project = { id: "project-1", workspaceRoot: "/home/u/code/app" };
+    assert.equal(H.resolveThreadCwd(thread({ worktreePath: "/tmp/wt" }), project), "/tmp/wt");
+    assert.equal(H.resolveThreadCwd(thread(), project), "/home/u/code/app");
+    assert.equal(H.resolveThreadCwd(thread(), null), "");
+    assert.equal(H.resolveThreadCwd(null, { workspaceRoot: "  " }), "");
+});
+
+test("git payloads default to the current branch and omit empty messages", () => {
+    const payload = H.buildGitActionPayload({
+        actionId: "a1", cwd: "/repo", action: "commit_push", commitMessage: "  " });
+    assert.deepEqual(payload, { actionId: "a1", cwd: "/repo", action: "commit_push" });
+    assert.equal("featureBranch" in payload, false);
+    const withMessage = H.buildGitActionPayload({
+        actionId: "a1", cwd: "/repo", action: "push", commitMessage: " fix bar " });
+    assert.equal(withMessage.commitMessage, "fix bar");
+    assert.equal(H.buildGitActionPayload({ actionId: "a1", cwd: "/repo",
+        action: "commit_push_pr" }), null);
+    assert.equal(H.buildGitActionPayload({ actionId: "", cwd: "/repo",
+        action: "push" }), null);
+    assert.equal(H.buildGitActionPayload({ actionId: "a1", cwd: "",
+        action: "push" }), null);
+});
+
+function vcsStatus(overrides = {}) {
+    return {
+        isRepo: true,
+        hasPrimaryRemote: true,
+        isDefaultRef: true,
+        refName: "main",
+        hasWorkingTreeChanges: true,
+        workingTree: {
+            files: [
+                { path: "a.ts", insertions: 10, deletions: 2 },
+                { path: "b.ts", insertions: 5, deletions: 1 },
+            ],
+            insertions: 15,
+            deletions: 3,
+        },
+        hasUpstream: true,
+        aheadCount: 2,
+        behindCount: 0,
+        pr: null,
+        ...overrides,
+    };
+}
+
+test("vcs status sanitizing keeps counts, drops malformed input, and needs a PR url", () => {
+    const clean = H.sanitizeVcsStatus(vcsStatus({
+        pr: { number: 42, title: "Fix", url: "https://github.com/o/r/pull/42", state: "open" },
+    }));
+    assert.equal(clean.refName, "main");
+    assert.equal(clean.fileCount, 2);
+    assert.equal(clean.insertions, 15);
+    assert.equal(clean.aheadCount, 2);
+    assert.equal(clean.pr.url, "https://github.com/o/r/pull/42");
+    assert.equal(H.sanitizeVcsStatus(vcsStatus({ pr: { number: 1, url: "" } })).pr, null);
+    assert.equal(H.sanitizeVcsStatus(null).isRepo, false);
+    assert.equal(H.sanitizeVcsStatus({ isRepo: false }).fileCount, 0);
+    const partial = H.sanitizeVcsStatus({ isRepo: true, refName: null, aheadCount: "3" });
+    assert.equal(partial.refName, "");
+    assert.equal(partial.aheadCount, 0);
+});
+
+test("git actions are only visible when they actually apply", () => {
+    const status = H.sanitizeVcsStatus(vcsStatus());
+    assert.equal(H.gitActionVisible(status, "commit_push"), true);
+    assert.equal(H.gitActionVisible(status, "push"), true);
+    const cleanTree = H.sanitizeVcsStatus(vcsStatus({ hasWorkingTreeChanges: false,
+        workingTree: { files: [], insertions: 0, deletions: 0 } }));
+    assert.equal(H.gitActionVisible(cleanTree, "commit_push"), false);
+    assert.equal(H.gitActionVisible(cleanTree, "push"), true);
+    const current = H.sanitizeVcsStatus(vcsStatus({ hasWorkingTreeChanges: false,
+        aheadCount: 0 }));
+    assert.equal(H.gitActionVisible(current, "push"), false);
+    const unpublished = H.sanitizeVcsStatus(vcsStatus({ aheadCount: 0, hasUpstream: false }));
+    assert.equal(H.gitActionVisible(unpublished, "push"), true);
+    const noRemote = H.sanitizeVcsStatus(vcsStatus({ hasPrimaryRemote: false,
+        hasUpstream: false, aheadCount: 0 }));
+    assert.equal(H.gitActionVisible(noRemote, "push"), false);
+    assert.equal(H.gitActionVisible(H.sanitizeVcsStatus(null), "commit_push"), false);
+    assert.equal(H.gitActionVisible(status, "create_pr"), false);
+});
+
+test("git progress labels follow phases and hooks, other chunks keep the label", () => {
+    assert.equal(H.gitProgressLabel({ kind: "phase_started", phase: "commit",
+        label: "Generating commit message..." }), "Generating commit message...");
+    assert.equal(H.gitProgressLabel({ kind: "hook_started", hookName: "pre-commit" }),
+        "Running pre-commit…");
+    assert.equal(H.gitProgressLabel({ kind: "hook_output", text: "noise" }), "");
+    assert.equal(H.gitProgressLabel({ kind: "action_started", phases: ["commit"] }), "");
+    assert.equal(H.gitProgressLabel(null), "");
+});
+
+test("streamed failures carry the phase and non-failures are ignored", () => {
+    assert.equal(H.gitFailureMessage({ kind: "action_failed", phase: "push",
+        message: "remote rejected" }), "remote rejected (push)");
+    assert.equal(H.gitFailureMessage({ kind: "action_failed", phase: null,
+        message: "boom" }), "boom");
+    assert.equal(H.gitFailureMessage({ kind: "action_finished" }), "");
+    assert.equal(H.gitFailureMessage(null), "");
+});
+
+test("git result summaries compress the steps and surface the PR url", () => {
+    const full = H.gitResultSummary({
+        action: "commit_push",
+        branch: { status: "skipped_not_requested" },
+        commit: { status: "created", commitSha: "abc1234def", subject: "Fix the bar" },
+        push: { status: "pushed", branch: "main" },
+        pr: { status: "skipped_not_requested" },
+        toast: { title: "Done", cta: { kind: "none" } },
+    });
+    assert.equal(full.text, "Committed abc1234 · Fix the bar — pushed to main");
+    assert.equal(full.prUrl, "");
+    const skipped = H.gitResultSummary({
+        commit: { status: "skipped_no_changes" },
+        push: { status: "skipped_up_to_date" },
+        pr: { status: "skipped_not_requested" },
+    });
+    assert.equal(skipped.text, "Nothing to commit — already up to date");
+    const fromPr = H.gitResultSummary({
+        commit: { status: "skipped_not_requested" },
+        push: { status: "pushed", branch: "feat/x" },
+        pr: { status: "created", url: "https://github.com/o/r/pull/7" },
+    });
+    assert.equal(fromPr.prUrl, "https://github.com/o/r/pull/7");
+    const fromToast = H.gitResultSummary({
+        commit: { status: "skipped_not_requested" },
+        push: { status: "skipped_not_requested" },
+        pr: { status: "opened_existing" },
+        toast: { title: "PR", cta: { kind: "open_pr", label: "View PR",
+            url: "https://github.com/o/r/pull/8" } },
+    });
+    assert.equal(fromToast.prUrl, "https://github.com/o/r/pull/8");
+    assert.equal(H.gitResultSummary(null).text, "");
+});
+
+test("error text is extracted from array-shaped Effect causes", () => {
+    // Exact Exit shape captured live from git.runStackedAction on thebeast.
+    const exit = {
+        _tag: "Failure",
+        cause: [{ _tag: "Fail", error: { _tag: "GitCommandError",
+            operation: "GitVcsDriver.pushCurrentBranch", command: "git",
+            cwd: "/tmp/x",
+            detail: "Cannot push because no git remote is configured for this repository." } }],
+    };
+    assert.equal(H.findErrorText(exit, 0),
+        "Cannot push because no git remote is configured for this repository.");
+    assert.equal(H.findErrorText({ _tag: "Failure",
+        cause: [{ _tag: "Die", defect: "worker crashed" }] }, 0), "worker crashed");
+    assert.equal(H.findErrorText({ _tag: "Failure", cause: [] }, 0), "");
+    assert.equal(H.findErrorText(null, 0), "");
 });

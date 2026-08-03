@@ -630,6 +630,75 @@ function applyTraitValue(descriptors, descriptorId, rawValue, prompt) {
     return { descriptors: normalized, selections: traitSelections(normalized), prompt: nextPrompt, error: "" };
 }
 
+function preferredEffortSelection(model, requestedEffort) {
+    if (!model || !Array.isArray(model.optionDescriptors)
+            || typeof requestedEffort !== "string" || requestedEffort === "")
+        return null;
+    var wanted = requestedEffort.toLowerCase();
+    for (var i = 0; i < model.optionDescriptors.length; i++) {
+        var descriptor = sanitizeDescriptor(model.optionDescriptors[i]);
+        if (!descriptor || descriptor.type !== "select")
+            continue;
+        var id = descriptor.id.toLowerCase().replace(/[^a-z0-9]/g, "");
+        var label = descriptor.label.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (id !== "effort" && id !== "reasoning" && id !== "reasoningeffort"
+                && label !== "effort" && label !== "reasoning"
+                && label !== "reasoningeffort")
+            continue;
+        var option = descriptor.options.find(function(candidate) {
+            return candidate.id.toLowerCase() === wanted;
+        });
+        if (option)
+            return { id: descriptor.id, value: option.id };
+    }
+    return null;
+}
+
+// The menubar has one global new-thread preference, independent of per-project
+// defaults. Prefer a provider that can satisfy both the requested model and
+// effort; retain the project's advertised selection as a compatibility fallback.
+function selectionForNewThread(project, providers, preference) {
+    var fallback = selectionForProject(project, providers);
+    if (!preference || typeof preference.model !== "string" || preference.model === "")
+        return fallback;
+    var ready = (Array.isArray(providers) ? providers : []).filter(function(provider) {
+        return provider.ready === true && Array.isArray(provider.models)
+            && provider.models.length > 0;
+    });
+    var candidates = [];
+    for (var i = 0; i < ready.length; i++) {
+        var model = findModel(ready[i], preference.model);
+        if (model) {
+            candidates.push({
+                provider: ready[i],
+                model: model,
+                effort: preferredEffortSelection(model, preference.effort)
+            });
+        }
+    }
+    if (candidates.length === 0)
+        return fallback;
+
+    var effortCandidates = candidates.filter(function(candidate) {
+        return candidate.effort !== null;
+    });
+    var pool = effortCandidates.length > 0 ? effortCandidates : candidates;
+    var preferredInstance = typeof preference.instanceId === "string"
+        ? preference.instanceId : "";
+    var projectInstance = project && project.defaultModelSelection
+        && typeof project.defaultModelSelection.instanceId === "string"
+        ? project.defaultModelSelection.instanceId : "";
+    var chosen = pool.find(function(candidate) {
+        return preferredInstance !== "" && candidate.provider.instanceId === preferredInstance;
+    }) || pool.find(function(candidate) {
+        return projectInstance !== "" && candidate.provider.instanceId === projectInstance;
+    }) || pool[0];
+    var selections = chosen.effort ? [chosen.effort] : null;
+    var traits = normalizeTraits(chosen.model.optionDescriptors, selections);
+    return selectionObject(chosen.provider.instanceId, chosen.model.slug,
+        traitSelections(traits));
+}
+
 function selectionForProject(project, providers) {
     var ready = (Array.isArray(providers) ? providers : []).filter(function(provider) {
         return provider.ready === true && Array.isArray(provider.models) && provider.models.length > 0;
@@ -932,17 +1001,190 @@ function canBeginAction(states, key) {
     return !(states && states[key] && states[key].pending === true);
 }
 
+// Best-effort human text from an Effect RPC Failure exit. Causes serialize
+// as nested tagged objects and ARRAYS (e.g. `cause: [{_tag: "Fail",
+// error: {detail}}]`), so both named keys and array entries are walked.
+var ERROR_TEXT_KEYS = ["message", "detail", "reason", "error", "cause", "failure", "defect"];
+
+function findErrorText(value, depth) {
+    if (depth > 6 || value === null || value === undefined)
+        return "";
+    if (typeof value === "string")
+        return value.trim();
+    if (typeof value !== "object")
+        return "";
+    var found;
+    if (Array.isArray(value)) {
+        for (var i = 0; i < value.length; i++) {
+            found = findErrorText(value[i], depth + 1);
+            if (found !== "" && found !== "Failure")
+                return found;
+        }
+        return "";
+    }
+    for (var k = 0; k < ERROR_TEXT_KEYS.length; k++) {
+        var key = ERROR_TEXT_KEYS[k];
+        if (value[key] !== undefined) {
+            found = findErrorText(value[key], depth + 1);
+            if (found !== "" && found !== "Failure")
+                return found;
+        }
+    }
+    return "";
+}
+
 function expireActionStates(states, nowMs, timeoutMs) {
     var next = Object.assign({}, states || {});
     var expired = [];
     for (var key in next) {
         var value = next[key];
-        if (value && value.pending === true && nowMs - value.startedAt >= timeoutMs) {
+        // A state may carry its own budget (git actions stream for minutes
+        // while the server generates a commit message or runs hooks).
+        var limit = value && typeof value.timeoutMs === "number" ? value.timeoutMs : timeoutMs;
+        if (value && value.pending === true && nowMs - value.startedAt >= limit) {
             next[key] = Object.assign({}, value, { pending: false, error: "Action timed out" });
             expired.push(key);
         }
     }
     return { states: next, expiredKeys: expired };
+}
+
+// ---- git actions (vcs.refreshStatus / git.runStackedAction) ----------------
+
+var GIT_STACKED_ACTIONS = ["commit_push", "push"];
+
+// Where git commands run for a thread: its worktree when it has one,
+// otherwise the project checkout — the same fallback the server uses.
+function resolveThreadCwd(thread, project) {
+    if (thread && typeof thread.worktreePath === "string" && thread.worktreePath.trim() !== "")
+        return thread.worktreePath;
+    if (project && typeof project.workspaceRoot === "string" && project.workspaceRoot.trim() !== "")
+        return project.workspaceRoot;
+    return "";
+}
+
+// featureBranch is deliberately never set: the default is to commit on the
+// thread's current branch (usually main) and push it. An omitted
+// commitMessage makes the server generate one from the staged diff.
+function buildGitActionPayload(input) {
+    if (!input || typeof input !== "object")
+        return null;
+    var actionId = typeof input.actionId === "string" ? input.actionId.trim() : "";
+    var cwd = typeof input.cwd === "string" ? input.cwd.trim() : "";
+    if (actionId === "" || cwd === "" || GIT_STACKED_ACTIONS.indexOf(input.action) < 0)
+        return null;
+    var payload = { actionId: actionId, cwd: cwd, action: input.action };
+    var message = typeof input.commitMessage === "string" ? input.commitMessage.trim() : "";
+    if (message !== "")
+        payload.commitMessage = message;
+    return payload;
+}
+
+function sanitizeVcsStatus(raw) {
+    if (!raw || typeof raw !== "object" || raw.isRepo !== true) {
+        return { isRepo: false, refName: "", isDefaultRef: false,
+            hasWorkingTreeChanges: false, fileCount: 0, insertions: 0, deletions: 0,
+            hasPrimaryRemote: false, hasUpstream: false, aheadCount: 0, behindCount: 0,
+            pr: null };
+    }
+    var workingTree = raw.workingTree && typeof raw.workingTree === "object"
+        ? raw.workingTree : {};
+    var count = function(value) {
+        return typeof value === "number" && isFinite(value)
+            ? Math.max(0, Math.floor(value)) : 0;
+    };
+    var pr = null;
+    if (raw.pr && typeof raw.pr === "object"
+            && typeof raw.pr.url === "string" && raw.pr.url !== "") {
+        pr = {
+            number: count(raw.pr.number),
+            title: typeof raw.pr.title === "string" ? raw.pr.title : "",
+            url: raw.pr.url,
+            state: typeof raw.pr.state === "string" ? raw.pr.state : ""
+        };
+    }
+    return {
+        isRepo: true,
+        refName: typeof raw.refName === "string" ? raw.refName : "",
+        isDefaultRef: raw.isDefaultRef === true,
+        hasWorkingTreeChanges: raw.hasWorkingTreeChanges === true,
+        fileCount: Array.isArray(workingTree.files) ? workingTree.files.length : 0,
+        insertions: count(workingTree.insertions),
+        deletions: count(workingTree.deletions),
+        hasPrimaryRemote: raw.hasPrimaryRemote === true,
+        hasUpstream: raw.hasUpstream === true,
+        aheadCount: count(raw.aheadCount),
+        behindCount: count(raw.behindCount),
+        pr: pr
+    };
+}
+
+// Visibility, not enablement: an action that does not currently apply is
+// hidden, matching the reference client. Push also covers publishing a
+// branch that has a remote but no upstream yet.
+function gitActionVisible(status, action) {
+    if (!status || status.isRepo !== true)
+        return false;
+    if (action === "commit_push")
+        return status.hasWorkingTreeChanges === true;
+    if (action === "push")
+        return status.hasPrimaryRemote === true
+            && (status.aheadCount > 0 || status.hasUpstream !== true);
+    return false;
+}
+
+// Live label for a streamed progress event; "" keeps the previous label.
+function gitProgressLabel(event) {
+    if (!event || typeof event !== "object")
+        return "";
+    if (event.kind === "phase_started" && typeof event.label === "string"
+            && event.label !== "")
+        return event.label;
+    if (event.kind === "hook_started" && typeof event.hookName === "string"
+            && event.hookName !== "")
+        return "Running " + event.hookName + "…";
+    return "";
+}
+
+function gitFailureMessage(event) {
+    if (!event || event.kind !== "action_failed" || typeof event.message !== "string"
+            || event.message === "")
+        return "";
+    return typeof event.phase === "string" && event.phase !== ""
+        ? event.message + " (" + event.phase + ")" : event.message;
+}
+
+function gitResultSummary(result) {
+    if (!result || typeof result !== "object")
+        return { text: "", prUrl: "" };
+    var parts = [];
+    var commit = result.commit && typeof result.commit === "object" ? result.commit : {};
+    var push = result.push && typeof result.push === "object" ? result.push : {};
+    if (commit.status === "created") {
+        var sha = typeof commit.commitSha === "string" ? commit.commitSha.slice(0, 7) : "";
+        var subject = typeof commit.subject === "string" ? commit.subject : "";
+        parts.push(("committed " + sha).trim() + (subject !== "" ? " · " + subject : ""));
+    } else if (commit.status === "skipped_no_changes") {
+        parts.push("nothing to commit");
+    }
+    if (push.status === "pushed") {
+        parts.push(typeof push.branch === "string" && push.branch !== ""
+            ? "pushed to " + push.branch : "pushed");
+    } else if (push.status === "skipped_up_to_date") {
+        parts.push("already up to date");
+    }
+    var prUrl = "";
+    var pr = result.pr && typeof result.pr === "object" ? result.pr : {};
+    if (typeof pr.url === "string" && pr.url !== "")
+        prUrl = pr.url;
+    else if (result.toast && result.toast.cta && result.toast.cta.kind === "open_pr"
+            && typeof result.toast.cta.url === "string")
+        prUrl = result.toast.cta.url;
+    var text = parts.join(" — ");
+    return {
+        text: text === "" ? "Done" : text.charAt(0).toUpperCase() + text.slice(1),
+        prUrl: prUrl
+    };
 }
 
 function draftAfterOutcome(draft, outcome) {
@@ -985,6 +1227,7 @@ var exported = {
     isUltrathinkPrompt: isUltrathinkPrompt,
     traitsForPrompt: traitsForPrompt,
     applyTraitValue: applyTraitValue,
+    selectionForNewThread: selectionForNewThread,
     selectionForProject: selectionForProject,
     selectionForThread: selectionForThread,
     selectableProvidersForThread: selectableProvidersForThread,
@@ -999,8 +1242,16 @@ var exported = {
     historyPage: historyPage,
     truncateDiff: truncateDiff,
     canBeginAction: canBeginAction,
+    findErrorText: findErrorText,
     expireActionStates: expireActionStates,
-    draftAfterOutcome: draftAfterOutcome
+    draftAfterOutcome: draftAfterOutcome,
+    resolveThreadCwd: resolveThreadCwd,
+    buildGitActionPayload: buildGitActionPayload,
+    sanitizeVcsStatus: sanitizeVcsStatus,
+    gitActionVisible: gitActionVisible,
+    gitProgressLabel: gitProgressLabel,
+    gitFailureMessage: gitFailureMessage,
+    gitResultSummary: gitResultSummary
 };
 
 if (typeof module !== "undefined" && module.exports)
