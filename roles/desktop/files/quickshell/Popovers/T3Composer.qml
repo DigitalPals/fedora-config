@@ -2,8 +2,9 @@ import QtQuick
 import Quickshell
 import "../Common"
 
-// Fixed, text-only composer with provider/model/runtime/mode and every model
-// trait advertised by server.getConfig. The singleton owns all draft values.
+// Text-only composer with a local disclosure for provider/model/runtime/mode
+// and every model trait advertised by server.getConfig. The singleton owns
+// all draft values; disclosure state lasts only as long as this page instance.
 Column {
     id: root
 
@@ -29,6 +30,77 @@ Column {
     readonly property bool sending: T3Code.actionPending(actionKind, actionThreadId, "")
 
     spacing: 5
+
+    QtObject {
+        id: settingsPresentation
+
+        property bool expanded: false
+        readonly property bool narrow: root.width < 360
+        readonly property var accessOptions: [
+            { id: "approval-required", label: "Ask first" },
+            { id: "auto-accept-edits", label: "Auto edits" },
+            { id: "auto", label: "Auto" },
+            { id: "full-access", label: "Full access" }
+        ]
+        readonly property var interactionOptions: [
+            { id: "default", label: "Default" },
+            { id: "plan", label: "Plan" }
+        ]
+
+        function settingId(option) {
+            if (!option)
+                return "";
+            return String(option.id ?? option.instanceId ?? option.slug ?? option.value ?? "");
+        }
+
+        function settingLabel(option) {
+            if (!option)
+                return "";
+            return String(option.label ?? option.displayName ?? option.name ?? option.shortName
+                ?? settingId(option));
+        }
+
+        function displaySettingValue(value, fallback) {
+            const text = String(value ?? "").trim();
+            if (text === "")
+                return fallback;
+            return text.replace(/[-_]+/g, " ").replace(/\b\w/g,
+                character => character.toUpperCase());
+        }
+
+        function selectedSettingLabel(options, value, fallback) {
+            const found = (Array.isArray(options) ? options : [])
+                .find(option => settingId(option) === value);
+            return found ? settingLabel(found) : displaySettingValue(value, fallback);
+        }
+
+        function reasoningSummary() {
+            const descriptor = (Array.isArray(root.traits) ? root.traits : [])
+                .find(candidate => root.traitLabel(candidate) === "Reasoning");
+            if (!descriptor)
+                return "Reasoning —";
+            if (descriptor.type === "boolean")
+                return "Reasoning " + (descriptor.currentValue === true ? "On" : "Off");
+            return "Reasoning " + selectedSettingLabel(descriptor.options,
+                String(descriptor.currentValue ?? ""), "—");
+        }
+
+        function accessSummary() {
+            return selectedSettingLabel(accessOptions,
+                String(root.draft?.runtimeMode ?? "full-access"), "Unavailable");
+        }
+
+        function settingsSummary() {
+            const provider = selectedSettingLabel(root.providers,
+                String(root.draft?.instanceId ?? ""), "Provider unavailable");
+            const model = selectedSettingLabel(root.models,
+                String(root.draft?.model ?? ""), "Model unavailable");
+            const mode = selectedSettingLabel(interactionOptions,
+                String(root.draft?.interactionMode ?? "default"), "Default");
+            return provider + " / " + model + " · " + reasoningSummary()
+                + " · Mode " + mode;
+        }
+    }
 
     function focusPrompt() {
         promptEdit.forceActiveFocus();
@@ -106,134 +178,281 @@ Column {
         promptEdit.cursorPosition = position + 1;
     }
 
-    Row {
+    Rectangle {
+        id: settingsCard
+
         width: parent.width
-        spacing: 5
+        height: settingsColumn.implicitHeight + 2
+        radius: 8
+        color: Theme.cardFill
+        border.width: 1
+        border.color: Theme.hairlineSoft
 
-        T3Picker {
-            width: (parent.width - 5) * 0.42
-            label: "Provider"
-            value: root.draft.instanceId ?? ""
-            options: root.providers
-            openUpward: !root.newThread
-            enabled: root.editable && !root.sending && options.length > 0
-            onSelected: value => root.chooseProvider(value)
-        }
+        Column {
+            id: settingsColumn
 
-        T3Picker {
-            width: (parent.width - 5) * 0.58
-            label: "Model"
-            value: root.draft.model ?? ""
-            options: root.models
-            openUpward: !root.newThread
-            menuRows: 8
-            enabled: root.editable && !root.sending && options.length > 0
-            onSelected: value => root.chooseModel(value)
-        }
-    }
-
-    Row {
-        width: parent.width
-        spacing: 5
-
-        T3Picker {
-            width: root.showInteraction ? (parent.width - 5) / 2 : parent.width
-            label: "Access"
-            value: root.draft.runtimeMode ?? "full-access"
-            options: [
-                { id: "approval-required", label: "Ask first" },
-                { id: "auto-accept-edits", label: "Auto edits" },
-                { id: "auto", label: "Auto" },
-                { id: "full-access", label: "Full access" }
-            ]
-            openUpward: !root.newThread
-            enabled: root.editable && !root.sending
-            onSelected: value => root.chooseRuntime(value)
-        }
-
-        T3Picker {
-            visible: root.showInteraction
-            width: (parent.width - 5) / 2
-            label: "Mode"
-            value: root.draft.interactionMode ?? "default"
-            options: [
-                { id: "default", label: "Default" },
-                { id: "plan", label: "Plan" }
-            ]
-            openUpward: !root.newThread
-            enabled: root.editable && !root.sending
-            onSelected: value => root.chooseInteraction(value)
-        }
-    }
-
-    Repeater {
-        model: root.traits
-
-        delegate: Item {
-            id: traitRow
-
-            required property var modelData
-            width: root.width
-            height: modelData.type === "select" ? 30 : 26
-
-            T3Picker {
-                visible: traitRow.modelData.type === "select"
-                anchors.fill: parent
-                label: root.traitLabel(traitRow.modelData)
-                value: traitRow.modelData.currentValue ?? ""
-                options: traitRow.modelData.options ?? []
-                enabled: root.editable && !root.sending
-                onSelected: value => root.chooseTrait(traitRow.modelData.id, value)
-            }
+            x: 1
+            y: 1
+            width: parent.width - 2
 
             Rectangle {
-                visible: traitRow.modelData.type === "boolean"
-                anchors.fill: parent
-                radius: 6
-                color: traitMouse.containsMouse && root.editable
-                    ? Theme.hoverFillStrong : Theme.hoverFill
-                opacity: root.editable && !root.sending ? 1 : 0.48
-                activeFocusOnTab: root.editable && !root.sending
+                id: settingsHeader
+
+                width: parent.width
+                height: 43
+                radius: 7
+                color: settingsMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+                activeFocusOnTab: true
+                border.width: activeFocus ? 1 : 0
+                border.color: Theme.accent
 
                 Keys.onPressed: event => {
-                    if (!root.editable || root.sending)
-                        return;
                     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                             || event.key === Qt.Key_Space) {
-                        root.chooseTrait(traitRow.modelData.id,
-                            traitRow.modelData.currentValue !== true);
+                        settingsPresentation.expanded = !settingsPresentation.expanded;
                         event.accepted = true;
                     }
                 }
 
                 Text {
+                    id: settingsChevron
+
                     anchors.left: parent.left
                     anchors.leftMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.traitLabel(traitRow.modelData)
-                    font.family: Theme.fontSans
+                    anchors.top: parent.top
+                    anchors.topMargin: 6
+                    text: settingsPresentation.expanded ? "▾" : "▸"
+                    font.family: Theme.fontMono
                     font.pixelSize: 10
-                    color: Theme.textMid
+                    color: settingsPresentation.expanded ? Theme.accent : Theme.textLow
                 }
 
                 Text {
+                    id: settingsTitle
+
+                    anchors.left: settingsChevron.right
+                    anchors.leftMargin: 6
+                    anchors.right: accessText.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: settingsChevron.verticalCenter
+                    text: "Run settings"
+                    elide: Text.ElideRight
+                    font.family: Theme.fontSans
+                    font.pixelSize: 10
+                    font.weight: 650
+                    color: Theme.textHi
+                }
+
+                Text {
+                    id: accessText
+
                     anchors.right: parent.right
                     anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: traitRow.modelData.currentValue === true ? "ON" : "OFF"
-                    font.family: Theme.fontMono
+                    anchors.verticalCenter: settingsChevron.verticalCenter
+                    text: "Access · " + settingsPresentation.accessSummary()
+                    font.family: Theme.fontSans
                     font.pixelSize: 9
-                    font.weight: 600
-                    color: traitRow.modelData.currentValue === true ? Theme.accent : Theme.textDim
+                    font.weight: root.draft?.runtimeMode === "full-access" ? 650 : 500
+                    color: root.draft?.runtimeMode === "full-access"
+                        ? Theme.amber : Theme.textLow
+                }
+
+                Text {
+                    anchors.left: settingsTitle.left
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 5
+                    text: settingsPresentation.settingsSummary()
+                    elide: Text.ElideRight
+                    font.family: Theme.fontSans
+                    font.pixelSize: 9
+                    color: Theme.textDim
                 }
 
                 MouseArea {
-                    id: traitMouse
+                    id: settingsMouse
+
                     anchors.fill: parent
-                    enabled: root.editable && !root.sending
                     hoverEnabled: true
-                    onClicked: root.chooseTrait(traitRow.modelData.id,
-                        traitRow.modelData.currentValue !== true)
+                    onClicked: {
+                        settingsHeader.forceActiveFocus();
+                        settingsPresentation.expanded = !settingsPresentation.expanded;
+                    }
+                }
+            }
+
+            Item {
+                id: settingsBody
+
+                visible: settingsPresentation.expanded
+                width: parent.width
+                height: settingsFields.implicitHeight + 15
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 7
+                    anchors.right: parent.right
+                    anchors.rightMargin: 7
+                    anchors.top: parent.top
+                    height: 1
+                    color: Theme.hairlineSoft
+                }
+
+                Column {
+                    id: settingsFields
+
+                    x: 7
+                    y: 8
+                    width: parent.width - 14
+                    spacing: 5
+
+                    Flow {
+                        width: parent.width
+                        spacing: 5
+
+                        T3Picker {
+                            width: settingsPresentation.narrow
+                                ? parent.width : (parent.width - 5) / 2
+                            label: "Provider"
+                            value: root.draft.instanceId ?? ""
+                            options: root.providers
+                            openUpward: !root.newThread
+                            enabled: root.editable && !root.sending && options.length > 0
+                            onSelected: value => root.chooseProvider(value)
+                        }
+
+                        T3Picker {
+                            width: settingsPresentation.narrow
+                                ? parent.width : (parent.width - 5) / 2
+                            label: "Model"
+                            value: root.draft.model ?? ""
+                            options: root.models
+                            openUpward: !root.newThread
+                            menuRows: 8
+                            enabled: root.editable && !root.sending && options.length > 0
+                            onSelected: value => root.chooseModel(value)
+                        }
+                    }
+
+                    Flow {
+                        width: parent.width
+                        spacing: 5
+
+                        T3Picker {
+                            width: settingsPresentation.narrow || !root.showInteraction
+                                ? parent.width : (parent.width - 5) / 2
+                            label: "Access"
+                            value: root.draft.runtimeMode ?? "full-access"
+                            options: settingsPresentation.accessOptions
+                            openUpward: !root.newThread
+                            enabled: root.editable && !root.sending
+                            onSelected: value => root.chooseRuntime(value)
+                        }
+
+                        T3Picker {
+                            visible: root.showInteraction
+                            width: settingsPresentation.narrow
+                                ? parent.width : (parent.width - 5) / 2
+                            label: "Mode"
+                            value: root.draft.interactionMode ?? "default"
+                            options: settingsPresentation.interactionOptions
+                            openUpward: !root.newThread
+                            enabled: root.editable && !root.sending
+                            onSelected: value => root.chooseInteraction(value)
+                        }
+                    }
+
+                    Flow {
+                        visible: root.traits.length > 0
+                        width: parent.width
+                        spacing: 5
+
+                        Repeater {
+                            model: root.traits
+
+                            delegate: Item {
+                                id: traitRow
+
+                                required property var modelData
+                                width: settingsPresentation.narrow
+                                    ? parent.width : (parent.width - 5) / 2
+                                height: modelData.type === "select" ? 30 : 26
+
+                                T3Picker {
+                                    visible: traitRow.modelData.type === "select"
+                                    anchors.fill: parent
+                                    label: root.traitLabel(traitRow.modelData)
+                                    value: traitRow.modelData.currentValue ?? ""
+                                    options: traitRow.modelData.options ?? []
+                                    enabled: root.editable && !root.sending
+                                    onSelected: value => root.chooseTrait(
+                                        traitRow.modelData.id, value)
+                                }
+
+                                Rectangle {
+                                    id: traitToggle
+
+                                    visible: traitRow.modelData.type === "boolean"
+                                    anchors.fill: parent
+                                    radius: 6
+                                    color: traitMouse.containsMouse && root.editable
+                                        ? Theme.hoverFillStrong : Theme.hoverFill
+                                    opacity: root.editable && !root.sending ? 1 : 0.48
+                                    activeFocusOnTab: root.editable && !root.sending
+                                    border.width: activeFocus ? 1 : 0
+                                    border.color: Theme.accent
+
+                                    Keys.onPressed: event => {
+                                        if (!root.editable || root.sending)
+                                            return;
+                                        if (event.key === Qt.Key_Return
+                                                || event.key === Qt.Key_Enter
+                                                || event.key === Qt.Key_Space) {
+                                            root.chooseTrait(traitRow.modelData.id,
+                                                traitRow.modelData.currentValue !== true);
+                                            event.accepted = true;
+                                        }
+                                    }
+
+                                    Text {
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: root.traitLabel(traitRow.modelData)
+                                        font.family: Theme.fontSans
+                                        font.pixelSize: 10
+                                        color: Theme.textMid
+                                    }
+
+                                    Text {
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: traitRow.modelData.currentValue === true ? "ON" : "OFF"
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: 9
+                                        font.weight: 600
+                                        color: traitRow.modelData.currentValue === true
+                                            ? Theme.accent : Theme.textDim
+                                    }
+
+                                    MouseArea {
+                                        id: traitMouse
+
+                                        anchors.fill: parent
+                                        enabled: root.editable && !root.sending
+                                        hoverEnabled: true
+                                        onClicked: {
+                                            traitToggle.forceActiveFocus();
+                                            root.chooseTrait(traitRow.modelData.id,
+                                                traitRow.modelData.currentValue !== true);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -398,5 +617,8 @@ Column {
         function onNewThreadDraftChanged() { if (root.newThread) root.syncPrompt(); }
     }
 
-    Component.onCompleted: syncPrompt()
+    Component.onCompleted: {
+        settingsPresentation.expanded = newThread;
+        syncPrompt();
+    }
 }

@@ -129,6 +129,41 @@ test("classification gives snooze precedence and preserves active chip counts", 
         done: result.doneCount }, { running: 1, attention: 1, done: 1 });
 });
 
+test("working time follows the live turn and falls back through valid timestamps", () => {
+    const startedAt = "2026-08-03T11:42:00.000Z";
+    const requestedAt = "2026-08-03T11:41:00.000Z";
+    const sessionAt = "2026-08-03T11:40:00.000Z";
+    assert.equal(H.resolveWorkingStartedAt(thread({
+        latestTurn: { state: "running", startedAt, requestedAt, completedAt: null },
+        session: { status: "running", updatedAt: sessionAt },
+    })), startedAt);
+    assert.equal(H.resolveWorkingStartedAt(thread({
+        latestTurn: { state: "running", startedAt: "invalid", requestedAt,
+            completedAt: null },
+        session: { status: "running", updatedAt: sessionAt },
+    })), requestedAt);
+    assert.equal(H.resolveWorkingStartedAt(thread({
+        latestTurn: { state: "completed", startedAt, completedAt: "2026-08-03T11:59:00.000Z" },
+        session: { status: "running", updatedAt: sessionAt },
+    })), sessionAt);
+
+    const projected = H.classifyThreads({ running: thread({
+        id: "running",
+        latestTurn: { state: "running", startedAt, requestedAt, completedAt: null },
+        session: { status: "running", updatedAt: sessionAt },
+    }) }, {}, NOW, 3).active[0];
+    assert.equal(projected.workingStartedAt, startedAt);
+});
+
+test("working duration labels match inbox and conversation precision", () => {
+    assert.equal(H.formatWorkingDurationLabel(59_999), "59s");
+    assert.equal(H.formatWorkingDurationLabel(60_000), "1m");
+    assert.equal(H.formatWorkingDurationLabel(65 * 60_000), "1h 5m");
+    assert.equal(H.formatWorkingTimerLabel(90_000), "1m 30s");
+    assert.equal(H.formatWorkingTimerLabel(60 * 60_000), "1h");
+    assert.equal(H.formatWorkingTimerLabel(-1_000), "0s");
+});
+
 test("running and awaiting-user threads cannot settle or snooze", () => {
     assert.equal(H.canOperateLifecycle(thread({ session: { status: "running" } }), NOW), false);
     assert.equal(H.canOperateLifecycle(thread({ hasPendingApprovals: true }), NOW), false);

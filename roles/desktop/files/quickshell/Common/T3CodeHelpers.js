@@ -12,6 +12,54 @@ function parseMs(value) {
     return typeof value === "string" && value !== "" ? Date.parse(value) : NaN;
 }
 
+function firstValidTimestamp() {
+    for (var i = 0; i < arguments.length; i++) {
+        if (!isNaN(parseMs(arguments[i])))
+            return arguments[i];
+    }
+    return null;
+}
+
+// Keep the elapsed clock anchored to the running turn, including the short
+// period before the session adopts it. A session transition is the fallback
+// when the turn projection is late or has malformed timestamps.
+function resolveWorkingStartedAt(thread) {
+    var turn = thread && thread.latestTurn ? thread.latestTurn : null;
+    var session = thread && thread.session ? thread.session : null;
+    if (turn && turn.completedAt === null)
+        return firstValidTimestamp(turn.startedAt, turn.requestedAt,
+            session ? session.updatedAt : null);
+    return firstValidTimestamp(session ? session.updatedAt : null);
+}
+
+// Compact duration used by an inbox row, matching T3 Code's sidebar label.
+function formatWorkingDurationLabel(elapsedMs) {
+    var seconds = typeof elapsedMs === "number" && isFinite(elapsedMs)
+        ? Math.max(0, Math.floor(elapsedMs / 1000)) : 0;
+    if (seconds < 60)
+        return seconds + "s";
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60)
+        return minutes + "m";
+    return Math.floor(minutes / 60) + "h " + (minutes % 60) + "m";
+}
+
+// Conversation-tail variant keeps seconds visible until a full minute rolls
+// over, as in T3 Code's live "Working for …" row.
+function formatWorkingTimerLabel(elapsedMs) {
+    var seconds = typeof elapsedMs === "number" && isFinite(elapsedMs)
+        ? Math.max(0, Math.floor(elapsedMs / 1000)) : 0;
+    if (seconds < 60)
+        return seconds + "s";
+    var hours = Math.floor(seconds / 3600);
+    var minutes = Math.floor((seconds % 3600) / 60);
+    var remainingSeconds = seconds % 60;
+    if (hours > 0)
+        return minutes > 0 ? hours + "h " + minutes + "m" : hours + "h";
+    return remainingSeconds > 0
+        ? minutes + "m " + remainingSeconds + "s" : minutes + "m";
+}
+
 function lastActivityMs(thread) {
     var turn = thread && thread.latestTurn ? thread.latestTurn : null;
     var stamps = [thread ? thread.latestUserMessageAt : null,
@@ -153,6 +201,7 @@ function projectThread(thread, projectMap, nowMs, lifecycle) {
         pendingInput: thread.hasPendingUserInput === true,
         planReady: thread.hasActionableProposedPlan === true,
         sessionStatus: sessionStatus,
+        workingStartedAt: cls === "running" ? resolveWorkingStartedAt(thread) : null,
         canPrompt: lifecycle === "active" && canPrompt(thread, nowMs),
         canLifecycle: canOperateLifecycle(thread, nowMs),
         started: thread.latestTurn !== null && thread.latestTurn !== undefined
@@ -846,6 +895,10 @@ var exported = {
     MAX_DIFF_CHARS: MAX_DIFF_CHARS,
     MAX_DIFF_LINES: MAX_DIFF_LINES,
     parseMs: parseMs,
+    firstValidTimestamp: firstValidTimestamp,
+    resolveWorkingStartedAt: resolveWorkingStartedAt,
+    formatWorkingDurationLabel: formatWorkingDurationLabel,
+    formatWorkingTimerLabel: formatWorkingTimerLabel,
     lastActivityMs: lastActivityMs,
     hasQueuedTurnStart: hasQueuedTurnStart,
     isEffectivelySettled: isEffectivelySettled,

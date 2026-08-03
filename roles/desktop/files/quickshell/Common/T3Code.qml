@@ -131,8 +131,10 @@ Singleton {
     readonly property int maxPromptChars: Helpers.MAX_PROMPT_CHARS
 
     // Bumped once a minute so settledness and the relative time labels
-    // follow the clock — both move without any server event.
+    // follow the clock — both move without any server event. The working
+    // clock ticks independently so a live duration does not rebuild lists.
     property double nowMs: Date.now()
+    property double workingNowMs: Date.now()
 
     function parseMs(iso) {
         return Helpers.parseMs(iso);
@@ -200,6 +202,23 @@ Singleton {
         if (s < 86400)
             return Math.round(s / 3600) + "h";
         return Math.round(s / 86400) + "d";
+    }
+
+    // These read workingNowMs so visible inbox/thread labels update without
+    // waiting for orchestration traffic. Invalid timestamps deliberately
+    // produce no duration; callers can still show the Working state itself.
+    function workingDurationLabel(iso) {
+        const startedMs = Helpers.parseMs(iso);
+        if (isNaN(startedMs))
+            return "";
+        return Helpers.formatWorkingDurationLabel(workingNowMs - startedMs);
+    }
+
+    function workingTimerLabel(iso) {
+        const startedMs = Helpers.parseMs(iso);
+        if (isNaN(startedMs))
+            return "";
+        return Helpers.formatWorkingTimerLabel(workingNowMs - startedMs);
     }
 
     // Previous class per thread, for transition notifications.
@@ -296,6 +315,13 @@ Singleton {
             root.nowMs = Date.now();
             root.rebuild();
         }
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.state === "connected" && root.runningCount > 0
+        onTriggered: root.workingNowMs = Date.now()
     }
 
     // A session asking for input is always worth a toast; finishing or

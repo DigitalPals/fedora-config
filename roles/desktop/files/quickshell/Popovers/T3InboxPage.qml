@@ -168,11 +168,20 @@ Column {
                                 ? "settled by you" : "settled by inactivity");
                         else if (entry.thread.planReady)
                             parts.push("plan ready");
+                        else if (entry.thread.cls === "running") {
+                            parts.push("Working");
+                            const duration = T3Code.workingDurationLabel(
+                                entry.thread.workingStartedAt);
+                            if (duration !== "")
+                                parts.push(duration);
+                        }
                         else if (entry.thread.sessionStatus !== "")
                             parts.push(entry.thread.sessionStatus);
-                        const relative = T3Code.relTime(entry.thread.updatedAt);
-                        if (relative !== "")
-                            parts.push(relative);
+                        if (entry.thread.cls !== "running") {
+                            const relative = T3Code.relTime(entry.thread.updatedAt);
+                            if (relative !== "")
+                                parts.push(relative);
+                        }
                         return parts.join(" · ");
                     }
                     elide: Text.ElideRight
@@ -401,7 +410,7 @@ Column {
                     delegate: ThreadRow { required property var modelData; thread: modelData }
                 }
 
-                GroupTitle { visible: root.runningThreads.length > 0; text: "RUNNING" }
+                GroupTitle { visible: root.runningThreads.length > 0; text: "WORKING" }
                 Repeater {
                     model: root.runningThreads
                     delegate: ThreadRow { required property var modelData; thread: modelData }

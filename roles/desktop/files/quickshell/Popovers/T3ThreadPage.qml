@@ -16,8 +16,9 @@ Column {
 
     readonly property var thread: T3Code.projectedThread(threadId)
     readonly property var history: T3Code.historyPage(T3Code.detailMessages, visibleMessages)
-    readonly property bool activeTurn: thread !== null && (thread.cls === "running"
-        || thread.sessionStatus === "starting" || thread.sessionStatus === "running")
+    readonly property bool working: thread !== null && thread.cls === "running"
+    readonly property string workingTime: working
+        ? T3Code.workingTimerLabel(thread.workingStartedAt) : ""
     readonly property bool hasRequests: thread !== null && (thread.pendingApprovals || thread.pendingInput
         || T3Code.detailApprovals.length > 0 || T3Code.detailPendingInputs.length > 0)
     readonly property bool composerIdle: thread !== null && thread.lifecycle === "active"
@@ -276,17 +277,6 @@ Column {
                 spacing: 4
 
                 Action {
-                    visible: root.activeTurn
-                    label: T3Code.actionPending("interrupt", root.threadId, "")
-                        ? "Interrupting…" : "Interrupt turn"
-                    enabled: T3Code.canDispatch
-                        && !T3Code.actionPending("interrupt", root.threadId, "")
-                    tint: Theme.redText
-                    fill: Theme.redBg
-                    onTriggered: T3Code.interrupt(root.threadId)
-                }
-
-                Action {
                     visible: T3Code.detailSession !== null
                         && T3Code.detailSession.status !== "stopped"
                     label: root.confirmStop ? "Confirm stop session" : "Stop session"
@@ -438,8 +428,44 @@ Column {
                     delegate: MessageCard { required property var modelData; message: modelData }
                 }
 
+                Item {
+                    visible: root.working
+                    width: parent.width
+                    height: 18
+
+                    Row {
+                        x: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 6
+                            height: 6
+                            radius: 3
+                            color: Theme.accent
+
+                            SequentialAnimation on opacity {
+                                running: root.working
+                                loops: Animation.Infinite
+                                NumberAnimation { to: 0.3; duration: 750 }
+                                NumberAnimation { to: 1; duration: 750 }
+                            }
+                        }
+
+                        Text {
+                            text: root.workingTime !== ""
+                                ? "Working for " + root.workingTime : "Working…"
+                            font.family: Theme.fontMono
+                            font.pixelSize: 9
+                            color: Theme.textDim
+                        }
+                    }
+                }
+
                 Text {
-                    visible: !T3Code.detailLoading && T3Code.detailMessages.length === 0
+                    visible: !root.working && !T3Code.detailLoading
+                        && T3Code.detailMessages.length === 0
                     width: parent.width
                     topPadding: 10
                     bottomPadding: 10
