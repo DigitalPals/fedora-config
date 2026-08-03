@@ -6,5 +6,6 @@ singleton Usage Usage.qml
 singleton T3Code T3Code.qml
 singleton Notifs Notifs.qml
 singleton SysInfo SysInfo.qml
+singleton Osd Osd.qml
 singleton Weather Weather.qml
 singleton Wallpaper Wallpaper.qml

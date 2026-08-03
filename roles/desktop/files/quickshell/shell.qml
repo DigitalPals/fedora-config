@@ -23,6 +23,16 @@ ShellRoot {
         }
     }
 
+    // Pinged by brightness-control after brightnessctl runs; volume needs
+    // no IPC because the OSD watches Pipewire directly.
+    IpcHandler {
+        target: "osd"
+
+        function brightness(): void {
+            Osd.brightnessChanged();
+        }
+    }
+
     // A popout belongs to the bar that spawned it; when focus moves to
     // another output that bar goes away, so dismiss the panel with it.
     Connections {
@@ -105,6 +115,7 @@ ShellRoot {
 
     LauncherWindow {}
     NotificationToasts {}
+    OsdWindow {}
 
     // Touch the singletons so notifications collect and usage polls from
     // session start, not first popover open.

@@ -203,6 +203,11 @@ Singleton {
         tsProc.running = true;
     }
 
+    function refreshBrightness() {
+        brightnessProc.running = false;
+        brightnessProc.running = true;
+    }
+
     // CPU / RAM sampling for the Control Center stat cards.
     Timer {
         interval: 5000
