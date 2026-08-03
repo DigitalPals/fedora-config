@@ -29,7 +29,7 @@ Singleton {
     readonly property var defaultIsland: ({
             control: "right",
             calendar: "center",
-            media: "center",
+            media: "left",
             weather: "center",
             usage: "right",
             t3code: "right",

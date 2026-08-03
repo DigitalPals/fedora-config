@@ -201,7 +201,7 @@ PanelWindow {
         anchors.leftMargin: Theme.barSideMargin
         anchors.rightMargin: Theme.barSideMargin
 
-        // LEFT — workspaces
+        // LEFT — workspaces + media
         Cluster {
             id: leftCluster
             anchors.left: parent.left
@@ -209,9 +209,69 @@ PanelWindow {
             spacing: 2
 
             Workspaces {}
+
+            Divider {
+                visible: barWindow.mediaVisible
+            }
+
+            Rectangle {
+                id: mediaChip
+                visible: barWindow.mediaVisible
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: mediaRow.implicitWidth + 18
+                implicitHeight: 26
+                radius: Theme.chipRadius
+                color: barWindow.popoutOpen("media") ? Theme.hoverFillStrong : mediaMouse.containsMouse ? Theme.hoverFill : "transparent"
+
+                Row {
+                    id: mediaRow
+                    anchors.centerIn: parent
+                    spacing: 7
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: barWindow.playerGlyph(barWindow.player)
+                        font.family: Theme.fontIcon
+                        font.pixelSize: 13
+                        color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.icon
+                    }
+
+                    Text {
+                        visible: barWindow.layoutMode > 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: {
+                            if (!barWindow.player)
+                                return "";
+                            const artist = barWindow.player.trackArtist;
+                            return barWindow.player.trackTitle + (artist ? " — " + artist : "");
+                        }
+                        font.family: Theme.fontSans
+                        font.pixelSize: 12
+                        color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.textMid
+                        elide: Text.ElideRight
+                        width: barWindow.layoutMode >= 2 ? implicitWidth : 120
+                    }
+                }
+
+                MouseArea {
+                    id: mediaMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onEntered: barWindow.hoverOpen("media", "left", mediaChip)
+                    onExited: barWindow.cancelHover("media")
+                    onClicked: barWindow.togglePopout("media", "left", mediaChip)
+                }
+
+                BarTooltip {
+                    hovered: mediaMouse.containsMouse
+                    text: barWindow.player ? barWindow.player.trackTitle : "Media"
+                    y: parent.height + 6
+                    x: (parent.width - width) / 2
+                }
+            }
         }
 
-        // CENTER — clock + media
+        // CENTER — clock + weather
         Cluster {
             id: centerCluster
             anchors.horizontalCenter: parent.horizontalCenter
@@ -241,9 +301,8 @@ PanelWindow {
                     }
 
                     Text {
-                        visible: barWindow.layoutMode >= 2
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Qt.formatDateTime(clock.date, "ddd MMM d")
+                        text: Qt.formatDateTime(clock.date, "ddd dd")
                         font.family: Theme.fontSans
                         font.pixelSize: 12
                         color: barWindow.popoutOpen("calendar") || clockMouse.containsMouse ? Theme.textMid : Theme.textLow
@@ -325,66 +384,6 @@ PanelWindow {
                 BarTooltip {
                     hovered: weatherMouse.containsMouse
                     text: Weather.place + " · " + Weather.condition
-                    y: parent.height + 6
-                    x: (parent.width - width) / 2
-                }
-            }
-
-            Divider {
-                visible: barWindow.mediaVisible
-            }
-
-            Rectangle {
-                id: mediaChip
-                visible: barWindow.mediaVisible
-                anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: mediaRow.implicitWidth + 18
-                implicitHeight: 26
-                radius: Theme.chipRadius
-                color: barWindow.popoutOpen("media") ? Theme.hoverFillStrong : mediaMouse.containsMouse ? Theme.hoverFill : "transparent"
-
-                Row {
-                    id: mediaRow
-                    anchors.centerIn: parent
-                    spacing: 7
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: barWindow.playerGlyph(barWindow.player)
-                        font.family: Theme.fontIcon
-                        font.pixelSize: 13
-                        color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.icon
-                    }
-
-                    Text {
-                        visible: barWindow.layoutMode > 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: {
-                            if (!barWindow.player)
-                                return "";
-                            const artist = barWindow.player.trackArtist;
-                            return barWindow.player.trackTitle + (artist ? " — " + artist : "");
-                        }
-                        font.family: Theme.fontSans
-                        font.pixelSize: 12
-                        color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.textMid
-                        elide: Text.ElideRight
-                        width: barWindow.layoutMode >= 2 ? implicitWidth : 120
-                    }
-                }
-
-                MouseArea {
-                    id: mediaMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("media", "center", mediaChip)
-                    onExited: barWindow.cancelHover("media")
-                    onClicked: barWindow.togglePopout("media", "center", mediaChip)
-                }
-
-                BarTooltip {
-                    hovered: mediaMouse.containsMouse
-                    text: barWindow.player ? barWindow.player.trackTitle : "Media"
                     y: parent.height + 6
                     x: (parent.width - width) / 2
                 }
