@@ -10,6 +10,7 @@ Column {
     property int visibleMessages: 10
     property bool confirmStop: false
     property bool snoozeOpen: false
+    property bool menuOpen: false
     property bool followTail: true
     signal backRequested()
     signal newPlanRequested(var plan)
@@ -80,7 +81,7 @@ Column {
             anchors.centerIn: parent
             text: action.label
             font.family: Theme.fontSans
-            font.pixelSize: 9
+            font.pixelSize: 10
             font.weight: 600
             color: action.tint
         }
@@ -120,61 +121,79 @@ Column {
                 width: parent.width
                 text: card.heading
                 font.family: Theme.fontSans
-                font.pixelSize: 9
+                font.pixelSize: 10
                 font.weight: 650
-                font.letterSpacing: 0.45
+                font.letterSpacing: 0.7
                 color: card.headingColor
             }
 
             Text {
                 width: parent.width
                 text: card.body
-                wrapMode: Text.WordWrap
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                lineHeight: 1.4
                 maximumLineCount: 5
                 elide: Text.ElideRight
                 font.family: Theme.fontSans
-                font.pixelSize: 10
+                font.pixelSize: 11
                 color: Theme.textMid
             }
         }
     }
 
-    component MessageCard: Rectangle {
+    // Your messages get a tinted card; T3's replies are plain prose on a
+    // 2px rail (design 5c). Prose wraps at word boundaries — mid-word breaks
+    // only happen when a single token exceeds the line.
+    component MessageCard: Item {
         id: messageCard
         required property var message
         property bool expanded: false
+        readonly property bool fromUser: message.role === "user"
         readonly property bool longMessage: typeof message.text === "string"
             && (message.text.length > 700 || message.text.split("\n").length > 8)
 
         width: parent ? parent.width : 0
-        height: messageColumn.implicitHeight + 14
-        radius: 8
-        color: message.role === "user" ? Theme.accentBgSoft : Theme.cardFill
-        border.width: 1
-        border.color: message.role === "user"
-            ? Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.2) : Theme.hairlineSoft
+        height: messageColumn.implicitHeight + (fromUser ? 20 : 6)
+
+        Rectangle {
+            visible: messageCard.fromUser
+            anchors.fill: parent
+            radius: 10
+            color: Theme.accentBgSoft
+            border.width: 1
+            border.color: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.18)
+        }
+
+        Rectangle {
+            visible: !messageCard.fromUser
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 2
+            radius: 1
+            color: Qt.rgba(1, 1, 1, 0.10)
+        }
 
         Column {
             id: messageColumn
-            x: 7
-            y: 7
-            width: parent.width - 14
+            x: messageCard.fromUser ? 11 : 13
+            y: messageCard.fromUser ? 10 : 3
+            width: parent.width - (messageCard.fromUser ? 22 : 15)
             spacing: 4
 
             Item {
                 width: parent.width
-                height: 14
+                height: 15
 
                 Text {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    text: messageCard.message.role === "user" ? "YOU"
-                        : messageCard.message.role === "assistant" ? "T3 CODE" : "SYSTEM"
+                    text: messageCard.fromUser ? "You"
+                        : messageCard.message.role === "assistant" ? "T3 Code" : "System"
                     font.family: Theme.fontSans
-                    font.pixelSize: 8
-                    font.weight: 650
-                    font.letterSpacing: 0.5
-                    color: messageCard.message.role === "user" ? Theme.accent : Theme.textDim
+                    font.pixelSize: 10
+                    font.weight: 600
+                    color: messageCard.fromUser ? Theme.accent : Theme.textLow
                 }
 
                 Text {
@@ -184,7 +203,7 @@ Column {
                         : T3Code.relTime(messageCard.message.updatedAt
                             ?? messageCard.message.createdAt)
                     font.family: Theme.fontMono
-                    font.pixelSize: 8
+                    font.pixelSize: 10
                     color: Theme.textDim
                 }
             }
@@ -192,11 +211,12 @@ Column {
             Text {
                 width: parent.width
                 text: messageCard.message.text ?? ""
-                wrapMode: Text.WrapAnywhere
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                lineHeight: 1.4
                 maximumLineCount: messageCard.expanded ? 100000 : 8
                 elide: messageCard.expanded ? Text.ElideNone : Text.ElideRight
                 font.family: Theme.fontSans
-                font.pixelSize: 10
+                font.pixelSize: 12
                 color: Theme.textMid
             }
 
@@ -208,133 +228,192 @@ Column {
         }
     }
 
+    component IconButton: Rectangle {
+        id: iconButton
+        property string glyph: ""
+        property color tint: Theme.textMid
+        signal triggered()
+
+        width: 26
+        height: 26
+        radius: 7
+        color: iconMouse.containsMouse && enabled ? Theme.hoverFillStrong : Theme.hoverFill
+        opacity: enabled ? 1 : 0.4
+        activeFocusOnTab: enabled && visible
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+
+        Keys.onPressed: event => {
+            if (!iconButton.enabled)
+                return;
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                iconButton.triggered();
+                event.accepted = true;
+            }
+        }
+
+        Text {
+            anchors.centerIn: parent
+            text: iconButton.glyph
+            font.family: Theme.fontSans
+            font.pixelSize: 13
+            font.weight: 600
+            color: iconButton.tint
+        }
+
+        MouseArea {
+            id: iconMouse
+            anchors.fill: parent
+            enabled: iconButton.enabled
+            hoverEnabled: true
+            onClicked: iconButton.triggered()
+        }
+    }
+
+    component MenuEntry: Rectangle {
+        id: menuEntry
+        property string label: ""
+        property color tint: Theme.textMid
+        signal triggered()
+
+        width: parent ? parent.width : 0
+        height: 28
+        radius: 6
+        color: entryMouse.containsMouse && enabled ? Theme.hoverFillStrong : "transparent"
+        opacity: enabled ? 1 : 0.4
+        activeFocusOnTab: enabled && visible
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+
+        Keys.onPressed: event => {
+            if (!menuEntry.enabled)
+                return;
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                menuEntry.triggered();
+                event.accepted = true;
+            }
+        }
+
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 9
+            anchors.right: parent.right
+            anchors.rightMargin: 9
+            anchors.verticalCenter: parent.verticalCenter
+            text: menuEntry.label
+            elide: Text.ElideRight
+            font.family: Theme.fontSans
+            font.pixelSize: 11
+            font.weight: 500
+            color: menuEntry.tint
+        }
+
+        MouseArea {
+            id: entryMouse
+            anchors.fill: parent
+            enabled: menuEntry.enabled
+            hoverEnabled: true
+            onClicked: menuEntry.triggered()
+        }
+    }
+
+    // Left-aligned header; Stop / Snooze / Settle live behind ⋯ so the
+    // always-on row is just navigation (design 5c).
     Item {
         id: header
+        z: 10
         width: parent.width
         height: headerColumn.implicitHeight
+
+        readonly property bool sessionLive: T3Code.detailSession !== null
+            && T3Code.detailSession.status !== "stopped"
+        readonly property bool canSnoozeHere: root.thread !== null
+            && root.thread.lifecycle === "active" && T3Code.supportsSnooze
+        readonly property bool canWakeHere: root.thread !== null
+            && root.thread.lifecycle === "snoozed" && T3Code.supportsSnooze
+        readonly property bool canSettleHere: root.thread !== null
+            && root.thread.lifecycle === "active" && T3Code.supportsSettlement
+        readonly property bool canUnsettleHere: root.thread !== null
+            && root.thread.lifecycle === "settled" && T3Code.supportsSettlement
+        readonly property bool hasMenuItems: sessionLive || canSnoozeHere || canWakeHere
+            || canSettleHere || canUnsettleHere
 
         Column {
             id: headerColumn
             width: parent.width
-            spacing: 4
+            spacing: 5
 
             Item {
                 width: parent.width
-                height: 33
+                height: 34
 
-                Action {
+                IconButton {
+                    id: backButton
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    label: "← Inbox"
+                    glyph: "←"
                     onTriggered: root.backRequested()
                 }
 
                 Column {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 75
-                    anchors.right: openAction.left
-                    anchors.rightMargin: 6
+                    anchors.left: backButton.right
+                    anchors.leftMargin: 9
+                    anchors.right: openButton.left
+                    anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 1
+                    spacing: 2
 
                     Text {
                         width: parent.width
                         text: root.thread ? root.thread.title : "Thread"
                         elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontSans
-                        font.pixelSize: 12
-                        font.weight: 700
+                        font.pixelSize: 13
+                        font.weight: 600
                         color: Theme.textHi
                     }
 
                     Text {
                         width: parent.width
-                        text: root.thread ? root.thread.project : ""
+                        text: {
+                            const parts = [];
+                            if (root.thread && root.thread.project !== "")
+                                parts.push(root.thread.project);
+                            const selection = T3Code.threadSelectionLabel(root.threadId);
+                            if (selection !== "")
+                                parts.push(selection);
+                            return parts.join(" · ");
+                        }
                         elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontSans
-                        font.pixelSize: 9
+                        font.pixelSize: 10
                         color: Theme.textDim
                     }
                 }
 
-                Action {
-                    id: openAction
-                    anchors.right: parent.right
+                IconButton {
+                    id: openButton
+                    anchors.right: menuButton.visible ? menuButton.left : parent.right
+                    anchors.rightMargin: menuButton.visible ? 6 : 0
                     anchors.verticalCenter: parent.verticalCenter
-                    label: "Open ↗"
+                    glyph: "↗"
                     tint: Theme.accent
                     onTriggered: {
                         Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
                         Popouts.close();
                     }
                 }
-            }
 
-            Flow {
-                width: parent.width
-                spacing: 4
-
-                Action {
-                    visible: T3Code.detailSession !== null
-                        && T3Code.detailSession.status !== "stopped"
-                    label: root.confirmStop ? "Confirm stop session" : "Stop session"
-                    enabled: T3Code.canDispatch
-                        && !T3Code.actionPending("session-stop", root.threadId, "")
-                    tint: root.confirmStop ? Theme.redText : Theme.textLow
-                    fill: root.confirmStop ? Theme.redBg : Theme.hoverFill
-                    onTriggered: {
-                        if (!root.confirmStop) {
-                            root.confirmStop = true;
-                            stopConfirmTimer.restart();
-                        } else {
-                            root.confirmStop = false;
-                            T3Code.stopSession(root.threadId);
-                        }
-                    }
-                }
-
-                Action {
-                    visible: root.thread !== null && root.thread.lifecycle === "active"
-                        && T3Code.supportsSnooze
-                    label: "Snooze"
-                    enabled: T3Code.canDispatch && root.thread !== null && root.thread.canLifecycle
-                    onTriggered: root.snoozeOpen = !root.snoozeOpen
-                }
-
-                Action {
-                    visible: root.thread !== null && root.thread.lifecycle === "snoozed"
-                        && T3Code.supportsSnooze
-                    label: T3Code.actionPending("unsnooze", root.threadId, "") ? "Waking…" : "Wake now"
-                    enabled: T3Code.canDispatch
-                        && !T3Code.actionPending("unsnooze", root.threadId, "")
-                    tint: Theme.accent
-                    fill: Theme.accentBg
-                    onTriggered: T3Code.unsnooze(root.threadId)
-                }
-
-                Action {
-                    visible: root.thread !== null && root.thread.lifecycle === "active"
-                        && T3Code.supportsSettlement
-                    label: T3Code.actionPending("settle", root.threadId, "") ? "Settling…" : "Settle"
-                    enabled: T3Code.canDispatch && root.thread !== null && root.thread.canLifecycle
-                        && !T3Code.actionPending("settle", root.threadId, "")
-                    tint: Theme.accent
-                    fill: Theme.accentBg
-                    onTriggered: T3Code.settle(root.threadId)
-                }
-
-                Action {
-                    visible: root.thread !== null && root.thread.lifecycle === "settled"
-                        && T3Code.supportsSettlement
-                    label: T3Code.actionPending("unsettle", root.threadId, "")
-                        ? "Unsettling…" : "Unsettle"
-                    enabled: T3Code.canDispatch
-                        && !T3Code.actionPending("unsettle", root.threadId, "")
-                    tint: Theme.accent
-                    fill: Theme.accentBg
-                    onTriggered: T3Code.unsettle(root.threadId)
+                IconButton {
+                    id: menuButton
+                    visible: header.hasMenuItems
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    glyph: "⋯"
+                    tint: root.menuOpen ? Theme.accent : Theme.textMid
+                    onTriggered: root.menuOpen = !root.menuOpen
                 }
             }
 
@@ -356,7 +435,96 @@ Column {
                     }
                 }
             }
+        }
 
+        Rectangle {
+            id: overflowMenu
+            visible: root.menuOpen && header.hasMenuItems
+            z: 100
+            anchors.right: parent.right
+            y: 32
+            width: 164
+            height: menuColumn.implicitHeight + 10
+            radius: 8
+            color: "#1b1c22"
+            border.width: 1
+            border.color: Theme.popBorder
+
+            Column {
+                id: menuColumn
+                x: 5
+                y: 5
+                width: parent.width - 10
+
+                MenuEntry {
+                    visible: header.sessionLive
+                    label: root.confirmStop ? "Confirm stop session"
+                        : T3Code.actionPending("session-stop", root.threadId, "")
+                            ? "Stopping…" : "Stop session"
+                    tint: root.confirmStop ? Theme.redText : Theme.textMid
+                    enabled: T3Code.canDispatch
+                        && !T3Code.actionPending("session-stop", root.threadId, "")
+                    onTriggered: {
+                        if (!root.confirmStop) {
+                            root.confirmStop = true;
+                            stopConfirmTimer.restart();
+                        } else {
+                            root.confirmStop = false;
+                            root.menuOpen = false;
+                            T3Code.stopSession(root.threadId);
+                        }
+                    }
+                }
+
+                MenuEntry {
+                    visible: header.canSnoozeHere
+                    label: "Snooze…"
+                    enabled: T3Code.canDispatch && root.thread !== null && root.thread.canLifecycle
+                    onTriggered: {
+                        root.menuOpen = false;
+                        root.snoozeOpen = true;
+                    }
+                }
+
+                MenuEntry {
+                    visible: header.canWakeHere
+                    label: T3Code.actionPending("unsnooze", root.threadId, "")
+                        ? "Waking…" : "Wake now"
+                    tint: Theme.accent
+                    enabled: T3Code.canDispatch
+                        && !T3Code.actionPending("unsnooze", root.threadId, "")
+                    onTriggered: {
+                        root.menuOpen = false;
+                        T3Code.unsnooze(root.threadId);
+                    }
+                }
+
+                MenuEntry {
+                    visible: header.canSettleHere
+                    label: T3Code.actionPending("settle", root.threadId, "")
+                        ? "Settling…" : "Settle"
+                    tint: Theme.accent
+                    enabled: T3Code.canDispatch && root.thread !== null && root.thread.canLifecycle
+                        && !T3Code.actionPending("settle", root.threadId, "")
+                    onTriggered: {
+                        root.menuOpen = false;
+                        T3Code.settle(root.threadId);
+                    }
+                }
+
+                MenuEntry {
+                    visible: header.canUnsettleHere
+                    label: T3Code.actionPending("unsettle", root.threadId, "")
+                        ? "Unsettling…" : "Unsettle"
+                    tint: Theme.accent
+                    enabled: T3Code.canDispatch
+                        && !T3Code.actionPending("unsettle", root.threadId, "")
+                    onTriggered: {
+                        root.menuOpen = false;
+                        T3Code.unsettle(root.threadId);
+                    }
+                }
+            }
         }
     }
 
@@ -403,7 +571,7 @@ Column {
                     text: "Loading conversation…"
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.pixelSize: 11
                     color: Theme.textDim
                 }
 
@@ -431,12 +599,12 @@ Column {
                 Item {
                     visible: root.working
                     width: parent.width
-                    height: 18
+                    height: 20
 
                     Row {
                         x: 7
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 6
+                        spacing: 7
 
                         Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
@@ -457,8 +625,9 @@ Column {
                             text: root.workingTime !== ""
                                 ? "Working for " + root.workingTime : "Working…"
                             font.family: Theme.fontMono
-                            font.pixelSize: 9
-                            color: Theme.textDim
+                            font.pixelSize: 10
+                            font.weight: 500
+                            color: Theme.textLow
                         }
                     }
                 }
@@ -472,7 +641,7 @@ Column {
                     text: "No messages yet"
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.pixelSize: 11
                     color: Theme.textDim
                 }
 
@@ -535,20 +704,21 @@ Column {
                             width: parent.width
                             text: "READY PLAN"
                             font.family: Theme.fontSans
-                            font.pixelSize: 9
+                            font.pixelSize: 10
                             font.weight: 650
-                            font.letterSpacing: 0.5
+                            font.letterSpacing: 0.7
                             color: Theme.accent
                         }
 
                         Text {
                             width: parent.width
                             text: root.plan ? root.plan.planMarkdown : ""
-                            wrapMode: Text.WordWrap
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            lineHeight: 1.4
                             maximumLineCount: 14
                             elide: Text.ElideRight
                             font.family: Theme.fontSans
-                            font.pixelSize: 10
+                            font.pixelSize: 11
                             color: Theme.textMid
                         }
 
@@ -806,13 +976,16 @@ Column {
         maximumLineCount: 3
         elide: Text.ElideRight
         font.family: Theme.fontSans
-        font.pixelSize: 9
+        font.pixelSize: 10
         color: Theme.redText
     }
 
     onThreadIdChanged: {
         visibleMessages = 10;
         followTail = true;
+        menuOpen = false;
+        snoozeOpen = false;
+        confirmStop = false;
         T3Code.ensureThreadDraft(threadId);
         if (T3Code.state === "connected")
             T3Code.openDetail(threadId);

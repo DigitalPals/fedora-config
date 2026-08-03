@@ -97,9 +97,9 @@ Rectangle {
                     : root.request.kind === "file-change" ? "EDIT APPROVAL"
                     : root.request.kind === "file-read" ? "READ APPROVAL" : "COMMAND APPROVAL"
                 font.family: Theme.fontSans
-                font.pixelSize: 9
+                font.pixelSize: 10
                 font.weight: 650
-                font.letterSpacing: 0.5
+                font.letterSpacing: 0.7
                 color: Theme.amber
             }
 
@@ -120,11 +120,12 @@ Rectangle {
             text: root.isInput && root.question ? root.question.question
                 : typeof root.request.detail === "string" && root.request.detail !== ""
                     ? root.request.detail : "Approval requested"
-            wrapMode: root.isInput ? Text.WordWrap : Text.WrapAnywhere
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            lineHeight: 1.4
             maximumLineCount: root.isInput ? 5 : 6
             elide: Text.ElideRight
             font.family: root.isInput ? Theme.fontSans : Theme.fontMono
-            font.pixelSize: 10
+            font.pixelSize: 11
             color: Theme.textMid
         }
 
@@ -190,7 +191,7 @@ Rectangle {
                             text: option.modelData.label
                             wrapMode: Text.WordWrap
                             font.family: Theme.fontSans
-                            font.pixelSize: 10
+                            font.pixelSize: 11
                             color: option.chosen ? Theme.textHi : Theme.textMid
                         }
 
@@ -202,7 +203,7 @@ Rectangle {
                             elide: Text.ElideRight
                             wrapMode: Text.WordWrap
                             font.family: Theme.fontSans
-                            font.pixelSize: 9
+                            font.pixelSize: 10
                             color: Theme.textDim
                         }
                     }
@@ -255,7 +256,7 @@ Rectangle {
                 enabled: root.actionable
                 clip: true
                 font.family: Theme.fontSans
-                font.pixelSize: 10
+                font.pixelSize: 11
                 color: Theme.textHi
                 onDraftKeyChanged: syncDraft()
                 onTextChanged: {
@@ -270,7 +271,7 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Or type a custom answer…"
                     font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.pixelSize: 11
                     color: Theme.textFaint
                 }
 
@@ -330,7 +331,7 @@ Rectangle {
             }
 
             Action {
-                label: "Session"
+                label: "Allow for session"
                 enabled: !root.pending && T3Code.canDispatch
                 tint: Theme.accent
                 fill: Theme.accentBg

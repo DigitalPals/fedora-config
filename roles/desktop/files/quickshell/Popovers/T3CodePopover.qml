@@ -56,7 +56,6 @@ Surface {
             onSnoozedExpandedChanged: root.inboxSnoozedExpanded = snoozedExpanded
             onSettledExpandedChanged: root.inboxSettledExpanded = settledExpanded
             onThreadRequested: threadId => root.showThread(threadId)
-            onNewRequested: root.showNew()
         }
     }
 
@@ -143,38 +142,90 @@ Surface {
             }
         }
 
-        Rectangle {
-            visible: T3Code.paired
+        Row {
             anchors.right: parent.right
             anchors.rightMargin: 4
             anchors.verticalCenter: parent.verticalCenter
-            width: 27
-            height: 23
-            radius: 6
-            color: refreshMouse.containsMouse ? Theme.hoverFill : "transparent"
-            activeFocusOnTab: true
+            spacing: 6
 
-            Keys.onPressed: event => {
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                        || event.key === Qt.Key_Space) {
-                    T3Code.connect();
-                    event.accepted = true;
+            // "＋ New" lives in the header (design 5a) so the inbox needs no
+            // title band of its own.
+            Rectangle {
+                id: newButton
+                visible: T3Code.paired && root.page !== "new"
+                anchors.verticalCenter: parent.verticalCenter
+                width: newText.implicitWidth + 22
+                height: 24
+                radius: 7
+                readonly property bool usable: T3Code.canDispatch && T3Code.hasReadyProvider
+                    && T3Code.hasProjects
+                color: newMouse.containsMouse && usable
+                    ? Qt.lighter(Theme.accentBg, 1.2) : Theme.accentBg
+                opacity: usable ? 1 : 0.4
+                activeFocusOnTab: usable && visible
+                border.width: activeFocus ? 1 : 0
+                border.color: Theme.accent
+
+                Keys.onPressed: event => {
+                    if (!newButton.usable)
+                        return;
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                            || event.key === Qt.Key_Space) {
+                        root.showNew();
+                        event.accepted = true;
+                    }
+                }
+
+                Text {
+                    id: newText
+                    anchors.centerIn: parent
+                    text: "＋ New"
+                    font.family: Theme.fontSans
+                    font.pixelSize: 11
+                    font.weight: 600
+                    color: Theme.accent
+                }
+
+                MouseArea {
+                    id: newMouse
+                    anchors.fill: parent
+                    enabled: newButton.usable
+                    hoverEnabled: true
+                    onClicked: root.showNew()
                 }
             }
 
-            Text {
-                anchors.centerIn: parent
-                text: "↻"
-                font.family: Theme.fontSans
-                font.pixelSize: 12
-                color: refreshMouse.containsMouse ? Theme.textMid : Theme.textLow
-            }
+            Rectangle {
+                visible: T3Code.paired
+                anchors.verticalCenter: parent.verticalCenter
+                width: 27
+                height: 24
+                radius: 6
+                color: refreshMouse.containsMouse ? Theme.hoverFill : "transparent"
+                activeFocusOnTab: true
 
-            MouseArea {
-                id: refreshMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: T3Code.connect()
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                            || event.key === Qt.Key_Space) {
+                        T3Code.connect();
+                        event.accepted = true;
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "↻"
+                    font.family: Theme.fontSans
+                    font.pixelSize: 12
+                    color: refreshMouse.containsMouse ? Theme.textMid : Theme.textLow
+                }
+
+                MouseArea {
+                    id: refreshMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: T3Code.connect()
+                }
             }
         }
     }

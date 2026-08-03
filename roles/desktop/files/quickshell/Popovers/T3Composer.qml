@@ -74,11 +74,13 @@ Column {
             return found ? settingLabel(found) : displaySettingValue(value, fallback);
         }
 
+        // Chip labels for the collapsed state (design 5d). Empty string means
+        // the chip is hidden.
         function reasoningSummary() {
             const descriptor = (Array.isArray(root.traits) ? root.traits : [])
                 .find(candidate => root.traitLabel(candidate) === "Reasoning");
             if (!descriptor)
-                return "Reasoning —";
+                return "";
             if (descriptor.type === "boolean")
                 return "Reasoning " + (descriptor.currentValue === true ? "On" : "Off");
             return "Reasoning " + selectedSettingLabel(descriptor.options,
@@ -90,15 +92,61 @@ Column {
                 String(root.draft?.runtimeMode ?? "full-access"), "Unavailable");
         }
 
-        function settingsSummary() {
+        function providerModelSummary() {
             const provider = selectedSettingLabel(root.providers,
                 String(root.draft?.instanceId ?? ""), "Provider unavailable");
-            const model = selectedSettingLabel(root.models,
-                String(root.draft?.model ?? ""), "Model unavailable");
-            const mode = selectedSettingLabel(interactionOptions,
-                String(root.draft?.interactionMode ?? "default"), "Default");
-            return provider + " / " + model + " · " + reasoningSummary()
-                + " · Mode " + mode;
+            const slug = String(root.draft?.model ?? "");
+            const found = (Array.isArray(root.models) ? root.models : [])
+                .find(option => settingId(option) === slug);
+            const model = found
+                ? String(found.shortName || found.name || settingLabel(found))
+                : displaySettingValue(slug, "");
+            return model !== "" ? provider + " · " + model : provider;
+        }
+
+        function modeSummary() {
+            if (!root.showInteraction)
+                return "";
+            return String(root.draft?.interactionMode ?? "default") === "plan"
+                ? "Plan mode" : "Default mode";
+        }
+    }
+
+    component SummaryChip: Rectangle {
+        id: chip
+        property string label: ""
+        property string icon: ""
+
+        visible: label !== ""
+        width: chipRow.implicitWidth + 20
+        height: 22
+        radius: 6
+        color: Theme.hoverFill
+
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 6
+
+            Image {
+                visible: chip.icon !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                width: 11
+                height: 11
+                sourceSize: Qt.size(22, 22)
+                fillMode: Image.PreserveAspectFit
+                source: chip.icon !== "" ? Quickshell.shellDir
+                    + "/assets/" + chip.icon + ".svg" : ""
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: chip.label
+                font.family: Theme.fontSans
+                font.pixelSize: 11
+                font.weight: 500
+                color: Theme.textMid
+            }
         }
     }
 
@@ -195,11 +243,14 @@ Column {
             y: 1
             width: parent.width - 2
 
+            // Collapsed state shows provider/model, reasoning, and mode as
+            // separate read-only chips (design 5d); tapping anywhere — chips
+            // included — toggles the disclosure.
             Rectangle {
                 id: settingsHeader
 
                 width: parent.width
-                height: 43
+                height: 30 + (settingsChips.visible ? settingsChips.implicitHeight + 4 : 0)
                 radius: 7
                 color: settingsMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
                 activeFocusOnTab: true
@@ -220,7 +271,7 @@ Column {
                     anchors.left: parent.left
                     anchors.leftMargin: 8
                     anchors.top: parent.top
-                    anchors.topMargin: 6
+                    anchors.topMargin: 9
                     text: settingsPresentation.expanded ? "▾" : "▸"
                     font.family: Theme.fontMono
                     font.pixelSize: 10
@@ -232,42 +283,61 @@ Column {
 
                     anchors.left: settingsChevron.right
                     anchors.leftMargin: 6
-                    anchors.right: accessText.left
+                    anchors.right: accessChip.left
                     anchors.rightMargin: 8
                     anchors.verticalCenter: settingsChevron.verticalCenter
                     text: "Run settings"
                     elide: Text.ElideRight
                     font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.pixelSize: 11
                     font.weight: 650
                     color: Theme.textHi
                 }
 
-                Text {
-                    id: accessText
+                Rectangle {
+                    id: accessChip
 
                     anchors.right: parent.right
-                    anchors.rightMargin: 8
+                    anchors.rightMargin: 6
                     anchors.verticalCenter: settingsChevron.verticalCenter
-                    text: "Access · " + settingsPresentation.accessSummary()
-                    font.family: Theme.fontSans
-                    font.pixelSize: 9
-                    font.weight: root.draft?.runtimeMode === "full-access" ? 650 : 500
+                    width: accessText.implicitWidth + 18
+                    height: 20
+                    radius: 5
                     color: root.draft?.runtimeMode === "full-access"
-                        ? Theme.amber : Theme.textLow
+                        ? Theme.amberBg : Theme.hoverFill
+
+                    Text {
+                        id: accessText
+                        anchors.centerIn: parent
+                        text: settingsPresentation.accessSummary()
+                        font.family: Theme.fontSans
+                        font.pixelSize: 10
+                        font.weight: 600
+                        color: root.draft?.runtimeMode === "full-access"
+                            ? Theme.amber : Theme.textLow
+                    }
                 }
 
-                Text {
-                    anchors.left: settingsTitle.left
+                Flow {
+                    id: settingsChips
+
+                    visible: !settingsPresentation.expanded
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
                     anchors.right: parent.right
                     anchors.rightMargin: 8
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 5
-                    text: settingsPresentation.settingsSummary()
-                    elide: Text.ElideRight
-                    font.family: Theme.fontSans
-                    font.pixelSize: 9
-                    color: Theme.textDim
+                    anchors.top: settingsChevron.bottom
+                    anchors.topMargin: 7
+                    spacing: 5
+
+                    SummaryChip {
+                        icon: T3Code.providerIcon(String(root.draft?.instanceId ?? ""))
+                        label: settingsPresentation.providerModelSummary()
+                    }
+
+                    SummaryChip { label: settingsPresentation.reasoningSummary() }
+
+                    SummaryChip { label: settingsPresentation.modeSummary() }
                 }
 
                 MouseArea {
@@ -344,6 +414,8 @@ Column {
                                 ? parent.width : (parent.width - 5) / 2
                             label: "Access"
                             value: root.draft.runtimeMode ?? "full-access"
+                            valueColor: root.draft?.runtimeMode === "full-access"
+                                ? Theme.amber : Theme.textMid
                             options: settingsPresentation.accessOptions
                             openUpward: !root.newThread
                             enabled: root.editable && !root.sending
@@ -377,7 +449,7 @@ Column {
                                 required property var modelData
                                 width: settingsPresentation.narrow
                                     ? parent.width : (parent.width - 5) / 2
-                                height: modelData.type === "select" ? 30 : 26
+                                height: modelData.type === "select" ? 34 : 28
 
                                 T3Picker {
                                     visible: traitRow.modelData.type === "select"
@@ -421,7 +493,7 @@ Column {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: root.traitLabel(traitRow.modelData)
                                         font.family: Theme.fontSans
-                                        font.pixelSize: 10
+                                        font.pixelSize: 11
                                         color: Theme.textMid
                                     }
 
@@ -431,7 +503,7 @@ Column {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: traitRow.modelData.currentValue === true ? "ON" : "OFF"
                                         font.family: Theme.fontMono
-                                        font.pixelSize: 9
+                                        font.pixelSize: 10
                                         font.weight: 600
                                         color: traitRow.modelData.currentValue === true
                                             ? Theme.accent : Theme.textDim
@@ -464,7 +536,7 @@ Column {
         text: root.draft.traitError ?? ""
         wrapMode: Text.WordWrap
         font.family: Theme.fontSans
-        font.pixelSize: 9
+        font.pixelSize: 10
         color: Theme.amber
     }
 
@@ -504,7 +576,7 @@ Column {
                 wrapMode: TextEdit.Wrap
                 selectByMouse: true
                 font.family: Theme.fontSans
-                font.pixelSize: 11
+                font.pixelSize: 12
                 color: Theme.textHi
                 selectionColor: Theme.accentBg
                 selectedTextColor: Theme.textHi
@@ -536,7 +608,7 @@ Column {
                     visible: promptEdit.text === "" && !promptEdit.activeFocus
                     text: root.newThread ? "Describe the first task…" : "Send a follow-up…"
                     font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.pixelSize: 12
                     color: Theme.textFaint
                 }
             }
@@ -549,9 +621,9 @@ Column {
             anchors.rightMargin: 7
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 7
-            width: Math.max(31, sendText.implicitWidth + 14)
-            height: 25
-            radius: 6
+            width: Math.max(31, sendText.implicitWidth + 18)
+            height: 26
+            radius: 7
             color: sendMouse.containsMouse && sendMouse.enabled
                 ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
             opacity: sendMouse.enabled ? 1 : 0.35
@@ -572,7 +644,7 @@ Column {
                 anchors.centerIn: parent
                 text: root.sending ? "…" : root.sendLabel
                 font.family: Theme.fontSans
-                font.pixelSize: 10
+                font.pixelSize: 11
                 font.weight: 650
                 color: Theme.accentFg
             }
@@ -595,7 +667,7 @@ Column {
             text: root.overLimit ? "Prompt too long — open T3 Code"
                 : "Enter to send · Ctrl+Enter for newline"
             font.family: Theme.fontSans
-            font.pixelSize: 9
+            font.pixelSize: 10
             color: root.overLimit ? Theme.redText : Theme.textDim
         }
 
@@ -606,7 +678,7 @@ Column {
             visible: promptEdit.text.length > 100000
             text: promptEdit.text.length + "/" + T3Code.maxPromptChars
             font.family: Theme.fontMono
-            font.pixelSize: 9
+            font.pixelSize: 10
             color: root.overLimit ? Theme.redText : Theme.textDim
         }
     }

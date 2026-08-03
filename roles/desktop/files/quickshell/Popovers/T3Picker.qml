@@ -8,13 +8,14 @@ Item {
 
     property string label: ""
     property string value: ""
+    property color valueColor: Theme.textMid
     property var options: []
     property bool expanded: false
     property bool openUpward: true
     property int menuRows: 7
     signal selected(string value)
 
-    implicitHeight: 30
+    implicitHeight: 34
     z: expanded ? 100 : 0
     activeFocusOnTab: enabled && visible
 
@@ -90,9 +91,9 @@ Item {
                 text: root.label.toUpperCase()
                 elide: Text.ElideRight
                 font.family: Theme.fontSans
-                font.pixelSize: 8
+                font.pixelSize: 9
                 font.weight: 600
-                font.letterSpacing: 0.4
+                font.letterSpacing: 0.5
                 color: Theme.textDim
             }
 
@@ -101,8 +102,8 @@ Item {
                 text: root.selectedLabel()
                 elide: Text.ElideRight
                 font.family: Theme.fontSans
-                font.pixelSize: 10
-                color: Theme.textMid
+                font.pixelSize: 11
+                color: root.valueColor
             }
         }
 
@@ -137,7 +138,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         y: root.openUpward ? -height - 4 : root.height + 4
-        height: Math.min(root.menuRows, root.options.length) * 28 + 8
+        height: Math.min(root.menuRows, root.options.length) * 30 + 8
         radius: 8
         color: "#1b1c22"
         border.width: 1
@@ -168,7 +169,7 @@ Item {
                         readonly property bool chosen: choiceId === root.value
 
                         width: parent.width
-                        height: 28
+                        height: 30
                         radius: 5
                         color: chosen ? Theme.accentBg
                             : choiceMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
@@ -183,7 +184,7 @@ Item {
                             text: root.optionLabel(choice.modelData)
                             elide: Text.ElideRight
                             font.family: Theme.fontSans
-                            font.pixelSize: 10
+                            font.pixelSize: 11
                             color: choice.chosen ? Theme.textHi : Theme.textMid
                         }
 

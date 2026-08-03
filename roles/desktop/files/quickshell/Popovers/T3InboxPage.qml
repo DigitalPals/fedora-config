@@ -9,7 +9,6 @@ Column {
     property bool snoozedExpanded: false
     property bool settledExpanded: false
     signal threadRequested(string threadId)
-    signal newRequested()
 
     readonly property var needsYou: T3Code.threads.filter(thread =>
         thread.cls === "attention" || thread.cls === "error")
@@ -27,14 +26,15 @@ Column {
         property string label: ""
         property color tint: Theme.textLow
         property color fill: Theme.hoverFill
+        property bool revealed: true
         signal triggered()
 
-        width: labelText.implicitWidth + 14
+        width: labelText.implicitWidth + 18
         height: 22
         radius: 6
         color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
         opacity: enabled ? 1 : 0.4
-        activeFocusOnTab: enabled
+        activeFocusOnTab: enabled && visible && revealed
         border.width: activeFocus ? 1 : 0
         border.color: Theme.accent
 
@@ -53,7 +53,7 @@ Column {
             anchors.centerIn: parent
             text: action.label
             font.family: Theme.fontSans
-            font.pixelSize: 9
+            font.pixelSize: 10
             font.weight: 600
             color: action.tint
         }
@@ -67,15 +67,48 @@ Column {
         }
     }
 
-    component GroupTitle: Text {
-        leftPadding: 6
-        topPadding: 4
-        bottomPadding: 1
-        font.family: Theme.fontSans
-        font.pixelSize: 9
-        font.weight: 650
-        font.letterSpacing: 0.55
-        color: Theme.textDim
+    component GroupHeader: Item {
+        id: group
+        property string label: ""
+        property int count: 0
+        property color tint: Theme.textLow
+
+        width: parent ? parent.width : 0
+        height: 22
+
+        Text {
+            id: groupLabel
+            anchors.left: parent.left
+            anchors.leftMargin: 6
+            anchors.verticalCenter: parent.verticalCenter
+            text: group.label
+            font.family: Theme.fontSans
+            font.pixelSize: 10
+            font.weight: 600
+            font.letterSpacing: 0.9
+            color: group.tint
+        }
+
+        Text {
+            id: groupCount
+            anchors.left: groupLabel.right
+            anchors.leftMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            text: group.count
+            font.family: Theme.fontMono
+            font.pixelSize: 10
+            font.weight: 500
+            color: Theme.textDim
+        }
+
+        Rectangle {
+            anchors.left: groupCount.right
+            anchors.leftMargin: 8
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: 1
+            color: Theme.hairlineSoft
+        }
     }
 
     component ThreadRow: Column {
@@ -85,11 +118,45 @@ Column {
         readonly property bool active: thread.lifecycle === "active"
         readonly property bool settled: thread.lifecycle === "settled"
         readonly property bool snoozed: thread.lifecycle === "snoozed"
-        readonly property color statusColor: thread.cls === "error" ? Theme.red
+        readonly property bool quiet: settled || snoozed
+            || thread.cls === "done" || thread.cls === "idle"
+        // Actions replace the status word on hover; keyboard focus on the row
+        // or an action keeps them revealed so tab users are not locked out.
+        readonly property bool revealed: rowMouse.containsMouse || row.activeFocus
+            || actionsScope.activeFocus
+        readonly property string glyph: T3Code.threadProviderIcon(thread.id)
+        readonly property string statusWord: {
+            if (entry.snoozed)
+                return thread.snoozedUntil
+                    ? "wakes in " + T3Code.snoozeWakeLabel(thread.snoozedUntil) : "snoozed";
+            if (entry.settled)
+                return T3Code.relTime(thread.settledAt || thread.updatedAt);
+            if (thread.cls === "attention") {
+                const kind = thread.pendingApprovals ? "approval"
+                    : thread.pendingInput ? "input" : "waiting";
+                const when = T3Code.relTime(thread.updatedAt);
+                return when !== "" ? kind + " · " + when : kind;
+            }
+            if (thread.cls === "error") {
+                const when = T3Code.relTime(thread.updatedAt);
+                return when !== "" ? "error · " + when : "error";
+            }
+            if (thread.planReady)
+                return "plan ready";
+            if (thread.cls === "running") {
+                const timer = T3Code.workingTimerLabel(thread.workingStartedAt);
+                return timer !== "" ? "working " + timer : "working…";
+            }
+            if (thread.cls === "done") {
+                const when = T3Code.relTime(thread.updatedAt);
+                return when !== "" ? "done · " + when : "done";
+            }
+            return T3Code.relTime(thread.updatedAt);
+        }
+        readonly property color statusColor: thread.cls === "error" ? Theme.redText
             : thread.cls === "attention" ? Theme.amber
-            : thread.planReady ? Theme.accent
-            : thread.cls === "running" ? Theme.accent
-            : thread.cls === "done" ? Theme.textMid : Theme.dotDim
+            : entry.quiet ? Theme.textDim
+            : Theme.accent
 
         width: parent.width
         spacing: 3
@@ -97,8 +164,8 @@ Column {
         Rectangle {
             id: row
             width: parent.width
-            height: 47
-            radius: 8
+            height: 50
+            radius: 9
             color: rowMouse.containsMouse ? Theme.hoverFill : "transparent"
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accent
@@ -119,39 +186,138 @@ Column {
                 onClicked: root.threadRequested(entry.thread.id)
             }
 
-            Rectangle {
-                id: dot
-                x: 7
+            Item {
+                id: glyphSlot
+                x: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: 7
-                height: 7
-                radius: 4
-                color: entry.statusColor
+                width: 15
+                height: 15
 
-                SequentialAnimation on opacity {
-                    running: entry.thread.cls === "running"
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.3; duration: 750 }
-                    NumberAnimation { to: 1; duration: 750 }
+                Image {
+                    visible: entry.glyph !== ""
+                    anchors.fill: parent
+                    sourceSize: Qt.size(30, 30)
+                    fillMode: Image.PreserveAspectFit
+                    source: entry.glyph !== "" ? Quickshell.shellDir + "/assets/" + entry.glyph
+                        + (entry.quiet ? "-dim" : "") + ".svg" : ""
+                    opacity: entry.quiet ? 0.7 : 1
+                }
+
+                Rectangle {
+                    visible: entry.glyph === ""
+                    anchors.centerIn: parent
+                    width: 7
+                    height: 7
+                    radius: 4
+                    color: entry.quiet ? Theme.dotDim : entry.statusColor
                 }
             }
 
             Column {
-                anchors.left: dot.right
-                anchors.leftMargin: 8
-                anchors.right: actions.left
-                anchors.rightMargin: 6
+                anchors.left: glyphSlot.right
+                anchors.leftMargin: 10
+                anchors.right: parent.right
+                anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
+                spacing: 3
 
-                Text {
+                Item {
                     width: parent.width
-                    text: entry.thread.title
-                    elide: Text.ElideRight
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
-                    font.weight: entry.thread.cls === "idle" ? 500 : 600
-                    color: Theme.textHi
+                    height: 17
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.right: side.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: entry.thread.title
+                        elide: Text.ElideRight
+                        font.family: Theme.fontSans
+                        font.pixelSize: 13
+                        font.weight: entry.quiet ? 500 : 600
+                        color: entry.quiet ? Theme.textMid : Theme.textHi
+                    }
+
+                    Item {
+                        id: side
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: entry.revealed ? actionsScope.implicitWidth
+                            : statusText.implicitWidth
+                        height: parent.height
+
+                        Text {
+                            id: statusText
+                            visible: !entry.revealed
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: entry.statusWord
+                            font.family: Theme.fontMono
+                            font.pixelSize: 10
+                            font.weight: 500
+                            color: entry.statusColor
+                        }
+
+                        FocusScope {
+                            id: actionsScope
+                            visible: entry.revealed
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            implicitWidth: actions.implicitWidth
+                            implicitHeight: actions.implicitHeight
+
+                            Row {
+                                id: actions
+                                spacing: 4
+
+                                Action {
+                                    visible: entry.active && T3Code.supportsSettlement
+                                    revealed: entry.revealed
+                                    label: T3Code.actionPending("settle", entry.thread.id, "")
+                                        ? "…" : "Settle"
+                                    enabled: T3Code.canDispatch && entry.thread.canLifecycle
+                                        && !T3Code.actionPending("settle", entry.thread.id, "")
+                                    tint: Theme.accent
+                                    fill: Theme.accentBg
+                                    onTriggered: T3Code.settle(entry.thread.id)
+                                }
+
+                                Action {
+                                    visible: entry.settled && T3Code.supportsSettlement
+                                    revealed: entry.revealed
+                                    label: T3Code.actionPending("unsettle", entry.thread.id, "")
+                                        ? "…" : "Unsettle"
+                                    enabled: T3Code.canDispatch
+                                        && !T3Code.actionPending("unsettle", entry.thread.id, "")
+                                    tint: Theme.accent
+                                    fill: Theme.accentBg
+                                    onTriggered: T3Code.unsettle(entry.thread.id)
+                                }
+
+                                Action {
+                                    visible: entry.snoozed && T3Code.supportsSnooze
+                                    revealed: entry.revealed
+                                    label: T3Code.actionPending("unsnooze", entry.thread.id, "")
+                                        ? "…" : "Wake"
+                                    enabled: T3Code.canDispatch
+                                        && !T3Code.actionPending("unsnooze", entry.thread.id, "")
+                                    tint: Theme.accent
+                                    fill: Theme.accentBg
+                                    onTriggered: T3Code.unsnooze(entry.thread.id)
+                                }
+
+                                Action {
+                                    revealed: entry.revealed
+                                    label: "↗"
+                                    onTriggered: {
+                                        Quickshell.execDetached(["xdg-open",
+                                            T3Code.threadUrl(entry.thread.id)]);
+                                        Popouts.close();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Text {
@@ -160,89 +326,29 @@ Column {
                         const parts = [];
                         if (entry.thread.project !== "")
                             parts.push(entry.thread.project);
-                        if (entry.snoozed && entry.thread.snoozedUntil)
-                            parts.push("wakes in " + T3Code.snoozeWakeLabel(
-                                entry.thread.snoozedUntil));
+                        if (entry.thread.cls === "error")
+                            parts.push("session error");
                         else if (entry.settled)
                             parts.push(entry.thread.settledOverride === "settled"
                                 ? "settled by you" : "settled by inactivity");
-                        else if (entry.thread.planReady)
-                            parts.push("plan ready");
-                        else if (entry.thread.cls === "running") {
-                            parts.push("Working");
-                            const duration = T3Code.workingDurationLabel(
-                                entry.thread.workingStartedAt);
-                            if (duration !== "")
-                                parts.push(duration);
-                        }
-                        else if (entry.thread.sessionStatus !== "")
+                        else if (entry.thread.cls === "attention"
+                                && entry.thread.sessionStatus !== ""
+                                && entry.thread.sessionStatus !== "running")
                             parts.push(entry.thread.sessionStatus);
-                        if (entry.thread.cls !== "running") {
-                            const relative = T3Code.relTime(entry.thread.updatedAt);
-                            if (relative !== "")
-                                parts.push(relative);
-                        }
                         return parts.join(" · ");
                     }
                     elide: Text.ElideRight
                     font.family: Theme.fontSans
-                    font.pixelSize: 9
-                    color: Theme.textDim
-                }
-            }
-
-            Row {
-                id: actions
-                z: 2
-                anchors.right: parent.right
-                anchors.rightMargin: 6
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 4
-
-                Action {
-                    visible: entry.active && T3Code.supportsSettlement
-                    label: T3Code.actionPending("settle", entry.thread.id, "") ? "…" : "Settle"
-                    enabled: T3Code.canDispatch && entry.thread.canLifecycle
-                        && !T3Code.actionPending("settle", entry.thread.id, "")
-                    tint: Theme.accent
-                    fill: Theme.accentBg
-                    onTriggered: T3Code.settle(entry.thread.id)
-                }
-
-                Action {
-                    visible: entry.settled && T3Code.supportsSettlement
-                    label: T3Code.actionPending("unsettle", entry.thread.id, "") ? "…" : "Unsettle"
-                    enabled: T3Code.canDispatch
-                        && !T3Code.actionPending("unsettle", entry.thread.id, "")
-                    tint: Theme.accent
-                    fill: Theme.accentBg
-                    onTriggered: T3Code.unsettle(entry.thread.id)
-                }
-
-                Action {
-                    visible: entry.snoozed && T3Code.supportsSnooze
-                    label: T3Code.actionPending("unsnooze", entry.thread.id, "") ? "…" : "Wake"
-                    enabled: T3Code.canDispatch
-                        && !T3Code.actionPending("unsnooze", entry.thread.id, "")
-                    tint: Theme.accent
-                    fill: Theme.accentBg
-                    onTriggered: T3Code.unsnooze(entry.thread.id)
-                }
-
-                Action {
-                    label: "↗"
-                    onTriggered: {
-                        Quickshell.execDetached(["xdg-open", T3Code.threadUrl(entry.thread.id)]);
-                        Popouts.close();
-                    }
+                    font.pixelSize: 11
+                    color: entry.thread.cls === "error" ? Theme.redText : Theme.textLow
                 }
             }
         }
 
         Text {
             visible: text !== ""
-            x: 21
-            width: parent.width - 27
+            x: 33
+            width: parent.width - 39
             text: {
                 for (const kind of ["settle", "unsettle", "snooze", "unsnooze"]) {
                     const error = T3Code.actionError(kind, entry.thread.id, "");
@@ -255,7 +361,7 @@ Column {
             maximumLineCount: 2
             elide: Text.ElideRight
             font.family: Theme.fontSans
-            font.pixelSize: 9
+            font.pixelSize: 10
             color: Theme.redText
         }
     }
@@ -267,11 +373,12 @@ Column {
         property bool expanded: false
         signal toggled()
 
-        width: parent ? parent.width : 0
         height: 30
         radius: 7
         color: drawerMouse.containsMouse ? Theme.hoverFill : Theme.cardFill
         activeFocusOnTab: true
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -281,20 +388,34 @@ Column {
             }
         }
 
-        Text {
+        Row {
             anchors.left: parent.left
-            anchors.leftMargin: 9
+            anchors.leftMargin: 11
             anchors.verticalCenter: parent.verticalCenter
-            text: drawer.label + " (" + drawer.count + ")"
-            font.family: Theme.fontSans
-            font.pixelSize: 10
-            font.weight: 600
-            color: Theme.textLow
+            spacing: 7
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: drawer.label
+                font.family: Theme.fontSans
+                font.pixelSize: 11
+                font.weight: 600
+                color: Theme.textLow
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: drawer.count
+                font.family: Theme.fontMono
+                font.pixelSize: 10
+                font.weight: 500
+                color: Theme.textDim
+            }
         }
 
         Text {
             anchors.right: parent.right
-            anchors.rightMargin: 9
+            anchors.rightMargin: 11
             anchors.verticalCenter: parent.verticalCenter
             text: drawer.expanded ? "▴" : "▾"
             font.family: Theme.fontMono
@@ -311,36 +432,9 @@ Column {
     }
 
     Item {
-        width: parent.width
-        height: 33
-
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: 4
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Inbox"
-            font.family: Theme.fontSans
-            font.pixelSize: 14
-            font.weight: 700
-            color: Theme.textHi
-        }
-
-        Action {
-            anchors.right: parent.right
-            anchors.rightMargin: 3
-            anchors.verticalCenter: parent.verticalCenter
-            label: "＋ New thread"
-            enabled: T3Code.canDispatch && T3Code.hasReadyProvider && T3Code.hasProjects
-            tint: Theme.accent
-            fill: Theme.accentBg
-            onTriggered: root.newRequested()
-        }
-    }
-
-    Item {
         id: viewport
         width: parent.width
-        height: Math.min(root.maxHeight - 38, body.implicitHeight)
+        height: Math.min(root.maxHeight, body.implicitHeight)
 
         Flickable {
             id: flick
@@ -366,7 +460,7 @@ Column {
                     bottomPadding: 5
                     text: "Read-only pairing · actions are disabled"
                     font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.pixelSize: 11
                     color: Theme.amber
                 }
 
@@ -380,7 +474,7 @@ Column {
                         : "Server unreachable — drafts are safe"
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.pixelSize: 12
                     color: Theme.textDim
                 }
 
@@ -394,23 +488,37 @@ Column {
                     text: "No sessions"
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.pixelSize: 12
                     color: Theme.textDim
                 }
 
-                GroupTitle { visible: root.needsYou.length > 0; text: "NEEDS YOU"; color: Theme.amber }
+                GroupHeader {
+                    visible: root.needsYou.length > 0
+                    label: "NEEDS YOU"
+                    count: root.needsYou.length
+                    tint: Theme.amber
+                }
                 Repeater {
                     model: root.needsYou
                     delegate: ThreadRow { required property var modelData; thread: modelData }
                 }
 
-                GroupTitle { visible: root.readyPlans.length > 0; text: "READY TO REVIEW"; color: Theme.accent }
+                GroupHeader {
+                    visible: root.readyPlans.length > 0
+                    label: "READY TO REVIEW"
+                    count: root.readyPlans.length
+                    tint: Theme.accent
+                }
                 Repeater {
                     model: root.readyPlans
                     delegate: ThreadRow { required property var modelData; thread: modelData }
                 }
 
-                GroupTitle { visible: root.runningThreads.length > 0; text: "WORKING" }
+                GroupHeader {
+                    visible: root.runningThreads.length > 0
+                    label: "WORKING"
+                    count: root.runningThreads.length
+                }
                 Repeater {
                     model: root.runningThreads
                     delegate: ThreadRow { required property var modelData; thread: modelData }
@@ -421,12 +529,34 @@ Column {
                     delegate: ThreadRow { required property var modelData; thread: modelData }
                 }
 
-                DrawerHeader {
-                    visible: T3Code.snoozedThreads.length > 0
-                    label: "Snoozed"
-                    count: T3Code.snoozedThreads.length
-                    expanded: root.snoozedExpanded
-                    onToggled: root.snoozedExpanded = !root.snoozedExpanded
+                Row {
+                    id: drawerRow
+                    visible: T3Code.snoozedThreads.length > 0 || T3Code.settledThreads.length > 0
+                    width: parent.width
+                    spacing: 6
+
+                    readonly property bool both: T3Code.snoozedThreads.length > 0
+                        && T3Code.settledThreads.length > 0
+
+                    DrawerHeader {
+                        visible: T3Code.snoozedThreads.length > 0
+                        width: drawerRow.both ? (drawerRow.width - drawerRow.spacing) / 2
+                            : drawerRow.width
+                        label: "Snoozed"
+                        count: T3Code.snoozedThreads.length
+                        expanded: root.snoozedExpanded
+                        onToggled: root.snoozedExpanded = !root.snoozedExpanded
+                    }
+
+                    DrawerHeader {
+                        visible: T3Code.settledThreads.length > 0
+                        width: drawerRow.both ? (drawerRow.width - drawerRow.spacing) / 2
+                            : drawerRow.width
+                        label: "Settled"
+                        count: T3Code.settledThreads.length
+                        expanded: root.settledExpanded
+                        onToggled: root.settledExpanded = !root.settledExpanded
+                    }
                 }
 
                 Repeater {
@@ -440,16 +570,8 @@ Column {
                     leftPadding: 9
                     text: "+" + (T3Code.snoozedThreads.length - 5) + " more in T3 Code"
                     font.family: Theme.fontSans
-                    font.pixelSize: 9
+                    font.pixelSize: 10
                     color: Theme.textDim
-                }
-
-                DrawerHeader {
-                    visible: T3Code.settledThreads.length > 0
-                    label: "Settled"
-                    count: T3Code.settledThreads.length
-                    expanded: root.settledExpanded
-                    onToggled: root.settledExpanded = !root.settledExpanded
                 }
 
                 Repeater {
@@ -463,7 +585,7 @@ Column {
                     leftPadding: 9
                     text: "+" + (T3Code.settledThreads.length - 5) + " more in T3 Code"
                     font.family: Theme.fontSans
-                    font.pixelSize: 9
+                    font.pixelSize: 10
                     color: Theme.textDim
                 }
             }

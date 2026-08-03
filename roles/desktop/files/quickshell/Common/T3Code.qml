@@ -1038,6 +1038,19 @@ Singleton {
         return Helpers.findProvider(providerConfigurations, instanceId);
     }
 
+    function providerIcon(instanceId) {
+        const provider = providerConfiguration(instanceId);
+        return Helpers.providerIconName(provider ? provider.driver : instanceId);
+    }
+
+    function threadProviderIcon(threadId) {
+        return Helpers.threadProviderIconName(rawThread(threadId), providerConfigurations);
+    }
+
+    function threadSelectionLabel(threadId) {
+        return Helpers.threadSelectionLabel(rawThread(threadId), providerConfigurations);
+    }
+
     function modelConfiguration(instanceId, model) {
         return Helpers.findModel(providerConfiguration(instanceId), model);
     }

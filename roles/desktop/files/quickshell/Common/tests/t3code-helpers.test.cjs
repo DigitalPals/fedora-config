@@ -438,6 +438,34 @@ test("history paginates chronologically in batches of ten", () => {
     assert.equal(second.hasEarlier, true);
 });
 
+test("provider glyphs resolve by driver family, not exact id", () => {
+    assert.equal(H.providerIconName("claudeAgent"), "claude");
+    assert.equal(H.providerIconName("codex"), "openai");
+    assert.equal(H.providerIconName("kimi-cli"), "kimi");
+    assert.equal(H.providerIconName("mystery"), "");
+    assert.equal(H.providerIconName(""), "");
+    assert.equal(H.providerIconName(null), "");
+});
+
+test("thread glyph prefers the live session and survives a missing provider snapshot", () => {
+    const list = providers();
+    const claude = thread({
+        modelSelection: { instanceId: "claude", model: "opus" },
+        session: { providerInstanceId: "codex", status: "running" },
+    });
+    assert.equal(H.threadProviderIconName(claude, list), "openai");
+    const persistedOnly = thread({ modelSelection: { instanceId: "claude", model: "opus" } });
+    assert.equal(H.threadProviderIconName(persistedOnly, list), "claude");
+    const noSnapshot = thread({ modelSelection: { provider: "claudeAgent", model: "opus" } });
+    assert.equal(H.threadProviderIconName(noSnapshot, []), "claude");
+    assert.equal(H.threadProviderIconName(thread({ modelSelection: null }), list), "");
+});
+
+test("thread selection label pairs provider display name with the model", () => {
+    assert.equal(H.threadSelectionLabel(thread(), providers()), "Codex · GPT 5.6 Sol");
+    assert.equal(H.threadSelectionLabel(thread(), []), "");
+});
+
 test("diff rendering stops at both the character and line limits", () => {
     const byLines = H.truncateDiff(Array.from({ length: 2100 }, (_, i) => `line ${i}`).join("\n"));
     assert.equal(byLines.truncated, true);

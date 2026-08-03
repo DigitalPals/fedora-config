@@ -12,10 +12,11 @@ select trait and a boolean trait.
   that page type's default instead of persisting the previous choice.
 - [ ] Confirm the collapsed header has a right-pointing chevron; the expanded
   header has a downward chevron and a subtle divider above its fields.
-- [ ] Confirm the summary elides rather than wrapping and reflects the selected
-  provider/model, reasoning level, and interaction mode.
-- [ ] Confirm access remains visible outside the disclosure body and `Full
-  access` is amber.
+- [ ] Confirm the collapsed state shows separate chips for provider/model
+  (with the provider glyph), reasoning level, and interaction mode, and that
+  tapping any chip expands the disclosure.
+- [ ] Confirm access remains visible as a chip outside the disclosure body,
+  `Full access` is amber there and in the expanded Access picker.
 - [ ] At 460 px popover width, confirm controls use two columns. At 280 px,
   confirm they stack without horizontal clipping. On a short screen, confirm the
   popover stays bounded and its existing scroll areas remain usable.
@@ -33,7 +34,7 @@ select trait and a boolean trait.
 - [ ] Test idle, running, read-only, sending, plan-ready, and provider-locked
   threads. Confirm the prior enablement, model-locking, prompt, and send behavior
   is unchanged.
-- [ ] Change provider/model and confirm the traits and header summary update.
+- [ ] Change provider/model and confirm the traits and summary chips update.
   Confirm Mode only appears when supported, and exercise every advertised
   select and boolean trait.
 - [ ] Select Ultrathink and confirm prompt injection and the prompt highlight

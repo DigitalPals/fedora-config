@@ -423,6 +423,70 @@ function findModel(provider, slug) {
     return null;
 }
 
+// Map a provider driver (or any provider-ish hint string) onto one of the
+// bundled brand glyphs. Servers name drivers freely ("claudeAgent", "codex"),
+// so match by family rather than exact id.
+function providerIconName(hint) {
+    if (typeof hint !== "string" || hint === "")
+        return "";
+    if (/claude|anthropic/i.test(hint))
+        return "claude";
+    if (/codex|openai|gpt/i.test(hint))
+        return "openai";
+    if (/kimi|moonshot/i.test(hint))
+        return "kimi";
+    return "";
+}
+
+// Resolve the glyph for a raw thread. Prefer the live session's provider,
+// then the persisted selection; fall back to matching the hint strings
+// directly so the glyph survives a missing provider snapshot.
+function threadProviderIconName(thread, providers) {
+    var persisted = thread && thread.modelSelection
+        && typeof thread.modelSelection === "object" ? thread.modelSelection : {};
+    var session = thread && thread.session && typeof thread.session === "object"
+        ? thread.session : {};
+    var hints = [
+        session.providerInstanceId,
+        persisted.instanceId,
+        persisted.providerInstanceId,
+        session.providerName,
+        persisted.provider,
+        persisted.driver
+    ];
+    for (var i = 0; i < hints.length; i++) {
+        var hint = hints[i];
+        if (typeof hint !== "string" || hint === "")
+            continue;
+        var provider = findProvider(providers, hint);
+        var icon = providerIconName(provider ? provider.driver : hint);
+        if (icon !== "")
+            return icon;
+    }
+    return "";
+}
+
+// "Claude · Opus 4.5"-style summary of the provider/model a thread would
+// continue with; empty while no provider snapshot is available.
+function threadSelectionLabel(thread, providers) {
+    var selection = selectionForThread(thread, providers);
+    if (!selection)
+        return "";
+    var provider = findProvider(providers, selection.instanceId);
+    if (!provider)
+        return "";
+    var model = findModel(provider, selection.model);
+    var modelName = typeof selection.model === "string" ? selection.model : "";
+    if (model) {
+        if (typeof model.shortName === "string" && model.shortName !== "")
+            modelName = model.shortName;
+        else if (typeof model.name === "string" && model.name !== "")
+            modelName = model.name;
+    }
+    return modelName !== "" ? provider.displayName + " · " + modelName
+        : provider.displayName;
+}
+
 function defaultModel(provider) {
     if (!provider || !Array.isArray(provider.models) || provider.models.length === 0)
         return "";
@@ -913,6 +977,9 @@ var exported = {
     findProvider: findProvider,
     findModel: findModel,
     defaultModel: defaultModel,
+    providerIconName: providerIconName,
+    threadProviderIconName: threadProviderIconName,
+    threadSelectionLabel: threadSelectionLabel,
     normalizeTraits: normalizeTraits,
     traitSelections: traitSelections,
     isUltrathinkPrompt: isUltrathinkPrompt,
