@@ -194,6 +194,8 @@ printf '\nManual acceptance still required (these checks are intentionally non-d
 printf '%s\n' \
   '  - Quickshell launcher modes/navigation, notification toasts/actions/DND, Polkit, Secret Service, screenshots, recording, OCR, and dictation' \
   '  - focused-monitor bar migration, launcher placement, responsive widths, audio wheel/mute, and popout hover switching' \
+  '  - T3 Code dropdown row expand/collapse and selection across needs-you, running, plan-ready, completed, idle, and failed sections; one inspector/subscription, bounded scrolling, explicit open links, Stop, per-thread/bulk Mark reviewed, and unchanged chip/count/tooltip/notifications' \
+  '  - T3 Code approval and follow-up sending/failure feedback plus structured-input single-select, multi-select, custom, Back/Next/Submit, multi-question completeness, retry draft retention, and resolution cleanup' \
   '  - lid close/open and Apple/AORUS/XREAL hotplug behavior' \
   '  - touchpad/haptics, Wi-Fi 7 throughput, audio, Snapshot/video-call camera, and mic LED' \
   '  - fan response under load, suspend/resume, docked-lid behavior, LocalSend transfer, and Steam launch' \
