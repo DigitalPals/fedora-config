@@ -30,11 +30,16 @@ Column {
     readonly property bool sending: T3Code.actionPending(actionKind, actionThreadId, "")
 
     spacing: 5
+    // A picker menu has to escape both the settings card's and this
+    // composer's stacking contexts to cover controls declared after it.
+    z: settingsPresentation.activePicker !== null ? 100 : 0
 
     QtObject {
         id: settingsPresentation
 
         property bool expanded: false
+        property Item activePicker: null
+        property string activePickerGroup: ""
         readonly property bool narrow: root.width < 360
         readonly property var accessOptions: [
             { id: "approval-required", label: "Ask first" },
@@ -46,6 +51,28 @@ Column {
             { id: "default", label: "Default" },
             { id: "plan", label: "Plan" }
         ]
+
+        function trackPicker(picker, group) {
+            if (picker.expanded) {
+                if (activePicker !== null && activePicker !== picker)
+                    activePicker.expanded = false;
+                activePicker = picker;
+                activePickerGroup = group;
+            } else if (activePicker === picker) {
+                activePicker = null;
+                activePickerGroup = "";
+            }
+        }
+
+        onExpandedChanged: {
+            if (!expanded && activePicker !== null)
+                activePicker.expanded = false;
+        }
+
+        onActivePickerChanged: {
+            if (activePicker === null)
+                activePickerGroup = "";
+        }
 
         function settingId(option) {
             if (!option)
@@ -231,6 +258,7 @@ Column {
 
         width: parent.width
         height: settingsColumn.implicitHeight + 2
+        z: settingsPresentation.activePicker !== null ? 100 : 0
         radius: 8
         color: Theme.cardFill
         border.width: 1
@@ -378,10 +406,15 @@ Column {
                     spacing: 5
 
                     Flow {
+                        id: providerModelFields
+
                         width: parent.width
                         spacing: 5
+                        z: settingsPresentation.activePickerGroup === "provider-model" ? 100 : 0
 
                         T3Picker {
+                            id: providerPicker
+
                             width: settingsPresentation.narrow
                                 ? parent.width : (parent.width - 5) / 2
                             label: "Provider"
@@ -390,9 +423,13 @@ Column {
                             openUpward: !root.newThread
                             enabled: root.editable && !root.sending && options.length > 0
                             onSelected: value => root.chooseProvider(value)
+                            onExpandedChanged: settingsPresentation.trackPicker(
+                                providerPicker, "provider-model")
                         }
 
                         T3Picker {
+                            id: modelPicker
+
                             width: settingsPresentation.narrow
                                 ? parent.width : (parent.width - 5) / 2
                             label: "Model"
@@ -402,14 +439,21 @@ Column {
                             menuRows: 8
                             enabled: root.editable && !root.sending && options.length > 0
                             onSelected: value => root.chooseModel(value)
+                            onExpandedChanged: settingsPresentation.trackPicker(
+                                modelPicker, "provider-model")
                         }
                     }
 
                     Flow {
+                        id: runtimeFields
+
                         width: parent.width
                         spacing: 5
+                        z: settingsPresentation.activePickerGroup === "runtime" ? 100 : 0
 
                         T3Picker {
+                            id: accessPicker
+
                             width: settingsPresentation.narrow || !root.showInteraction
                                 ? parent.width : (parent.width - 5) / 2
                             label: "Access"
@@ -420,9 +464,13 @@ Column {
                             openUpward: !root.newThread
                             enabled: root.editable && !root.sending
                             onSelected: value => root.chooseRuntime(value)
+                            onExpandedChanged: settingsPresentation.trackPicker(
+                                accessPicker, "runtime")
                         }
 
                         T3Picker {
+                            id: interactionPicker
+
                             visible: root.showInteraction
                             width: settingsPresentation.narrow
                                 ? parent.width : (parent.width - 5) / 2
@@ -432,13 +480,18 @@ Column {
                             openUpward: !root.newThread
                             enabled: root.editable && !root.sending
                             onSelected: value => root.chooseInteraction(value)
+                            onExpandedChanged: settingsPresentation.trackPicker(
+                                interactionPicker, "runtime")
                         }
                     }
 
                     Flow {
+                        id: traitFields
+
                         visible: root.traits.length > 0
                         width: parent.width
                         spacing: 5
+                        z: settingsPresentation.activePickerGroup === "traits" ? 100 : 0
 
                         Repeater {
                             model: root.traits
@@ -450,8 +503,11 @@ Column {
                                 width: settingsPresentation.narrow
                                     ? parent.width : (parent.width - 5) / 2
                                 height: modelData.type === "select" ? 34 : 28
+                                z: traitPicker.expanded ? 100 : 0
 
                                 T3Picker {
+                                    id: traitPicker
+
                                     visible: traitRow.modelData.type === "select"
                                     anchors.fill: parent
                                     label: root.traitLabel(traitRow.modelData)
@@ -460,6 +516,8 @@ Column {
                                     enabled: root.editable && !root.sending
                                     onSelected: value => root.chooseTrait(
                                         traitRow.modelData.id, value)
+                                    onExpandedChanged: settingsPresentation.trackPicker(
+                                        traitPicker, "traits")
                                 }
 
                                 Rectangle {

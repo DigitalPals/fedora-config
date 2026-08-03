@@ -38,6 +38,17 @@ Item {
         return found ? optionLabel(found) : (value !== "" ? value : "Unavailable");
     }
 
+    function containsPickerPoint(item, x, y) {
+        if (!item)
+            return false;
+        const point = root.mapFromItem(item, x, y);
+        const inButton = point.x >= 0 && point.x <= root.width
+            && point.y >= 0 && point.y <= root.height;
+        const inMenu = menu.visible && point.x >= menu.x && point.x <= menu.x + menu.width
+            && point.y >= menu.y && point.y <= menu.y + menu.height;
+        return inButton || inMenu;
+    }
+
     function move(delta) {
         const choices = (Array.isArray(options) ? options : [])
             .filter(option => option.disabled !== true);
@@ -64,6 +75,30 @@ Item {
         } else if (event.key === Qt.Key_Escape && root.expanded) {
             root.expanded = false;
             event.accepted = true;
+        }
+    }
+
+    onEnabledChanged: {
+        if (!enabled)
+            expanded = false;
+    }
+
+    onVisibleChanged: {
+        if (!visible)
+            expanded = false;
+    }
+
+    // Observe the entire popout window without consuming the click. This
+    // lets the underlying control keep working while dismissing this menu
+    // whenever the tap lands outside both its button and floating panel.
+    TapHandler {
+        enabled: root.expanded && root.enabled && root.visible
+        margin: root.Window.window
+            ? Math.max(root.Window.window.width, root.Window.window.height) : 0
+        onTapped: eventPoint => {
+            if (!root.containsPickerPoint(root,
+                    eventPoint.position.x, eventPoint.position.y))
+                root.expanded = false;
         }
     }
 

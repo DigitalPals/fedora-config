@@ -31,6 +31,11 @@ select trait and a boolean trait.
 - [ ] Tab through provider, model, access, mode, select traits, boolean traits,
   prompt, and Send. Exercise picker open/close, arrow-key selection, and
   `Escape`.
+- [ ] Open every picker in both New Thread and an existing thread. Confirm its
+  menu is opaque and stays above the other settings, prompt, buttons, and error
+  text; opening a second picker must close the first. Reopen it and click
+  elsewhere in the popout without selecting an option; the menu must close and
+  the underlying control must still receive that click.
 - [ ] Test idle, running, read-only, sending, plan-ready, and provider-locked
   threads. Confirm the prior enablement, model-locking, prompt, and send behavior
   is unchanged.
