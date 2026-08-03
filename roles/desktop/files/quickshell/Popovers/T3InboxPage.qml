@@ -122,7 +122,7 @@ Column {
             || thread.cls === "done" || thread.cls === "idle"
         // Actions replace the status word on hover; keyboard focus on the row
         // or an action keeps them revealed so tab users are not locked out.
-        readonly property bool revealed: rowMouse.containsMouse || row.activeFocus
+        readonly property bool revealed: rowHover.hovered || row.activeFocus
             || actionsScope.activeFocus
         readonly property string glyph: T3Code.threadProviderIcon(thread.id)
         readonly property string statusWord: {
@@ -166,10 +166,17 @@ Column {
             width: parent.width
             height: 50
             radius: 9
-            color: rowMouse.containsMouse ? Theme.hoverFill : "transparent"
+            color: rowHover.hovered ? Theme.hoverFill : "transparent"
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accent
             activeFocusOnTab: true
+
+            // A passive handler keeps the row hovered while the pointer is
+            // over one of its child actions. A MouseArea loses containsMouse
+            // to those children, which made the actions and status alternate.
+            HoverHandler {
+                id: rowHover
+            }
 
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -182,7 +189,6 @@ Column {
             MouseArea {
                 id: rowMouse
                 anchors.fill: parent
-                hoverEnabled: true
                 onClicked: root.threadRequested(entry.thread.id)
             }
 
