@@ -54,10 +54,12 @@ Singleton {
         hideToast(entry, false);
     }
 
+    // Critical toasts never reach this: they persist until dismissed
+    // (design t4), so only normal urgencies deplete.
     function timeoutFor(entry) {
         if (entry.expireTimeout > 0 && entry.expireTimeout <= 120)
             return Math.round(entry.expireTimeout * 1000);
-        return entry.urgency === NotificationUrgency.Critical ? 8000 : 5000;
+        return 6000;
     }
 
     readonly property NotificationServer server: NotificationServer {
@@ -69,6 +71,9 @@ Singleton {
 
         onNotification: notif => {
             notif.tracked = true;
+            // Keep this: icon-resolution misses are impossible to diagnose
+            // after the fact without knowing what the sender actually sent.
+            console.log(`notification: app="${notif.appName}" icon="${notif.appIcon}" image="${notif.image}"`);
             const arrived = Date.now();
             const entry = {
                 key: `${notif.id}-${arrived}`,
@@ -77,6 +82,7 @@ Singleton {
                 arrived: arrived,
                 appName: notif.appName,
                 appIcon: notif.appIcon,
+                image: notif.image,
                 summary: notif.summary,
                 body: notif.body,
                 urgency: notif.urgency,
@@ -112,6 +118,47 @@ Singleton {
             if (entry.live && entry.notif)
                 entry.notif.dismiss();
         }
+    }
+
+    // Resolve an app's desktop-entry icon from the appName a notification
+    // carries. Senders write anything from exact ids ("google-chrome") to
+    // display names ("Google Chrome", "Firefox"), so try the id heuristic,
+    // a dashed lowercase form, and finally the entries' display names.
+    function entryIcon(appName) {
+        if (!appName)
+            return "";
+        const entry = DesktopEntries.heuristicLookup(appName)
+            || DesktopEntries.heuristicLookup(appName.toLowerCase().replace(/\s+/g, "-"));
+        if (entry && entry.icon)
+            return entry.icon;
+        const lower = appName.toLowerCase();
+        const byName = DesktopEntries.applications.values.find(e => e.name && e.name.toLowerCase() === lower);
+        return byName && byName.icon ? byName.icon : "";
+    }
+
+    // Image source for an entry's icon slot. Every step falls through when
+    // it cannot produce something loadable: the appIcon hint (a theme icon
+    // name, or a file path some apps send), then the app's desktop-entry
+    // icon, then the notification's own image (e.g. Chrome sends the site
+    // favicon). "" means: show the glyph fallback.
+    function iconSource(entry) {
+        const hint = entry.appIcon || "";
+        if (hint) {
+            if (hint.startsWith("/"))
+                return "file://" + hint;
+            if (hint.startsWith("file://") || hint.startsWith("data:"))
+                return hint;
+            const themed = Quickshell.iconPath(hint, true);
+            if (themed !== "")
+                return themed;
+        }
+        const named = entryIcon(entry.appName);
+        if (named !== "") {
+            const themed = Quickshell.iconPath(named, true);
+            if (themed !== "")
+                return themed;
+        }
+        return entry.image || "";
     }
 
     function timeAgo(arrived, now) {
