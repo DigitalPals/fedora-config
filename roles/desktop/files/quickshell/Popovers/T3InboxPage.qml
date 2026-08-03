@@ -1,0 +1,474 @@
+import QtQuick
+import Quickshell
+import "../Common"
+
+Column {
+    id: root
+
+    property int maxHeight: 560
+    property bool snoozedExpanded: false
+    property bool settledExpanded: false
+    signal threadRequested(string threadId)
+    signal newRequested()
+
+    readonly property var needsYou: T3Code.threads.filter(thread =>
+        thread.cls === "attention" || thread.cls === "error")
+    readonly property var readyPlans: T3Code.threads.filter(thread =>
+        thread.planReady && thread.cls !== "attention" && thread.cls !== "error")
+    readonly property var runningThreads: T3Code.threads.filter(thread =>
+        thread.cls === "running" && !thread.planReady)
+    readonly property var quietThreads: T3Code.threads.filter(thread =>
+        (thread.cls === "done" || thread.cls === "idle") && !thread.planReady)
+
+    spacing: 5
+
+    component Action: Rectangle {
+        id: action
+        property string label: ""
+        property color tint: Theme.textLow
+        property color fill: Theme.hoverFill
+        signal triggered()
+
+        width: labelText.implicitWidth + 14
+        height: 22
+        radius: 6
+        color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
+        opacity: enabled ? 1 : 0.4
+        activeFocusOnTab: enabled
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+
+        Keys.onPressed: event => {
+            if (!action.enabled)
+                return;
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                action.triggered();
+                event.accepted = true;
+            }
+        }
+
+        Text {
+            id: labelText
+            anchors.centerIn: parent
+            text: action.label
+            font.family: Theme.fontSans
+            font.pixelSize: 9
+            font.weight: 600
+            color: action.tint
+        }
+
+        MouseArea {
+            id: actionMouse
+            anchors.fill: parent
+            enabled: action.enabled
+            hoverEnabled: true
+            onClicked: action.triggered()
+        }
+    }
+
+    component GroupTitle: Text {
+        leftPadding: 6
+        topPadding: 4
+        bottomPadding: 1
+        font.family: Theme.fontSans
+        font.pixelSize: 9
+        font.weight: 650
+        font.letterSpacing: 0.55
+        color: Theme.textDim
+    }
+
+    component ThreadRow: Column {
+        id: entry
+        required property var thread
+
+        readonly property bool active: thread.lifecycle === "active"
+        readonly property bool settled: thread.lifecycle === "settled"
+        readonly property bool snoozed: thread.lifecycle === "snoozed"
+        readonly property color statusColor: thread.cls === "error" ? Theme.red
+            : thread.cls === "attention" ? Theme.amber
+            : thread.planReady ? Theme.accent
+            : thread.cls === "running" ? Theme.accent
+            : thread.cls === "done" ? Theme.textMid : Theme.dotDim
+
+        width: parent.width
+        spacing: 3
+
+        Rectangle {
+            id: row
+            width: parent.width
+            height: 47
+            radius: 8
+            color: rowMouse.containsMouse ? Theme.hoverFill : "transparent"
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accent
+            activeFocusOnTab: true
+
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    root.threadRequested(entry.thread.id);
+                    event.accepted = true;
+                }
+            }
+
+            MouseArea {
+                id: rowMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: root.threadRequested(entry.thread.id)
+            }
+
+            Rectangle {
+                id: dot
+                x: 7
+                anchors.verticalCenter: parent.verticalCenter
+                width: 7
+                height: 7
+                radius: 4
+                color: entry.statusColor
+
+                SequentialAnimation on opacity {
+                    running: entry.thread.cls === "running"
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.3; duration: 750 }
+                    NumberAnimation { to: 1; duration: 750 }
+                }
+            }
+
+            Column {
+                anchors.left: dot.right
+                anchors.leftMargin: 8
+                anchors.right: actions.left
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+
+                Text {
+                    width: parent.width
+                    text: entry.thread.title
+                    elide: Text.ElideRight
+                    font.family: Theme.fontSans
+                    font.pixelSize: 11
+                    font.weight: entry.thread.cls === "idle" ? 500 : 600
+                    color: Theme.textHi
+                }
+
+                Text {
+                    width: parent.width
+                    text: {
+                        const parts = [];
+                        if (entry.thread.project !== "")
+                            parts.push(entry.thread.project);
+                        if (entry.snoozed && entry.thread.snoozedUntil)
+                            parts.push("wakes in " + T3Code.snoozeWakeLabel(
+                                entry.thread.snoozedUntil));
+                        else if (entry.settled)
+                            parts.push(entry.thread.settledOverride === "settled"
+                                ? "settled by you" : "settled by inactivity");
+                        else if (entry.thread.planReady)
+                            parts.push("plan ready");
+                        else if (entry.thread.sessionStatus !== "")
+                            parts.push(entry.thread.sessionStatus);
+                        const relative = T3Code.relTime(entry.thread.updatedAt);
+                        if (relative !== "")
+                            parts.push(relative);
+                        return parts.join(" · ");
+                    }
+                    elide: Text.ElideRight
+                    font.family: Theme.fontSans
+                    font.pixelSize: 9
+                    color: Theme.textDim
+                }
+            }
+
+            Row {
+                id: actions
+                z: 2
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4
+
+                Action {
+                    visible: entry.active && T3Code.supportsSettlement
+                    label: T3Code.actionPending("settle", entry.thread.id, "") ? "…" : "Settle"
+                    enabled: T3Code.canDispatch && entry.thread.canLifecycle
+                        && !T3Code.actionPending("settle", entry.thread.id, "")
+                    tint: Theme.accent
+                    fill: Theme.accentBg
+                    onTriggered: T3Code.settle(entry.thread.id)
+                }
+
+                Action {
+                    visible: entry.settled && T3Code.supportsSettlement
+                    label: T3Code.actionPending("unsettle", entry.thread.id, "") ? "…" : "Unsettle"
+                    enabled: T3Code.canDispatch
+                        && !T3Code.actionPending("unsettle", entry.thread.id, "")
+                    tint: Theme.accent
+                    fill: Theme.accentBg
+                    onTriggered: T3Code.unsettle(entry.thread.id)
+                }
+
+                Action {
+                    visible: entry.snoozed && T3Code.supportsSnooze
+                    label: T3Code.actionPending("unsnooze", entry.thread.id, "") ? "…" : "Wake"
+                    enabled: T3Code.canDispatch
+                        && !T3Code.actionPending("unsnooze", entry.thread.id, "")
+                    tint: Theme.accent
+                    fill: Theme.accentBg
+                    onTriggered: T3Code.unsnooze(entry.thread.id)
+                }
+
+                Action {
+                    label: "↗"
+                    onTriggered: {
+                        Quickshell.execDetached(["xdg-open", T3Code.threadUrl(entry.thread.id)]);
+                        Popouts.close();
+                    }
+                }
+            }
+        }
+
+        Text {
+            visible: text !== ""
+            x: 21
+            width: parent.width - 27
+            text: {
+                for (const kind of ["settle", "unsettle", "snooze", "unsnooze"]) {
+                    const error = T3Code.actionError(kind, entry.thread.id, "");
+                    if (error !== "")
+                        return error;
+                }
+                return "";
+            }
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            font.family: Theme.fontSans
+            font.pixelSize: 9
+            color: Theme.redText
+        }
+    }
+
+    component DrawerHeader: Rectangle {
+        id: drawer
+        property string label: ""
+        property int count: 0
+        property bool expanded: false
+        signal toggled()
+
+        width: parent ? parent.width : 0
+        height: 30
+        radius: 7
+        color: drawerMouse.containsMouse ? Theme.hoverFill : Theme.cardFill
+        activeFocusOnTab: true
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                drawer.toggled();
+                event.accepted = true;
+            }
+        }
+
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 9
+            anchors.verticalCenter: parent.verticalCenter
+            text: drawer.label + " (" + drawer.count + ")"
+            font.family: Theme.fontSans
+            font.pixelSize: 10
+            font.weight: 600
+            color: Theme.textLow
+        }
+
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 9
+            anchors.verticalCenter: parent.verticalCenter
+            text: drawer.expanded ? "▴" : "▾"
+            font.family: Theme.fontMono
+            font.pixelSize: 9
+            color: Theme.textDim
+        }
+
+        MouseArea {
+            id: drawerMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: drawer.toggled()
+        }
+    }
+
+    Item {
+        width: parent.width
+        height: 33
+
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Inbox"
+            font.family: Theme.fontSans
+            font.pixelSize: 14
+            font.weight: 700
+            color: Theme.textHi
+        }
+
+        Action {
+            anchors.right: parent.right
+            anchors.rightMargin: 3
+            anchors.verticalCenter: parent.verticalCenter
+            label: "＋ New thread"
+            enabled: T3Code.canDispatch && T3Code.hasReadyProvider && T3Code.hasProjects
+            tint: Theme.accent
+            fill: Theme.accentBg
+            onTriggered: root.newRequested()
+        }
+    }
+
+    Item {
+        id: viewport
+        width: parent.width
+        height: Math.min(root.maxHeight - 38, body.implicitHeight)
+
+        Flickable {
+            id: flick
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: body.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            activeFocusOnTab: interactive
+
+            Column {
+                id: body
+                width: flick.width - (flick.contentHeight > flick.height ? 5 : 0)
+                spacing: 4
+
+                Text {
+                    visible: T3Code.readOnly
+                    width: parent.width
+                    leftPadding: 7
+                    rightPadding: 7
+                    topPadding: 5
+                    bottomPadding: 5
+                    text: "Read-only pairing · actions are disabled"
+                    font.family: Theme.fontSans
+                    font.pixelSize: 10
+                    color: Theme.amber
+                }
+
+                Text {
+                    visible: T3Code.state !== "connected"
+                    width: parent.width
+                    topPadding: 12
+                    bottomPadding: 12
+                    text: T3Code.state === "unpaired" ? "Pair T3 Code to view threads"
+                        : T3Code.state === "connecting" ? "Connecting…"
+                        : "Server unreachable — drafts are safe"
+                    horizontalAlignment: Text.AlignHCenter
+                    font.family: Theme.fontSans
+                    font.pixelSize: 11
+                    color: Theme.textDim
+                }
+
+                Text {
+                    visible: T3Code.state === "connected" && T3Code.shellReady
+                        && T3Code.threads.length === 0 && T3Code.snoozedThreads.length === 0
+                        && T3Code.settledThreads.length === 0
+                    width: parent.width
+                    topPadding: 12
+                    bottomPadding: 12
+                    text: "No sessions"
+                    horizontalAlignment: Text.AlignHCenter
+                    font.family: Theme.fontSans
+                    font.pixelSize: 11
+                    color: Theme.textDim
+                }
+
+                GroupTitle { visible: root.needsYou.length > 0; text: "NEEDS YOU"; color: Theme.amber }
+                Repeater {
+                    model: root.needsYou
+                    delegate: ThreadRow { required property var modelData; thread: modelData }
+                }
+
+                GroupTitle { visible: root.readyPlans.length > 0; text: "READY TO REVIEW"; color: Theme.accent }
+                Repeater {
+                    model: root.readyPlans
+                    delegate: ThreadRow { required property var modelData; thread: modelData }
+                }
+
+                GroupTitle { visible: root.runningThreads.length > 0; text: "RUNNING" }
+                Repeater {
+                    model: root.runningThreads
+                    delegate: ThreadRow { required property var modelData; thread: modelData }
+                }
+
+                Repeater {
+                    model: root.quietThreads
+                    delegate: ThreadRow { required property var modelData; thread: modelData }
+                }
+
+                DrawerHeader {
+                    visible: T3Code.snoozedThreads.length > 0
+                    label: "Snoozed"
+                    count: T3Code.snoozedThreads.length
+                    expanded: root.snoozedExpanded
+                    onToggled: root.snoozedExpanded = !root.snoozedExpanded
+                }
+
+                Repeater {
+                    model: root.snoozedExpanded ? T3Code.snoozedThreads.slice(0, 5) : []
+                    delegate: ThreadRow { required property var modelData; thread: modelData }
+                }
+
+                Text {
+                    visible: root.snoozedExpanded && T3Code.snoozedThreads.length > 5
+                    width: parent.width
+                    leftPadding: 9
+                    text: "+" + (T3Code.snoozedThreads.length - 5) + " more in T3 Code"
+                    font.family: Theme.fontSans
+                    font.pixelSize: 9
+                    color: Theme.textDim
+                }
+
+                DrawerHeader {
+                    visible: T3Code.settledThreads.length > 0
+                    label: "Settled"
+                    count: T3Code.settledThreads.length
+                    expanded: root.settledExpanded
+                    onToggled: root.settledExpanded = !root.settledExpanded
+                }
+
+                Repeater {
+                    model: root.settledExpanded ? T3Code.settledThreads.slice(0, 5) : []
+                    delegate: ThreadRow { required property var modelData; thread: modelData }
+                }
+
+                Text {
+                    visible: root.settledExpanded && T3Code.settledThreads.length > 5
+                    width: parent.width
+                    leftPadding: 9
+                    text: "+" + (T3Code.settledThreads.length - 5) + " more in T3 Code"
+                    font.family: Theme.fontSans
+                    font.pixelSize: 9
+                    color: Theme.textDim
+                }
+            }
+        }
+
+        Rectangle {
+            visible: flick.contentHeight > flick.height + 1
+            anchors.right: parent.right
+            width: 2
+            height: Math.max(24, viewport.height * flick.visibleArea.heightRatio)
+            y: flick.visibleArea.yPosition * viewport.height
+            radius: 1
+            color: Theme.textFaint
+            opacity: flick.moving ? 0.8 : 0.4
+        }
+    }
+}

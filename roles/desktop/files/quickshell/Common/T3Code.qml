@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "T3CodeHelpers.js" as Helpers
 
 // T3 Code session monitor and remote control: keeps a live WebSocket
 // subscription to the orchestration shell of the remote T3 Code server
@@ -22,15 +23,47 @@ Singleton {
     property string accessToken: ""
     property string environmentLabel: ""
     property string environmentId: ""
+    property string serverVersion: ""
+    property var environmentCapabilities: ({})
+
+    // Scope is persisted by t3-pair.py. Older state files do not contain it;
+    // absence deliberately keeps the old "let the server authorize" behavior.
+    property bool scopeMetadataKnown: false
+    property var tokenScope: ""
+    readonly property var scopeInfo: Helpers.normalizeScopes(tokenScope, scopeMetadataKnown)
+    readonly property bool canRead: scopeInfo.canRead
+    readonly property bool canOperate: scopeInfo.canOperate
+    readonly property bool readOnly: scopeMetadataKnown && !canOperate
+    readonly property bool canDispatch: canOperate && state === "connected"
+
+    // Sanitized server.getConfig projection. Credentials, settings, paths,
+    // scripts, and skills never enter this singleton.
+    property bool configReady: false
+    property bool configLoading: false
+    property string configError: ""
+    property var providerConfigurations: []
+    readonly property bool hasReadyProvider: configReady
+        && providerConfigurations.some(provider => provider.ready === true
+            && Array.isArray(provider.models) && provider.models.length > 0)
+    readonly property bool supportsSettlement:
+        environmentCapabilities.threadSettlement === true
+    readonly property bool supportsSnooze:
+        environmentCapabilities.threadSnooze === true
+    readonly property bool supportsTitleRegeneration:
+        environmentCapabilities.threadTitleRegeneration === true
 
     // threadId → thread shell, projectId → project shell (raw server shapes)
     property var threadMap: ({})
     property var projectMap: ({})
     property bool shellReady: false
+    readonly property bool hasProjects: Object.values(projectMap)
+        .some(project => project && !project.deletedAt)
 
     // Derived, popover-ready: the active inbox only (settled and snoozed
     // threads are dropped), sorted by urgency then recency.
     property var threads: []
+    property var snoozedThreads: []
+    property var settledThreads: []
     property int runningCount: 0
     property int attentionCount: 0
     property int doneCount: 0
@@ -54,6 +87,8 @@ Singleton {
     property var detailLatestActivity: null
     property var detailActionablePlan: null
     property var detailCheckpointSummary: null
+    property var detailDiff: ({ checkpointRef: "", loading: false, error: "",
+        text: "", fullText: "", truncated: false, totalChars: 0, totalLines: 0 })
 
     // Action state is keyed by kind/thread/request. Generic commands clear
     // when dispatch succeeds; approvals and structured input wait for the
@@ -69,6 +104,16 @@ Singleton {
     property var userInputQuestionIndices: ({})
     property var handledRequestActivities: ({})
 
+    // Composer state belongs to the process-wide singleton so Loader teardown,
+    // navigation, and reconnects never discard text or selections.
+    property var threadDrafts: ({})
+    property var newThreadDraft: ({})
+    property var pendingDraftMessages: ({})
+    property string pendingNewThreadId: ""
+    property string pendingNewThreadActionKey: ""
+
+    signal newThreadConfirmed(string threadId)
+
     readonly property bool paired: host !== "" && accessToken !== ""
     readonly property string pairHint: "python3 ~/.config/quickshell/scripts/t3-pair.py '<pairing-url>'"
 
@@ -78,57 +123,31 @@ Singleton {
     // client's sidebar setting (its default is 3); 0 disables auto-settle.
     property int autoSettleAfterDays: 3
 
-    readonly property int dayMs: 86400000
+    readonly property int dayMs: Helpers.DAY_MS
     // A turn.start is adopted by a session within seconds; past this the
     // message is a failed start, not pending work.
-    readonly property int queuedTurnGraceMs: 120000
+    readonly property int queuedTurnGraceMs: Helpers.QUEUED_TURN_GRACE_MS
+    readonly property int actionTimeoutMs: 15000
+    readonly property int maxPromptChars: Helpers.MAX_PROMPT_CHARS
 
     // Bumped once a minute so settledness and the relative time labels
     // follow the clock — both move without any server event.
     property double nowMs: Date.now()
 
     function parseMs(iso) {
-        return iso ? Date.parse(iso) : NaN;
+        return Helpers.parseMs(iso);
     }
 
     // Newest real activity on a thread (reference: threadLastActivityAt).
     function lastActivityMs(t) {
-        const turn = t.latestTurn;
-        const stamps = [t.latestUserMessageAt,
-                        turn ? turn.requestedAt : null,
-                        turn ? turn.startedAt : null,
-                        turn ? turn.completedAt : null];
-        let latest = NaN;
-        for (const s of stamps) {
-            const ms = parseMs(s);
-            if (!isNaN(ms) && (isNaN(latest) || ms > latest))
-                latest = ms;
-        }
-        return latest;
+        return Helpers.lastActivityMs(t);
     }
 
     // A user message no session has adopted yet: the turn exists but none
     // of the status fields show it, so it has to be detected as a message
     // strictly newer than every timestamp on the latest turn.
     function hasQueuedTurnStart(t, now) {
-        const msg = parseMs(t.latestUserMessageAt);
-        if (isNaN(msg))
-            return false;
-        // A failed start is already visible as an error.
-        if (t.session && t.session.status === "error")
-            return false;
-        // Bounded both ways: the sender's clock may run ahead of ours.
-        if (Math.abs(now - msg) > queuedTurnGraceMs)
-            return false;
-        const turn = t.latestTurn;
-        if (!turn)
-            return true;
-        for (const stamp of [turn.requestedAt, turn.startedAt, turn.completedAt]) {
-            const ms = parseMs(stamp);
-            if (!isNaN(ms) && ms >= msg)
-                return false;
-        }
-        return true;
+        return Helpers.hasQueuedTurnStart(t, now);
     }
 
     // Mirrors the reference client's effectiveSettled, which is what the
@@ -138,74 +157,24 @@ Singleton {
     // pull request state — isn't subscribed here, so a merged PR only
     // settles its thread once the thread also goes quiet.
     function isSettled(t, now) {
-        if (t.hasPendingApprovals || t.hasPendingUserInput)
-            return false;
-        const sess = t.session ? t.session.status : "";
-        if (sess === "starting" || sess === "running")
-            return false;
-        if (hasQueuedTurnStart(t, now)) {
-            // Unless the server already ruled on that message by accepting
-            // a settle stamped after it.
-            const adjudicated = t.settledOverride === "settled"
-                && parseMs(t.settledAt) >= parseMs(t.latestUserMessageAt);
-            if (!adjudicated)
-                return false;
-        }
-        if (t.settledOverride === "settled")
-            return true;
-        if (t.settledOverride === "active")
-            return false;
-        if (autoSettleAfterDays <= 0)
-            return false;
-        const last = lastActivityMs(t);
-        return !isNaN(last) && last < now - autoSettleAfterDays * dayMs;
+        return Helpers.isEffectivelySettled(t, now, autoSettleAfterDays);
     }
 
     // Shelved until its wake time — unless the thread raises its hand:
     // blocked on the user, freshly failed, or finished a run after the
     // snooze was set.
     function isSnoozed(t, now) {
-        const wake = parseMs(t.snoozedUntil);
-        if (isNaN(wake) || wake <= now)
-            return false;
-        if (t.hasPendingApprovals || t.hasPendingUserInput)
-            return false;
-        const since = parseMs(t.snoozedAt);
-        if (t.session && t.session.status === "error"
-                && (isNaN(since) || parseMs(t.session.updatedAt) > since))
-            return false;
-        const turn = t.latestTurn;
-        if (!isNaN(since) && turn && turn.state === "completed"
-                && parseMs(turn.completedAt) > since)
-            return false;
-        return true;
+        return Helpers.isEffectivelySnoozed(t, now);
     }
 
     // "attention" | "running" | "error" | "done" | "idle". Only ever asked
     // of active threads — settledness is decided before this runs.
     function threadClass(t) {
-        if (t.hasPendingApprovals || t.hasPendingUserInput)
-            return "attention";
-        const sess = t.session ? t.session.status : "";
-        const turn = t.latestTurn ? t.latestTurn.state : "";
-        if (sess === "starting" || sess === "running" || turn === "running")
-            return "running";
-        if (sess === "error" || turn === "error")
-            return "error";
-        if (turn === "completed")
-            return "done";
-        return "idle";
+        return Helpers.threadClass(t);
     }
 
     function threadCanPrompt(t, now) {
-        if (t.hasPendingApprovals || t.hasPendingUserInput
-                || t.hasActionableProposedPlan === true)
-            return false;
-        const sess = t.session ? t.session.status : "";
-        const turn = t.latestTurn ? t.latestTurn.state : "";
-        if (sess === "starting" || sess === "running" || turn === "running")
-            return false;
-        return !hasQueuedTurnStart(t, now);
+        return Helpers.canPrompt(t, now);
     }
 
     function projectTitle(projectId) {
@@ -240,51 +209,14 @@ Singleton {
     property string listSignature: ""
 
     function rebuild() {
-        const rank = { attention: 0, error: 1, running: 2, done: 3, idle: 4 };
         const now = Date.now();
-        let running = 0, attention = 0, done = 0, settled = 0, snoozed = 0;
-        const list = [], hidden = [];
-        for (const id in threadMap) {
-            const t = threadMap[id];
-            if (t.archivedAt)
-                continue;
-            // Put-away threads belong to the web client's tail, not here.
-            if (isSnoozed(t, now)) {
-                snoozed++;
-                hidden.push(t.id);
-                continue;
-            }
-            if (isSettled(t, now)) {
-                settled++;
-                hidden.push(t.id);
-                continue;
-            }
-            const cls = threadClass(t);
-            if (cls === "running")
-                running++;
-            else if (cls === "attention" || cls === "error")
-                attention++;
-            else if (cls === "done")
-                done++;
-            list.push({
-                id: t.id,
-                title: t.title,
-                project: projectTitle(t.projectId),
-                cls: cls,
-                model: t.modelSelection ? t.modelSelection.model : "",
-                pendingApprovals: t.hasPendingApprovals === true,
-                pendingInput: t.hasPendingUserInput === true,
-                planReady: t.hasActionableProposedPlan === true,
-                sessionStatus: t.session && typeof t.session.status === "string"
-                    ? t.session.status : "",
-                canPrompt: threadCanPrompt(t, now),
-                updatedAt: t.updatedAt
-            });
-        }
-        list.sort((a, b) => (rank[a.cls] - rank[b.cls])
-            || (Date.parse(b.updatedAt) - Date.parse(a.updatedAt)));
-
-        const sig = settled + "/" + snoozed + "/" + JSON.stringify(list);
+        const projection = Helpers.classifyThreads(threadMap, projectMap, now,
+            autoSettleAfterDays);
+        const sig = JSON.stringify({
+            active: projection.active,
+            snoozed: projection.snoozed,
+            settled: projection.settled
+        });
         if (sig === listSignature)
             return;
         listSignature = sig;
@@ -293,9 +225,11 @@ Singleton {
         // the server un-settles on a new approval or question — reads as a
         // transition and still raises its toast.
         const next = {};
-        for (const id of hidden)
-            next[id] = "hidden";
-        for (const th of list) {
+        for (const th of projection.snoozed)
+            next[th.id] = "hidden";
+        for (const th of projection.settled)
+            next[th.id] = "hidden";
+        for (const th of projection.active) {
             next[th.id] = th.cls;
             const prev = lastClass[th.id];
             if (prev !== undefined && prev !== th.cls)
@@ -303,12 +237,14 @@ Singleton {
         }
         lastClass = next;
 
-        threads = list;
-        runningCount = running;
-        attentionCount = attention;
-        doneCount = done;
-        settledCount = settled;
-        snoozedCount = snoozed;
+        threads = projection.active;
+        snoozedThreads = projection.snoozed;
+        settledThreads = projection.settled;
+        runningCount = projection.runningCount;
+        attentionCount = projection.attentionCount;
+        doneCount = projection.doneCount;
+        settledCount = projection.settled.length;
+        snoozedCount = projection.snoozed.length;
 
         // Shell updates carry the freshest session/latest-turn summary even
         // while the detailed history stream is catching up.
@@ -318,6 +254,36 @@ Singleton {
             detailLatestTurn = selected.latestTurn ?? null;
             recomputeDetailDerived();
         }
+    }
+
+    function projectedThread(threadId) {
+        for (const list of [threads, snoozedThreads, settledThreads]) {
+            const found = list.find(thread => thread.id === threadId);
+            if (found)
+                return found;
+        }
+        return null;
+    }
+
+    function rawThread(threadId) {
+        return threadMap[threadId] ?? null;
+    }
+
+    function sortedProjects() {
+        return Object.values(projectMap).filter(project => project && !project.deletedAt)
+            .sort((left, right) => (left.title ?? "").localeCompare(right.title ?? ""));
+    }
+
+    function snoozePresets() {
+        return Helpers.resolveSnoozePresets(new Date());
+    }
+
+    function snoozeWakeLabel(iso) {
+        return Helpers.snoozeWakeLabel(iso, nowMs);
+    }
+
+    function historyPage(messages, visibleCount) {
+        return Helpers.historyPage(messages, visibleCount);
     }
 
     // Auto-settle and snooze wake are clock-driven: without a tick a thread
@@ -359,6 +325,9 @@ Singleton {
         onLoaded: {
             root.host = (stateData.httpBaseUrl ?? "").replace(/\/+$/, "");
             root.accessToken = stateData.accessToken ?? "";
+            root.scopeMetadataKnown = typeof stateData.scope === "string"
+                || Array.isArray(stateData.scope);
+            root.tokenScope = root.scopeMetadataKnown ? stateData.scope : "";
             if (root.paired)
                 root.connect();
             else
@@ -370,6 +339,7 @@ Singleton {
             id: stateData
             property string httpBaseUrl: ""
             property string accessToken: ""
+            property var scope: null
         }
     }
 
@@ -417,8 +387,6 @@ Singleton {
     }
 
     function fetchDescriptor() {
-        if (environmentId !== "")
-            return;
         const xhr = new XMLHttpRequest();
         xhr.open("GET", host + "/.well-known/t3/environment");
         xhr.onreadystatechange = () => {
@@ -428,14 +396,23 @@ Singleton {
                 const d = JSON.parse(xhr.responseText);
                 root.environmentId = d.environmentId ?? "";
                 root.environmentLabel = d.label ?? "";
+                root.serverVersion = typeof d.serverVersion === "string"
+                    ? d.serverVersion : root.serverVersion;
+                if (d.capabilities && typeof d.capabilities === "object")
+                    root.environmentCapabilities = Object.assign({}, d.capabilities);
             } catch (e) {}
         };
         xhr.send();
     }
 
     function scheduleRetry() {
+        if (state === "connected")
+            abortPendingRpcs();
+        failAllPendingActions("Disconnected before confirmation");
         if (socketLoader.item)
             socketLoader.item.active = false;
+        configLoading = false;
+        configReady = false;
         if (state !== "unpaired")
             state = "offline";
         retryTimer.interval = retrySecs * 1000;
@@ -471,6 +448,8 @@ Singleton {
     }
 
     function sendRequest(id, tag, payload) {
+        if (!socketLoader.item || state !== "connected")
+            return false;
         socketLoader.item.sendText(JSON.stringify({
             _tag: "Request",
             id: id,
@@ -478,6 +457,83 @@ Singleton {
             payload: payload,
             headers: []
         }));
+        return true;
+    }
+
+    // Effect RPC sends zero or more Chunk values followed by one Exit. This
+    // wrapper retains the final value, applies a hard timeout, and never
+    // retries implicitly after a transport loss.
+    function requestOnce(tag, payload, onSuccess, onFailure, options) {
+        if (state !== "connected" || !socketLoader.item) {
+            onFailure?.("Not connected");
+            return "";
+        }
+        const id = String(nextReqId++);
+        const opts = options ?? {};
+        const handler = {
+            value: undefined,
+            deadline: Date.now() + (opts.timeoutMs ?? actionTimeoutMs),
+            actionKey: opts.actionKey ?? "",
+            item: value => { handler.value = value; },
+            exit: msg => {
+                if (msg.exit && msg.exit._tag === "Failure")
+                    onFailure?.(root.failureMessage(msg, opts.fallback ?? "Request failed"));
+                else {
+                    // Unary Effect RPCs (including server.getConfig and the
+                    // full-diff request) return their result on Success.value.
+                    // Streams instead populate `handler.value` through Chunk.
+                    const value = msg.exit && msg.exit.value !== undefined
+                        ? msg.exit.value : handler.value;
+                    onSuccess?.(value);
+                }
+            },
+            timeout: () => onFailure?.("Request timed out"),
+            disconnect: () => onFailure?.("Disconnected before confirmation")
+        };
+        rpcHandlers[id] = handler;
+        if (!sendRequest(id, tag, payload)) {
+            delete rpcHandlers[id];
+            onFailure?.("Not connected");
+            return "";
+        }
+        return id;
+    }
+
+    function abortPendingRpcs() {
+        const handlers = rpcHandlers;
+        rpcHandlers = {};
+        for (const id in handlers)
+            handlers[id].disconnect?.();
+        detailReqId = "";
+    }
+
+    function loadServerConfig() {
+        configLoading = true;
+        configReady = false;
+        configError = "";
+        requestOnce("server.getConfig", {}, value => {
+            if (!value || typeof value !== "object") {
+                root.configLoading = false;
+                root.configError = "Malformed server configuration";
+                return;
+            }
+            const safe = Helpers.sanitizeServerConfig(value);
+            root.providerConfigurations = safe.providers;
+            root.environmentCapabilities = safe.capabilities;
+            if (safe.environmentId !== "")
+                root.environmentId = safe.environmentId;
+            if (safe.label !== "")
+                root.environmentLabel = safe.label;
+            if (safe.serverVersion !== "")
+                root.serverVersion = safe.serverVersion;
+            root.configLoading = false;
+            root.configReady = true;
+            root.reconcileDraftSelections();
+        }, error => {
+            root.configLoading = false;
+            root.configReady = false;
+            root.configError = error;
+        }, { fallback: "Server configuration unavailable" });
     }
 
     function subscribe() {
@@ -491,7 +547,12 @@ Singleton {
         resetDetailData();
         nowMs = Date.now();
         rebuild();
-        sendRequest(shellReqId, "orchestration.subscribeShell", {});
+        configReady = false;
+        loadServerConfig();
+        if (canRead)
+            sendRequest(shellReqId, "orchestration.subscribeShell", {});
+        else
+            shellReady = false;
         // A reconnect invalidates every stream request id. Keep the user's
         // selection and establish a fresh detail stream on the new socket.
         if (selected !== "") {
@@ -515,10 +576,10 @@ Singleton {
             if (msg._tag === "Chunk") {
                 socketLoader.item.sendText(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
                 if (reqId === shellReqId) {
-                    for (const item of msg.values)
+                    for (const item of (Array.isArray(msg.values) ? msg.values : []))
                         dirty = applyItem(item) || dirty;
                 } else if (rpcHandlers[reqId]) {
-                    for (const item of msg.values)
+                    for (const item of (Array.isArray(msg.values) ? msg.values : []))
                         rpcHandlers[reqId].item?.(item);
                 }
             } else if (msg._tag === "Exit") {
@@ -535,6 +596,27 @@ Singleton {
             rebuild();
     }
 
+    Timer {
+        interval: 500
+        repeat: true
+        running: root.state === "connected"
+        onTriggered: {
+            const now = Date.now();
+            for (const id in root.rpcHandlers) {
+                const handler = root.rpcHandlers[id];
+                if (handler.deadline === undefined || now < handler.deadline)
+                    continue;
+                socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: id }));
+                delete root.rpcHandlers[id];
+                handler.timeout?.();
+            }
+            const expired = Helpers.expireActionStates(root.actionStates, now,
+                root.actionTimeoutMs);
+            if (expired.expiredKeys.length > 0)
+                root.actionStates = expired.states;
+        }
+    }
+
     function applyItem(item) {
         switch (item.kind) {
         case "snapshot": {
@@ -546,23 +628,39 @@ Singleton {
             projectMap = pm;
             threadMap = tm;
             shellReady = true;
+            reconcileDraftSelections();
+            reconcileNewThreadCreation();
             return true;
         }
         case "synchronized":
             shellReady = true;
             return false;
-        case "project-upserted":
-            projectMap[item.project.id] = item.project;
+        case "project-upserted": {
+            const next = Object.assign({}, projectMap);
+            next[item.project.id] = item.project;
+            projectMap = next;
             return true;
-        case "project-removed":
-            delete projectMap[item.projectId];
+        }
+        case "project-removed": {
+            const next = Object.assign({}, projectMap);
+            delete next[item.projectId];
+            projectMap = next;
             return true;
-        case "thread-upserted":
-            threadMap[item.thread.id] = item.thread;
+        }
+        case "thread-upserted": {
+            const next = Object.assign({}, threadMap);
+            next[item.thread.id] = item.thread;
+            threadMap = next;
+            reconcileDraftSelections();
+            reconcileNewThreadCreation(item.thread.id);
             return true;
-        case "thread-removed":
-            delete threadMap[item.threadId];
+        }
+        case "thread-removed": {
+            const next = Object.assign({}, threadMap);
+            delete next[item.threadId];
+            threadMap = next;
             return true;
+        }
         default:
             return false;
         }
@@ -608,6 +706,22 @@ Singleton {
         });
     }
 
+    function failAllPendingActions(message) {
+        const next = Object.assign({}, actionStates);
+        let changed = false;
+        for (const key in next) {
+            if (!next[key] || next[key].pending !== true)
+                continue;
+            next[key] = Object.assign({}, next[key], {
+                pending: false,
+                error: message || "Disconnected before confirmation"
+            });
+            changed = true;
+        }
+        if (changed)
+            actionStates = next;
+    }
+
     function failAction(key, message) {
         const current = actionStates[key];
         if (!current)
@@ -621,6 +735,17 @@ Singleton {
     function clearAction(key) {
         if (actionStates[key] !== undefined)
             putActionState(key, null);
+    }
+
+    function cancelActionRequests(key) {
+        for (const id in rpcHandlers) {
+            const handler = rpcHandlers[id];
+            if (!handler || handler.actionKey !== key)
+                continue;
+            socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: id }));
+            delete rpcHandlers[id];
+        }
+        clearAction(key);
     }
 
     function findErrorText(value, depth) {
@@ -645,40 +770,68 @@ Singleton {
         return found !== "" ? found.slice(0, 240) : fallback;
     }
 
-    // Returns the command id when queued and an empty string when it could
-    // not be sent. Approval/input actions remain pending after RPC acceptance
-    // until their provider resolution activity arrives.
-    function dispatch(command, key, awaitResolution) {
-        if (actionStates[key]?.pending === true)
+    function rejectAction(key, message, awaitResolution) {
+        putActionState(key, {
+            pending: false,
+            error: message,
+            commandId: "",
+            awaitResolution: awaitResolution === true,
+            startedAt: Date.now()
+        });
+        return "";
+    }
+
+    // Dispatch commands one at a time. A later command is never attempted
+    // after an earlier rejection, and reconnecting never replays the batch.
+    function dispatchBatch(commands, key, options) {
+        const opts = options ?? {};
+        if (!Helpers.canBeginAction(actionStates, key))
             return "";
-        if (state !== "connected" || !socketLoader.item) {
-            putActionState(key, {
-                pending: false,
-                error: "Not connected",
-                commandId: "",
-                awaitResolution: awaitResolution === true,
+        if (!canOperate)
+            return rejectAction(key, "This pairing is read-only", opts.awaitResolution);
+        if (state !== "connected" || !socketLoader.item)
+            return rejectAction(key, "Not connected", opts.awaitResolution);
+        if (!Array.isArray(commands) || commands.length === 0)
+            return rejectAction(key, "Nothing to send", opts.awaitResolution);
+
+        const firstId = commands[0].commandId ?? genId();
+        commands[0].commandId = firstId;
+        beginAction(key, firstId, opts.awaitResolution);
+
+        function sendAt(index) {
+            if (!root.actionStates[key] || root.actionStates[key].pending !== true)
+                return;
+            if (index >= commands.length) {
+                if (opts.awaitResolution !== true && opts.holdAfterSuccess !== true)
+                    root.clearAction(key);
+                opts.onSuccess?.();
+                return;
+            }
+            const command = commands[index];
+            if (!command.commandId)
+                command.commandId = root.genId();
+            const current = root.actionStates[key];
+            root.putActionState(key, Object.assign({}, current, {
+                commandId: command.commandId,
                 startedAt: Date.now()
-            });
-            return "";
+            }));
+            requestOnce("orchestration.dispatchCommand", command, () => {
+                sendAt(index + 1);
+            }, error => {
+                root.failAction(key, error || "Command rejected");
+                opts.onFailure?.(error);
+                console.warn("t3code: command rejected:", error);
+            }, { actionKey: key, fallback: "Command rejected" });
         }
 
-        const commandId = command.commandId ?? genId();
-        command.commandId = commandId;
-        beginAction(key, commandId, awaitResolution);
-        const id = String(nextReqId++);
-        rpcHandlers[id] = {
-            exit: msg => {
-                if (msg.exit && msg.exit._tag === "Failure") {
-                    const error = root.failureMessage(msg, "Command rejected");
-                    root.failAction(key, error);
-                    console.warn("t3code: command rejected:", error);
-                } else if (!awaitResolution) {
-                    root.clearAction(key);
-                }
-            }
-        };
-        sendRequest(id, "orchestration.dispatchCommand", command);
-        return commandId;
+        sendAt(0);
+        return firstId;
+    }
+
+    // Approval/input actions remain pending after RPC acceptance until the
+    // provider's matching resolution activity arrives.
+    function dispatch(command, key, awaitResolution) {
+        return dispatchBatch([command], key, { awaitResolution: awaitResolution === true });
     }
 
     // decision: "accept" | "acceptForSession" | "decline"
@@ -742,11 +895,70 @@ Singleton {
     }
 
     function settle(threadId) {
+        const key = actionKey("settle", threadId, "");
+        const thread = threadMap[threadId];
+        if (!supportsSettlement)
+            return rejectAction(key, "Settlement is not supported by this server", false);
+        if (!Helpers.canOperateLifecycle(thread, Date.now()))
+            return rejectAction(key, "Wait for the thread to become idle", false);
         return dispatch({
             type: "thread.settle",
             commandId: genId(),
             threadId: threadId
-        }, actionKey("settle", threadId, ""), false);
+        }, key, false);
+    }
+
+    function unsettle(threadId) {
+        const key = actionKey("unsettle", threadId, "");
+        if (!supportsSettlement)
+            return rejectAction(key, "Settlement is not supported by this server", false);
+        return dispatch({
+            type: "thread.unsettle",
+            commandId: genId(),
+            threadId: threadId,
+            reason: "user"
+        }, key, false);
+    }
+
+    function settleMany(threadIds) {
+        const key = actionKey("bulk-settle", "", "");
+        if (!supportsSettlement)
+            return rejectAction(key, "Settlement is not supported by this server", false);
+        const ids = Array.isArray(threadIds) ? threadIds.filter(id =>
+            Helpers.canOperateLifecycle(threadMap[id], Date.now())) : [];
+        const commands = ids.map(id => ({
+            type: "thread.settle", commandId: genId(), threadId: id
+        }));
+        return dispatchBatch(commands, key, {});
+    }
+
+    function snooze(threadId, snoozedUntil) {
+        const key = actionKey("snooze", threadId, "");
+        const thread = threadMap[threadId];
+        if (!supportsSnooze)
+            return rejectAction(key, "Snooze is not supported by this server", false);
+        if (!Helpers.canOperateLifecycle(thread, Date.now()))
+            return rejectAction(key, "Wait for the thread to become idle", false);
+        if (isNaN(Date.parse(snoozedUntil)) || Date.parse(snoozedUntil) <= Date.now())
+            return rejectAction(key, "Choose a future wake time", false);
+        return dispatch({
+            type: "thread.snooze",
+            commandId: genId(),
+            threadId: threadId,
+            snoozedUntil: snoozedUntil
+        }, key, false);
+    }
+
+    function unsnooze(threadId) {
+        const key = actionKey("unsnooze", threadId, "");
+        if (!supportsSnooze)
+            return rejectAction(key, "Snooze is not supported by this server", false);
+        return dispatch({
+            type: "thread.unsnooze",
+            commandId: genId(),
+            threadId: threadId,
+            reason: "user"
+        }, key, false);
     }
 
     function interrupt(threadId) {
@@ -758,25 +970,535 @@ Singleton {
         }, actionKey("interrupt", threadId, ""), false);
     }
 
-    function startTurn(threadId, text) {
-        const t = threadMap[threadId];
-        const key = actionKey("prompt", threadId, "");
-        if (!t || typeof text !== "string" || text.trim() === "")
-            return "";
+    function stopSession(threadId) {
         return dispatch({
-            type: "thread.turn.start",
+            type: "thread.session.stop",
             commandId: genId(),
             threadId: threadId,
-            message: {
-                messageId: genId(),
-                role: "user",
-                text: text.trim(),
-                attachments: []
-            },
-            runtimeMode: t.runtimeMode ?? "full-access",
-            interactionMode: t.interactionMode ?? "default",
             createdAt: new Date().toISOString()
+        }, actionKey("session-stop", threadId, ""), false);
+    }
+
+    function renameThread(threadId, title) {
+        const key = actionKey("rename", threadId, "");
+        const normalized = typeof title === "string" ? title.trim() : "";
+        if (normalized === "")
+            return rejectAction(key, "Title cannot be empty", false);
+        return dispatch({
+            type: "thread.meta.update",
+            commandId: genId(),
+            threadId: threadId,
+            title: normalized
         }, key, false);
+    }
+
+    function regenerateTitle(threadId) {
+        const key = actionKey("regenerate-title", threadId, "");
+        if (!supportsTitleRegeneration)
+            return rejectAction(key, "Title regeneration is not supported", false);
+        if (threadMap[threadId]?.titleRegeneration)
+            return rejectAction(key, "Title regeneration is already running", false);
+        return dispatch({
+            type: "thread.meta.update",
+            commandId: genId(),
+            threadId: threadId,
+            regenerateTitle: true
+        }, key, false);
+    }
+
+    // ---- composer drafts and provider selection --------------------------
+
+    function providerConfiguration(instanceId) {
+        return Helpers.findProvider(providerConfigurations, instanceId);
+    }
+
+    function modelConfiguration(instanceId, model) {
+        return Helpers.findModel(providerConfiguration(instanceId), model);
+    }
+
+    function canonicalOptions(raw) {
+        if (Array.isArray(raw))
+            return raw.filter(option => option && typeof option.id === "string"
+                && (typeof option.value === "string" || typeof option.value === "boolean"))
+                .map(option => ({ id: option.id, value: option.value }));
+        const result = [];
+        if (raw && typeof raw === "object") {
+            for (const id in raw) {
+                if (typeof raw[id] === "string" || typeof raw[id] === "boolean")
+                    result.push({ id: id, value: raw[id] });
+            }
+        }
+        return result;
+    }
+
+    function normalizedOptions(instanceId, model, raw) {
+        const config = modelConfiguration(instanceId, model);
+        if (!config)
+            return canonicalOptions(raw);
+        return Helpers.traitSelections(Helpers.normalizeTraits(config.optionDescriptors, raw));
+    }
+
+    function selectionFromDraft(draft) {
+        if (!draft)
+            return null;
+        const provider = providerConfiguration(draft.instanceId);
+        const model = Helpers.findModel(provider, draft.model);
+        if (!provider || provider.ready !== true || !model)
+            return null;
+        return {
+            instanceId: provider.instanceId,
+            model: model.slug,
+            options: normalizedOptions(provider.instanceId, model.slug, draft.options)
+        };
+    }
+
+    function reconcileDraftSelections() {
+        let draftsChanged = false;
+        const drafts = Object.assign({}, threadDrafts);
+        for (const threadId in drafts) {
+            const draft = drafts[threadId];
+            let selection = selectionFromDraft(draft);
+            if (!selection)
+                selection = Helpers.selectionForThread(threadMap[threadId], providerConfigurations);
+            if (!selection)
+                continue;
+            const current = {
+                instanceId: draft.instanceId ?? "",
+                model: draft.model ?? "",
+                options: canonicalOptions(draft.options)
+            };
+            if (!Helpers.sameSelection(current, selection)) {
+                drafts[threadId] = Object.assign({}, draft, {
+                    instanceId: selection.instanceId,
+                    model: selection.model,
+                    options: selection.options ?? [],
+                    traitError: ""
+                });
+                draftsChanged = true;
+            }
+        }
+        if (draftsChanged)
+            threadDrafts = drafts;
+
+        if (newThreadDraft && typeof newThreadDraft.projectId === "string"
+                && newThreadDraft.projectId !== "") {
+            let newSelection = selectionFromDraft(newThreadDraft);
+            if (!newSelection)
+                newSelection = Helpers.selectionForProject(
+                    projectMap[newThreadDraft.projectId], providerConfigurations);
+            if (newSelection) {
+                const currentNew = {
+                    instanceId: newThreadDraft.instanceId ?? "",
+                    model: newThreadDraft.model ?? "",
+                    options: canonicalOptions(newThreadDraft.options)
+                };
+                if (!Helpers.sameSelection(currentNew, newSelection)) {
+                    newThreadDraft = Object.assign({}, newThreadDraft, {
+                        instanceId: newSelection.instanceId,
+                        model: newSelection.model,
+                        options: newSelection.options ?? [],
+                        traitError: ""
+                    });
+                }
+            }
+        }
+    }
+
+    function makeThreadDraft(thread) {
+        const persisted = thread && thread.modelSelection ? thread.modelSelection : {};
+        const resolved = Helpers.selectionForThread(thread, providerConfigurations);
+        const selection = resolved ?? persisted;
+        return {
+            prompt: "",
+            instanceId: selection.instanceId ?? thread?.session?.providerInstanceId ?? "",
+            model: selection.model ?? "",
+            options: normalizedOptions(selection.instanceId ?? "", selection.model ?? "",
+                selection.options),
+            runtimeMode: thread?.runtimeMode ?? "full-access",
+            interactionMode: thread?.interactionMode ?? "default",
+            traitError: ""
+        };
+    }
+
+    function ensureThreadDraft(threadId) {
+        if (threadDrafts[threadId] !== undefined)
+            return threadDrafts[threadId];
+        const thread = threadMap[threadId];
+        if (!thread)
+            return null;
+        const next = Object.assign({}, threadDrafts);
+        next[threadId] = makeThreadDraft(thread);
+        threadDrafts = next;
+        return next[threadId];
+    }
+
+    function threadDraft(threadId) {
+        return threadDrafts[threadId] ?? ({ prompt: "", instanceId: "", model: "",
+            options: [], runtimeMode: "full-access", interactionMode: "default",
+            traitError: "" });
+    }
+
+    function updateThreadDraft(threadId, fields) {
+        const current = ensureThreadDraft(threadId);
+        if (!current)
+            return;
+        const drafts = Object.assign({}, threadDrafts);
+        drafts[threadId] = Object.assign({}, current, fields);
+        threadDrafts = drafts;
+    }
+
+    function setThreadPrompt(threadId, prompt) {
+        updateThreadDraft(threadId, { prompt: typeof prompt === "string" ? prompt : "" });
+    }
+
+    function setThreadProvider(threadId, instanceId) {
+        const thread = threadMap[threadId];
+        const allowed = Helpers.selectableProvidersForThread(thread, providerConfigurations,
+            detailThreadId === threadId ? detailMessages.length : 0);
+        const provider = Helpers.findProvider(allowed, instanceId);
+        if (!provider)
+            return;
+        const model = Helpers.defaultModel(provider);
+        if (!Helpers.modelChangeAllowed(thread, { instanceId: instanceId, model: model },
+                providerConfigurations, detailThreadId === threadId ? detailMessages.length : 0)) {
+            updateThreadDraft(threadId, {
+                traitError: "This provider requires a new thread to change models"
+            });
+            return;
+        }
+        const modelConfig = Helpers.findModel(provider, model);
+        updateThreadDraft(threadId, {
+            instanceId: provider.instanceId,
+            model: model,
+            options: normalizedOptions(provider.instanceId, model,
+                modelConfig ? null : []),
+            traitError: ""
+        });
+    }
+
+    function setThreadModel(threadId, model) {
+        const thread = threadMap[threadId];
+        const draft = threadDraft(threadId);
+        const provider = providerConfiguration(draft.instanceId);
+        const config = Helpers.findModel(provider, model);
+        if (!config)
+            return;
+        const nextSelection = { instanceId: draft.instanceId, model: model };
+        if (!Helpers.modelChangeAllowed(thread, nextSelection, providerConfigurations,
+                detailThreadId === threadId ? detailMessages.length : 0)) {
+            updateThreadDraft(threadId, {
+                traitError: "This provider requires a new thread to change models"
+            });
+            return;
+        }
+        updateThreadDraft(threadId, {
+            model: model,
+            options: normalizedOptions(draft.instanceId, model, null),
+            traitError: ""
+        });
+    }
+
+    function setThreadRuntime(threadId, runtimeMode) {
+        updateThreadDraft(threadId, { runtimeMode: runtimeMode });
+    }
+
+    function setThreadInteraction(threadId, interactionMode) {
+        updateThreadDraft(threadId, { interactionMode: interactionMode });
+    }
+
+    function threadProviderChoices(threadId) {
+        const thread = threadMap[threadId];
+        const detailCount = detailThreadId === threadId ? detailMessages.length : 0;
+        const currentInstanceId = thread?.session?.providerInstanceId
+            ?? thread?.modelSelection?.instanceId ?? "";
+        return Helpers.selectableProvidersForThread(thread, providerConfigurations, detailCount)
+            .filter(provider => provider.instanceId === currentInstanceId
+                || Helpers.modelChangeAllowed(thread, {
+                    instanceId: provider.instanceId,
+                    model: Helpers.defaultModel(provider)
+                }, providerConfigurations, detailCount));
+    }
+
+    function threadModelChoices(threadId) {
+        const draft = threadDraft(threadId);
+        const provider = providerConfiguration(draft.instanceId);
+        if (!provider)
+            return [];
+        return provider.models.filter(model => Helpers.modelChangeAllowed(threadMap[threadId],
+            { instanceId: provider.instanceId, model: model.slug }, providerConfigurations,
+            detailThreadId === threadId ? detailMessages.length : 0));
+    }
+
+    function draftTraitDescriptors(draft) {
+        const model = draft ? modelConfiguration(draft.instanceId, draft.model) : null;
+        return Helpers.traitsForPrompt(model ? model.optionDescriptors : [],
+            draft ? draft.options : [], draft ? draft.prompt : "");
+    }
+
+    function updateThreadTrait(threadId, descriptorId, value) {
+        const draft = threadDraft(threadId);
+        const result = Helpers.applyTraitValue(draftTraitDescriptors(draft), descriptorId,
+            value, draft.prompt);
+        updateThreadDraft(threadId, { options: result.selections, prompt: result.prompt,
+            traitError: result.error });
+    }
+
+    function defaultProjectId(contextThreadId) {
+        const context = threadMap[contextThreadId];
+        if (context && projectMap[context.projectId])
+            return context.projectId;
+        const projects = sortedProjects();
+        return projects.length > 0 ? projects[0].id : "";
+    }
+
+    function buildNewDraft(projectId, prompt, sourceProposedPlan, projectFixed, modeFixed) {
+        const project = projectMap[projectId];
+        const selection = Helpers.selectionForProject(project, providerConfigurations);
+        return {
+            projectId: projectId,
+            projectFixed: projectFixed === true,
+            modeFixed: modeFixed === true,
+            prompt: typeof prompt === "string" ? prompt : "",
+            instanceId: selection ? selection.instanceId : "",
+            model: selection ? selection.model : "",
+            options: selection && Array.isArray(selection.options) ? selection.options : [],
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            sourceProposedPlan: sourceProposedPlan ?? null,
+            traitError: ""
+        };
+    }
+
+    function ensureNewThreadDraft(contextThreadId) {
+        if (newThreadDraft && typeof newThreadDraft.projectId === "string"
+                && newThreadDraft.projectId !== "")
+            return newThreadDraft;
+        const projectId = defaultProjectId(contextThreadId);
+        newThreadDraft = buildNewDraft(projectId, "", null, false, false);
+        return newThreadDraft;
+    }
+
+    function updateNewThreadDraft(fields) {
+        newThreadDraft = Object.assign({}, newThreadDraft, fields);
+    }
+
+    function setNewPrompt(prompt) {
+        updateNewThreadDraft({ prompt: typeof prompt === "string" ? prompt : "" });
+    }
+
+    function setNewProject(projectId) {
+        if (newThreadDraft.projectFixed === true || !projectMap[projectId])
+            return;
+        const replacement = buildNewDraft(projectId, newThreadDraft.prompt, null, false, false);
+        newThreadDraft = replacement;
+    }
+
+    function setNewProvider(instanceId) {
+        const provider = Helpers.findProvider(providerConfigurations, instanceId);
+        if (!provider || provider.ready !== true)
+            return;
+        const model = Helpers.defaultModel(provider);
+        updateNewThreadDraft({ instanceId: instanceId, model: model,
+            options: normalizedOptions(instanceId, model, null), traitError: "" });
+    }
+
+    function setNewModel(model) {
+        const provider = providerConfiguration(newThreadDraft.instanceId);
+        if (!Helpers.findModel(provider, model))
+            return;
+        updateNewThreadDraft({ model: model,
+            options: normalizedOptions(newThreadDraft.instanceId, model, null),
+            traitError: "" });
+    }
+
+    function setNewRuntime(runtimeMode) {
+        updateNewThreadDraft({ runtimeMode: runtimeMode });
+    }
+
+    function setNewInteraction(interactionMode) {
+        if (newThreadDraft.modeFixed !== true)
+            updateNewThreadDraft({ interactionMode: interactionMode });
+    }
+
+    function updateNewTrait(descriptorId, value) {
+        const result = Helpers.applyTraitValue(draftTraitDescriptors(newThreadDraft),
+            descriptorId, value, newThreadDraft.prompt);
+        updateNewThreadDraft({ options: result.selections, prompt: result.prompt,
+            traitError: result.error });
+    }
+
+    function newProviderChoices() {
+        return providerConfigurations.filter(provider => provider.ready === true
+            && provider.models.length > 0);
+    }
+
+    function newModelChoices() {
+        const provider = providerConfiguration(newThreadDraft.instanceId);
+        return provider ? provider.models : [];
+    }
+
+    function providerShowsInteraction(instanceId) {
+        const provider = providerConfiguration(instanceId);
+        return provider ? provider.showInteractionModeToggle !== false : true;
+    }
+
+    function prepareNewThreadForPlan(sourceThreadId, plan) {
+        const source = threadMap[sourceThreadId];
+        if (!source || !plan)
+            return false;
+        newThreadDraft = buildNewDraft(source.projectId,
+            Helpers.buildPlanImplementationPrompt(plan.planMarkdown),
+            { threadId: sourceThreadId, planId: plan.id }, true, true);
+        return true;
+    }
+
+    function putPendingDraftMessage(threadId, value) {
+        const next = Object.assign({}, pendingDraftMessages);
+        if (value === null)
+            delete next[threadId];
+        else
+            next[threadId] = value;
+        pendingDraftMessages = next;
+    }
+
+    function confirmDraftMessage(threadId, messageId) {
+        const pending = pendingDraftMessages[threadId];
+        if (!pending || pending.messageId !== messageId)
+            return;
+        if (pending.clearDraft === true) {
+            const current = threadDraft(threadId);
+            if (current.prompt === pending.prompt)
+                updateThreadDraft(threadId, Helpers.draftAfterOutcome(current, "confirmed"));
+        }
+        putPendingDraftMessage(threadId, null);
+    }
+
+    function submitExisting(threadId, overrideText, interactionOverride, sourceProposedPlan,
+            clearDraft) {
+        const thread = threadMap[threadId];
+        const draft = threadDraft(threadId);
+        const key = actionKey("prompt", threadId, "");
+        const text = typeof overrideText === "string" ? overrideText : draft.prompt;
+        if (!thread || text.trim() === "")
+            return rejectAction(key, "Write a message first", false);
+        if (text.length > maxPromptChars)
+            return rejectAction(key, "Prompt exceeds T3 Code's 120,000 character limit", false);
+        if (!Helpers.canOperateLifecycle(thread, Date.now()))
+            return rejectAction(key, "Wait for the thread to become idle", false);
+        const interactionMode = interactionOverride ?? draft.interactionMode;
+        if (!sourceProposedPlan && thread.hasActionableProposedPlan === true
+                && interactionMode !== "plan")
+            return rejectAction(key, "Choose a plan action before continuing", false);
+        const selection = selectionFromDraft(draft);
+        if (!selection)
+            return rejectAction(key, "Choose a ready provider and model", false);
+        if (!Helpers.modelChangeAllowed(thread, selection, providerConfigurations,
+                detailThreadId === threadId ? detailMessages.length : 0))
+            return rejectAction(key, "Start a new thread to change this model", false);
+        const createdAt = new Date().toISOString();
+        const messageId = genId();
+        const commands = Helpers.buildExistingTurnCommands({
+            currentThread: thread,
+            modelSelection: selection,
+            runtimeMode: draft.runtimeMode,
+            interactionMode: interactionMode,
+            text: text,
+            messageId: messageId,
+            sourceProposedPlan: sourceProposedPlan ?? null,
+            createdAt: createdAt,
+            nextId: () => root.genId()
+        });
+        putPendingDraftMessage(threadId, { messageId: messageId, prompt: text,
+            clearDraft: clearDraft !== false });
+        return dispatchBatch(commands, key, {
+            // RPC acceptance is not the same as seeing the persisted message.
+            // Keep the draft until the detail event (or a reconnect snapshot)
+            // confirms this exact message id.
+            onSuccess: () => {},
+            onFailure: () => { /* draft and correlation stay for reconnect reconciliation */ }
+        });
+    }
+
+    function startTurn(threadId, text) {
+        setThreadPrompt(threadId, text);
+        return submitExisting(threadId, undefined, undefined, null, true);
+    }
+
+    function implementPlanHere(threadId, plan) {
+        if (!plan)
+            return "";
+        updateThreadDraft(threadId, { interactionMode: "default" });
+        return submitExisting(threadId, Helpers.buildPlanImplementationPrompt(plan.planMarkdown),
+            "default", { threadId: threadId, planId: plan.id }, false);
+    }
+
+    function refinePlan(threadId) {
+        updateThreadDraft(threadId, { interactionMode: "plan" });
+    }
+
+    function submitNewThread() {
+        const draft = newThreadDraft;
+        const key = actionKey("new", "", "");
+        const text = draft && typeof draft.prompt === "string" ? draft.prompt : "";
+        if (!hasReadyProvider)
+            return rejectAction(key, configReady ? "No provider with an advertised model is ready"
+                : "Provider configuration is not ready", false);
+        if (!draft || !projectMap[draft.projectId])
+            return rejectAction(key, "Choose a project", false);
+        if (text.trim() === "")
+            return rejectAction(key, "Write the first prompt", false);
+        if (text.length > maxPromptChars)
+            return rejectAction(key, "Prompt exceeds T3 Code's 120,000 character limit", false);
+        const selection = selectionFromDraft(draft);
+        if (!selection)
+            return rejectAction(key, "Choose a ready provider and model", false);
+        const threadId = genId();
+        const createdAt = new Date().toISOString();
+        const command = Helpers.buildNewThreadCommand({
+            threadId: threadId,
+            projectId: draft.projectId,
+            text: text,
+            modelSelection: selection,
+            runtimeMode: draft.runtimeMode,
+            interactionMode: draft.modeFixed === true ? "default" : draft.interactionMode,
+            sourceProposedPlan: draft.sourceProposedPlan,
+            messageId: genId(),
+            createdAt: createdAt,
+            nextId: () => root.genId()
+        });
+        pendingNewThreadId = threadId;
+        pendingNewThreadActionKey = key;
+        const dispatched = dispatchBatch([command], key, {
+            holdAfterSuccess: true,
+            onSuccess: () => {
+                const current = root.actionStates[key];
+                if (current)
+                    root.putActionState(key, Object.assign({}, current, {
+                        pending: true, startedAt: Date.now(), phase: "awaiting-shell"
+                    }));
+            }
+        });
+        if (dispatched === "") {
+            pendingNewThreadId = "";
+            pendingNewThreadActionKey = "";
+        }
+        return dispatched;
+    }
+
+    function reconcileNewThreadCreation(candidateId) {
+        if (pendingNewThreadId === "")
+            return;
+        if (candidateId !== undefined && candidateId !== pendingNewThreadId)
+            return;
+        if (!threadMap[pendingNewThreadId])
+            return;
+        const confirmed = pendingNewThreadId;
+        if (pendingNewThreadActionKey !== "")
+            clearAction(pendingNewThreadActionKey);
+        pendingNewThreadId = "";
+        pendingNewThreadActionKey = "";
+        newThreadDraft = ({});
+        newThreadConfirmed(confirmed);
     }
 
     // ---- structured-input drafts ----------------------------------------
@@ -921,6 +1643,8 @@ Singleton {
         detailLatestActivity = null;
         detailActionablePlan = null;
         detailCheckpointSummary = null;
+        detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "", fullText: "",
+            truncated: false, totalChars: 0, totalLines: 0 });
     }
 
     function historyCompare(left, right) {
@@ -1169,6 +1893,11 @@ Singleton {
             .sort(historyCompare);
         if (ready.length === 0) {
             detailCheckpointSummary = null;
+            if (detailDiff.checkpointRef !== "") {
+                cancelActionRequests(actionKey("diff", detailThreadId, ""));
+                detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
+                    fullText: "", truncated: false, totalChars: 0, totalLines: 0 });
+            }
         } else {
             const checkpoint = ready[ready.length - 1];
             const files = Array.isArray(checkpoint.files) ? checkpoint.files : [];
@@ -1190,12 +1919,68 @@ Singleton {
                 deletions: deletions,
                 filenames: filenames.slice(0, 3)
             });
+            if (detailDiff.checkpointRef !== ""
+                    && detailDiff.checkpointRef !== checkpoint.checkpointRef) {
+                cancelActionRequests(actionKey("diff", detailThreadId, ""));
+                detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
+                    fullText: "", truncated: false, totalChars: 0, totalLines: 0 });
+            }
         }
     }
 
     function recomputeDetail() {
         recomputePendingRequests();
         recomputeDetailDerived();
+    }
+
+    function loadFullThreadDiff(threadId, checkpoint) {
+        const key = actionKey("diff", threadId, "");
+        if (!canRead)
+            return rejectAction(key, "This pairing cannot read thread data", false);
+        if (!checkpoint || checkpoint.status !== "ready"
+                || typeof checkpoint.checkpointTurnCount !== "number")
+            return rejectAction(key, "No ready checkpoint is available", false);
+        if (!Helpers.canBeginAction(actionStates, key))
+            return "";
+        beginAction(key, "", false);
+        detailDiff = ({ checkpointRef: checkpoint.checkpointRef ?? "", loading: true,
+            error: "", text: "", fullText: "", truncated: false,
+            totalChars: 0, totalLines: 0 });
+        return requestOnce("orchestration.getFullThreadDiff", {
+            threadId: threadId,
+            toTurnCount: checkpoint.checkpointTurnCount,
+            ignoreWhitespace: false
+        }, value => {
+            if (root.detailThreadId !== threadId
+                    || root.detailDiff.checkpointRef !== (checkpoint.checkpointRef ?? "")
+                    || root.detailCheckpointSummary?.checkpointRef !== checkpoint.checkpointRef) {
+                root.clearAction(key);
+                return;
+            }
+            if (!value || typeof value.diff !== "string") {
+                root.failAction(key, "Malformed diff response");
+                root.detailDiff = Object.assign({}, root.detailDiff, {
+                    loading: false, error: "Malformed diff response"
+                });
+                return;
+            }
+            const rendered = Helpers.truncateDiff(value.diff);
+            root.detailDiff = Object.assign({
+                checkpointRef: checkpoint.checkpointRef ?? "", loading: false, error: "",
+                fullText: value.diff
+            }, rendered);
+            root.clearAction(key);
+        }, error => {
+            if (root.detailThreadId !== threadId
+                    || root.detailDiff.checkpointRef !== (checkpoint.checkpointRef ?? "")) {
+                root.clearAction(key);
+                return;
+            }
+            root.failAction(key, error);
+            root.detailDiff = Object.assign({}, root.detailDiff, {
+                loading: false, error: error
+            });
+        }, { actionKey: key, fallback: "Diff unavailable" });
     }
 
     function reconcileCommandEvent(event) {
@@ -1205,6 +1990,11 @@ Singleton {
             const current = actionStates[key];
             if (!current || current.commandId !== event.commandId)
                 continue;
+            // A subscription event may race ahead of dispatchCommand's RPC
+            // response. The batch owns live action progress; clearing it here
+            // could otherwise prevent the next sequenced command from running.
+            if (current.pending === true)
+                return;
             if (current.awaitResolution === true
                     && (event.type === "thread.approval-response-requested"
                         || event.type === "thread.user-input-response-requested"))
@@ -1246,6 +2036,7 @@ Singleton {
                     updatedAt: payload.updatedAt ?? event.occurredAt ?? ""
                 };
                 detailMessages = upsertHistory(detailMessages, message, "id");
+                confirmDraftMessage(threadId, payload.messageId);
             }
             break;
         }
@@ -1296,6 +2087,10 @@ Singleton {
             return;
         }
         detailMessages = sortedHistory(thread.messages);
+        for (const message of detailMessages) {
+            if (message && typeof message.id === "string")
+                confirmDraftMessage(threadId, message.id);
+        }
         detailActivities = sortedHistory(thread.activities);
         detailProposedPlans = sortedHistory(thread.proposedPlans);
         detailCheckpoints = sortedHistory(thread.checkpoints);
@@ -1318,6 +2113,7 @@ Singleton {
         detailResubscribeTimer.stop();
         pendingDetailResubscribeId = "";
         stopDetailRequest();
+        cancelActionRequests(actionKey("diff", threadId, ""));
         resetDetailData();
         if (state !== "connected" || threadId === "")
             return;
@@ -1358,11 +2154,15 @@ Singleton {
         }
         if (detailThreadId === threadId && detailReqId !== "")
             return;
+        if (detailThreadId !== "" && detailThreadId !== threadId)
+            cancelActionRequests(actionKey("diff", detailThreadId, ""));
         detailThreadId = threadId;
         startDetailSubscription(threadId);
     }
 
     function closeDetail() {
+        if (detailThreadId !== "")
+            cancelActionRequests(actionKey("diff", detailThreadId, ""));
         detailResubscribeTimer.stop();
         pendingDetailResubscribeId = "";
         stopDetailRequest();
@@ -1406,8 +2206,12 @@ Singleton {
                 root.retrySecs = 5;
                 root.subscribe();
             } else if (st === 3 || st === 4) { // closed | error
-                if (root.state === "connected" || root.state === "connecting")
+                if (root.state === "connected" || root.state === "connecting") {
+                    root.abortPendingRpcs();
+                    root.configLoading = false;
+                    root.configReady = false;
                     root.scheduleRetry();
+                }
             }
         }
     }
