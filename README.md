@@ -1,76 +1,95 @@
-# Fedora 44 XPS configuration
+# Fedora Config
 
-This repository recreates the XPS experience from the
-[nixos-config](https://github.com/DigitalPals/nixos-config) setup on Fedora
-without installing Nix. Fedora owns boot, kernel, drivers, power management,
-GNOME, SELinux, and hardware integration. Ansible owns only the files and
-settings documented here. Shared assets (wallpapers, avatar, helper scripts,
-prompt theme) are vendored under `assets/`.
+An opinionated Fedora Linux installation for my Dell XPS.
 
-Run from this directory:
+This repository uses Ansible to turn a clean Fedora Workstation installation
+into a complete daily-driver setup. It installs and configures the desktop,
+applications, development tools, shell, dotfiles, laptop services, firewall,
+and update workflow. Fedora remains responsible for the kernel, drivers,
+SELinux, and the base operating system.
 
-```sh
-./bootstrap                 # install Ansible and converge
-./verify                    # non-destructive acceptance checks
-./finalize                  # verify, then enable GDM autologin
-./update                    # DNF/Flatpak/toolchains/latest upstream releases
+![Fedora running Hyprland and Quickshell](assets/fedora-hyprland-desktop.png)
+
+## What it sets up
+
+- Hyprland with a custom Quickshell bar, launcher, notifications, and popovers
+- GDM with GNOME kept installed as a fallback session
+- A curated set of desktop apps, command-line tools, fonts, and developer tools
+- Fish, Kitty, Neovim, containers, Android tooling, and Rust/Node.js toolchains
+- Laptop power management, firewall rules, hardware support, and a Plymouth theme
+- Repeatable system and Flatpak updates through one command
+
+## Before you install
+
+> [!WARNING]
+> This is a personal configuration, not a general-purpose Fedora installer. It
+> makes system-wide changes and currently expects **Fedora 44 x86_64**, a
+> matching **Dell XPS**, and the local user **`john`**. It also enables the
+> security trade-offs configured in
+> [`inventory/group_vars/all.yml`](inventory/group_vars/all.yml), including
+> passwordless sudo and local Polkit access. Review that file and adapt the
+> machine, user, feature, and security settings before running it elsewhere.
+
+Start with a working Fedora 44 installation and a user that can run `sudo`.
+
+## Install
+
+Clone the repository:
+
+```bash
+sudo dnf install -y git
+git clone https://github.com/DigitalPals/fedora-config.git
+cd fedora-config
 ```
 
-All commands accept extra `ansible-playbook` arguments. Examples:
+Review the machine-specific settings, then run the installer:
 
-```sh
-./bootstrap --check --diff
-./bootstrap --tags base,dotfiles
-ansible-playbook site.yml --list-tags
+```bash
+$EDITOR inventory/group_vars/all.yml
+./bootstrap
 ```
 
-Playbook output is compact by default (roles as headers, one line per change,
-one-line recap); pass `-v` to any command for the stock verbose Ansible output.
+`bootstrap` installs `ansible-core` when needed and applies the complete
+configuration. It is safe to run again after changing the configuration.
 
-## Update behavior
+When it finishes, log out and choose **Hyprland (Quickshell)** in GDM. From that
+session, check the installation with:
 
-`./update` runs the DNF system upgrade and the system Flatpak update
-concurrently, then converges the playbook with `--skip-tags boot,finalize`
-(both roles are pinned bootstrap/finalize concerns). A transient Flatpak
-failure is reported as a warning and does not block the configuration run;
-a DNF failure aborts. Full step logs land in
-`~/.local/state/xps-update/logs/<timestamp>/`.
+```bash
+./verify --pre-finalize
+```
 
-Package tasks in the playbook use `state: present`; keeping installed packages
-current is exclusively the wrapper's single DNF transaction, so a no-change
-`./update` does not re-depsolve the world. Upstream release installers run as
-parallel async jobs and their GitHub API calls are ETag-cached (HTTP 304
-responses do not count against the anonymous rate limit), so `GH_TOKEN` is
-rarely needed for routine updates.
+If everything works and you want GDM to log in automatically, run the optional
+final step and reboot:
 
-`finalize` intentionally remains a separate gate. Log in to **Hyprland (Quickshell)**
-manually first and run `./verify --pre-finalize`. Tailscale, 1Password, browser
-sync, Spotify, keyring password changes, and private backup authorization remain
-interactive.
+```bash
+./finalize
+systemctl reboot
+```
 
-No secrets or 1Password item references belong in this tree. Upstream installers
-use the GitHub release API on every convergence, require the release asset's
-SHA-256 digest, stage changes atomically, and retain cached/previous artifacts.
-Source builds install only after a successful build of a new tag or revision.
+## Update
 
-Before a Fedora major upgrade, confirm `sdegler/hyprland` has builds for the new
-release. GNOME remains installed and selectable as the recovery session.
+Pull the latest configuration and run the updater:
 
-## Rollout
+```bash
+cd /path/to/fedora-config
+git pull --ff-only
+./update
+```
 
-1. Run `./bootstrap`, then `./bootstrap --check --diff`, then `./bootstrap` a
-   second time. The second real run should be unchanged unless an external
-   nightly/release or Rust nightly advanced between runs.
-2. Log out, select **Hyprland (Quickshell)** in GDM, and run
-   `./verify --pre-finalize`. Complete the manual hardware/application checklist
-   printed by the verifier.
-3. Run `./finalize`, reboot twice, verify autologin reaches Quickshell, then log out
-   once and confirm GNOME remains selectable.
-4. Complete one-time interactive work: blank (do not delete) the Login keyring
-   password, unlock/configure 1Password and its SSH agent, sign in to browser
-   sync and Spotify, run `tailscale up`, and authorize any private backup or
-   remote-service access you actually want to use.
+This updates Fedora packages and system Flatpaks, then reapplies the Ansible
+configuration. Detailed logs are saved under
+`~/.local/state/xps-update/logs/`.
 
-The verifier never suspends, locks, records, transcribes, transfers files, runs
-a stress test, or changes hardware state. Those acceptance tests remain manual
-by design.
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `./bootstrap` | Install Ansible if needed and apply the full configuration |
+| `./update` | Update Fedora, Flatpaks, tools, and the managed configuration |
+| `./verify` | Run non-destructive checks against the installed system |
+| `./finalize` | Verify Hyprland and enable the configured GDM autologin |
+
+Extra arguments are passed to `ansible-playbook`, so commands such as
+`./bootstrap --check --diff` and `./bootstrap --tags desktop,dotfiles` also
+work.
