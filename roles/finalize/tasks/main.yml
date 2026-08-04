@@ -54,8 +54,11 @@
 - name: Make Hyprland Quickshell the autologin session
   ansible.builtin.lineinfile:
     path: "/var/lib/AccountsService/users/{{ primary_user }}"
-    regexp: "^\\s*XSession\\s*="
-    line: XSession=hyprland-quickshell
+    regexp: "^\\s*{{ item }}\\s*="
+    line: "{{ item }}=hyprland-quickshell"
     insertafter: "^\\[User\\]$"
     firstmatch: true
+  loop:
+    - Session
+    - XSession
   when: gdm_autologin | bool

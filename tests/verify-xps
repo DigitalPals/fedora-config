@@ -103,6 +103,12 @@ done
 check 'GDM retains GNOME session' bash -c 'compgen -G "/usr/share/wayland-sessions/*gnome*.desktop" >/dev/null'
 check 'Hyprland Quickshell GDM session exists' test -r /usr/share/wayland-sessions/hyprland-quickshell.desktop
 check 'Hyprland session launcher uses start-hyprland' grep -q '^start-hyprland --' /usr/local/bin/hyprland-quickshell
+if ! $pre_finalize && grep -Eq '^AutomaticLoginEnable=True$' /etc/gdm/custom.conf 2>/dev/null; then
+  check 'GDM autologin Session selects Hyprland Quickshell' \
+    sudo -n grep -qx 'Session=hyprland-quickshell' /var/lib/AccountsService/users/john
+  check 'GDM autologin XSession selects Hyprland Quickshell' \
+    sudo -n grep -qx 'XSession=hyprland-quickshell' /var/lib/AccountsService/users/john
+fi
 check 'no Hyprland git packages are installed' bash -c "! rpm -qa | grep -Eq '^(hyprland|hypridle|hyprlock|hyprpicker|hyprpolkitagent).*[-.]git([-.]|$)'"
 check 'portal preference exists' test -r "$HOME/.config/xdg-desktop-portal/hyprland-portals.conf"
 check 'Hyprland Lua entry point is a regular file' bash -c '[[ -f $HOME/.config/hypr/hyprland.lua && ! -L $HOME/.config/hypr/hyprland.lua ]]'

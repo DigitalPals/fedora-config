@@ -32,6 +32,7 @@
       - socat
       - tesseract
       - tesseract-langpack-eng
+      - hunspell-nl
       - libnotify
       - libinput-utils
       - vulkan-loader
