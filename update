@@ -1,10 +1,61 @@
 #!/usr/bin/env bash
 # XPS update wrapper, v2 "mission control" UI (design 2a).
-# Same semantics as v1: dnf + flatpak run concurrently, a flatpak failure
-# warns and continues, a dnf failure aborts; then the playbook converges
-# with --skip-tags boot,finalize. Full logs land under xps-update/logs/.
+# Dnf + flatpak run concurrently; --full additionally converges the Ansible
+# configuration with --skip-tags boot,finalize. A flatpak failure warns and
+# continues, while a dnf failure aborts. Full logs land under xps-update/logs/.
 set -uo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+
+usage() {
+  cat <<'EOF'
+Usage: ./update [OPTIONS] [ANSIBLE_ARGS...]
+
+Update Fedora packages and system Flatpaks. By default, the Ansible
+configuration is not applied.
+
+Options:
+  -f, --full  Also run site.yml with --skip-tags boot,finalize
+  -h, --help  Show this help message and exit
+
+ANSIBLE_ARGS are accepted only with --full and are passed to ansible-playbook.
+
+Examples:
+  ./update
+  ./update --full
+  ./update --full --check --diff
+  ./update --full --tags desktop,dotfiles
+EOF
+}
+
+full=false
+ansible_args=()
+while (( $# )); do
+  case $1 in
+    -f|--full)
+      full=true
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      ansible_args+=("$@")
+      break
+      ;;
+    *)
+      ansible_args+=("$1")
+      ;;
+  esac
+  shift
+done
+
+if (( ${#ansible_args[@]} > 0 )) && [[ $full != true ]]; then
+  printf 'update: Ansible arguments require --full\n\n' >&2
+  usage >&2
+  exit 2
+fi
+
 # shellcheck source=scripts/ui.sh
 source scripts/ui.sh
 
@@ -66,6 +117,13 @@ if [[ -t 1 ]]; then
   # ── live dashboard: two step rows + scrolling tagged package feed ─────────
   FEED_MAX=8
   REGION=$(( 3 + FEED_MAX ))   # dnf row, flatpak row, blank, feed
+  term_cols=$(tput cols 2>/dev/null || printf '80')
+  [[ $term_cols =~ ^[0-9]+$ ]] || term_cols=80
+  (( term_cols < 40 )) && term_cols=40
+  feed_width=$(( term_cols - 14 )) # 13-char prefix plus one spare column
+  bar_width=$(( term_cols - 55 ))
+  (( bar_width < 6 )) && bar_width=6
+  (( bar_width > 22 )) && bar_width=22
   feed_tag=() feed_txt=()
   dnf_seen=0 fp_seen=0 tick=0
   printf '\033[?25l'
@@ -77,11 +135,11 @@ if [[ -t 1 ]]; then
     while IFS= read -r line; do
       feed_tag+=('dnf'); feed_txt+=("$line"); (( ++dnf_seen ))
     done < <(grep -E '^\[ *[0-9]+/[0-9]+\]' "$log_root/dnf.log" 2>/dev/null \
-             | sed -E 's/^\[[^]]*\] +//' | tail -n +"$((dnf_seen + 1))")
+             | sed -E 's/^\[[^]]*\] +//; s/\r//g' | tail -n +"$((dnf_seen + 1))")
     while IFS= read -r line; do
       feed_tag+=('fpk'); feed_txt+=("$line"); (( ++fp_seen ))
     done < <(grep -E '^(Updating|Installing|Uninstalling) ' "$log_root/flatpak.log" 2>/dev/null \
-             | tail -n +"$((fp_seen + 1))")
+             | sed 's/\r//g' | tail -n +"$((fp_seen + 1))")
   }
 
   # paint_step <rc-or-empty> <color> <label> <cur> <total> <unit> <frame> <okmsg> <failmsg>
@@ -95,7 +153,7 @@ if [[ -t 1 ]]; then
     elif (( total > 0 )); then
       pct=$(( cur * 100 / total ))
       printf '  %s%s%s %-18s ' "$color" "$frame" "$UI_RESET" "$label"
-      ui_bar "$pct" 22 "$color"
+      ui_bar "$pct" "$bar_width" "$color"
       printf ' %s%3d%%%s  %s%d/%d %s  %s%s\n' \
         "$UI_BOLD" "$pct" "$UI_RESET" "$UI_GREY" "$cur" "$total" "$unit" "$(ui_mmss $((SECONDS - start)))" "$UI_RESET"
     else
@@ -123,7 +181,8 @@ if [[ -t 1 ]]; then
         col=$UI_GREY; (( idx == n - 1 )) && col=$UI_FG
         tc=$UI_CYAN; [[ ${feed_tag[idx]} == fpk ]] && tc=$UI_PINK
         printf '      %s%-5s%s%s↑%s %s%s%s\n' \
-          "$tc" "${feed_tag[idx]}" "$UI_RESET" "$UI_GREEN" "$UI_RESET" "$col" "${feed_txt[idx]:0:60}" "$UI_RESET"
+          "$tc" "${feed_tag[idx]}" "$UI_RESET" "$UI_GREEN" "$UI_RESET" "$col" \
+          "${feed_txt[idx]:0:feed_width}" "$UI_RESET"
       else
         printf '\n'
       fi
@@ -143,9 +202,15 @@ if [[ -t 1 ]]; then
     sleep 0.1
     (( ++tick ))
   done
-  # Collapse the dashboard region; the summary lines below replace it.
+  # Collapse the live dashboard, then leave its complete feed in the terminal.
   printf '\033[%dA\033[J' "$REGION"
   printf '\033[?25h'
+  for (( idx = 0; idx < ${#feed_txt[@]}; idx++ )); do
+    tc=$UI_CYAN; [[ ${feed_tag[idx]} == fpk ]] && tc=$UI_PINK
+    printf '      %s%-5s%s%s↑%s %s\n' \
+      "$tc" "${feed_tag[idx]}" "$UI_RESET" "$UI_GREEN" "$UI_RESET" "${feed_txt[idx]}"
+  done
+  (( ${#feed_txt[@]} > 0 )) && printf '\n'
 else
   ui_spin_while 'System packages + Flatpaks' "$dnf_pid" "$flatpak_pid"
   wait "$dnf_pid"; dnf_rc=$?
@@ -174,9 +239,20 @@ else
   ui_warn 'Flatpaks' "update failed — continuing (log: $log_root/flatpak.log)"
 fi
 
+if [[ $full != true ]]; then
+  total=$(ui_duration $((SECONDS - start)))
+  if (( flatpak_rc == 0 )); then
+    ui_box "$UI_GREEN" '✓' "Update complete in $total" \
+      "$(dnf_detail "$log_root/dnf.log") · $(flatpak_detail "$log_root/flatpak.log")"
+  else
+    ui_box "$UI_YELLOW" '!' "Update finished in $total with warnings" "logs: $log_root"
+  fi
+  exit 0
+fi
+
 printf '\n  %sCONFIGURATION%s\n' "$UI_BOLD" "$UI_RESET"
 ansible_rc=0
-ansible-playbook site.yml --skip-tags boot,finalize "$@" || ansible_rc=$?
+ansible-playbook site.yml --skip-tags boot,finalize "${ansible_args[@]}" || ansible_rc=$?
 
 total=$(ui_duration $((SECONDS - start)))
 if (( ansible_rc == 0 && flatpak_rc == 0 )); then

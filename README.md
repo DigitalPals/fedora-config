@@ -77,19 +77,20 @@ git pull --ff-only
 ./update
 ```
 
-This updates Fedora packages and system Flatpaks, then reapplies the Ansible
-configuration. Detailed logs are saved under
-`~/.local/state/xps-update/logs/`.
+This updates Fedora packages and system Flatpaks. Use `./update --full` to also
+reapply the Ansible configuration. Detailed logs are saved under
+`~/.local/state/xps-update/logs/`. Run `./update --help` for all options.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `./bootstrap` | Install Ansible if needed and apply the full configuration |
-| `./update` | Update Fedora, Flatpaks, tools, and the managed configuration |
+| `./update` | Update Fedora packages and system Flatpaks |
+| `./update --full` | Also update tools and reapply the managed configuration |
 | `./verify` | Run non-destructive checks against the installed system |
 | `./finalize` | Verify Hyprland and enable the configured GDM autologin |
 
-Extra arguments are passed to `ansible-playbook`, so commands such as
-`./bootstrap --check --diff` and `./bootstrap --tags desktop,dotfiles` also
-work.
+Extra arguments to `bootstrap` are passed to `ansible-playbook`. For `update`,
+use `--full` before Ansible arguments, for example `./update --full --check
+--diff` or `./update --full --tags desktop,dotfiles`.
