@@ -271,6 +271,7 @@
     content: |
       {
         "RestoreOnStartup": 1,
+        "SpellcheckLanguage": ["nl"],
         "ExtensionInstallForcelist": [
           "aeblfdkhhhdcdjpifhhbdiojplfjncoa;https://clients2.google.com/service/update2/crx"
         ]
