@@ -19,6 +19,13 @@ SELinux, and the base operating system.
 - Laptop power management, firewall rules, hardware support, and a Plymouth theme
 - Repeatable system and Flatpak updates through one command
 
+## Third-party fonts
+
+The Quickshell menubar and its popovers use
+[OPPO Sans 4.0](https://www.coloros.com/article/A00000074/). The playbook
+downloads OPPO's unmodified official archive, verifies its checksum, and keeps
+the bundled OPPO Sans Fonts License Agreement beside the installed font.
+
 ## Before you install
 
 > [!WARNING]

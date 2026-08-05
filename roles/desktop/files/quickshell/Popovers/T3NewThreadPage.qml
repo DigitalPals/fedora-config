@@ -20,7 +20,7 @@ Item {
         property string label: ""
         signal triggered()
         width: textItem.implicitWidth + 14
-        height: 23
+        height: Theme.controlHeight
         radius: 6
         color: actionMouse.containsMouse ? Theme.hoverFillStrong : Theme.hoverFill
         activeFocusOnTab: true
@@ -39,8 +39,8 @@ Item {
             id: textItem
             anchors.centerIn: parent
             text: action.label
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.textMid
         }
 
@@ -55,7 +55,7 @@ Item {
     Item {
         id: header
         width: parent.width
-        height: 33
+        height: Theme.controlHeight
 
         HeaderAction {
             anchors.left: parent.left
@@ -67,9 +67,9 @@ Item {
         Text {
             anchors.centerIn: parent
             text: "New thread"
-            font.family: Theme.fontSans
-            font.pixelSize: 13
-            font.weight: 700
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightBold
             color: Theme.textHi
         }
     }
@@ -116,8 +116,9 @@ Item {
                                 ? "No enabled provider with an advertised model is ready."
                                 : "A ready provider configuration is required."
                         wrapMode: Text.WordWrap
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
+                        lineHeight: Theme.proseLineHeight
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
                         color: Theme.amber
                     }
                 }
@@ -138,8 +139,9 @@ Item {
                     width: parent.width
                     text: "This plan stays in the source project and Default mode. Provider, model, traits, and access remain adjustable."
                     wrapMode: Text.WordWrap
-                    font.family: Theme.fontSans
-                    font.pixelSize: 9
+                    lineHeight: Theme.proseLineHeight
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
 
@@ -159,10 +161,11 @@ Item {
                     width: parent.width
                     text: T3Code.actionError("new", "", "")
                     wrapMode: Text.WordWrap
+                    lineHeight: Theme.proseLineHeight
                     maximumLineCount: 3
                     elide: Text.ElideRight
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.redText
                 }
 
@@ -171,8 +174,8 @@ Item {
                     width: parent.width
                     text: T3Code.pendingNewThreadId !== ""
                         ? "Creating thread and waiting for shell confirmation…" : "Creating thread…"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 9
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
             }

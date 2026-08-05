@@ -31,14 +31,14 @@ Item {
         return "idle";
     }
 
-    implicitHeight: 22
+    implicitHeight: Theme.chipHeight
     implicitWidth: chip.width
     anchors.verticalCenter: parent.verticalCenter
 
     Rectangle {
         id: chip
-        height: 22
-        width: chipRow.implicitWidth + 14
+        height: Theme.chipHeight
+        width: chipRow.implicitWidth + 12
         radius: Theme.chipRadius
         anchors.verticalCenter: parent.verticalCenter
         color: root.stressed ? Theme.amberBg
@@ -61,18 +61,34 @@ Item {
 
             // Running pulse: a quiet dot that breathes while agents work.
             Rectangle {
+                id: runningDot
+                property real pulseOpacity: 1
+                property double pulseStartedAt: 0
+
                 visible: root.busy
                 anchors.verticalCenter: parent.verticalCenter
                 width: 5
                 height: 5
                 radius: 3
                 color: Theme.accent
+                opacity: pulseOpacity
 
-                SequentialAnimation on opacity {
-                    running: visible
-                    loops: Animation.Infinite
-                    NumberAnimation { from: 1; to: 0.25; duration: 900; easing.type: Easing.InOutSine }
-                    NumberAnimation { from: 0.25; to: 1; duration: 900; easing.type: Easing.InOutSine }
+                // A slow five-pixel pulse does not benefit from driving the
+                // entire Wayland surface at the monitor's 120 Hz refresh rate.
+                // Thirty evenly timed samples per second remain visually
+                // smooth while allowing the compositor to sleep between them.
+                Timer {
+                    interval: 33
+                    repeat: true
+                    running: runningDot.visible
+                    onRunningChanged: {
+                        runningDot.pulseStartedAt = Date.now();
+                        runningDot.pulseOpacity = 1;
+                    }
+                    onTriggered: {
+                        const phase = ((Date.now() - runningDot.pulseStartedAt) % 1800) / 1800;
+                        runningDot.pulseOpacity = 0.625 + 0.375 * Math.cos(phase * Math.PI * 2);
+                    }
                 }
             }
 
@@ -80,11 +96,12 @@ Item {
                 visible: root.displayMode > 0
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.label
-                font.family: Theme.fontSans
-                font.pixelSize: 11
-                font.weight: root.stressed ? 600
-                           : root.live && (T3Code.runningCount > 0 || T3Code.doneCount > 0) ? 500
-                           : 400
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.barTextSize
+                font.weight: root.stressed ? Theme.weightSemibold
+                           : root.live && (T3Code.runningCount > 0 || T3Code.doneCount > 0)
+                           ? Theme.weightMedium : Theme.weightRegular
+                font.features: Theme.tabularNumberFeatures
                 color: {
                     if (!root.live)
                         return T3Code.state === "connecting" ? Theme.textLow : Theme.textFaint;

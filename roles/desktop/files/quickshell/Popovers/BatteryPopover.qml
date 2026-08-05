@@ -26,13 +26,26 @@ Surface {
         bottomPadding: 6
         spacing: 12
 
-        Text {
+        Row {
             anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.RichText
-            text: `<span style="font-size:26px">${Math.round(root.pct)}</span><span style="font-size:14px;color:${Theme.textLow}">%</span>`
-            font.family: Theme.fontMono
-            font.weight: 600
-            color: Theme.textHi
+            spacing: 1
+
+            Text {
+                anchors.baseline: percent.baseline
+                text: Math.round(root.pct)
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontDisplay
+                font.weight: Theme.weightSemibold
+                color: Theme.textHi
+            }
+
+            Text {
+                id: percent
+                text: "%"
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontBody
+                color: Theme.textLow
+            }
         }
 
         Column {
@@ -47,16 +60,16 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "\uf0e7"
                     font.family: Theme.fontIcon
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSecondary
                     color: Theme.accent
                 }
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.full ? "Fully charged" : root.charging ? "Charging" : "On battery"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: 500
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightMedium
                     color: Theme.textMid
                 }
             }
@@ -72,8 +85,8 @@ Surface {
                         return root.fmtDuration(root.battery.timeToEmpty) + " remaining";
                     return "";
                 }
-                font.family: Theme.fontSans
-                font.pixelSize: 11
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
                 color: Theme.textLow
             }
         }
@@ -82,7 +95,7 @@ Surface {
     // Charge bar
     Item {
         width: parent.width
-        height: 22
+        height: Theme.controlHeight
 
         BlockMeter {
             x: 12
@@ -119,16 +132,16 @@ Surface {
 
                 visible: modelData.available
                 width: (root.width - 16 - 20 - 8) / 3
-                height: 28
+                height: Theme.controlHeight
                 radius: 8
                 color: current ? Theme.accent : profMouse.containsMouse ? Theme.hoverFillStrong : Theme.cardFill
 
                 Text {
                     anchors.centerIn: parent
                     text: parent.modelData.label
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
-                    font.weight: parent.current ? 600 : 500
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    font.weight: parent.current ? Theme.weightSemibold : Theme.weightMedium
                     color: parent.current ? Theme.accentFg : profMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
 

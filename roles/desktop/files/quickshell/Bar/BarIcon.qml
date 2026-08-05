@@ -1,26 +1,26 @@
 import QtQuick
 import "../Common"
 
-// A glyph button in a bar cluster: nerd-font icon, optional mono label,
+// A glyph button in a bar cluster: nerd-font icon, optional compact label,
 // optional accent (active) or red (alert) pill state.
 Rectangle {
     id: root
 
     property string glyph
-    property real glyphSize: 13
+    property real glyphSize: Theme.barIconSize
     // Fixed column for the glyph. The right cluster is right-anchored, so
     // a module that changes width slides every module beside it: pin the
     // width for icons that differ between states. 0 sizes to the glyph.
     property real glyphWidth: 0
     property string label: ""
-    property real labelSize: 11.5
+    property real labelSize: Theme.barTextSize
     property bool active: false
     // Subtle open-state: the module's popout is expanded below it (t5).
     property bool held: false
     property bool alert: false
     property color idleColor: Theme.icon
     property color hoverColor: Theme.textHi
-    property int hPadding: 8
+    property int hPadding: 6
     property string tooltip: ""
     property int tooltipAlign: 0
     signal clicked(real mouseX)
@@ -31,7 +31,7 @@ Rectangle {
 
     readonly property color fg: active ? Theme.accentFg : alert ? Theme.redText : held || mouse.hovered ? hoverColor : idleColor
 
-    implicitHeight: 22
+    implicitHeight: Theme.chipHeight
     implicitWidth: inner.implicitWidth + hPadding * 2
     radius: Theme.chipRadius
     color: active ? Theme.accent : alert ? Theme.redBg : held ? Theme.hoverFillStrong : mouse.hovered ? Theme.hoverFill : "transparent"
@@ -65,9 +65,10 @@ Rectangle {
             visible: root.label !== ""
             anchors.verticalCenter: parent.verticalCenter
             text: root.label
-            font.family: Theme.fontMono
+            font.family: Theme.fontMenu
             font.pixelSize: root.labelSize
-            font.weight: root.alert ? 600 : 500
+            font.weight: root.alert ? Theme.weightSemibold : Theme.weightMedium
+            font.features: Theme.tabularNumberFeatures
             color: root.alert ? Theme.redText : root.fg
         }
     }

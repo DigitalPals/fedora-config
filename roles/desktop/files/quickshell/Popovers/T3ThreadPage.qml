@@ -109,7 +109,7 @@ Column {
         signal triggered()
 
         width: labelText.implicitWidth + 14
-        height: 22
+        height: Theme.controlHeight
         radius: 6
         color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
         opacity: enabled ? 1 : 0.4
@@ -131,9 +131,9 @@ Column {
             id: labelText
             anchors.centerIn: parent
             text: action.label
-            font.family: Theme.fontSans
-            font.pixelSize: 10
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemibold
             color: action.tint
         }
 
@@ -171,9 +171,9 @@ Column {
             Text {
                 width: parent.width
                 text: card.heading
-                font.family: Theme.fontSans
-                font.pixelSize: 10
-                font.weight: 650
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightSemibold
                 font.letterSpacing: 0.7
                 color: card.headingColor
             }
@@ -182,11 +182,11 @@ Column {
                 width: parent.width
                 text: card.body
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                lineHeight: 1.4
+                lineHeight: Theme.proseLineHeight
                 maximumLineCount: 5
                 elide: Text.ElideRight
-                font.family: Theme.fontSans
-                font.pixelSize: 11
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
                 color: Theme.textMid
             }
         }
@@ -234,27 +234,29 @@ Column {
 
             Item {
                 width: parent.width
-                height: 15
+                height: Math.max(roleText.implicitHeight, messageTime.implicitHeight)
 
                 Text {
+                    id: roleText
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     text: messageCard.fromUser ? "You"
                         : messageCard.message.role === "assistant" ? "T3 Code" : "System"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
-                    font.weight: 600
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
                     color: messageCard.fromUser ? Theme.accent : Theme.textLow
                 }
 
                 Text {
+                    id: messageTime
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     text: messageCard.message.streaming === true ? "streaming…"
                         : T3Code.relTime(messageCard.message.updatedAt
                             ?? messageCard.message.createdAt)
                     font.family: Theme.fontMono
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
             }
@@ -263,11 +265,11 @@ Column {
                 width: parent.width
                 text: messageCard.message.text ?? ""
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                lineHeight: 1.4
+                lineHeight: Theme.proseLineHeight
                 maximumLineCount: messageCard.expanded ? 100000 : 8
                 elide: messageCard.expanded ? Text.ElideNone : Text.ElideRight
-                font.family: Theme.fontSans
-                font.pixelSize: 12
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
                 color: Theme.textMid
             }
 
@@ -286,7 +288,7 @@ Column {
         signal triggered()
 
         width: 26
-        height: 26
+        height: Theme.controlHeight
         radius: 7
         color: iconMouse.containsMouse && enabled ? Theme.hoverFillStrong : Theme.hoverFill
         opacity: enabled ? 1 : 0.4
@@ -307,9 +309,9 @@ Column {
         Text {
             anchors.centerIn: parent
             text: iconButton.glyph
-            font.family: Theme.fontSans
-            font.pixelSize: 13
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
             color: iconButton.tint
         }
 
@@ -329,7 +331,7 @@ Column {
         signal triggered()
 
         width: parent ? parent.width : 0
-        height: 28
+        height: Theme.controlHeight
         radius: 6
         color: entryMouse.containsMouse && enabled ? Theme.hoverFillStrong : "transparent"
         opacity: enabled ? 1 : 0.4
@@ -355,9 +357,9 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             text: menuEntry.label
             elide: Text.ElideRight
-            font.family: Theme.fontSans
-            font.pixelSize: 11
-            font.weight: 500
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            font.weight: Theme.weightMedium
             color: menuEntry.tint
         }
 
@@ -406,7 +408,7 @@ Column {
 
             Item {
                 width: parent.width
-                height: 34
+                height: Theme.controlHeight
 
                 IconButton {
                     id: backButton
@@ -428,9 +430,9 @@ Column {
                         width: parent.width
                         text: root.thread ? root.thread.title : "Thread"
                         elide: Text.ElideRight
-                        font.family: Theme.fontSans
-                        font.pixelSize: 13
-                        font.weight: 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Theme.weightSemibold
                         color: Theme.textHi
                     }
 
@@ -446,8 +448,8 @@ Column {
                             return parts.join(" · ");
                         }
                         elide: Text.ElideRight
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
                         color: Theme.textDim
                     }
                 }
@@ -658,8 +660,9 @@ Column {
             elide: Text.ElideRight
             maximumLineCount: 2
             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            lineHeight: Theme.proseLineHeight
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: root.gitFeedbackFailed ? Theme.redText : Theme.textLow
         }
 
@@ -710,8 +713,8 @@ Column {
                     bottomPadding: 12
                     text: "Loading conversation…"
                     horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
                     color: Theme.textDim
                 }
 
@@ -739,7 +742,7 @@ Column {
                 Item {
                     visible: root.working
                     width: parent.width
-                    height: 20
+                    height: Theme.controlHeight
 
                     Row {
                         x: 7
@@ -765,8 +768,8 @@ Column {
                             text: root.workingTime !== ""
                                 ? "Working for " + root.workingTime : "Working…"
                             font.family: Theme.fontMono
-                            font.pixelSize: 10
-                            font.weight: 500
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightMedium
                             color: Theme.textLow
                         }
                     }
@@ -780,8 +783,8 @@ Column {
                     bottomPadding: 10
                     text: "No messages yet"
                     horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
                     color: Theme.textDim
                 }
 
@@ -843,9 +846,9 @@ Column {
                         Text {
                             width: parent.width
                             text: "READY PLAN"
-                            font.family: Theme.fontSans
-                            font.pixelSize: 10
-                            font.weight: 650
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightSemibold
                             font.letterSpacing: 0.7
                             color: Theme.accent
                         }
@@ -854,11 +857,11 @@ Column {
                             width: parent.width
                             text: root.plan ? root.plan.planMarkdown : ""
                             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                            lineHeight: 1.4
+                            lineHeight: Theme.proseLineHeight
                             maximumLineCount: 14
                             elide: Text.ElideRight
-                            font.family: Theme.fontSans
-                            font.pixelSize: 11
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontBody
                             color: Theme.textMid
                         }
 
@@ -928,10 +931,11 @@ Column {
                         width: parent.width - 9
                         text: root.activityFailed ? T3Code.detailLatestActivity.summary : ""
                         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                        lineHeight: Theme.proseLineHeight
                         maximumLineCount: 3
                         elide: Text.ElideRight
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
                         color: Theme.redText
                     }
                 }
@@ -940,7 +944,7 @@ Column {
                     id: changesRow
                     visible: root.hasCheckpointChanges
                     width: parent.width
-                    height: 28
+                    height: Theme.controlHeight
                     radius: 6
                     color: changesMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
                     activeFocusOnTab: visible
@@ -961,7 +965,7 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.changesExpanded ? "▾" : "▸"
                         font.family: Theme.fontMono
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontCaption
                         color: root.changesExpanded ? Theme.accent : Theme.textLow
                     }
 
@@ -975,9 +979,9 @@ Column {
                             + (root.checkpoint.fileCount === 1 ? "" : "s") + " · +"
                             + root.checkpoint.additions + " −" + root.checkpoint.deletions : ""
                         elide: Text.ElideRight
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
-                        font.weight: 550
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
                         color: Theme.textMid
                     }
 
@@ -988,8 +992,8 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         text: T3Code.detailDiff.loading && root.changesExpanded ? "Loading…"
                             : root.changesExpanded ? "Hide diff" : "View diff"
-                        font.family: Theme.fontSans
-                        font.pixelSize: 9
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
                         color: Theme.textDim
                     }
 
@@ -1016,7 +1020,7 @@ Column {
                         text: root.checkpoint ? root.checkpoint.filenames.join(" · ") : ""
                         elide: Text.ElideMiddle
                         font.family: Theme.fontMono
-                        font.pixelSize: 8
+                        font.pixelSize: Theme.fontCaption
                         color: Theme.textDim
                     }
 
@@ -1043,7 +1047,7 @@ Column {
                                 textFormat: Text.PlainText
                                 wrapMode: Text.NoWrap
                                 font.family: Theme.fontMono
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontCaption
                                 color: Theme.textLow
                             }
                         }
@@ -1070,8 +1074,8 @@ Column {
                         Text {
                             visible: T3Code.detailDiff.truncated
                             text: "Preview truncated at 100,000 characters / 2,000 lines"
-                            font.family: Theme.fontSans
-                            font.pixelSize: 9
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontCaption
                             color: Theme.amber
                         }
 
@@ -1091,8 +1095,9 @@ Column {
                         width: parent.width
                         text: T3Code.detailDiff.error
                         wrapMode: Text.WordWrap
-                        font.family: Theme.fontSans
-                        font.pixelSize: 9
+                        lineHeight: Theme.proseLineHeight
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
                         color: Theme.redText
                     }
                 }
@@ -1141,10 +1146,11 @@ Column {
             return "";
         }
         wrapMode: Text.WordWrap
+        lineHeight: Theme.proseLineHeight
         maximumLineCount: 3
         elide: Text.ElideRight
-        font.family: Theme.fontSans
-        font.pixelSize: 10
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontCaption
         color: Theme.redText
     }
 

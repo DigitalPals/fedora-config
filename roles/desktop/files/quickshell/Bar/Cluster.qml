@@ -6,7 +6,7 @@ import "../Common"
 Item {
     id: root
 
-    property int padding: 8
+    property int padding: 6
     property int spacing: 1
     default property alias content: row.data
 

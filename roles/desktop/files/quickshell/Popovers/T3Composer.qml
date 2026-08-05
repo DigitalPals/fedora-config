@@ -256,8 +256,8 @@ Column {
                 enabled: root.editable && !root.sending
                 wrapMode: TextEdit.Wrap
                 selectByMouse: true
-                font.family: Theme.fontSans
-                font.pixelSize: 12
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
                 color: Theme.textHi
                 selectionColor: Theme.accentBg
                 selectedTextColor: Theme.textHi
@@ -288,8 +288,8 @@ Column {
                 Text {
                     visible: promptEdit.text === "" && !promptEdit.activeFocus
                     text: root.newThread ? "Describe the first task…" : "Send a follow-up…"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
                     color: Theme.textFaint
                 }
             }
@@ -303,7 +303,7 @@ Column {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 7
             width: Math.max(31, sendText.implicitWidth + 18)
-            height: 26
+            height: Theme.controlHeight
             radius: 7
             color: sendMouse.containsMouse && sendMouse.enabled
                 ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
@@ -324,9 +324,9 @@ Column {
                 id: sendText
                 anchors.centerIn: parent
                 text: root.sending ? "…" : root.sendLabel
-                font.family: Theme.fontSans
-                font.pixelSize: 11
-                font.weight: 650
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
+                font.weight: Theme.weightSemibold
                 color: Theme.accentFg
             }
 
@@ -365,7 +365,7 @@ Column {
                 id: settingsHeader
 
                 width: parent.width
-                height: 30
+                height: Theme.controlHeight
                 radius: 7
                 color: settingsMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
                 activeFocusOnTab: true
@@ -389,7 +389,7 @@ Column {
                     anchors.topMargin: 9
                     text: settingsPresentation.expanded ? "▾" : "▸"
                     font.family: Theme.fontMono
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontCaption
                     color: settingsPresentation.expanded ? Theme.accent : Theme.textLow
                 }
 
@@ -400,9 +400,9 @@ Column {
                     anchors.leftMargin: 6
                     anchors.verticalCenter: settingsChevron.verticalCenter
                     text: "Run settings"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
-                    font.weight: 650
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    font.weight: Theme.weightSemibold
                     color: Theme.textHi
                 }
 
@@ -415,8 +415,8 @@ Column {
                     anchors.verticalCenter: settingsChevron.verticalCenter
                     text: settingsPresentation.compactSummary()
                     elide: Text.ElideRight
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
 
@@ -427,7 +427,7 @@ Column {
                     anchors.rightMargin: 6
                     anchors.verticalCenter: settingsChevron.verticalCenter
                     width: accessText.implicitWidth + 18
-                    height: 20
+                    height: Theme.controlHeight
                     radius: 5
                     color: root.draft?.runtimeMode === "full-access"
                         ? Theme.amberBg : Theme.hoverFill
@@ -436,9 +436,9 @@ Column {
                         id: accessText
                         anchors.centerIn: parent
                         text: settingsPresentation.accessSummary()
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
-                        font.weight: 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
                         color: root.draft?.runtimeMode === "full-access"
                             ? Theme.amber : Theme.textLow
                     }
@@ -626,8 +626,8 @@ Column {
                                         anchors.leftMargin: 8
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: root.traitLabel(traitRow.modelData)
-                                        font.family: Theme.fontSans
-                                        font.pixelSize: 11
+                                        font.family: Theme.fontMenu
+                                        font.pixelSize: Theme.fontSecondary
                                         color: Theme.textMid
                                     }
 
@@ -637,8 +637,8 @@ Column {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: traitRow.modelData.currentValue === true ? "ON" : "OFF"
                                         font.family: Theme.fontMono
-                                        font.pixelSize: 10
-                                        font.weight: 600
+                                        font.pixelSize: Theme.fontCaption
+                                        font.weight: Theme.weightSemibold
                                         color: traitRow.modelData.currentValue === true
                                             ? Theme.accent : Theme.textDim
                                     }
@@ -669,8 +669,9 @@ Column {
         width: parent.width
         text: root.draft.traitError ?? ""
         wrapMode: Text.WordWrap
-        font.family: Theme.fontSans
-        font.pixelSize: 10
+        lineHeight: Theme.proseLineHeight
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontCaption
         color: Theme.amber
     }
 
@@ -680,8 +681,8 @@ Column {
         Text {
             text: root.overLimit ? "Prompt too long — open T3 Code"
                 : "Enter to send · Ctrl+Enter for newline"
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: root.overLimit ? Theme.redText : Theme.textDim
         }
 
@@ -692,7 +693,7 @@ Column {
             visible: promptEdit.text.length > 100000
             text: promptEdit.text.length + "/" + T3Code.maxPromptChars
             font.family: Theme.fontMono
-            font.pixelSize: 10
+            font.pixelSize: Theme.fontCaption
             color: root.overLimit ? Theme.redText : Theme.textDim
         }
     }

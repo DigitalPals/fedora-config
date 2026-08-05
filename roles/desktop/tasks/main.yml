@@ -236,6 +236,7 @@
     dest: "{{ primary_home }}/.config/quickshell/"
     mode: "0644"
     directory_mode: "0755"
+  tags: [quickshell]
 
 - name: Remove retired generic Quickshell launcher components
   ansible.builtin.file:

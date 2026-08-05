@@ -78,7 +78,7 @@ Surface {
             anchors.centerIn: parent
             text: iconSlot.urgent ? "" : ""
             font.family: Theme.fontIcon
-            font.pixelSize: Math.max(10, iconSlot.iconSize - 2)
+            font.pixelSize: Math.max(Theme.fontCaption, iconSlot.iconSize - 2)
             color: iconSlot.urgent ? Theme.redText : Theme.textMid
         }
     }
@@ -111,9 +111,9 @@ Surface {
                     id: sumText
                     width: parent.width - 52
                     text: row.entry.summary || row.bodyText
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: 500
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
                 }
@@ -123,8 +123,8 @@ Surface {
                     anchors.rightMargin: 16
                     text: Notifs.timeAgo(row.entry.arrived, root.nowMs)
                     font.family: Theme.fontMono
-                    font.pixelSize: 10
-                    font.weight: 500
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightMedium
                     color: Theme.textDim
                 }
 
@@ -133,7 +133,7 @@ Surface {
                     anchors.right: parent.right
                     text: ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 9
+                    font.pixelSize: Theme.fontCaption
                     color: rowCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
 
                     MouseArea {
@@ -150,12 +150,13 @@ Surface {
                 visible: text !== "" && text !== sumText.text
                 width: parent.width
                 text: row.bodyText
-                font.family: Theme.fontSans
-                font.pixelSize: 11
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
                 color: Theme.textLow
                 elide: Text.ElideRight
                 maximumLineCount: 2
                 wrapMode: Text.Wrap
+                lineHeight: Theme.proseLineHeight
             }
         }
 
@@ -254,9 +255,9 @@ Surface {
                                     id: appText
                                     width: Math.min(implicitWidth, cardRow.width - 38 - rightBits.width - 60)
                                     text: block.group.app
-                                    font.family: Theme.fontSans
-                                    font.pixelSize: 12
-                                    font.weight: 600
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontBody
+                                    font.weight: Theme.weightSemibold
                                     color: Theme.textHi
                                     elide: Text.ElideRight
                                 }
@@ -265,7 +266,7 @@ Surface {
                                     visible: block.group.items.length > 1
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: plusText.implicitWidth + 12
-                                    height: 15
+                                    height: plusText.implicitHeight + 4
                                     radius: 6
                                     color: Theme.accentBg
 
@@ -274,8 +275,8 @@ Surface {
                                         anchors.centerIn: parent
                                         text: "+" + (block.group.items.length - 1)
                                         font.family: Theme.fontMono
-                                        font.pixelSize: 10
-                                        font.weight: 600
+                                        font.pixelSize: Theme.fontCaption
+                                        font.weight: Theme.weightSemibold
                                         color: Theme.accent
                                     }
                                 }
@@ -290,8 +291,8 @@ Surface {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: Notifs.timeAgo(block.newest.arrived, root.nowMs)
                                     font.family: Theme.fontMono
-                                    font.pixelSize: 10
-                                    font.weight: 500
+                                    font.pixelSize: Theme.fontCaption
+                                    font.weight: Theme.weightMedium
                                     color: Theme.textDim
                                 }
 
@@ -300,7 +301,7 @@ Surface {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: ""
                                     font.family: Theme.fontIcon
-                                    font.pixelSize: 9
+                                    font.pixelSize: Theme.fontCaption
                                     color: cardCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
 
                                     MouseArea {
@@ -317,8 +318,8 @@ Surface {
                         Text {
                             width: parent.width
                             text: block.newest.summary || (block.newest.body || "").replace(/<[^>]*>/g, "")
-                            font.family: Theme.fontSans
-                            font.pixelSize: 11
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontSecondary
                             color: Theme.icon
                             elide: Text.ElideRight
                         }
@@ -343,7 +344,7 @@ Surface {
             Item {
                 width: parent.width - 4
                 x: 2
-                height: 26
+                height: Theme.controlHeight
 
                 Row {
                     x: 8
@@ -367,9 +368,9 @@ Surface {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: block.group.app
-                        font.family: Theme.fontSans
-                        font.pixelSize: 11
-                        font.weight: 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontSecondary
+                        font.weight: Theme.weightSemibold
                         color: Theme.icon
                     }
 
@@ -377,8 +378,8 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: block.group.items.length
                         font.family: Theme.fontMono
-                        font.pixelSize: 10
-                        font.weight: 500
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightMedium
                         color: Theme.textFaint
                     }
                 }
@@ -389,7 +390,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 9
+                    font.pixelSize: Theme.fontCaption
                     color: groupCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
 
                     MouseArea {
@@ -423,7 +424,7 @@ Surface {
 
     Item {
         width: parent.width
-        height: 34
+        height: Theme.rowHeight
 
         Row {
             x: 10
@@ -433,9 +434,9 @@ Surface {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Notifications"
-                font.family: Theme.fontSans
-                font.pixelSize: 12
-                font.weight: 600
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
+                font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
 
@@ -443,7 +444,7 @@ Surface {
                 visible: Notifs.count > 0
                 anchors.verticalCenter: parent.verticalCenter
                 width: countText.implicitWidth + 12
-                height: 16
+                height: countText.implicitHeight + 4
                 radius: 6
                 color: Theme.accentBg
 
@@ -452,8 +453,8 @@ Surface {
                     anchors.centerIn: parent
                     text: Notifs.count
                     font.family: Theme.fontMono
-                    font.pixelSize: 10
-                    font.weight: 600
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
                     color: Theme.accent
                 }
             }
@@ -465,9 +466,9 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Clear all"
-            font.family: Theme.fontSans
-            font.pixelSize: 11
-            font.weight: 500
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            font.weight: Theme.weightMedium
             color: clearMouse.containsMouse ? "#c8e2f4" : Theme.accent
 
             MouseArea {
@@ -486,8 +487,8 @@ Surface {
         bottomPadding: 14
         text: "No notifications"
         horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontSans
-        font.pixelSize: 11
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontSecondary
         color: Theme.textDim
     }
 
@@ -509,16 +510,16 @@ Surface {
         Item {
             visible: root.earlierGroups.length > 0
             width: parent.width
-            height: 20
+            height: Theme.controlHeight
 
             Text {
                 id: earlierLabel
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: "EARLIER"
-                font.family: Theme.fontSans
-                font.pixelSize: 9
-                font.weight: 600
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightSemibold
                 font.letterSpacing: 1.2
                 color: Theme.textFaint
             }
@@ -551,14 +552,14 @@ Surface {
 
     Item {
         width: parent.width
-        height: 30
+        height: Theme.controlHeight
 
         Text {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Do Not Disturb"
-            font.family: Theme.fontSans
-            font.pixelSize: 11
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
             color: Theme.textDim
         }
 

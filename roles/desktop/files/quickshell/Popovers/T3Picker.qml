@@ -125,9 +125,9 @@ Item {
                 width: parent.width
                 text: root.label.toUpperCase()
                 elide: Text.ElideRight
-                font.family: Theme.fontSans
-                font.pixelSize: 9
-                font.weight: 600
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightSemibold
                 font.letterSpacing: 0.5
                 color: Theme.textDim
             }
@@ -136,8 +136,8 @@ Item {
                 width: parent.width
                 text: root.selectedLabel()
                 elide: Text.ElideRight
-                font.family: Theme.fontSans
-                font.pixelSize: 11
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
                 color: root.valueColor
             }
         }
@@ -149,7 +149,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: root.expanded ? "▴" : "▾"
             font.family: Theme.fontMono
-            font.pixelSize: 9
+            font.pixelSize: Theme.fontCaption
             color: Theme.textDim
         }
 
@@ -204,7 +204,7 @@ Item {
                         readonly property bool chosen: choiceId === root.value
 
                         width: parent.width
-                        height: 30
+                        height: Theme.pickerRowHeight
                         radius: 5
                         color: chosen ? Theme.accentBg
                             : choiceMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
@@ -218,8 +218,8 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.optionLabel(choice.modelData)
                             elide: Text.ElideRight
-                            font.family: Theme.fontSans
-                            font.pixelSize: 11
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontSecondary
                             color: choice.chosen ? Theme.textHi : Theme.textMid
                         }
 
@@ -230,7 +230,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: choice.chosen ? "✓" : ""
                             font.family: Theme.fontMono
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontCaption
                             color: Theme.accent
                         }
 

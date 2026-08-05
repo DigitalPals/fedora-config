@@ -80,6 +80,7 @@ apps_fedora_packages:
   - gamemode
   - mangohud
   # Fonts and themes
+  - ibm-plex-sans-fonts
   - rsms-inter-fonts
   - fontawesome-fonts-all
   - google-noto-sans-fonts

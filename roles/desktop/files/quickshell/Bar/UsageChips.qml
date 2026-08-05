@@ -39,7 +39,7 @@ Item {
     }
     readonly property bool empty: visibleKeys.length === 0
 
-    implicitHeight: 22
+    implicitHeight: Theme.chipHeight
     implicitWidth: row.implicitWidth
     anchors.verticalCenter: parent.verticalCenter
 
@@ -51,8 +51,8 @@ Item {
         // Offline / loading state
         Rectangle {
             visible: root.empty
-            height: 22
-            width: emptyRow.implicitWidth + 14
+            height: Theme.chipHeight
+            width: emptyRow.implicitWidth + 12
             radius: Theme.chipRadius
             color: root.held ? Theme.hoverFillStrong : emptyMouse.containsMouse ? Theme.hoverFill : "transparent"
             anchors.verticalCenter: parent.verticalCenter
@@ -60,7 +60,7 @@ Item {
             Row {
                 id: emptyRow
                 anchors.centerIn: parent
-                spacing: 8
+                spacing: 6
 
                 Image {
                     anchors.verticalCenter: parent.verticalCenter
@@ -74,8 +74,8 @@ Item {
                     visible: root.displayMode > 0
                     anchors.verticalCenter: parent.verticalCenter
                     text: Usage.loading && !Usage.anyOk ? "Models…" : "Models offline"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
                     color: Theme.textFaint
                 }
             }
@@ -103,8 +103,8 @@ Item {
                 // This provider's view is expanded below the bar.
                 readonly property bool current: root.held && Usage.selected === modelData
 
-                height: 22
-                width: chipRow.implicitWidth + 14
+                height: Theme.chipHeight
+                width: chipRow.implicitWidth + 12
                 radius: Theme.chipRadius
                 color: status === "crit" ? Theme.redBg
                      : status === "warn" ? Theme.amberBg
@@ -130,9 +130,10 @@ Item {
                         visible: root.displayMode > 0
                         anchors.verticalCenter: parent.verticalCenter
                         text: chip.status === "error" || chip.remaining < 0 ? "--%" : chip.remaining + "%"
-                        font.family: Theme.fontMono
-                        font.pixelSize: 11
-                        font.weight: chip.stressed || chip.status === "error" ? 600 : 500
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.barTextSize
+                        font.weight: chip.stressed || chip.status === "error" ? Theme.weightSemibold : Theme.weightMedium
+                        font.features: Theme.tabularNumberFeatures
                         color: chip.status === "crit" ? Theme.redText
                              : chip.status === "warn" ? Theme.amber
                              : chip.status === "error" ? Theme.redText

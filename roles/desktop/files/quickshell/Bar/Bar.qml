@@ -19,7 +19,8 @@ PanelWindow {
         left: true
         right: true
     }
-    readonly property int layoutMode: width >= 1600 ? 2 : width >= 1100 ? 1 : 0
+    readonly property int layoutMode: width >= Theme.breakpointWide ? 2
+        : width >= Theme.breakpointMedium ? 1 : 0
     readonly property int closedHeight: Theme.barTopMargin + Theme.barHeight + 34
     implicitHeight: closedHeight
     // Balanced spacing: with Hyprland's gaps_out (10) on top of the
@@ -205,7 +206,7 @@ PanelWindow {
         Cluster {
             id: leftCluster
             anchors.left: parent.left
-            padding: 6
+            padding: 5
             spacing: 2
 
             Workspaces {}
@@ -218,21 +219,21 @@ PanelWindow {
                 id: mediaChip
                 visible: barWindow.mediaVisible
                 anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: mediaRow.implicitWidth + 18
-                implicitHeight: 26
+                implicitWidth: mediaRow.implicitWidth + 14
+                implicitHeight: Theme.chipHeight
                 radius: Theme.chipRadius
                 color: barWindow.popoutOpen("media") ? Theme.hoverFillStrong : mediaMouse.containsMouse ? Theme.hoverFill : "transparent"
 
                 Row {
                     id: mediaRow
                     anchors.centerIn: parent
-                    spacing: 7
+                    spacing: 6
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: barWindow.playerGlyph(barWindow.player)
                         font.family: Theme.fontIcon
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.barIconSize
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.icon
                     }
 
@@ -245,11 +246,12 @@ PanelWindow {
                             const artist = barWindow.player.trackArtist;
                             return barWindow.player.trackTitle + (artist ? " — " + artist : "");
                         }
-                        font.family: Theme.fontSans
-                        font.pixelSize: 12
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.barTextSize
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
-                        width: barWindow.layoutMode >= 2 ? implicitWidth : 120
+                        width: Math.min(implicitWidth, barWindow.layoutMode >= 2
+                            ? Theme.mediaTitleWideWidth : Theme.mediaTitleMediumWidth)
                     }
                 }
 
@@ -275,36 +277,38 @@ PanelWindow {
         Cluster {
             id: centerCluster
             anchors.horizontalCenter: parent.horizontalCenter
-            padding: 6
-            spacing: 4
+            padding: 5
+            spacing: 3
 
             Rectangle {
                 id: clockChip
                 anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: clockRow.implicitWidth + 18
-                implicitHeight: 26
+                implicitWidth: clockRow.implicitWidth + 14
+                implicitHeight: Theme.chipHeight
                 radius: Theme.chipRadius
                 color: barWindow.popoutOpen("calendar") ? Theme.hoverFillStrong : clockMouse.containsMouse ? Theme.hoverFill : "transparent"
 
                 Row {
                     id: clockRow
                     anchors.centerIn: parent
-                    spacing: 8
+                    spacing: 6
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDateTime(clock.date, "HH:mm")
-                        font.family: Theme.fontMono
-                        font.pixelSize: 13
-                        font.weight: 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.barTextSize
+                        font.weight: Theme.weightSemibold
+                        font.features: Theme.tabularNumberFeatures
                         color: Theme.textHi
                     }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDateTime(clock.date, "ddd dd")
-                        font.family: Theme.fontSans
-                        font.pixelSize: 12
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.barTextSize
+                        font.features: Theme.tabularNumberFeatures
                         color: barWindow.popoutOpen("calendar") || clockMouse.containsMouse ? Theme.textMid : Theme.textLow
                     }
                 }
@@ -335,30 +339,31 @@ PanelWindow {
                 id: weatherChip
                 visible: Weather.ready
                 anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: weatherRow.implicitWidth + 16
-                implicitHeight: 26
+                implicitWidth: weatherRow.implicitWidth + 12
+                implicitHeight: Theme.chipHeight
                 radius: Theme.chipRadius
                 color: barWindow.popoutOpen("weather") ? Theme.hoverFillStrong : weatherMouse.containsMouse ? Theme.hoverFill : "transparent"
 
                 Row {
                     id: weatherRow
                     anchors.centerIn: parent
-                    spacing: 6
+                    spacing: 5
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Weather.glyph(Weather.code, Weather.isDay)
                         font.family: Theme.fontIcon
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.barIconSize
                         color: Weather.glyphColor(Weather.code, Weather.isDay)
                     }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Weather.temp + "°"
-                        font.family: Theme.fontMono
-                        font.pixelSize: 12
-                        font.weight: 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.barTextSize
+                        font.weight: Theme.weightSemibold
+                        font.features: Theme.tabularNumberFeatures
                         color: Theme.textMid
                     }
 
@@ -366,8 +371,8 @@ PanelWindow {
                         visible: barWindow.layoutMode >= 1
                         anchors.verticalCenter: parent.verticalCenter
                         text: Weather.condition
-                        font.family: Theme.fontSans
-                        font.pixelSize: 11
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.barTextSize
                         color: barWindow.popoutOpen("weather") || weatherMouse.containsMouse ? Theme.textMid : Theme.textLow
                     }
                 }
@@ -394,7 +399,7 @@ PanelWindow {
         Cluster {
             id: rightCluster
             anchors.right: parent.right
-            padding: 8
+            padding: 6
             spacing: 1
 
             T3Chip {
@@ -554,8 +559,7 @@ PanelWindow {
             BarIcon {
                 id: controlIcon
                 glyph: "\uf30a" // fedora logo — Control Center trigger
-                glyphSize: 15
-                hPadding: 9
+                glyphSize: Theme.barIconSize
                 active: barWindow.popoutOpen("control")
                 tooltip: "Control Center"
                 tooltipAlign: 1

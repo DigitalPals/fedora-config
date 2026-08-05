@@ -6,8 +6,8 @@ import "../Common"
 Surface {
     id: root
 
-    implicitWidth: 320
-    padding: 10
+    implicitWidth: Theme.popWidth
+    padding: Theme.surfacePadding
     spacing: 8
 
     readonly property int weekLo: Weather.days.reduce((m, d) => Math.min(m, d.lo), 99)
@@ -17,7 +17,7 @@ Surface {
     // ---- Current conditions ------------------------------------------
     Item {
         width: parent.width
-        height: 40
+        height: Theme.rowHeight
 
         Row {
             x: 6
@@ -29,15 +29,15 @@ Surface {
                 anchors.bottomMargin: 4
                 text: Weather.glyph(Weather.code, Weather.isDay)
                 font.family: Theme.fontIcon
-                font.pixelSize: 26
+                font.pixelSize: Theme.fontDisplay
                 color: Weather.glyphColor(Weather.code, Weather.isDay)
             }
 
             Text {
                 text: Weather.temp + "°"
                 font.family: Theme.fontMono
-                font.pixelSize: 26
-                font.weight: 600
+                font.pixelSize: Theme.fontDisplay
+                font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
 
@@ -48,16 +48,16 @@ Surface {
 
                 Text {
                     text: Weather.condition + " · feels " + Weather.feels + "°"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: 500
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightMedium
                     color: Theme.textMid
                 }
 
                 Text {
                     text: Weather.place + " · " + Weather.windDir + " " + Weather.windKmh + " km/h · " + Weather.humidity + "% humidity"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
             }
@@ -87,25 +87,28 @@ Surface {
                     required property var modelData
 
                     width: forecastCol.width
-                    height: 14
+                    height: Math.max(dayLabel.implicitHeight, dayGlyph.implicitHeight,
+                        loHi.implicitHeight)
 
                     Text {
+                        id: dayLabel
                         anchors.verticalCenter: parent.verticalCenter
                         text: dayRow.modelData.day
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
-                        font.weight: 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
                         color: Theme.textLow
                     }
 
                     // Daily codes summarise a whole day, so always the day
                     // variant of the icon.
                     Text {
+                        id: dayGlyph
                         x: 34
                         anchors.verticalCenter: parent.verticalCenter
                         text: Weather.glyph(dayRow.modelData.code, true)
                         font.family: Theme.fontIcon
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontBody
                         color: Weather.glyphColor(dayRow.modelData.code, true)
                     }
 
@@ -142,7 +145,7 @@ Surface {
                         textFormat: Text.RichText
                         text: `${dayRow.modelData.lo}° <font color="${Theme.textDim}">/</font> ${dayRow.modelData.hi}°`
                         font.family: Theme.fontMono
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontCaption
                         color: Theme.textMid
                     }
                 }
@@ -153,14 +156,14 @@ Surface {
     // ---- Footer --------------------------------------------------------
     Item {
         width: parent.width
-        height: 20
+        height: Theme.controlHeight
 
         Text {
             x: 6
             anchors.verticalCenter: parent.verticalCenter
             text: "open-meteo"
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.textDim
         }
 
@@ -172,8 +175,8 @@ Surface {
             text: Weather.updatedAt > 0
                 ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Weather.updatedAt), "HH:mm")}</font>`
                 : "loading…"
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.textDim
         }
     }

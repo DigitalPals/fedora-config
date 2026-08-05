@@ -41,7 +41,7 @@ Rectangle {
         signal triggered()
 
         width: actionText.implicitWidth + 16
-        height: 23
+        height: Theme.controlHeight
         radius: 6
         color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
         opacity: enabled ? 1 : 0.45
@@ -63,9 +63,9 @@ Rectangle {
             id: actionText
             anchors.centerIn: parent
             text: action.label
-            font.family: Theme.fontSans
-            font.pixelSize: 10
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemibold
             color: action.tint
         }
 
@@ -87,30 +87,32 @@ Rectangle {
 
         Item {
             width: parent.width
-            height: 16
+            height: Math.max(requestHeading.implicitHeight, requestStatus.implicitHeight)
 
             Text {
+                id: requestHeading
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.isInput && root.question
                     ? root.question.header.toUpperCase()
                     : root.request.kind === "file-change" ? "EDIT APPROVAL"
                     : root.request.kind === "file-read" ? "READ APPROVAL" : "COMMAND APPROVAL"
-                font.family: Theme.fontSans
-                font.pixelSize: 10
-                font.weight: 650
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightSemibold
                 font.letterSpacing: 0.7
                 color: Theme.amber
             }
 
             Text {
+                id: requestStatus
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.isInput ? (root.questionIndex + 1) + "/" + root.questions.length
                     + (root.queuedCount > 0 ? "  ·  +" + root.queuedCount + " queued" : "")
                     : "needs you"
                 font.family: Theme.fontMono
-                font.pixelSize: 9
+                font.pixelSize: Theme.fontCaption
                 color: Theme.textDim
             }
         }
@@ -121,11 +123,11 @@ Rectangle {
                 : typeof root.request.detail === "string" && root.request.detail !== ""
                     ? root.request.detail : "Approval requested"
             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-            lineHeight: 1.4
+            lineHeight: Theme.proseLineHeight
             maximumLineCount: root.isInput ? 5 : 6
             elide: Text.ElideRight
-            font.family: root.isInput ? Theme.fontSans : Theme.fontMono
-            font.pixelSize: 11
+            font.family: root.isInput ? Theme.fontMenu : Theme.fontMono
+            font.pixelSize: Theme.fontBody
             color: Theme.textMid
         }
 
@@ -175,7 +177,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         text: option.chosen ? "●" : "○"
                         font.family: Theme.fontMono
-                        font.pixelSize: 9
+                        font.pixelSize: Theme.fontCaption
                         color: option.chosen ? Theme.accent : Theme.textDim
                     }
 
@@ -190,8 +192,9 @@ Rectangle {
                             width: parent.width
                             text: option.modelData.label
                             wrapMode: Text.WordWrap
-                            font.family: Theme.fontSans
-                            font.pixelSize: 11
+                            lineHeight: Theme.proseLineHeight
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontSecondary
                             color: option.chosen ? Theme.textHi : Theme.textMid
                         }
 
@@ -202,8 +205,9 @@ Rectangle {
                             maximumLineCount: 2
                             elide: Text.ElideRight
                             wrapMode: Text.WordWrap
-                            font.family: Theme.fontSans
-                            font.pixelSize: 10
+                            lineHeight: Theme.proseLineHeight
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontCaption
                             color: Theme.textDim
                         }
                     }
@@ -224,7 +228,7 @@ Rectangle {
         Rectangle {
             visible: root.isInput && root.question !== null
             width: parent.width
-            height: 28
+            height: Theme.controlHeight
             radius: 6
             color: Qt.rgba(0, 0, 0, 0.2)
             border.width: 1
@@ -255,8 +259,8 @@ Rectangle {
                 verticalAlignment: TextInput.AlignVCenter
                 enabled: root.actionable
                 clip: true
-                font.family: Theme.fontSans
-                font.pixelSize: 11
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
                 color: Theme.textHi
                 onDraftKeyChanged: syncDraft()
                 onTextChanged: {
@@ -270,8 +274,8 @@ Rectangle {
                     visible: custom.text === "" && !custom.activeFocus
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Or type a custom answer…"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
                     color: Theme.textFaint
                 }
 
@@ -354,10 +358,11 @@ Rectangle {
             width: parent.width
             text: root.failure
             wrapMode: Text.WordWrap
+            lineHeight: Theme.proseLineHeight
             maximumLineCount: 3
             elide: Text.ElideRight
-            font.family: Theme.fontSans
-            font.pixelSize: 9
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.redText
         }
     }

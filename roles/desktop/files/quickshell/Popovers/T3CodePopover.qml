@@ -9,11 +9,17 @@ Surface {
     id: root
 
     spacing: 6
-    implicitWidth: Math.max(280, Math.min(460,
+    implicitWidth: Math.max(Theme.t3MinWidth, Math.min(Theme.t3MaxWidth,
         (Screens.focused ? Screens.focused.width : 484) - Theme.barSideMargin * 2))
 
     readonly property int screenHeight: Screens.focused ? Screens.focused.height : 800
-    readonly property int maxPageHeight: Math.max(300, screenHeight - 155)
+    readonly property int headerHeight: Theme.rowHeight
+    readonly property int footerHeight: Theme.controlHeight
+    readonly property int screenBottomMargin: 16
+    readonly property int maxPageHeight: Math.max(300, screenHeight
+        - Theme.barTopMargin - Theme.barHeight - screenBottomMargin
+        - root.padding * 2 - headerHeight - footerHeight - root.spacing * 2
+        - (noReadBanner.visible ? noReadBanner.height + root.spacing : 0))
 
     property string page: "inbox"
     property string selectedThreadId: ""
@@ -84,7 +90,7 @@ Surface {
 
     Item {
         width: parent.width
-        height: 39
+        height: root.headerHeight
 
         Column {
             x: 4
@@ -107,9 +113,9 @@ Surface {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Code"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 14
-                    font.weight: 700
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightBold
                     font.letterSpacing: -0.3
                     color: "#fafafa"
                 }
@@ -118,8 +124,8 @@ Surface {
                     visible: root.page !== "inbox"
                     anchors.verticalCenter: parent.verticalCenter
                     text: "· " + (root.page === "thread" ? "Thread" : "New")
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
             }
@@ -136,8 +142,8 @@ Surface {
                         + T3Code.attentionCount + " waiting"
                         + (T3Code.readOnly ? " · read-only" : "");
                 }
-                font.family: Theme.fontSans
-                font.pixelSize: 9
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
                 color: T3Code.readOnly ? Theme.amber : Theme.textDim
             }
         }
@@ -155,7 +161,7 @@ Surface {
                 visible: T3Code.paired && root.page !== "new"
                 anchors.verticalCenter: parent.verticalCenter
                 width: newText.implicitWidth + 22
-                height: 24
+                height: Theme.controlHeight
                 radius: 7
                 readonly property bool usable: T3Code.canDispatch && T3Code.hasReadyProvider
                     && T3Code.hasProjects
@@ -180,9 +186,9 @@ Surface {
                     id: newText
                     anchors.centerIn: parent
                     text: "＋ New"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
-                    font.weight: 600
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    font.weight: Theme.weightSemibold
                     color: Theme.accent
                 }
 
@@ -199,7 +205,7 @@ Surface {
                 visible: T3Code.paired
                 anchors.verticalCenter: parent.verticalCenter
                 width: 27
-                height: 24
+                height: Theme.controlHeight
                 radius: 6
                 color: refreshMouse.containsMouse ? Theme.hoverFill : "transparent"
                 activeFocusOnTab: true
@@ -215,8 +221,8 @@ Surface {
                 Text {
                     anchors.centerIn: parent
                     text: "↻"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
                     color: refreshMouse.containsMouse ? Theme.textMid : Theme.textLow
                 }
 
@@ -231,6 +237,7 @@ Surface {
     }
 
     Rectangle {
+        id: noReadBanner
         visible: T3Code.scopeMetadataKnown && !T3Code.canRead
         width: parent.width
         height: noReadText.implicitHeight + 12
@@ -246,8 +253,9 @@ Surface {
             width: parent.width - 12
             text: "This pairing token does not grant orchestration read access."
             wrapMode: Text.WordWrap
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            lineHeight: Theme.proseLineHeight
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.redText
         }
     }
@@ -262,7 +270,7 @@ Surface {
 
     Item {
         width: parent.width
-        height: 27
+        height: root.footerHeight
 
         Rectangle {
             anchors.left: parent.left
@@ -287,7 +295,7 @@ Surface {
             }
             elide: Text.ElideRight
             font.family: Theme.fontMono
-            font.pixelSize: 9
+            font.pixelSize: Theme.fontCaption
             color: Theme.textDim
         }
 
@@ -298,9 +306,9 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 2
             text: "Open T3 Code"
-            font.family: Theme.fontSans
-            font.pixelSize: 10
-            font.weight: 550
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemibold
             color: openMouse.containsMouse ? "#c8e2f4" : Theme.accent
 
             MouseArea {

@@ -49,15 +49,15 @@ Surface {
     // Header + toggle
     Item {
         width: parent.width
-        height: 36
+        height: Theme.rowHeight
 
         Text {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Wi-Fi"
-            font.family: Theme.fontSans
-            font.pixelSize: 12
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
 
@@ -75,7 +75,7 @@ Surface {
         visible: root.active !== null
         width: parent.width - 4
         x: 2
-        height: 52
+        height: Theme.tileHeight
         radius: Theme.rowRadius
         color: Theme.accentBgSoft
 
@@ -90,7 +90,7 @@ Surface {
                 horizontalAlignment: Text.AlignHCenter
                 text: "\uf1eb"
                 font.family: Theme.fontIcon
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontBody
                 color: Theme.accent
             }
 
@@ -101,9 +101,9 @@ Surface {
 
                 Text {
                     text: root.active ? root.active.name : ""
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: 500
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
                     width: parent.width
@@ -121,8 +121,8 @@ Surface {
                             parts.push(root.ipAddress);
                         return parts.join(" · ");
                     }
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
                     color: Theme.textLow
                     elide: Text.ElideRight
                     width: parent.width
@@ -136,7 +136,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: "\uf013"
             font.family: Theme.fontIcon
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontSecondary
             color: gearMouse.containsMouse ? Theme.textHi : Theme.textDim
 
             MouseArea {
@@ -159,8 +159,8 @@ Surface {
         bottomPadding: 14
         text: "Wi-Fi is off"
         horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontSans
-        font.pixelSize: 11
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontSecondary
         color: Theme.textDim
     }
 
@@ -173,7 +173,7 @@ Surface {
 
             width: parent.width - 4
             x: 2
-            height: 36
+            height: Theme.rowHeight
             radius: Theme.rowRadius
             color: netMouse.containsMouse ? Theme.hoverFill : "transparent"
 
@@ -188,7 +188,7 @@ Surface {
                     horizontalAlignment: Text.AlignHCenter
                     text: "\uf1eb"
                     font.family: Theme.fontIcon
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontBody
                     color: Theme.textMid
                     opacity: 0.35 + 0.65 * Math.min(1, Math.max(0, root.pct(modelData.signalStrength)) / 100)
                 }
@@ -197,8 +197,8 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     width: root.width - 86
                     text: modelData.name
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
                     color: Theme.textMid
                     elide: Text.ElideRight
                 }
@@ -211,7 +211,7 @@ Surface {
                 visible: modelData.security !== WifiSecurityType.None
                 text: "\uf023"
                 font.family: Theme.fontIcon
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontCaption
                 color: Theme.textDim
             }
 
@@ -231,14 +231,14 @@ Surface {
     Item {
         visible: Networking.wifiEnabled
         width: parent.width
-        height: 26
+        height: Theme.rowHeight
 
         Text {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
             text: root.device && root.device.scannerEnabled ? "Scanning…" : ""
-            font.family: Theme.fontSans
-            font.pixelSize: 11
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
             color: Theme.textDim
         }
 
@@ -247,9 +247,9 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Network settings"
-            font.family: Theme.fontSans
-            font.pixelSize: 11
-            font.weight: 500
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            font.weight: Theme.weightMedium
             color: settingsMouse.containsMouse ? "#c8e2f4" : Theme.accent
 
             MouseArea {

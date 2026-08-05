@@ -23,8 +23,8 @@ Row {
             // empty slots stay compact dots.
             readonly property bool showNumber: exists
 
-            width: showNumber ? (focused ? 26 : 22) : 18
-            height: 22
+            width: showNumber ? (focused ? 28 : Theme.chipHeight) : 20
+            height: Theme.chipHeight
             anchors.verticalCenter: parent.verticalCenter
 
             Rectangle {
@@ -36,9 +36,10 @@ Row {
                 Text {
                     anchors.centerIn: parent
                     text: wsId
-                    font.family: Theme.fontMono
-                    font.pixelSize: 12
-                    font.weight: parent.parent.focused || parent.parent.urgent ? 600 : 500
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
+                    font.weight: parent.parent.focused || parent.parent.urgent ? Theme.weightSemibold : Theme.weightMedium
+                    font.features: Theme.tabularNumberFeatures
                     color: parent.parent.focused ? Theme.accentFg : parent.parent.urgent ? Theme.redText : wsMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
             }

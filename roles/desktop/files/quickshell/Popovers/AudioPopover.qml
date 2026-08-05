@@ -6,7 +6,7 @@ Surface {
     id: root
 
     // Right-island popouts run a touch wider (design t5).
-    implicitWidth: 380
+    implicitWidth: Theme.popWideWidth
 
     // Output device list stays collapsed behind a disclosure row.
     property bool devicesOpen: false
@@ -45,7 +45,7 @@ Surface {
             horizontalAlignment: Text.AlignHCenter
             text: root.sink && root.sink.audio && root.sink.audio.muted ? "\uf026" : "\uf028"
             font.family: Theme.fontIcon
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontBody
             color: Theme.textMid
 
             MouseArea {
@@ -75,8 +75,8 @@ Surface {
             horizontalAlignment: Text.AlignRight
             text: root.sink && root.sink.audio ? Math.round(root.sink.audio.volume * 100) : "--"
             font.family: Theme.fontMono
-            font.pixelSize: 11
-            font.weight: 500
+            font.pixelSize: Theme.fontSecondary
+            font.weight: Theme.weightMedium
             color: Theme.textLow
         }
     }
@@ -85,7 +85,7 @@ Surface {
     Rectangle {
         width: parent.width - 4
         x: 2
-        height: 30
+        height: Theme.rowHeight
         radius: Theme.rowRadius
         color: discMouse.containsMouse ? Theme.hoverFill : "transparent"
 
@@ -100,7 +100,7 @@ Surface {
                 horizontalAlignment: Text.AlignHCenter
                 text: root.devicesOpen ? "\uf077" : "\uf078"
                 font.family: Theme.fontIcon
-                font.pixelSize: 9
+                font.pixelSize: Theme.fontCaption
                 color: discMouse.containsMouse ? Theme.textHi : Theme.textDim
             }
 
@@ -108,8 +108,8 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.width - 70
                 text: root.sink ? (root.sink.description || root.sink.nickname || root.sink.name) : "No output device"
-                font.family: Theme.fontSans
-                font.pixelSize: 12
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
                 color: discMouse.containsMouse ? Theme.textMid : Theme.textLow
                 elide: Text.ElideRight
             }
@@ -137,7 +137,7 @@ Surface {
 
                 width: parent.width - 4
                 x: 2
-                height: 34
+                height: Theme.rowHeight
                 radius: Theme.rowRadius
                 color: devMouse.containsMouse ? Theme.hoverFill : "transparent"
 
@@ -152,7 +152,7 @@ Surface {
                         horizontalAlignment: Text.AlignHCenter
                         text: isDefault ? "\uf00c" : ""
                         font.family: Theme.fontIcon
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontBody
                         color: Theme.accent
                     }
 
@@ -160,8 +160,8 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         width: root.width - 70
                         text: modelData.description || modelData.nickname || modelData.name
-                        font.family: Theme.fontSans
-                        font.pixelSize: 12
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontBody
                         color: isDefault ? Theme.textHi : Theme.textLow
                         elide: Text.ElideRight
                     }
@@ -194,8 +194,8 @@ Surface {
 
         Rectangle {
             anchors.verticalCenter: parent.verticalCenter
-            width: 18
-            height: 22
+            width: Theme.controlHeight
+            height: Theme.controlHeight
             radius: 6
             color: root.source && root.source.audio && root.source.audio.muted ? Theme.redBg : "transparent"
 
@@ -203,7 +203,7 @@ Surface {
                 anchors.centerIn: parent
                 text: root.source && root.source.audio && root.source.audio.muted ? "\uf131" : "\uf130"
                 font.family: Theme.fontIcon
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontBody
                 color: root.source && root.source.audio && root.source.audio.muted ? Theme.redText : Theme.textMid
             }
 
@@ -236,8 +236,8 @@ Surface {
             horizontalAlignment: Text.AlignRight
             text: root.source && root.source.audio ? Math.round(root.source.audio.volume * 100) : "--"
             font.family: Theme.fontMono
-            font.pixelSize: 11
-            font.weight: 500
+            font.pixelSize: Theme.fontSecondary
+            font.weight: Theme.weightMedium
             color: root.source && root.source.audio && root.source.audio.muted ? Theme.textDim : Theme.textLow
         }
     }

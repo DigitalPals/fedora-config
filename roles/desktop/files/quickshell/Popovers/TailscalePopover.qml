@@ -70,15 +70,15 @@ Surface {
     // Header + toggle
     Item {
         width: parent.width
-        height: 36
+        height: Theme.rowHeight
 
         Text {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Tailscale"
-            font.family: Theme.fontSans
-            font.pixelSize: 12
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
 
@@ -99,7 +99,7 @@ Surface {
         visible: SysInfo.tsRunning
         width: parent.width - 4
         x: 2
-        height: 52
+        height: Theme.tileHeight
         radius: Theme.rowRadius
         color: Theme.accentBgSoft
 
@@ -130,9 +130,9 @@ Surface {
                 Text {
                     width: parent.width
                     text: SysInfo.tsHost + (SysInfo.tsNet !== "" ? " · " + SysInfo.tsNet : "")
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: 500
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
                 }
@@ -142,8 +142,8 @@ Surface {
                     text: root.copiedIp === SysInfo.tsIp && SysInfo.tsIp !== ""
                         ? "Copied " + SysInfo.tsIp
                         : "Connected · " + SysInfo.tsIp + (SysInfo.tsExitNode ? " · exit node active" : "")
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
                     color: root.copiedIp === SysInfo.tsIp && SysInfo.tsIp !== "" ? Theme.accent : Theme.textLow
                     elide: Text.ElideRight
                 }
@@ -164,8 +164,8 @@ Surface {
         bottomPadding: 14
         text: "Tailscale is stopped"
         horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontSans
-        font.pixelSize: 11
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontSecondary
         color: Theme.textDim
     }
 
@@ -176,8 +176,8 @@ Surface {
         bottomPadding: 10
         text: "Loading peers…"
         horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontSans
-        font.pixelSize: 11
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontSecondary
         color: Theme.textDim
     }
 
@@ -192,7 +192,7 @@ Surface {
 
             width: parent.width - 4
             x: 2
-            height: 34
+            height: Theme.rowHeight
             radius: Theme.rowRadius
             color: peerMouse.containsMouse ? Theme.hoverFill : "transparent"
             opacity: modelData.online || peerMouse.containsMouse ? 1 : 0.55
@@ -213,9 +213,9 @@ Surface {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: peerRow.modelData.name
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: peerRow.modelData.online ? 500 : 400
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: peerRow.modelData.online ? Theme.weightMedium : Theme.weightRegular
                     color: peerRow.modelData.online ? Theme.textHi : Theme.textMid
                 }
 
@@ -223,8 +223,8 @@ Surface {
                     visible: peerRow.modelData.os !== ""
                     anchors.verticalCenter: parent.verticalCenter
                     text: peerRow.modelData.os
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
 
@@ -232,7 +232,7 @@ Surface {
                     visible: peerRow.modelData.exit || peerRow.modelData.exitOption
                     anchors.verticalCenter: parent.verticalCenter
                     width: exitText.implicitWidth + 10
-                    height: 14
+                    height: exitText.implicitHeight + 4
                     radius: 4
                     color: peerRow.modelData.exit ? Theme.accentBgSoft : Theme.hoverFill
 
@@ -240,9 +240,9 @@ Surface {
                         id: exitText
                         anchors.centerIn: parent
                         text: peerRow.modelData.exit ? "EXIT" : "exit node"
-                        font.family: Theme.fontSans
-                        font.pixelSize: 9
-                        font.weight: 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
                         font.letterSpacing: 0.5
                         color: peerRow.modelData.exit ? Theme.accent : Theme.textDim
                     }
@@ -255,7 +255,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.copiedIp !== "" && root.copiedIp === peerRow.modelData.ip ? "copied" : peerRow.modelData.ip
                 font.family: Theme.fontMono
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontCaption
                 color: root.copiedIp !== "" && root.copiedIp === peerRow.modelData.ip ? Theme.accent : Theme.textDim
             }
 
@@ -275,7 +275,7 @@ Surface {
     // Footer
     Item {
         width: parent.width
-        height: 26
+        height: Theme.rowHeight
 
         Text {
             x: 10
@@ -286,8 +286,8 @@ Surface {
                 const online = root.peers.filter(p => p.online).length;
                 return online + " of " + root.peers.length + " devices online · click to copy IP";
             }
-            font.family: Theme.fontSans
-            font.pixelSize: 11
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
             color: Theme.textDim
         }
 
@@ -296,9 +296,9 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Admin console"
-            font.family: Theme.fontSans
-            font.pixelSize: 11
-            font.weight: 500
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            font.weight: Theme.weightMedium
             color: adminMouse.containsMouse ? "#c8e2f4" : Theme.accent
 
             MouseArea {

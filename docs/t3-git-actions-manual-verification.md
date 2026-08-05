@@ -60,7 +60,7 @@ threads whose project checkouts can be put into each git state below.
 
 ## Automated and runtime checks
 
-- [ ] Run `node --test roles/desktop/files/quickshell/Common/tests/t3code-helpers.test.cjs`.
+- [ ] Run `node --test roles/desktop/files/quickshell/Common/tests/*.test.cjs`.
 - [ ] Reload `quickshell.service` and inspect that invocation's journal for QML
   load failures, syntax errors, and binding loops; open the popover with
   `qs ipc call popouts toggle t3code`.

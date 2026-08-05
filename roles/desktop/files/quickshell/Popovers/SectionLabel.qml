@@ -5,9 +5,9 @@ Text {
     leftPadding: 10
     topPadding: 8
     bottomPadding: 4
-    font.family: Theme.fontSans
-    font.pixelSize: 11
-    font.weight: 600
+    font.family: Theme.fontMenu
+    font.pixelSize: Theme.fontSecondary
+    font.weight: Theme.weightSemibold
     font.letterSpacing: 0.66
     color: Theme.textDim
 }

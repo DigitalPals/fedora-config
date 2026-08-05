@@ -15,6 +15,80 @@
     group: root
     mode: "0755"
 
+- name: Create pinned font cache directories
+  ansible.builtin.file:
+    path: "/var/cache/xps-upstream/{{ item.name }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ pinned_font_archives }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [fonts]
+
+- name: Create pinned font version directories
+  ansible.builtin.file:
+    path: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ pinned_font_archives }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version }}"
+  tags: [fonts]
+
+- name: Download verified pinned font archives
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "/var/cache/xps-upstream/{{ item.name }}/{{ item.version }}.zip"
+    checksum: "{{ item.checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ pinned_font_archives }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version }}"
+  when: not ansible_check_mode
+  tags: [fonts]
+
+- name: Install pinned fonts with their bundled license notices
+  ansible.builtin.unarchive:
+    src: "/var/cache/xps-upstream/{{ item.name }}/{{ item.version }}.zip"
+    dest: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}"
+    remote_src: true
+    creates: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/{{ item.expected_font }}"
+  register: apps_pinned_font_install
+  loop: "{{ pinned_font_archives }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version }}"
+  when: not ansible_check_mode
+  tags: [fonts]
+
+- name: Normalize pinned font ownership and permissions
+  ansible.builtin.file:
+    path: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}"
+    state: directory
+    recurse: true
+    owner: root
+    group: root
+    mode: "u=rwX,g=rX,o=rX"
+  loop: "{{ pinned_font_archives }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version }}"
+  when: not ansible_check_mode
+  tags: [fonts]
+
+- name: Refresh font cache after pinned font installs
+  ansible.builtin.command: fc-cache -f
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - apps_pinned_font_install.results | default([])
+      | selectattr('changed', 'defined') | selectattr('changed') | list | length > 0
+  tags: [fonts]
+
 - name: Remove retired Walker and Elephant installations and caches
   ansible.builtin.file:
     path: "{{ item }}"

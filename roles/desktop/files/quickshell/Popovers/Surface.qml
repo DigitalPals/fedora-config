@@ -2,12 +2,12 @@ import QtQuick
 import QtQuick.Effects
 import "../Common"
 
-// Shared popover surface: 360px wide, #16171c, 14px radius, hairline
-// border, soft 48px shadow, 8px inner gutter.
+// Shared popover surface: semantic width, 14px radius, hairline border,
+// soft 48px shadow, and a comfortable inner gutter.
 Item {
     id: root
 
-    property int padding: 8
+    property int padding: Theme.surfacePadding
     property alias spacing: column.spacing
     // The popover host draws the surface itself when morphing the modal
     // out of the bar; it disables this to avoid a doubled background.

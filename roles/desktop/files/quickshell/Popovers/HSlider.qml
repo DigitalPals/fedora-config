@@ -9,7 +9,7 @@ Item {
     property bool dimmed: false
     signal moved(real value)
 
-    height: 16
+    height: Theme.controlHeight
 
     Rectangle {
         id: track

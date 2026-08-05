@@ -17,15 +17,15 @@ Surface {
     // Header + toggle
     Item {
         width: parent.width
-        height: 36
+        height: Theme.rowHeight
 
         Text {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Bluetooth"
-            font.family: Theme.fontSans
-            font.pixelSize: 12
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
 
@@ -48,8 +48,8 @@ Surface {
         bottomPadding: 14
         text: root.adapter === null ? "No Bluetooth adapter" : "Bluetooth is off"
         horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontSans
-        font.pixelSize: 11
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontSecondary
         color: Theme.textDim
     }
 
@@ -60,8 +60,8 @@ Surface {
         bottomPadding: 14
         text: "No paired devices"
         horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontSans
-        font.pixelSize: 11
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontSecondary
         color: Theme.textDim
     }
 
@@ -74,7 +74,7 @@ Surface {
 
             width: parent.width - 4
             x: 2
-            height: modelData.connected ? 52 : 38
+            height: modelData.connected ? Theme.tileHeight : Theme.rowHeight
             radius: Theme.rowRadius
             color: modelData.connected ? Theme.accentBgSoft : btMouse.containsMouse ? Theme.hoverFill : "transparent"
             opacity: modelData.connected || btMouse.containsMouse ? 1 : 0.75
@@ -103,7 +103,7 @@ Surface {
                         return "\uf293";
                     }
                     font.family: Theme.fontIcon
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontBody
                     color: modelData.connected ? Theme.accent : Theme.textMid
                 }
 
@@ -115,9 +115,9 @@ Surface {
                     Text {
                         width: parent.width
                         text: modelData.deviceName
-                        font.family: Theme.fontSans
-                        font.pixelSize: 12
-                        font.weight: modelData.connected ? 500 : 400
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontBody
+                        font.weight: modelData.connected ? Theme.weightMedium : Theme.weightRegular
                         color: modelData.connected ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
                     }
@@ -126,8 +126,8 @@ Surface {
                         visible: modelData.connected
                         width: parent.width
                         text: "Connected" + (modelData.batteryAvailable ? " · " + Math.round(modelData.battery * 100) + "%" : "")
-                        font.family: Theme.fontSans
-                        font.pixelSize: 11
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontSecondary
                         color: Theme.textLow
                     }
                 }
@@ -138,9 +138,9 @@ Surface {
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 text: busy ? "…" : modelData.connected ? "Disconnect" : modelData.paired ? "Paired" : "Not connected"
-                font.family: Theme.fontSans
-                font.pixelSize: 11
-                font.weight: modelData.connected ? 500 : 400
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
+                font.weight: modelData.connected ? Theme.weightMedium : Theme.weightRegular
                 color: modelData.connected ? (actionMouse.containsMouse ? Theme.red : Theme.textDim) : Theme.textDim
 
                 MouseArea {

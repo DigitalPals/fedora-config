@@ -24,16 +24,16 @@ Surface {
         Text {
             text: Qt.formatDateTime(root.now, "HH:mm")
             font.family: Theme.fontMono
-            font.pixelSize: 26
-            font.weight: 600
+            font.pixelSize: Theme.fontDisplay
+            font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
 
         Text {
             anchors.baseline: parent.children[0].baseline
             text: Qt.formatDateTime(root.now, "dddd, MMMM d")
-            font.family: Theme.fontSans
-            font.pixelSize: 12
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
             color: Theme.textLow
         }
     }
@@ -41,15 +41,15 @@ Surface {
     // Month navigation
     Item {
         width: parent.width
-        height: 30
+        height: Theme.rowHeight
 
         Text {
             x: 12
             anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(root.shown, "MMMM yyyy")
-            font.family: Theme.fontSans
-            font.pixelSize: 12
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
             color: Theme.textMid
         }
 
@@ -64,8 +64,8 @@ Surface {
 
                 delegate: Rectangle {
                     required property var modelData
-                    width: 24
-                    height: 20
+                    width: Theme.controlHeight
+                    height: Theme.controlHeight
                     radius: 6
                     color: navMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
 
@@ -73,7 +73,7 @@ Surface {
                         anchors.centerIn: parent
                         text: parent.modelData.g
                         font.family: Theme.fontIcon
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontCaption
                         color: navMouse.containsMouse ? Theme.textHi : Theme.textLow
                     }
 
@@ -100,13 +100,13 @@ Surface {
             delegate: Text {
                 required property string modelData
                 width: (root.width - 32) / 7
-                height: 24
+                height: Theme.calendarCellSize
                 text: modelData
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 font.family: Theme.fontMono
-                font.pixelSize: 11
-                font.weight: 500
+                font.pixelSize: Theme.fontSecondary
+                font.weight: Theme.weightMedium
                 color: Theme.textFaint
             }
         }
@@ -125,12 +125,12 @@ Surface {
                 readonly property bool isToday: cell.toDateString() === root.now.toDateString()
 
                 width: (root.width - 32) / 7
-                height: 26
+                height: Theme.calendarCellSize
 
                 Rectangle {
                     anchors.centerIn: parent
                     width: parent.width - 2
-                    height: 24
+                    height: Theme.calendarCellSize
                     radius: Theme.chipRadius
                     color: parent.isToday ? Theme.accent : "transparent"
 
@@ -138,9 +138,10 @@ Surface {
                         anchors.centerIn: parent
                         text: cell.getDate()
                         font.family: Theme.fontMono
-                        font.pixelSize: 11
-                        font.weight: isToday ? 600 : 400
-                        color: isToday ? Theme.accentFg : inMonth ? Theme.textMid : Theme.dotDim
+                        font.pixelSize: Theme.fontSecondary
+                        font.weight: isToday ? Theme.weightSemibold : Theme.weightRegular
+                        // Adjacent-month dates are still content, not decoration.
+                        color: isToday ? Theme.accentFg : inMonth ? Theme.textMid : Theme.textFaint
                     }
                 }
             }

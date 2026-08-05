@@ -30,7 +30,7 @@ Column {
         signal triggered()
 
         width: labelText.implicitWidth + 18
-        height: 22
+        height: Theme.controlHeight
         radius: 6
         color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
         opacity: enabled ? 1 : 0.4
@@ -52,9 +52,9 @@ Column {
             id: labelText
             anchors.centerIn: parent
             text: action.label
-            font.family: Theme.fontSans
-            font.pixelSize: 10
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemibold
             color: action.tint
         }
 
@@ -74,7 +74,7 @@ Column {
         property color tint: Theme.textLow
 
         width: parent ? parent.width : 0
-        height: 22
+        height: Theme.controlHeight
 
         Text {
             id: groupLabel
@@ -82,9 +82,9 @@ Column {
             anchors.leftMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             text: group.label
-            font.family: Theme.fontSans
-            font.pixelSize: 10
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemibold
             font.letterSpacing: 0.9
             color: group.tint
         }
@@ -96,8 +96,8 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             text: group.count
             font.family: Theme.fontMono
-            font.pixelSize: 10
-            font.weight: 500
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightMedium
             color: Theme.textDim
         }
 
@@ -164,7 +164,7 @@ Column {
         Rectangle {
             id: row
             width: parent.width
-            height: 50
+            height: Theme.tileHeight
             radius: 9
             color: rowHover.hovered ? Theme.hoverFill : "transparent"
             border.width: activeFocus ? 1 : 0
@@ -229,18 +229,20 @@ Column {
 
                 Item {
                     width: parent.width
-                    height: 17
+                    height: Math.max(threadTitle.implicitHeight, statusText.implicitHeight,
+                        actionsScope.implicitHeight)
 
                     Text {
+                        id: threadTitle
                         anchors.left: parent.left
                         anchors.right: side.left
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
                         text: entry.thread.title
                         elide: Text.ElideRight
-                        font.family: Theme.fontSans
-                        font.pixelSize: 13
-                        font.weight: entry.quiet ? 500 : 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontBody
+                        font.weight: entry.quiet ? Theme.weightMedium : Theme.weightSemibold
                         color: entry.quiet ? Theme.textMid : Theme.textHi
                     }
 
@@ -259,8 +261,8 @@ Column {
                             anchors.verticalCenter: parent.verticalCenter
                             text: entry.statusWord
                             font.family: Theme.fontMono
-                            font.pixelSize: 10
-                            font.weight: 500
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightMedium
                             color: entry.statusColor
                         }
 
@@ -344,8 +346,8 @@ Column {
                         return parts.join(" · ");
                     }
                     elide: Text.ElideRight
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
                     color: entry.thread.cls === "error" ? Theme.redText : Theme.textLow
                 }
             }
@@ -364,10 +366,11 @@ Column {
                 return "";
             }
             wrapMode: Text.WordWrap
+            lineHeight: Theme.proseLineHeight
             maximumLineCount: 2
             elide: Text.ElideRight
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.redText
         }
     }
@@ -379,7 +382,7 @@ Column {
         property bool expanded: false
         signal toggled()
 
-        height: 30
+        height: Theme.controlHeight
         radius: 7
         color: drawerMouse.containsMouse ? Theme.hoverFill : Theme.cardFill
         activeFocusOnTab: true
@@ -403,9 +406,9 @@ Column {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: drawer.label
-                font.family: Theme.fontSans
-                font.pixelSize: 11
-                font.weight: 600
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
+                font.weight: Theme.weightSemibold
                 color: Theme.textLow
             }
 
@@ -413,8 +416,8 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 text: drawer.count
                 font.family: Theme.fontMono
-                font.pixelSize: 10
-                font.weight: 500
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightMedium
                 color: Theme.textDim
             }
         }
@@ -425,7 +428,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             text: drawer.expanded ? "▴" : "▾"
             font.family: Theme.fontMono
-            font.pixelSize: 9
+            font.pixelSize: Theme.fontCaption
             color: Theme.textDim
         }
 
@@ -465,8 +468,8 @@ Column {
                     topPadding: 5
                     bottomPadding: 5
                     text: "Read-only pairing · actions are disabled"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
                     color: Theme.amber
                 }
 
@@ -479,8 +482,8 @@ Column {
                         : T3Code.state === "connecting" ? "Connecting…"
                         : "Server unreachable — drafts are safe"
                     horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
                     color: Theme.textDim
                 }
 
@@ -493,8 +496,8 @@ Column {
                     bottomPadding: 12
                     text: "No sessions"
                     horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
                     color: Theme.textDim
                 }
 
@@ -575,8 +578,8 @@ Column {
                     width: parent.width
                     leftPadding: 9
                     text: "+" + (T3Code.snoozedThreads.length - 5) + " more in T3 Code"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
 
@@ -590,8 +593,8 @@ Column {
                     width: parent.width
                     leftPadding: 9
                     text: "+" + (T3Code.settledThreads.length - 5) + " more in T3 Code"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                 }
             }

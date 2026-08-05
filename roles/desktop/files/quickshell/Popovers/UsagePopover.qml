@@ -23,8 +23,8 @@ Surface {
     }
 
     // Right-island popouts run a touch wider (design t5).
-    implicitWidth: 380
-    padding: 10
+    implicitWidth: Theme.popWideWidth
+    padding: Theme.surfacePadding
     spacing: 8
 
     readonly property string sel: Usage.selected
@@ -92,14 +92,14 @@ Surface {
     // ---- Header: brand mark, meta, mini tabs, refresh ------------------
     Item {
         width: parent.width
-        height: 34
+        height: Theme.rowHeight
 
         Rectangle {
             id: brandSquare
             x: 4
             anchors.verticalCenter: parent.verticalCenter
-            width: 26
-            height: 26
+            width: Theme.controlHeight
+            height: Theme.controlHeight
             radius: 7
             color: root.info.brand
 
@@ -128,8 +128,8 @@ Surface {
                     required property string modelData
                     readonly property bool active: Usage.selected === modelData
 
-                    width: 22
-                    height: 22
+                    width: Theme.controlHeight
+                    height: Theme.controlHeight
                     radius: 6
                     color: active ? Theme.hoverFillStrong : miniTabMouse.containsMouse ? Theme.hoverFill : "transparent"
 
@@ -155,8 +155,8 @@ Surface {
             }
 
             Rectangle {
-                width: 26
-                height: 22
+                width: Theme.controlHeight
+                height: Theme.controlHeight
                 radius: 6
                 color: refreshMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
 
@@ -164,7 +164,7 @@ Surface {
                     anchors.centerIn: parent
                     text: ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSecondary
                     color: refreshMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
 
@@ -188,9 +188,9 @@ Surface {
             Text {
                 width: parent.width
                 text: root.info.title
-                font.family: Theme.fontSans
-                font.pixelSize: 13
-                font.weight: 600
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
+                font.weight: Theme.weightSemibold
                 color: Theme.textHi
                 elide: Text.ElideRight
             }
@@ -202,8 +202,8 @@ Surface {
                         return root.p && root.p.status !== "ok" ? root.info.cmd.split(" ")[0] + "-oauth" : "";
                     return [root.p.plan, root.p.account, root.p.source].filter(Boolean).join(" · ");
                 }
-                font.family: Theme.fontSans
-                font.pixelSize: 10
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
                 color: Theme.textDim
                 elide: Text.ElideRight
             }
@@ -230,7 +230,7 @@ Surface {
                 horizontalAlignment: Text.AlignHCenter
                 text: ""
                 font.family: Theme.fontIcon
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontBody
                 color: Theme.redText
             }
 
@@ -241,9 +241,9 @@ Surface {
                 Text {
                     width: parent.width
                     text: root.p ? root.errorTitle(root.p) : ""
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: 500
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightMedium
                     color: Theme.textHi
                 }
 
@@ -251,11 +251,11 @@ Surface {
                     width: parent.width
                     textFormat: Text.RichText
                     text: root.p ? root.errorBody(root.p) : ""
-                    font.family: Theme.fontSans
-                    font.pixelSize: 11
-                    lineHeight: 1.35
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
                     color: Theme.textLow
                     wrapMode: Text.Wrap
+                    lineHeight: Theme.proseLineHeight
                 }
             }
         }
@@ -296,14 +296,15 @@ Surface {
 
                     Item {
                         width: parent.width
-                        height: 14
+                        height: Math.max(cardLabel.implicitHeight, badge.implicitHeight)
 
                         Text {
+                            id: cardLabel
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.cardLabel(card.modelData.label)
-                            font.family: Theme.fontSans
-                            font.pixelSize: 10
-                            font.weight: 600
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightSemibold
                             font.letterSpacing: 0.6
                             color: Theme.textDim
                             width: parent.width - (badge.visible ? badge.width + 6 : 0)
@@ -316,7 +317,7 @@ Surface {
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
                             width: badgeText.implicitWidth + 10
-                            height: 14
+                            implicitHeight: badgeText.implicitHeight + 4
                             radius: 4
                             color: card.crit ? Theme.redBg : Theme.amberBg
 
@@ -324,20 +325,34 @@ Surface {
                                 id: badgeText
                                 anchors.centerIn: parent
                                 text: card.crit ? "CRITICAL" : "LOW"
-                                font.family: Theme.fontSans
-                                font.pixelSize: 9
-                                font.weight: 600
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.fontCaption
+                                font.weight: Theme.weightSemibold
                                 font.letterSpacing: 0.5
                                 color: card.crit ? Theme.redText : Theme.amber
                             }
                         }
                     }
 
-                    Text {
-                        textFormat: Text.RichText
-                        text: `<span style="font-size:20px;color:${root.remainColor(card.remaining)}">${card.remaining}</span><span style="font-size:12px;color:${Theme.textLow}">%</span> <span style="font-size:11px;color:${Theme.textLow}">left</span>`
-                        font.family: Theme.fontMono
-                        font.weight: 600
+                    Row {
+                        spacing: 3
+
+                        Text {
+                            anchors.baseline: remainingSuffix.baseline
+                            text: card.remaining
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontProminent
+                            font.weight: Theme.weightSemibold
+                            color: root.remainColor(card.remaining)
+                        }
+
+                        Text {
+                            id: remainingSuffix
+                            text: "% left"
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontCaption
+                            color: Theme.textLow
+                        }
                     }
 
                     BlockMeter {
@@ -352,8 +367,8 @@ Surface {
                         width: parent.width
                         textFormat: Text.RichText
                         text: `resets in <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatReset(card.modelData.resetsAt)}</font> · <font color="${Theme.textFaint}">${Usage.formatResetAbs(card.modelData.resetsAt)}</font>`
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
                         color: Theme.textDim
                         elide: Text.ElideRight
                     }
@@ -371,6 +386,20 @@ Surface {
                 && c.limit !== null && c.limit !== undefined && c.limit > 0
             readonly property bool creditsStyle: c !== null && c !== undefined && !hasMeter
                 && c.remaining !== null && c.remaining !== undefined
+            readonly property string displayValue: {
+                if (!c)
+                    return "";
+                if (c.unlimited)
+                    return "Unlimited";
+                if (hasMeter)
+                    return "$" + c.used.toFixed(2);
+                if (c.remaining !== null && c.remaining !== undefined)
+                    return Number(c.remaining).toLocaleString(Qt.locale("en_US"), "f",
+                        c.remaining % 1 === 0 ? 0 : 2);
+                return "—";
+            }
+            readonly property string displaySuffix: !c || c.unlimited ? ""
+                : hasMeter ? "/ $" + c.limit.toFixed(2) : "left"
 
             visible: root.p !== null && root.p.status === "ok" && c !== null && c !== undefined
             width: root.cardW
@@ -387,35 +416,39 @@ Surface {
 
                 Item {
                     width: parent.width
-                    height: 14
+                    height: creditsLabel.implicitHeight
 
                     Text {
+                        id: creditsLabel
                         anchors.verticalCenter: parent.verticalCenter
                         text: creditsCard.creditsStyle ? "CREDITS" : "EXTRA USAGE"
-                        font.family: Theme.fontSans
-                        font.pixelSize: 10
-                        font.weight: 600
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
                         font.letterSpacing: 0.6
                         color: Theme.textDim
                     }
                 }
 
-                Text {
-                    textFormat: Text.RichText
-                    text: {
-                        const c = creditsCard.c;
-                        if (!c)
-                            return "";
-                        if (c.unlimited)
-                            return `<span style="font-size:17px;color:${Theme.textHi}">Unlimited</span>`;
-                        if (creditsCard.hasMeter)
-                            return `<span style="font-size:17px;color:${Theme.textHi}">$${c.used.toFixed(2)}</span> <span style="font-size:11px;color:${Theme.textLow}">/ $${c.limit.toFixed(2)}</span>`;
-                        if (c.remaining !== null && c.remaining !== undefined)
-                            return `<span style="font-size:17px;color:${Theme.textHi}">${Number(c.remaining).toLocaleString(Qt.locale("en_US"), "f", c.remaining % 1 === 0 ? 0 : 2)}</span> <span style="font-size:11px;color:${Theme.textLow}">left</span>`;
-                        return "—";
+                Row {
+                    spacing: 5
+
+                    Text {
+                        anchors.baseline: creditsSuffix.baseline
+                        text: creditsCard.displayValue
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.fontHeading
+                        font.weight: Theme.weightSemibold
+                        color: Theme.textHi
                     }
-                    font.family: Theme.fontMono
-                    font.weight: 600
+
+                    Text {
+                        id: creditsSuffix
+                        text: creditsCard.displaySuffix
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.fontSecondary
+                        color: Theme.textLow
+                    }
                 }
 
                 BlockMeter {
@@ -429,10 +462,11 @@ Surface {
                 Text {
                     width: parent.width
                     text: creditsCard.creditsStyle ? "use credits beyond plan limits" : "pay-as-you-go beyond plan limits"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textDim
                     wrapMode: Text.Wrap
+                    lineHeight: Theme.proseLineHeight
                 }
             }
         }
@@ -455,19 +489,21 @@ Surface {
 
             Item {
                 width: parent.width
-                height: 17
+                height: Math.max(historyTitle.implicitHeight, historyRanges.implicitHeight)
 
                 Text {
+                    id: historyTitle
                     anchors.verticalCenter: parent.verticalCenter
                     text: "USAGE HISTORY"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
-                    font.weight: 600
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
                     font.letterSpacing: 0.6
                     color: Theme.textDim
                 }
 
                 Row {
+                    id: historyRanges
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 3
@@ -482,7 +518,7 @@ Surface {
                             readonly property bool active: root.histMode === modelData.key
 
                             width: rangeText.implicitWidth + 14
-                            height: 17
+                            height: rangeText.implicitHeight + 4
                             radius: 5
                             color: active ? Theme.hoverFillStrong : rangeMouse.containsMouse ? Theme.hoverFill : "transparent"
 
@@ -491,8 +527,8 @@ Surface {
                                 anchors.centerIn: parent
                                 text: rangeChip.modelData.label
                                 font.family: Theme.fontMono
-                                font.pixelSize: 9
-                                font.weight: 600
+                                font.pixelSize: Theme.fontCaption
+                                font.weight: Theme.weightSemibold
                                 color: rangeChip.active ? Theme.textHi : Theme.textDim
                             }
 
@@ -545,29 +581,33 @@ Surface {
 
             Item {
                 width: parent.width
-                height: 12
+                height: Math.max(axisStart.implicitHeight, axisMiddle.implicitHeight,
+                    axisEnd.implicitHeight)
 
                 Text {
+                    id: axisStart
                     anchors.left: parent.left
                     text: root.histMode === "h24" ? "-24h" : "-7d"
                     font.family: Theme.fontMono
-                    font.pixelSize: 9
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textFaint
                 }
 
                 Text {
+                    id: axisMiddle
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: root.histMode === "h24" ? "-12h" : "-3d"
                     font.family: Theme.fontMono
-                    font.pixelSize: 9
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textFaint
                 }
 
                 Text {
+                    id: axisEnd
                     anchors.right: parent.right
                     text: "now"
                     font.family: Theme.fontMono
-                    font.pixelSize: 9
+                    font.pixelSize: Theme.fontCaption
                     color: Theme.textFaint
                 }
             }
@@ -577,7 +617,7 @@ Surface {
     // ---- Footer -----------------------------------------------------------
     Item {
         width: parent.width
-        height: 20
+        height: Theme.controlHeight
 
         Text {
             x: 6
@@ -586,8 +626,8 @@ Surface {
             text: Usage.updatedAt > 0
                 ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Usage.updatedAt), "HH:mm:ss")}</font>`
                 : "Loading…"
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.textDim
         }
 
@@ -597,8 +637,8 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.RichText
             text: `next poll <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatCountdown(Usage.nextPollSecs)}</font>`
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.textDim
         }
     }

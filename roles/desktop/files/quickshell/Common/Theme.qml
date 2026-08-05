@@ -23,9 +23,11 @@ Singleton {
 
     readonly property color textHi: "#e2e5ec"
     readonly property color textMid: "#c2c6d1"
-    readonly property color textLow: "#8b90a0"
-    readonly property color textDim: "#6a6f7e"
-    readonly property color textFaint: "#5a5e6c"
+    // All text tokens meet WCAG AA against barBg/popBg. dotDim is the
+    // intentionally decorative exception and must not be used for copy.
+    readonly property color textLow: "#9aa0af"
+    readonly property color textDim: "#858a99"
+    readonly property color textFaint: "#797e8d"
     readonly property color dotDim: "#4a4e5c"
     readonly property color icon: "#a7adbd"
 
@@ -60,16 +62,60 @@ Singleton {
 
     // Typography
     readonly property string fontSans: "IBM Plex Sans"
+    readonly property string fontMenu: "OPPO Sans 4.0"
     readonly property string fontMono: "JetBrains Mono"
     readonly property string fontIcon: "JetBrainsMono Nerd Font"
 
+    // Semantic logical-pixel type scale for popovers and larger shell
+    // surfaces. The compact menubar has its own optical size below.
+    readonly property int fontCaption: 12
+    readonly property int fontSecondary: 13
+    readonly property int fontBody: 14
+    readonly property int fontHeading: 16
+    readonly property int fontProminent: 20
+    readonly property int fontDisplay: 28
+    readonly property int fontHero: 34
+    readonly property real proseLineHeight: 1.4
+
+    // The installed IBM Plex and variable OPPO Sans faces map cleanly to
+    // these semantic weights.
+    readonly property int weightRegular: Font.Normal
+    readonly property int weightMedium: Font.Medium
+    readonly property int weightSemibold: Font.DemiBold
+    readonly property int weightBold: Font.Bold
+
+    readonly property int iconSmall: 12
+    readonly property int iconMedium: 16
+    readonly property int iconLarge: 20
+
+    // Menubar typography stays compact independently of the roomier popover
+    // scale. OPPO Sans supplies tabular figures for values that update in place.
+    readonly property int barTextSize: 13
+    readonly property int barIconSize: 14
+    readonly property var tabularNumberFeatures: ({ "tnum": 1 })
+
     // Metrics
-    readonly property int barHeight: 34
+    readonly property int barHeight: 30
     readonly property int barTopMargin: 8
     readonly property int barSideMargin: 12
-    readonly property int clusterRadius: 11
-    readonly property int chipRadius: 7
-    readonly property int popWidth: 360
+    readonly property int clusterRadius: 9
+    readonly property int chipRadius: 6
+    readonly property int chipHeight: 24
+    readonly property int tooltipHeight: 26
+    readonly property int breakpointMedium: 1200
+    readonly property int breakpointWide: 1680
+    readonly property int mediaTitleMediumWidth: 140
+    readonly property int mediaTitleWideWidth: 220
+    readonly property int popWidth: 400
+    readonly property int popWideWidth: 420
+    readonly property int t3MinWidth: 320
+    readonly property int t3MaxWidth: 520
+    readonly property int surfacePadding: 12
+    readonly property int controlHeight: 34
+    readonly property int rowHeight: 44
+    readonly property int tileHeight: 56
+    readonly property int calendarCellSize: 32
+    readonly property int pickerRowHeight: 40
     readonly property int popRadius: 14
     readonly property int rowRadius: 9
 }

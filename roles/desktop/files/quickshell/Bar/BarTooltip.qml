@@ -33,7 +33,7 @@ Item {
     Rectangle {
         id: tip
         implicitWidth: label.implicitWidth + 14
-        implicitHeight: 24
+        implicitHeight: Theme.tooltipHeight
         radius: 6
         color: Theme.popBg
         border.width: 1
@@ -43,8 +43,8 @@ Item {
             id: label
             anchors.centerIn: parent
             text: root.text
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.textMid
         }
     }

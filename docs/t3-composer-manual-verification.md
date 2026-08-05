@@ -16,7 +16,7 @@ select trait and a boolean trait.
   provider/model/reasoning/mode summary, and expands when clicked anywhere.
 - [ ] Confirm access remains visible as a chip in both disclosure states;
   `Full access` is amber there and in the expanded Access picker.
-- [ ] At 460 px popover width, confirm controls use two columns. At 280 px,
+- [ ] At 520 px popover width, confirm controls use two columns. At 320 px,
   confirm the summary elides, the access chip remains visible, and expanded
   controls stack without horizontal clipping. On a short screen, confirm the
   popover stays bounded and its existing scroll areas remain usable.
@@ -48,7 +48,7 @@ select trait and a boolean trait.
 
 ## Automated and runtime checks
 
-- [ ] Run `node --test roles/desktop/files/quickshell/Common/tests/t3code-helpers.test.cjs`.
+- [ ] Run `node --test roles/desktop/files/quickshell/Common/tests/*.test.cjs`.
 - [ ] Reload `quickshell.service` and inspect that invocation's journal for QML
   load failures, syntax errors, binding loops, invalid sizing, and oversized
   buffers.

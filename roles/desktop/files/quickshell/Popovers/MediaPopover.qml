@@ -9,6 +9,9 @@ import "../Common"
 Surface {
     id: root
 
+    // This is the deliberate full-bleed exception: the artwork and its
+    // gradient reach the panel edge while each text/control section keeps
+    // its own twelve-pixel-or-larger inset.
     padding: 0
 
     readonly property var players: Mpris.players.values
@@ -43,15 +46,15 @@ Surface {
     // ---- Header: title + source switcher -----------------------------
     Item {
         width: parent.width
-        height: 40
+        height: Theme.rowHeight
 
         Text {
             x: 14
             anchors.verticalCenter: parent.verticalCenter
             text: "Media"
-            font.family: Theme.fontSans
-            font.pixelSize: 14
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
 
@@ -60,7 +63,7 @@ Surface {
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             width: srcRow.implicitWidth + 16
-            height: 26
+            height: Theme.controlHeight
             radius: Theme.chipRadius
             color: srcMouse.containsMouse && root.players.length > 1 ? Theme.hoverFill : "transparent"
 
@@ -73,7 +76,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: barGlyph()
                     font.family: Theme.fontIcon
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontBody
                     color: srcMouse.containsMouse ? Theme.textHi : Theme.textLow
 
                     function barGlyph() {
@@ -97,9 +100,9 @@ Surface {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.player ? root.player.identity : "No player"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    font.weight: 600
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightSemibold
                     color: srcMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
 
@@ -108,7 +111,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 9
+                    font.pixelSize: Theme.fontCaption
                     color: srcMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
             }
@@ -158,7 +161,7 @@ Surface {
             anchors.centerIn: parent
             text: ""
             font.family: Theme.fontIcon
-            font.pixelSize: 34
+            font.pixelSize: Theme.fontHero
             color: Qt.rgba(1, 1, 1, 0.35)
         }
 
@@ -202,9 +205,9 @@ Surface {
             anchors.horizontalCenter: parent.horizontalCenter
             horizontalAlignment: Text.AlignHCenter
             text: root.player && root.player.trackTitle !== "" ? root.player.trackTitle : "Nothing playing"
-            font.family: Theme.fontSans
-            font.pixelSize: 14
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
             color: Theme.textHi
             elide: Text.ElideRight
         }
@@ -215,9 +218,9 @@ Surface {
             horizontalAlignment: Text.AlignHCenter
             visible: text !== ""
             text: root.player ? root.player.trackArtist : ""
-            font.family: Theme.fontSans
-            font.pixelSize: 12
-            font.weight: 600
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
             color: Theme.textMid
             elide: Text.ElideRight
         }
@@ -228,9 +231,9 @@ Surface {
             horizontalAlignment: Text.AlignHCenter
             visible: text !== ""
             text: root.player ? root.player.trackAlbum : ""
-            font.family: Theme.fontSans
-            font.pixelSize: 11
-            font.weight: 500
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            font.weight: Theme.weightMedium
             color: Theme.textDim
             elide: Text.ElideRight
         }
@@ -256,24 +259,26 @@ Surface {
 
         Item {
             width: parent.width
-            height: 16
+            height: Math.max(positionText.implicitHeight, durationText.implicitHeight)
 
             Text {
+                id: positionText
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.fmt(root.pos)
                 font.family: Theme.fontMono
-                font.pixelSize: 11
-                font.weight: 500
+                font.pixelSize: Theme.fontSecondary
+                font.weight: Theme.weightMedium
                 color: Theme.textDim
             }
 
             Text {
+                id: durationText
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.len > 0 ? root.fmt(root.len) : "--:--"
                 font.family: Theme.fontMono
-                font.pixelSize: 11
-                font.weight: 500
+                font.pixelSize: Theme.fontSecondary
+                font.weight: Theme.weightMedium
                 color: Theme.textDim
             }
         }
@@ -290,8 +295,8 @@ Surface {
 
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 30
-                height: 30
+                width: Theme.controlHeight
+                height: Theme.controlHeight
                 radius: 15
                 color: shuffleMouse.containsMouse ? Theme.hoverFill : "transparent"
                 opacity: root.player && root.player.shuffleSupported ? 1 : 0.4
@@ -300,7 +305,7 @@ Surface {
                     anchors.centerIn: parent
                     text: ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSecondary
                     color: root.player && root.player.shuffle ? Theme.accent : shuffleMouse.containsMouse ? Theme.textHi : Theme.textDim
                 }
 
@@ -325,7 +330,7 @@ Surface {
                     anchors.centerIn: parent
                     text: ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontBody
                     color: prevMouse.containsMouse ? Theme.textHi : Theme.textMid
                 }
 
@@ -349,7 +354,7 @@ Surface {
                     anchors.centerIn: parent
                     text: root.player && root.player.isPlaying ? "" : ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontHeading
                     color: Theme.accentFg
                 }
 
@@ -374,7 +379,7 @@ Surface {
                     anchors.centerIn: parent
                     text: ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontBody
                     color: nextMouse.containsMouse ? Theme.textHi : Theme.textMid
                 }
 
@@ -389,8 +394,8 @@ Surface {
 
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 30
-                height: 30
+                width: Theme.controlHeight
+                height: Theme.controlHeight
                 radius: 15
                 color: loopMouse.containsMouse ? Theme.hoverFill : "transparent"
                 opacity: root.player && root.player.loopSupported ? 1 : 0.4
@@ -399,7 +404,7 @@ Surface {
                     anchors.centerIn: parent
                     text: root.player && root.player.loopState === MprisLoopState.Track ? "" : ""
                     font.family: Theme.fontIcon
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSecondary
                     color: root.player && root.player.loopState !== MprisLoopState.None ? Theme.accent : loopMouse.containsMouse ? Theme.textHi : Theme.textDim
                 }
 

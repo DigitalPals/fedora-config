@@ -11,8 +11,8 @@ import "../Common"
 Surface {
     id: root
 
-    implicitWidth: 380
-    padding: 10
+    implicitWidth: Theme.popWideWidth
+    padding: Theme.surfacePadding
     spacing: 8
 
     readonly property var wifiDevice: Networking.devices.values.find(d => d.networks !== undefined) ?? null
@@ -47,7 +47,7 @@ Surface {
         signal expanded
 
         width: (root.width - 2 * root.padding - 12) / 3
-        height: 48
+        height: Theme.tileHeight
         radius: Theme.rowRadius
         color: tile.on ? (tileMouse.containsMouse ? Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.14) : Theme.accentBgSoft)
              : (tileMouse.containsMouse ? Theme.hoverFill : Theme.cardFill)
@@ -66,7 +66,7 @@ Surface {
                     anchors.centerIn: parent
                     text: tile.glyph
                     font.family: Theme.fontIcon
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontBody
                     color: tile.on ? Theme.accent : Theme.textFaint
                 }
 
@@ -83,9 +83,9 @@ Surface {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: tile.title
-                font.family: Theme.fontSans
-                font.pixelSize: 10
-                font.weight: 500
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightMedium
                 color: tile.on ? Theme.textHi : Theme.textLow
             }
         }
@@ -119,7 +119,7 @@ Surface {
                 anchors.centerIn: parent
                 text: ""
                 font.family: Theme.fontIcon
-                font.pixelSize: 7
+                font.pixelSize: Theme.fontCaption
                 color: chevMouse.containsMouse ? Theme.textHi : tile.on ? Theme.textLow : Theme.textFaint
             }
 
@@ -149,38 +149,42 @@ Surface {
 
         Item {
             width: parent.width
-            height: 14
+            height: Math.max(meterGlyph.implicitHeight, meterLabel.implicitHeight,
+                meterValue.implicitHeight)
 
             Row {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 6
 
                 Text {
+                    id: meterGlyph
                     anchors.verticalCenter: parent.verticalCenter
                     text: meterRow.glyph
                     font.family: Theme.fontIcon
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontBody
                     color: Theme.textLow
                 }
 
                 Text {
+                    id: meterLabel
                     anchors.verticalCenter: parent.verticalCenter
                     text: meterRow.label
-                    font.family: Theme.fontSans
-                    font.pixelSize: 10
-                    font.weight: 600
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
                     font.letterSpacing: 0.6
                     color: Theme.textDim
                 }
             }
 
             Text {
+                id: meterValue
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: meterRow.percent >= 0 ? meterRow.percent + "%" : "--"
                 font.family: Theme.fontMono
-                font.pixelSize: 11
-                font.weight: 600
+                font.pixelSize: Theme.fontSecondary
+                font.weight: Theme.weightSemibold
                 color: Theme.textMid
             }
         }
@@ -218,9 +222,9 @@ Surface {
 
             Text {
                 text: stat.label
-                font.family: Theme.fontSans
-                font.pixelSize: 9
-                font.weight: 600
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightSemibold
                 font.letterSpacing: 0.6
                 color: Theme.textDim
             }
@@ -228,8 +232,8 @@ Surface {
             Text {
                 text: stat.display
                 font.family: Theme.fontMono
-                font.pixelSize: 14
-                font.weight: 600
+                font.pixelSize: Theme.fontBody
+                font.weight: Theme.weightSemibold
                 color: stat.tone
             }
 
@@ -395,7 +399,7 @@ Surface {
                 required property var modelData
 
                 width: (root.width - 2 * root.padding - 12) / 3
-                height: 32
+                height: Theme.controlHeight
                 radius: 8
                 color: actionMouse.containsMouse ? Theme.hoverFillStrong : Theme.hoverFill
 
@@ -407,16 +411,16 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: action.modelData.glyph
                         font.family: Theme.fontIcon
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontBody
                         color: action.modelData.tone
                     }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: action.modelData.label
-                        font.family: Theme.fontSans
-                        font.pixelSize: 11
-                        font.weight: 500
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontSecondary
+                        font.weight: Theme.weightMedium
                         color: Theme.textMid
                     }
                 }
@@ -436,14 +440,14 @@ Surface {
     // ---- Session footer ------------------------------------------------------
     Item {
         width: parent.width
-        height: 24
+        height: Theme.controlHeight
 
         Text {
             x: 6
             anchors.verticalCenter: parent.verticalCenter
             text: SysInfo.user + " @ " + SysInfo.host
-            font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
             color: Theme.textLow
         }
 
@@ -466,7 +470,7 @@ Surface {
                     required property var modelData
 
                     width: 26
-                    height: 24
+                    height: Theme.controlHeight
                     radius: 6
                     color: sessMouse.containsMouse
                         ? (sess.modelData.danger ? Theme.redBg : Theme.hoverFillStrong)
@@ -476,7 +480,7 @@ Surface {
                         anchors.centerIn: parent
                         text: sess.modelData.glyph
                         font.family: Theme.fontIcon
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontBody
                         color: sess.modelData.danger ? Theme.redText : sessMouse.containsMouse ? Theme.textHi : Theme.textLow
                     }
 
