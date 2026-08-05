@@ -95,10 +95,13 @@ check 'XPS touchpad is visible to libinput' bash -c "sudo -n libinput list-devic
 if command_exists mokutil; then
   mokutil --sb-state >/dev/null 2>&1 && pass 'Secure Boot state is readable' || warn 'Secure Boot state could not be read'
 fi
-for forbidden in xps-haptic-touchpad xps-bios-fan-control mic-led-sync tlp; do
+for forbidden in xps-bios-fan-control mic-led-sync tlp; do
   systemctl list-unit-files "$forbidden.service" --no-legend 2>/dev/null | grep -q . \
     && fail "excluded unit exists: $forbidden" || pass "excluded unit absent: $forbidden"
 done
+check 'XPS haptic touchpad service is enabled' unit_enabled xps-haptic-touchpad.service
+check 'XPS haptic touchpad service is active' unit_active xps-haptic-touchpad.service
+check 'XPS haptic touchpad restorer is installed' test -x /usr/local/libexec/xps-haptic-touchpad
 
 check 'GDM retains GNOME session' bash -c 'compgen -G "/usr/share/wayland-sessions/*gnome*.desktop" >/dev/null'
 check 'Hyprland Quickshell GDM session exists' test -r /usr/share/wayland-sessions/hyprland-quickshell.desktop

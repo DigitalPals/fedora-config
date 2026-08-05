@@ -53,6 +53,59 @@
       - _copr:copr.fedorainfracloud.org:sdegler:hyprland
   when: not ansible_check_mode
 
+- name: Install the XPS haptic touchpad state restorer
+  ansible.builtin.copy:
+    src: xps-haptic-touchpad
+    dest: /usr/local/libexec/xps-haptic-touchpad
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart XPS haptic touchpad
+  tags: [touchpad]
+
+- name: Restore the SELinux label on the haptic touchpad restorer
+  ansible.builtin.command: restorecon -F /usr/local/libexec/xps-haptic-touchpad
+  changed_when: false
+  when: not ansible_check_mode
+  tags: [touchpad]
+
+- name: Keep the XPS touchpad controller awake
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/80-xps-haptic-touchpad.rules
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Preserve the Synaptics haptic engine's volatile state.
+      ACTION=="add", SUBSYSTEM=="pci", KERNEL=="0000:00:19.0", ATTR{power/control}="on"
+      ACTION=="add", SUBSYSTEM=="platform", KERNEL=="i2c_designware.0", ATTR{power/control}="on"
+      ACTION=="add|change", SUBSYSTEM=="i2c", KERNEL=="i2c-VEN_06CB:*", ATTR{power/control}="on"
+  notify:
+    - Reload udev for haptic touchpad
+    - Restart XPS haptic touchpad
+  tags: [touchpad]
+
+- name: Install the XPS haptic touchpad service
+  ansible.builtin.template:
+    src: xps-haptic-touchpad.service.j2
+    dest: /etc/systemd/system/xps-haptic-touchpad.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd for haptic touchpad
+    - Restart XPS haptic touchpad
+  tags: [touchpad]
+
+- name: Enable the XPS haptic touchpad service
+  ansible.builtin.systemd_service:
+    name: xps-haptic-touchpad.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+  tags: [touchpad]
+
 - name: Ensure GDM is the display manager while preserving GNOME
   ansible.builtin.systemd_service:
     name: gdm.service
