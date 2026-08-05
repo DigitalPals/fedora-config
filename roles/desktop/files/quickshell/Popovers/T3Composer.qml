@@ -101,8 +101,8 @@ Column {
             return found ? settingLabel(found) : displaySettingValue(value, fallback);
         }
 
-        // Chip labels for the collapsed state (design 5d). Empty string means
-        // the chip is hidden.
+        // Labels combined into the compact disclosure summary. Empty strings
+        // are omitted so unsupported controls consume no width.
         function reasoningSummary() {
             const descriptor = (Array.isArray(root.traits) ? root.traits : [])
                 .find(candidate => root.traitLabel(candidate) === "Reasoning");
@@ -137,43 +137,11 @@ Column {
             return String(root.draft?.interactionMode ?? "default") === "plan"
                 ? "Plan mode" : "Default mode";
         }
-    }
 
-    component SummaryChip: Rectangle {
-        id: chip
-        property string label: ""
-        property string icon: ""
-
-        visible: label !== ""
-        width: chipRow.implicitWidth + 20
-        height: 22
-        radius: 6
-        color: Theme.hoverFill
-
-        Row {
-            id: chipRow
-            anchors.centerIn: parent
-            spacing: 6
-
-            Image {
-                visible: chip.icon !== ""
-                anchors.verticalCenter: parent.verticalCenter
-                width: 11
-                height: 11
-                sourceSize: Qt.size(22, 22)
-                fillMode: Image.PreserveAspectFit
-                source: chip.icon !== "" ? Quickshell.shellDir
-                    + "/assets/" + chip.icon + ".svg" : ""
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: chip.label
-                font.family: Theme.fontSans
-                font.pixelSize: 11
-                font.weight: 500
-                color: Theme.textMid
-            }
+        function compactSummary() {
+            const parts = [providerModelSummary(), reasoningSummary(), modeSummary()]
+                .filter(value => value !== "");
+            return parts.join(" · ");
         }
     }
 
@@ -254,31 +222,150 @@ Column {
     }
 
     Rectangle {
+        id: promptBox
+
+        width: parent.width
+        height: Math.max(62, Math.min(112, promptEdit.contentHeight + 18))
+        radius: 8
+        color: /\bultrathink\b/i.test(promptEdit.text) ? Theme.accentBgSoft
+            : Qt.rgba(0, 0, 0, 0.24)
+        border.width: 1
+        border.color: root.overLimit ? Theme.redBorder
+            : promptEdit.activeFocus ? Theme.accentBgSoft : Theme.hairlineSoft
+
+        Flickable {
+            id: promptFlick
+            anchors.left: parent.left
+            anchors.right: sendButton.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.margins: 8
+            anchors.rightMargin: 7
+            contentWidth: width
+            contentHeight: Math.max(height, promptEdit.contentHeight)
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            TextEdit {
+                id: promptEdit
+
+                property bool syncing: false
+
+                width: promptFlick.width
+                height: Math.max(promptFlick.height, contentHeight)
+                enabled: root.editable && !root.sending
+                wrapMode: TextEdit.Wrap
+                selectByMouse: true
+                font.family: Theme.fontSans
+                font.pixelSize: 12
+                color: Theme.textHi
+                selectionColor: Theme.accentBg
+                selectedTextColor: Theme.textHi
+                onTextChanged: {
+                    if (!syncing && activeFocus)
+                        root.persistPrompt(text);
+                }
+                onCursorRectangleChanged: {
+                    if (cursorRectangle.y + cursorRectangle.height > promptFlick.contentY
+                            + promptFlick.height)
+                        promptFlick.contentY = cursorRectangle.y + cursorRectangle.height
+                            - promptFlick.height;
+                    else if (cursorRectangle.y < promptFlick.contentY)
+                        promptFlick.contentY = cursorRectangle.y;
+                }
+
+                Keys.onPressed: event => {
+                    if (event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
+                        return;
+                    if (event.modifiers & Qt.ControlModifier)
+                        root.insertNewline();
+                    else if (root.sendEnabled && !root.sending && !root.overLimit
+                            && promptEdit.text.trim() !== "")
+                        root.sendRequested();
+                    event.accepted = true;
+                }
+
+                Text {
+                    visible: promptEdit.text === "" && !promptEdit.activeFocus
+                    text: root.newThread ? "Describe the first task…" : "Send a follow-up…"
+                    font.family: Theme.fontSans
+                    font.pixelSize: 12
+                    color: Theme.textFaint
+                }
+            }
+        }
+
+        Rectangle {
+            id: sendButton
+
+            anchors.right: parent.right
+            anchors.rightMargin: 7
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 7
+            width: Math.max(31, sendText.implicitWidth + 18)
+            height: 26
+            radius: 7
+            color: sendMouse.containsMouse && sendMouse.enabled
+                ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
+            opacity: sendMouse.enabled ? 1 : 0.35
+            activeFocusOnTab: sendMouse.enabled
+
+            Keys.onPressed: event => {
+                if (!sendMouse.enabled)
+                    return;
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    root.sendRequested();
+                    event.accepted = true;
+                }
+            }
+
+            Text {
+                id: sendText
+                anchors.centerIn: parent
+                text: root.sending ? "…" : root.sendLabel
+                font.family: Theme.fontSans
+                font.pixelSize: 11
+                font.weight: 650
+                color: Theme.accentFg
+            }
+
+            MouseArea {
+                id: sendMouse
+                anchors.fill: parent
+                enabled: root.sendEnabled && !root.sending && !root.overLimit
+                    && promptEdit.text.trim() !== ""
+                hoverEnabled: true
+                onClicked: root.sendRequested()
+            }
+        }
+    }
+
+    Rectangle {
         id: settingsCard
 
         width: parent.width
-        height: settingsColumn.implicitHeight + 2
+        height: settingsColumn.implicitHeight + (settingsPresentation.expanded ? 2 : 0)
         z: settingsPresentation.activePicker !== null ? 100 : 0
         radius: 8
-        color: Theme.cardFill
-        border.width: 1
+        color: settingsPresentation.expanded ? Theme.cardFill : "transparent"
+        border.width: settingsPresentation.expanded ? 1 : 0
         border.color: Theme.hairlineSoft
 
         Column {
             id: settingsColumn
 
-            x: 1
-            y: 1
-            width: parent.width - 2
+            x: settingsPresentation.expanded ? 1 : 0
+            y: settingsPresentation.expanded ? 1 : 0
+            width: parent.width - (settingsPresentation.expanded ? 2 : 0)
 
-            // Collapsed state shows provider/model, reasoning, and mode as
-            // separate read-only chips (design 5d); tapping anywhere — chips
-            // included — toggles the disclosure.
+            // Keep the collapsed state to one footer-like row. The detailed
+            // controls remain available without competing with the prompt.
             Rectangle {
                 id: settingsHeader
 
                 width: parent.width
-                height: 30 + (settingsChips.visible ? settingsChips.implicitHeight + 4 : 0)
+                height: 30
                 radius: 7
                 color: settingsMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
                 activeFocusOnTab: true
@@ -311,15 +398,26 @@ Column {
 
                     anchors.left: settingsChevron.right
                     anchors.leftMargin: 6
-                    anchors.right: accessChip.left
-                    anchors.rightMargin: 8
                     anchors.verticalCenter: settingsChevron.verticalCenter
                     text: "Run settings"
-                    elide: Text.ElideRight
                     font.family: Theme.fontSans
                     font.pixelSize: 11
                     font.weight: 650
                     color: Theme.textHi
+                }
+
+                Text {
+                    visible: !settingsPresentation.expanded
+                    anchors.left: settingsTitle.right
+                    anchors.leftMargin: 8
+                    anchors.right: accessChip.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: settingsChevron.verticalCenter
+                    text: settingsPresentation.compactSummary()
+                    elide: Text.ElideRight
+                    font.family: Theme.fontSans
+                    font.pixelSize: 10
+                    color: Theme.textDim
                 }
 
                 Rectangle {
@@ -344,28 +442,6 @@ Column {
                         color: root.draft?.runtimeMode === "full-access"
                             ? Theme.amber : Theme.textLow
                     }
-                }
-
-                Flow {
-                    id: settingsChips
-
-                    visible: !settingsPresentation.expanded
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.top: settingsChevron.bottom
-                    anchors.topMargin: 7
-                    spacing: 5
-
-                    SummaryChip {
-                        icon: T3Code.providerIcon(String(root.draft?.instanceId ?? ""))
-                        label: settingsPresentation.providerModelSummary()
-                    }
-
-                    SummaryChip { label: settingsPresentation.reasoningSummary() }
-
-                    SummaryChip { label: settingsPresentation.modeSummary() }
                 }
 
                 MouseArea {
@@ -598,126 +674,6 @@ Column {
         color: Theme.amber
     }
 
-    Rectangle {
-        id: promptBox
-
-        width: parent.width
-        height: Math.max(62, Math.min(112, promptEdit.contentHeight + 18))
-        radius: 8
-        color: /\bultrathink\b/i.test(promptEdit.text) ? Theme.accentBgSoft
-            : Qt.rgba(0, 0, 0, 0.24)
-        border.width: 1
-        border.color: root.overLimit ? Theme.redBorder
-            : promptEdit.activeFocus ? Theme.accentBgSoft : Theme.hairlineSoft
-
-        Flickable {
-            id: promptFlick
-            anchors.left: parent.left
-            anchors.right: sendButton.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.margins: 8
-            anchors.rightMargin: 7
-            contentWidth: width
-            contentHeight: Math.max(height, promptEdit.contentHeight)
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-
-            TextEdit {
-                id: promptEdit
-
-                property bool syncing: false
-
-                width: promptFlick.width
-                height: Math.max(promptFlick.height, contentHeight)
-                enabled: root.editable && !root.sending
-                wrapMode: TextEdit.Wrap
-                selectByMouse: true
-                font.family: Theme.fontSans
-                font.pixelSize: 12
-                color: Theme.textHi
-                selectionColor: Theme.accentBg
-                selectedTextColor: Theme.textHi
-                onTextChanged: {
-                    if (!syncing && activeFocus)
-                        root.persistPrompt(text);
-                }
-                onCursorRectangleChanged: {
-                    if (cursorRectangle.y + cursorRectangle.height > promptFlick.contentY
-                            + promptFlick.height)
-                        promptFlick.contentY = cursorRectangle.y + cursorRectangle.height
-                            - promptFlick.height;
-                    else if (cursorRectangle.y < promptFlick.contentY)
-                        promptFlick.contentY = cursorRectangle.y;
-                }
-
-                Keys.onPressed: event => {
-                    if (event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
-                        return;
-                    if (event.modifiers & Qt.ControlModifier)
-                        root.insertNewline();
-                    else if (root.sendEnabled && !root.sending && !root.overLimit
-                            && promptEdit.text.trim() !== "")
-                        root.sendRequested();
-                    event.accepted = true;
-                }
-
-                Text {
-                    visible: promptEdit.text === "" && !promptEdit.activeFocus
-                    text: root.newThread ? "Describe the first task…" : "Send a follow-up…"
-                    font.family: Theme.fontSans
-                    font.pixelSize: 12
-                    color: Theme.textFaint
-                }
-            }
-        }
-
-        Rectangle {
-            id: sendButton
-
-            anchors.right: parent.right
-            anchors.rightMargin: 7
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 7
-            width: Math.max(31, sendText.implicitWidth + 18)
-            height: 26
-            radius: 7
-            color: sendMouse.containsMouse && sendMouse.enabled
-                ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
-            opacity: sendMouse.enabled ? 1 : 0.35
-            activeFocusOnTab: sendMouse.enabled
-
-            Keys.onPressed: event => {
-                if (!sendMouse.enabled)
-                    return;
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                        || event.key === Qt.Key_Space) {
-                    root.sendRequested();
-                    event.accepted = true;
-                }
-            }
-
-            Text {
-                id: sendText
-                anchors.centerIn: parent
-                text: root.sending ? "…" : root.sendLabel
-                font.family: Theme.fontSans
-                font.pixelSize: 11
-                font.weight: 650
-                color: Theme.accentFg
-            }
-
-            MouseArea {
-                id: sendMouse
-                anchors.fill: parent
-                enabled: root.sendEnabled && !root.sending && !root.overLimit
-                    && promptEdit.text.trim() !== ""
-                hoverEnabled: true
-                onClicked: root.sendRequested()
-            }
-        }
-    }
-
     Row {
         width: parent.width
 
@@ -748,7 +704,7 @@ Column {
     }
 
     Component.onCompleted: {
-        settingsPresentation.expanded = newThread;
+        settingsPresentation.expanded = false;
         syncPrompt();
     }
 }

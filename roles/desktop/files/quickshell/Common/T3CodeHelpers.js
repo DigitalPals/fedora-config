@@ -1128,7 +1128,8 @@ function gitActionVisible(status, action) {
     if (action === "commit_push")
         return status.hasWorkingTreeChanges === true;
     if (action === "push")
-        return status.hasPrimaryRemote === true
+        return status.hasWorkingTreeChanges !== true
+            && status.hasPrimaryRemote === true
             && (status.aheadCount > 0 || status.hasUpstream !== true);
     return false;
 }

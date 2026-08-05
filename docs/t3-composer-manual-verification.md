@@ -5,20 +5,20 @@ select trait and a boolean trait.
 
 ## Disclosure and layout
 
-- [ ] Open an existing thread and confirm `Run settings` starts collapsed and
-  leaves more height for the conversation.
-- [ ] Open New Thread and confirm `Run settings` starts expanded.
+- [ ] Open an existing thread and New Thread. Confirm the prompt appears first,
+  `Run settings` is directly beneath it, and the disclosure starts collapsed on
+  both page types.
 - [ ] Toggle the disclosure, leave the page, reopen it, and confirm it resets to
-  that page type's default instead of persisting the previous choice.
+  collapsed instead of persisting the previous choice.
 - [ ] Confirm the collapsed header has a right-pointing chevron; the expanded
   header has a downward chevron and a subtle divider above its fields.
-- [ ] Confirm the collapsed state shows separate chips for provider/model
-  (with the provider glyph), reasoning level, and interaction mode, and that
-  tapping any chip expands the disclosure.
-- [ ] Confirm access remains visible as a chip outside the disclosure body,
+- [ ] Confirm the collapsed header stays one row, shows an elided
+  provider/model/reasoning/mode summary, and expands when clicked anywhere.
+- [ ] Confirm access remains visible as a chip in both disclosure states;
   `Full access` is amber there and in the expanded Access picker.
 - [ ] At 460 px popover width, confirm controls use two columns. At 280 px,
-  confirm they stack without horizontal clipping. On a short screen, confirm the
+  confirm the summary elides, the access chip remains visible, and expanded
+  controls stack without horizontal clipping. On a short screen, confirm the
   popover stays bounded and its existing scroll areas remain usable.
 
 ## Input and state

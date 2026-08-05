@@ -582,7 +582,7 @@ test("vcs status sanitizing keeps counts, drops malformed input, and needs a PR 
 test("git actions are only visible when they actually apply", () => {
     const status = H.sanitizeVcsStatus(vcsStatus());
     assert.equal(H.gitActionVisible(status, "commit_push"), true);
-    assert.equal(H.gitActionVisible(status, "push"), true);
+    assert.equal(H.gitActionVisible(status, "push"), false);
     const cleanTree = H.sanitizeVcsStatus(vcsStatus({ hasWorkingTreeChanges: false,
         workingTree: { files: [], insertions: 0, deletions: 0 } }));
     assert.equal(H.gitActionVisible(cleanTree, "commit_push"), false);
@@ -590,7 +590,9 @@ test("git actions are only visible when they actually apply", () => {
     const current = H.sanitizeVcsStatus(vcsStatus({ hasWorkingTreeChanges: false,
         aheadCount: 0 }));
     assert.equal(H.gitActionVisible(current, "push"), false);
-    const unpublished = H.sanitizeVcsStatus(vcsStatus({ aheadCount: 0, hasUpstream: false }));
+    const unpublished = H.sanitizeVcsStatus(vcsStatus({ hasWorkingTreeChanges: false,
+        workingTree: { files: [], insertions: 0, deletions: 0 }, aheadCount: 0,
+        hasUpstream: false }));
     assert.equal(H.gitActionVisible(unpublished, "push"), true);
     const noRemote = H.sanitizeVcsStatus(vcsStatus({ hasPrimaryRemote: false,
         hasUpstream: false, aheadCount: 0 }));

@@ -12,6 +12,9 @@ Column {
     property bool snoozeOpen: false
     property bool menuOpen: false
     property bool followTail: true
+    property bool changesExpanded: false
+    property string expandedCheckpointRef: ""
+    property bool gitSuccessVisible: false
     signal backRequested()
     signal newPlanRequested(var plan)
 
@@ -29,6 +32,32 @@ Column {
     readonly property var plan: T3Code.detailActionablePlan
     readonly property bool planTooLong: plan
         && T3Code.maxPromptChars < ("PLEASE IMPLEMENT THIS PLAN:\n" + plan.planMarkdown.trim()).length
+    readonly property var checkpoint: T3Code.detailCheckpointSummary
+    readonly property bool hasCheckpointChanges: checkpoint !== null
+        && checkpoint.fileCount > 0
+    readonly property string checkpointRef: checkpoint
+        ? String(checkpoint.checkpointRef ?? "") : ""
+    readonly property var vcs: T3Code.detailVcs.status
+    readonly property var git: T3Code.detailGit
+    readonly property bool gitPending: T3Code.actionPending("git", threadId, "")
+    readonly property string prUrl: git.prUrl !== "" ? git.prUrl
+        : vcs && vcs.pr ? vcs.pr.url : ""
+    readonly property bool showCommit: T3Code.canOperate
+        && (T3Code.gitActionApplies("commit_push")
+            || gitPending && git.action === "commit_push")
+    readonly property bool showPush: T3Code.canOperate
+        && (T3Code.gitActionApplies("push")
+            || gitPending && git.action === "push")
+    readonly property bool hasGitMenuItems: showCommit || showPush || prUrl !== ""
+    readonly property bool activityFailed: T3Code.detailLatestActivity !== null
+        && T3Code.detailLatestActivity.tone === "error"
+    readonly property string gitFeedbackText: gitPending
+        ? (git.label !== "" ? git.label : "Git action in progress…")
+        : git.error !== "" ? git.error
+        : T3Code.detailVcs.error !== "" ? T3Code.detailVcs.error
+        : gitSuccessVisible ? git.summary : ""
+    readonly property bool gitFeedbackFailed: !gitPending
+        && (git.error !== "" || T3Code.detailVcs.error !== "")
 
     spacing: 5
 
@@ -48,6 +77,28 @@ Column {
         Qt.callLater(() => {
             flick.contentY = Math.max(0, flick.contentY + flick.contentHeight - previousHeight);
         });
+    }
+
+    function toggleChanges() {
+        if (!hasCheckpointChanges)
+            return;
+        if (changesExpanded && expandedCheckpointRef === checkpointRef) {
+            changesExpanded = false;
+            return;
+        }
+        changesExpanded = true;
+        expandedCheckpointRef = checkpointRef;
+        const loadedCurrent = T3Code.detailDiff.checkpointRef === checkpointRef;
+        if (!loadedCurrent || T3Code.detailDiff.error !== ""
+                || T3Code.detailDiff.text === "" && !T3Code.detailDiff.loading)
+            T3Code.loadFullThreadDiff(threadId, checkpoint);
+    }
+
+    function beginGitAction(action) {
+        menuOpen = false;
+        gitSuccessVisible = false;
+        gitSuccessTimer.stop();
+        T3Code.runGitAction(threadId, action);
     }
 
     component Action: Rectangle {
@@ -319,6 +370,13 @@ Column {
         }
     }
 
+    component MenuDivider: Rectangle {
+        width: parent ? parent.width - 10 : 0
+        height: 1
+        x: 5
+        color: Theme.hairlineSoft
+    }
+
     // Left-aligned header; Stop / Snooze / Settle live behind ⋯ so the
     // always-on row is just navigation (design 5c).
     Item {
@@ -337,8 +395,9 @@ Column {
             && root.thread.lifecycle === "active" && T3Code.supportsSettlement
         readonly property bool canUnsettleHere: root.thread !== null
             && root.thread.lifecycle === "settled" && T3Code.supportsSettlement
-        readonly property bool hasMenuItems: sessionLive || canSnoozeHere || canWakeHere
+        readonly property bool hasLifecycleMenuItems: sessionLive || canSnoozeHere || canWakeHere
             || canSettleHere || canUnsettleHere
+        readonly property bool hasMenuItems: root.hasGitMenuItems || hasLifecycleMenuItems
 
         Column {
             id: headerColumn
@@ -443,7 +502,7 @@ Column {
             z: 100
             anchors.right: parent.right
             y: 32
-            width: 164
+            width: 190
             height: menuColumn.implicitHeight + 10
             radius: 8
             color: "#1b1c22"
@@ -455,6 +514,39 @@ Column {
                 x: 5
                 y: 5
                 width: parent.width - 10
+
+                MenuEntry {
+                    visible: root.showCommit
+                    label: root.gitPending && root.git.action === "commit_push"
+                        && root.git.label !== "" ? root.git.label : "Commit & Push"
+                    tint: Theme.accent
+                    enabled: T3Code.canDispatch && !root.gitPending
+                    onTriggered: root.beginGitAction("commit_push")
+                }
+
+                MenuEntry {
+                    visible: root.showPush
+                    label: root.gitPending && root.git.action === "push"
+                        && root.git.label !== "" ? root.git.label : "Push"
+                    tint: Theme.accent
+                    enabled: T3Code.canDispatch && !root.gitPending
+                    onTriggered: root.beginGitAction("push")
+                }
+
+                MenuEntry {
+                    visible: root.prUrl !== ""
+                    label: "View PR ↗"
+                    tint: Theme.accent
+                    onTriggered: {
+                        root.menuOpen = false;
+                        Quickshell.execDetached(["xdg-open", root.prUrl]);
+                        Popouts.close();
+                    }
+                }
+
+                MenuDivider {
+                    visible: root.hasGitMenuItems && header.hasLifecycleMenuItems
+                }
 
                 MenuEntry {
                     visible: header.sessionLive
@@ -534,12 +626,60 @@ Column {
         onTriggered: root.confirmStop = false
     }
 
+    Timer {
+        id: gitSuccessTimer
+        interval: 6000
+        onTriggered: root.gitSuccessVisible = false
+    }
+
+    Item {
+        id: gitFeedback
+        visible: root.gitFeedbackText !== ""
+        width: parent.width
+        height: visible ? Math.max(22, gitFeedbackText.implicitHeight + 6) : 0
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 2
+            radius: 1
+            color: root.gitFeedbackFailed ? Theme.red : Theme.accent
+        }
+
+        Text {
+            id: gitFeedbackText
+            anchors.left: parent.left
+            anchors.leftMargin: 9
+            anchors.right: gitRetry.visible ? gitRetry.left : parent.right
+            anchors.rightMargin: gitRetry.visible ? 6 : 0
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.gitFeedbackText
+            elide: Text.ElideRight
+            maximumLineCount: 2
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            font.family: Theme.fontSans
+            font.pixelSize: 10
+            color: root.gitFeedbackFailed ? Theme.redText : Theme.textLow
+        }
+
+        Action {
+            id: gitRetry
+            visible: T3Code.detailVcs.error !== "" && !root.gitPending
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            label: "Retry"
+            tint: Theme.accent
+            onTriggered: T3Code.refreshVcsStatus(root.threadId, true)
+        }
+    }
+
     Item {
         id: viewport
         width: parent.width
         height: {
             const room = root.maxHeight - header.height - composer.implicitHeight
-                - composerError.implicitHeight - 18;
+                - gitFeedback.height - composerError.implicitHeight - 18;
             return Math.max(140, Math.min(room, timeline.implicitHeight));
         }
 
@@ -767,323 +907,193 @@ Column {
                     }
                 }
 
-                InfoCard {
-                    visible: T3Code.detailLatestActivity !== null
-                    heading: T3Code.detailLatestActivity
-                        && T3Code.detailLatestActivity.tone === "error"
-                        ? "LATEST ERROR" : "LATEST ACTIVITY"
-                    body: T3Code.detailLatestActivity
-                        ? T3Code.detailLatestActivity.summary : ""
-                    headingColor: T3Code.detailLatestActivity
-                        && T3Code.detailLatestActivity.tone === "error"
-                        ? Theme.redText : Theme.textDim
-                    fill: T3Code.detailLatestActivity
-                        && T3Code.detailLatestActivity.tone === "error"
-                        ? Theme.redBgSoft : Theme.cardFill
-                    outline: T3Code.detailLatestActivity
-                        && T3Code.detailLatestActivity.tone === "error"
-                        ? Theme.redBorder : Theme.hairlineSoft
+                Item {
+                    visible: root.activityFailed
+                    width: parent.width
+                    height: activityErrorText.implicitHeight + 8
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 2
+                        radius: 1
+                        color: Theme.red
+                    }
+
+                    Text {
+                        id: activityErrorText
+                        x: 9
+                        y: 4
+                        width: parent.width - 9
+                        text: root.activityFailed ? T3Code.detailLatestActivity.summary : ""
+                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                        font.family: Theme.fontSans
+                        font.pixelSize: 10
+                        color: Theme.redText
+                    }
                 }
 
                 Rectangle {
-                    visible: T3Code.detailCheckpointSummary !== null
+                    id: changesRow
+                    visible: root.hasCheckpointChanges
                     width: parent.width
-                    height: checkpointColumn.implicitHeight + 14
-                    radius: 8
-                    color: Theme.cardFill
-                    border.width: 1
-                    border.color: Theme.hairlineSoft
+                    height: 28
+                    radius: 6
+                    color: changesMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+                    activeFocusOnTab: visible
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Theme.accent
 
-                    Column {
-                        id: checkpointColumn
-                        x: 7
-                        y: 7
-                        width: parent.width - 14
-                        spacing: 5
-
-                        Item {
-                            width: parent.width
-                            height: 22
-
-                            Column {
-                                anchors.left: parent.left
-                                anchors.right: diffAction.left
-                                anchors.rightMargin: 5
-                                spacing: 1
-
-                                Text {
-                                    text: "READY CHECKPOINT"
-                                    font.family: Theme.fontSans
-                                    font.pixelSize: 9
-                                    font.weight: 650
-                                    font.letterSpacing: 0.45
-                                    color: Theme.textDim
-                                }
-
-                                Text {
-                                    text: {
-                                        const checkpoint = T3Code.detailCheckpointSummary;
-                                        return checkpoint ? checkpoint.fileCount + " files · +"
-                                            + checkpoint.additions + " −" + checkpoint.deletions : "";
-                                    }
-                                    font.family: Theme.fontMono
-                                    font.pixelSize: 9
-                                    color: Theme.textMid
-                                }
-                            }
-
-                            Action {
-                                id: diffAction
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                label: T3Code.detailDiff.loading ? "Loading…"
-                                    : T3Code.detailDiff.error !== "" ? "Retry diff" : "View diff"
-                                enabled: !T3Code.detailDiff.loading
-                                tint: Theme.accent
-                                fill: Theme.accentBg
-                                onTriggered: T3Code.loadFullThreadDiff(root.threadId,
-                                    T3Code.detailCheckpointSummary)
-                            }
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space) {
+                            root.toggleChanges();
+                            event.accepted = true;
                         }
+                    }
 
-                        Text {
-                            visible: T3Code.detailCheckpointSummary
-                                && T3Code.detailCheckpointSummary.filenames.length > 0
-                            width: parent.width
-                            text: T3Code.detailCheckpointSummary
-                                ? T3Code.detailCheckpointSummary.filenames.join(" · ") : ""
-                            elide: Text.ElideMiddle
-                            font.family: Theme.fontMono
-                            font.pixelSize: 8
-                            color: Theme.textDim
-                        }
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.changesExpanded ? "▾" : "▸"
+                        font.family: Theme.fontMono
+                        font.pixelSize: 10
+                        color: root.changesExpanded ? Theme.accent : Theme.textLow
+                    }
 
-                        Rectangle {
-                            visible: T3Code.detailDiff.text !== ""
-                            width: parent.width
-                            height: 260
-                            radius: 6
-                            color: Qt.rgba(0, 0, 0, 0.28)
-                            border.width: 1
-                            border.color: Theme.hairlineSoft
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 24
+                        anchors.right: changesState.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.checkpoint ? root.checkpoint.fileCount + " changed file"
+                            + (root.checkpoint.fileCount === 1 ? "" : "s") + " · +"
+                            + root.checkpoint.additions + " −" + root.checkpoint.deletions : ""
+                        elide: Text.ElideRight
+                        font.family: Theme.fontSans
+                        font.pixelSize: 10
+                        font.weight: 550
+                        color: Theme.textMid
+                    }
 
-                            Flickable {
-                                anchors.fill: parent
-                                anchors.margins: 7
-                                contentWidth: Math.max(width, patchText.implicitWidth)
-                                contentHeight: Math.max(height, patchText.implicitHeight)
-                                clip: true
-                                boundsBehavior: Flickable.StopAtBounds
+                    Text {
+                        id: changesState
+                        anchors.right: parent.right
+                        anchors.rightMargin: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: T3Code.detailDiff.loading && root.changesExpanded ? "Loading…"
+                            : root.changesExpanded ? "Hide diff" : "View diff"
+                        font.family: Theme.fontSans
+                        font.pixelSize: 9
+                        color: Theme.textDim
+                    }
 
-                                Text {
-                                    id: patchText
-                                    text: T3Code.detailDiff.text
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.NoWrap
-                                    font.family: Theme.fontMono
-                                    font.pixelSize: 9
-                                    color: Theme.textLow
-                                }
-                            }
-                        }
-
-                        Flow {
-                            visible: T3Code.detailDiff.text !== "" || T3Code.detailDiff.error !== ""
-                            width: parent.width
-                            spacing: 4
-
-                            Action {
-                                visible: T3Code.detailDiff.text !== ""
-                                label: "Copy patch"
-                                onTriggered: Quickshell.clipboardText = T3Code.detailDiff.fullText
-                            }
-
-                            Text {
-                                visible: T3Code.detailDiff.truncated
-                                text: "Preview truncated at 100,000 characters / 2,000 lines"
-                                font.family: Theme.fontSans
-                                font.pixelSize: 9
-                                color: Theme.amber
-                            }
-
-                            Action {
-                                visible: T3Code.detailDiff.truncated
-                                label: "Open T3 Code ↗"
-                                tint: Theme.accent
-                                onTriggered: {
-                                    Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
-                                    Popouts.close();
-                                }
-                            }
-                        }
-
-                        Text {
-                            visible: T3Code.detailDiff.error !== ""
-                            width: parent.width
-                            text: T3Code.detailDiff.error
-                            wrapMode: Text.WordWrap
-                            font.family: Theme.fontSans
-                            font.pixelSize: 9
-                            color: Theme.redText
+                    MouseArea {
+                        id: changesMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            changesRow.forceActiveFocus();
+                            root.toggleChanges();
                         }
                     }
                 }
 
-                // Git status and stacked actions for the thread's checkout.
-                // Only actions that currently apply are shown, mirroring the
-                // reference client: commit needs a dirty tree, push needs
-                // unpushed work, View PR needs an actual PR.
-                Rectangle {
-                    id: gitCard
-
-                    readonly property var vcs: T3Code.detailVcs.status
-                    readonly property var git: T3Code.detailGit
-                    readonly property bool gitPending:
-                        T3Code.actionPending("git", root.threadId, "")
-                    readonly property string prUrl: git.prUrl !== "" ? git.prUrl
-                        : vcs && vcs.pr ? vcs.pr.url : ""
-                    readonly property bool showCommit: T3Code.canOperate
-                        && (T3Code.gitActionApplies("commit_push")
-                            || gitPending && git.action === "commit_push")
-                    readonly property bool showPush: T3Code.canOperate
-                        && (T3Code.gitActionApplies("push")
-                            || gitPending && git.action === "push")
-
-                    visible: vcs !== null && vcs.isRepo || T3Code.detailVcs.error !== ""
+                Column {
+                    visible: root.changesExpanded && root.hasCheckpointChanges
+                        && root.expandedCheckpointRef === root.checkpointRef
                     width: parent.width
-                    height: gitColumn.implicitHeight + 14
-                    radius: 8
-                    color: Theme.cardFill
-                    border.width: 1
-                    border.color: Theme.hairlineSoft
+                    spacing: 5
 
-                    Column {
-                        id: gitColumn
-                        x: 7
-                        y: 7
-                        width: parent.width - 14
-                        spacing: 5
+                    Text {
+                        visible: root.checkpoint && root.checkpoint.filenames.length > 0
+                        width: parent.width
+                        text: root.checkpoint ? root.checkpoint.filenames.join(" · ") : ""
+                        elide: Text.ElideMiddle
+                        font.family: Theme.fontMono
+                        font.pixelSize: 8
+                        color: Theme.textDim
+                    }
 
-                        Column {
-                            width: parent.width
-                            spacing: 1
+                    Rectangle {
+                        visible: T3Code.detailDiff.text !== ""
+                        width: parent.width
+                        height: 260
+                        radius: 6
+                        color: Qt.rgba(0, 0, 0, 0.28)
+                        border.width: 1
+                        border.color: Theme.hairlineSoft
+
+                        Flickable {
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            contentWidth: Math.max(width, patchText.implicitWidth)
+                            contentHeight: Math.max(height, patchText.implicitHeight)
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
 
                             Text {
-                                text: "GIT"
-                                font.family: Theme.fontSans
-                                font.pixelSize: 9
-                                font.weight: 650
-                                font.letterSpacing: 0.45
-                                color: Theme.textDim
-                            }
-
-                            Text {
-                                width: parent.width
-                                visible: gitCard.vcs !== null
-                                text: {
-                                    const vcs = gitCard.vcs;
-                                    if (!vcs)
-                                        return "";
-                                    const parts = [];
-                                    if (vcs.refName !== "")
-                                        parts.push(vcs.refName);
-                                    parts.push(vcs.hasWorkingTreeChanges
-                                        ? vcs.fileCount + " changed · +" + vcs.insertions
-                                            + " −" + vcs.deletions
-                                        : "clean");
-                                    if (vcs.aheadCount > 0)
-                                        parts.push("↑" + vcs.aheadCount);
-                                    if (vcs.behindCount > 0)
-                                        parts.push("↓" + vcs.behindCount);
-                                    return parts.join(" · ");
-                                }
-                                elide: Text.ElideRight
+                                id: patchText
+                                text: T3Code.detailDiff.text
+                                textFormat: Text.PlainText
+                                wrapMode: Text.NoWrap
                                 font.family: Theme.fontMono
                                 font.pixelSize: 9
-                                color: Theme.textMid
+                                color: Theme.textLow
                             }
                         }
+                    }
 
-                        Flow {
-                            visible: gitCard.showCommit || gitCard.showPush
-                                || gitCard.prUrl !== ""
-                            width: parent.width
-                            spacing: 4
+                    Flow {
+                        visible: T3Code.detailDiff.text !== "" || T3Code.detailDiff.error !== ""
+                        width: parent.width
+                        spacing: 4
 
-                            Action {
-                                visible: gitCard.showCommit
-                                label: gitCard.gitPending && gitCard.git.action === "commit_push"
-                                    && gitCard.git.label !== ""
-                                    ? gitCard.git.label : "Commit & Push"
-                                enabled: T3Code.canDispatch && !gitCard.gitPending
-                                tint: Theme.accentFg
-                                fill: Theme.accent
-                                onTriggered: T3Code.runGitAction(root.threadId, "commit_push")
-                            }
+                        Action {
+                            visible: T3Code.detailDiff.text !== ""
+                            label: "Copy patch"
+                            onTriggered: Quickshell.clipboardText = T3Code.detailDiff.fullText
+                        }
 
-                            Action {
-                                visible: gitCard.showPush
-                                label: gitCard.gitPending && gitCard.git.action === "push"
-                                    && gitCard.git.label !== ""
-                                    ? gitCard.git.label : "Push"
-                                enabled: T3Code.canDispatch && !gitCard.gitPending
-                                tint: Theme.accent
-                                fill: Theme.accentBg
-                                onTriggered: T3Code.runGitAction(root.threadId, "push")
-                            }
-
-                            Action {
-                                visible: gitCard.prUrl !== ""
-                                label: "View PR ↗"
-                                tint: Theme.accent
-                                onTriggered: {
-                                    Quickshell.execDetached(["xdg-open", gitCard.prUrl]);
-                                    Popouts.close();
-                                }
-                            }
+                        Action {
+                            visible: T3Code.detailDiff.error !== ""
+                            label: "Retry diff"
+                            tint: Theme.accent
+                            onTriggered: T3Code.loadFullThreadDiff(root.threadId, root.checkpoint)
                         }
 
                         Text {
-                            visible: gitCard.git.summary !== "" && !gitCard.gitPending
-                            width: parent.width
-                            text: gitCard.git.summary
-                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
+                            visible: T3Code.detailDiff.truncated
+                            text: "Preview truncated at 100,000 characters / 2,000 lines"
                             font.family: Theme.fontSans
                             font.pixelSize: 9
-                            color: Theme.textDim
+                            color: Theme.amber
                         }
 
-                        Text {
-                            visible: gitCard.git.error !== "" && !gitCard.gitPending
-                            width: parent.width
-                            text: gitCard.git.error
-                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
-                            font.family: Theme.fontSans
-                            font.pixelSize: 9
-                            color: Theme.redText
-                        }
-
-                        Flow {
-                            visible: T3Code.detailVcs.error !== ""
-                            width: parent.width
-                            spacing: 4
-
-                            Text {
-                                text: T3Code.detailVcs.error
-                                font.family: Theme.fontSans
-                                font.pixelSize: 9
-                                color: Theme.textDim
-                            }
-
-                            Action {
-                                label: "Retry"
-                                onTriggered: T3Code.refreshVcsStatus(root.threadId, true)
+                        Action {
+                            visible: T3Code.detailDiff.truncated
+                            label: "Open T3 Code ↗"
+                            tint: Theme.accent
+                            onTriggered: {
+                                Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
+                                Popouts.close();
                             }
                         }
+                    }
+
+                    Text {
+                        visible: T3Code.detailDiff.error !== ""
+                        width: parent.width
+                        text: T3Code.detailDiff.error
+                        wrapMode: Text.WordWrap
+                        font.family: Theme.fontSans
+                        font.pixelSize: 9
+                        color: Theme.redText
                     }
                 }
             }
@@ -1144,6 +1154,10 @@ Column {
         menuOpen = false;
         snoozeOpen = false;
         confirmStop = false;
+        changesExpanded = false;
+        expandedCheckpointRef = "";
+        gitSuccessVisible = false;
+        gitSuccessTimer.stop();
         T3Code.ensureThreadDraft(threadId);
         if (T3Code.state === "connected")
             T3Code.openDetail(threadId);
@@ -1157,6 +1171,24 @@ Column {
             root.scrollToEnd();
         }
         function onDetailMessagesChanged() { root.scrollToEnd(); }
+        function onDetailCheckpointSummaryChanged() {
+            if (root.expandedCheckpointRef !== root.checkpointRef)
+                root.changesExpanded = false;
+        }
+        function onDetailDiffChanged() {
+            if (root.changesExpanded)
+                root.scrollToEnd();
+        }
+        function onDetailGitChanged() {
+            if (T3Code.detailGit.summary !== "" && T3Code.detailGit.error === ""
+                    && !root.gitPending) {
+                root.gitSuccessVisible = true;
+                gitSuccessTimer.restart();
+            } else if (T3Code.detailGit.summary === "" || T3Code.detailGit.error !== "") {
+                root.gitSuccessVisible = false;
+                gitSuccessTimer.stop();
+            }
+        }
         function onDetailLoadingChanged() {
             if (!T3Code.detailLoading)
                 root.scrollToEnd();
@@ -1165,6 +1197,9 @@ Column {
 
     Component.onCompleted: {
         followTail = true;
+        changesExpanded = false;
+        expandedCheckpointRef = "";
+        gitSuccessVisible = false;
         T3Code.ensureThreadDraft(threadId);
         if (T3Code.state === "connected")
             T3Code.openDetail(threadId);
