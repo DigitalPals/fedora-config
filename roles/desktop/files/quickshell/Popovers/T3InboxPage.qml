@@ -380,11 +380,13 @@ Column {
         property string label: ""
         property int count: 0
         property bool expanded: false
+        property bool subdued: false
         signal toggled()
 
         height: Theme.controlHeight
         radius: 7
-        color: drawerMouse.containsMouse ? Theme.hoverFill : Theme.cardFill
+        color: drawerMouse.containsMouse ? Theme.hoverFill
+            : drawer.subdued ? "transparent" : Theme.cardFill
         activeFocusOnTab: true
         border.width: activeFocus ? 1 : 0
         border.color: Theme.accent
@@ -408,8 +410,8 @@ Column {
                 text: drawer.label
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontSecondary
-                font.weight: Theme.weightSemibold
-                color: Theme.textLow
+                font.weight: drawer.subdued ? Theme.weightRegular : Theme.weightSemibold
+                color: drawer.subdued ? Theme.textFaint : Theme.textLow
             }
 
             Text {
@@ -418,7 +420,7 @@ Column {
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontCaption
                 font.weight: Theme.weightMedium
-                color: Theme.textDim
+                color: drawer.subdued ? Theme.textFaint : Theme.textDim
             }
         }
 
@@ -429,7 +431,7 @@ Column {
             text: drawer.expanded ? "▴" : "▾"
             font.family: Theme.fontMono
             font.pixelSize: Theme.fontCaption
-            color: Theme.textDim
+            color: drawer.subdued ? Theme.textFaint : Theme.textDim
         }
 
         MouseArea {
@@ -564,6 +566,7 @@ Column {
                         label: "Settled"
                         count: T3Code.settledThreads.length
                         expanded: root.settledExpanded
+                        subdued: true
                         onToggled: root.settledExpanded = !root.settledExpanded
                     }
                 }

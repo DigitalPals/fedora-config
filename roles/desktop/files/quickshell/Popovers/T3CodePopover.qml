@@ -280,23 +280,44 @@ Surface {
             color: Theme.hairlineSoft
         }
 
-        Text {
+        Item {
+            id: connectionMeta
             anchors.left: parent.left
             anchors.leftMargin: 6
             anchors.right: openClient.left
             anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: 2
-            text: {
-                const status = T3Code.state === "connected" ? "connected" : T3Code.state;
-                const version = T3Code.serverVersion !== "" ? " · v" + T3Code.serverVersion : "";
-                return status + version + (T3Code.host !== ""
-                    ? " · " + T3Code.host.replace(/^https?:\/\//, "") : "");
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+
+            Rectangle {
+                id: connectedDot
+                visible: T3Code.state === "connected"
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: 2
+                width: 5
+                height: 5
+                radius: 3
+                color: Theme.connected
+                opacity: 0.8
             }
-            elide: Text.ElideRight
-            font.family: Theme.fontMono
-            font.pixelSize: Theme.fontCaption
-            color: Theme.textDim
+
+            Text {
+                anchors.left: connectedDot.visible ? connectedDot.right : parent.left
+                anchors.leftMargin: connectedDot.visible ? 6 : 0
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: 2
+                text: {
+                    const status = T3Code.state === "connected" ? "connected" : T3Code.state;
+                    return status + (T3Code.host !== ""
+                        ? " · " + T3Code.host.replace(/^https?:\/\//, "") : "");
+                }
+                elide: Text.ElideRight
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontCaption
+                color: Theme.textDim
+            }
         }
 
         Text {
