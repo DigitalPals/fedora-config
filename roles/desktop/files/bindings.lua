@@ -1,6 +1,6 @@
 local mainMod = "SUPER"
 local terminal = "kitty"
-local browser = "google-chrome-stable"
+local browser = "google-chrome-stable --restore-last-session --hide-crash-restore-bubble"
 local home = os.getenv("HOME")
 
 local previous = rawget(_G, "__fedora_hypr_binds") or {}
