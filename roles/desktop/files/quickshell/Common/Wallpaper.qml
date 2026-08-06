@@ -15,6 +15,11 @@ Singleton {
 
     readonly property string dir: Quickshell.env("HOME") + "/Pictures/Wallpapers"
     property var files: []
+    readonly property bool loading: folderModel.status === FolderListModel.Loading
+    property bool accentBusy: false
+    property string accentError: ""
+    property string queuedAccentFor: ""
+    property string activeAccentFor: ""
 
     readonly property string current:
         Settings.wall !== "" ? url(dir + "/" + Settings.wall) : ""
@@ -81,10 +86,26 @@ Singleton {
 
     // ---- from-wallpaper accent -------------------------------------------
     function extractAccent() {
-        if (!Settings.accentWall || Settings.wall === ""
-            || Settings.wallAccentFor === Settings.wall || accentProc.running)
+        if (!Settings.accentWall) {
+            queuedAccentFor = "";
             return;
-        accentProc.command = ["magick", dir + "/" + Settings.wall,
+        }
+        if (Settings.wall === "" || Settings.wallAccentFor === Settings.wall)
+            return;
+        // Queue by immutable wallpaper identity. A late ImageMagick result
+        // must never be attributed to whichever image is current at exit.
+        queuedAccentFor = Settings.wall;
+        startQueuedAccent();
+    }
+
+    function startQueuedAccent() {
+        if (accentProc.running || queuedAccentFor === "" || !Settings.accentWall)
+            return;
+        activeAccentFor = queuedAccentFor;
+        queuedAccentFor = "";
+        accentError = "";
+        accentBusy = true;
+        accentProc.command = ["magick", dir + "/" + activeAccentFor,
             "-resize", "1x1!", "-format", "%[hex:u.p{0,0}]", "info:"];
         accentProc.running = true;
     }
@@ -122,17 +143,26 @@ Singleton {
         }
 
         onExited: exitCode => {
+            const completedFor = root.activeAccentFor;
+            root.activeAccentFor = "";
             if (exitCode !== 0) {
+                root.accentError = "Could not extract a color";
                 console.warn("wallpaper accent extraction failed:", exitCode);
-                return;
+            } else {
+                const pastel = root.pastelize(accentOut.text);
+                if (pastel !== "" && Settings.accentWall
+                        && Settings.wall === completedFor) {
+                    Settings.set("wallAccent", pastel);
+                    Settings.set("wallAccentFor", completedFor);
+                } else if (pastel === "") {
+                    root.accentError = "No usable color found";
+                }
             }
-            const pastel = root.pastelize(accentOut.text);
-            if (pastel === "") {
+            if (root.accentError !== "")
                 console.warn("wallpaper accent extraction returned no color:", accentOut.text);
-                return;
-            }
-            Settings.set("wallAccent", pastel);
-            Settings.set("wallAccentFor", Settings.wall);
+            root.accentBusy = false;
+            if (root.queuedAccentFor !== "")
+                Qt.callLater(root.startQueuedAccent);
         }
     }
 

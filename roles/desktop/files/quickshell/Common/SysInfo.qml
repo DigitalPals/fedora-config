@@ -22,6 +22,7 @@ Singleton {
     // Night light: hyprsunset warms the screen while enabled and restores
     // neutral gamma when the process is killed.
     property bool nightLight: false
+    property string nightLightLifecycle: "stopped"
     property string tempPath: ""
     property var cpuPrev: null
 
@@ -38,8 +39,37 @@ Singleton {
     Process {
         id: sunsetProc
         command: ["hyprsunset", "--temperature", String(Settings.warmth)]
-        running: root.nightLight
+        running: false
+
+        onExited: {
+            if (root.nightLightLifecycle === "restarting" && root.nightLight) {
+                root.nightLightLifecycle = "starting";
+                sunsetProc.command = ["hyprsunset", "--temperature", String(Settings.warmth)];
+                sunsetProc.running = true;
+                root.nightLightLifecycle = "running";
+            } else {
+                root.nightLightLifecycle = "stopped";
+            }
+        }
     }
+
+    function syncNightLight() {
+        if (nightLight) {
+            if (sunsetProc.running)
+                return;
+            nightLightLifecycle = "starting";
+            sunsetProc.command = ["hyprsunset", "--temperature", String(Settings.warmth)];
+            sunsetProc.running = true;
+            nightLightLifecycle = "running";
+        } else if (sunsetProc.running) {
+            nightLightLifecycle = "stopping";
+            sunsetProc.running = false;
+        } else {
+            nightLightLifecycle = "stopped";
+        }
+    }
+
+    onNightLightChanged: syncNightLight()
 
     // Command changes are inert on a running process, so a warmth change
     // restarts it — debounced so a slider drag doesn't churn processes.
@@ -47,10 +77,11 @@ Singleton {
         id: warmthRestart
         interval: 300
         onTriggered: {
-            if (root.nightLight) {
+            if (root.nightLight && sunsetProc.running) {
+                root.nightLightLifecycle = "restarting";
                 sunsetProc.running = false;
-                sunsetProc.running = true;
-            }
+            } else if (root.nightLight)
+                root.syncNightLight();
         }
     }
 

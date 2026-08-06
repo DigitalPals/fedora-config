@@ -10,6 +10,9 @@ PreviewStrip PreviewStrip.qml
 SectionHeader SectionHeader.qml
 SettingsSlider SettingsSlider.qml
 SettingsSwitch SettingsSwitch.qml
+SettingsAction SettingsAction.qml
+SettingsCard SettingsCard.qml
+SettingsPage SettingsPage.qml
 SettingsView SettingsView.qml
 SliderRow SliderRow.qml
 SwitchRow SwitchRow.qml

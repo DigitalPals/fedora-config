@@ -16,6 +16,7 @@
       - hyprpicker
       - hyprpolkitagent
       - hyprsunset
+      - ImageMagick
       - xdg-desktop-portal
       - xdg-desktop-portal-gtk
       - xdg-desktop-portal-hyprland

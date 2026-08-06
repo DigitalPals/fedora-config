@@ -15,16 +15,17 @@ Item {
     property alias gradientTrack: slider.gradientTrack
     property string unit: "px"
     property bool dirty: false
+    readonly property bool narrow: width < 440
     signal moved(real value)
     signal resetRequested()
 
-    height: 24
+    height: narrow ? 52 : 32
 
     Text {
         id: labelText
         anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        width: 90
+        y: root.narrow ? 0 : (parent.height - height) / 2
+        width: root.narrow ? parent.width - 100 : 90
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
@@ -33,17 +34,16 @@ Item {
 
     SettingsSlider {
         id: slider
-        anchors.left: labelText.right
-        anchors.right: valueText.left
-        anchors.rightMargin: 10
-        anchors.verticalCenter: parent.verticalCenter
+        x: root.narrow ? 0 : 90
+        y: root.narrow ? 23 : (parent.height - height) / 2
+        width: root.narrow ? parent.width : valueText.x - x - 10
         onMoved: value => root.moved(value)
     }
 
     Text {
         id: valueText
         anchors.right: undoSlot.left
-        anchors.verticalCenter: parent.verticalCenter
+        y: root.narrow ? 0 : (parent.height - height) / 2
         width: 44
         horizontalAlignment: Text.AlignRight
         text: Math.round(slider.value) + " " + root.unit
@@ -56,8 +56,8 @@ Item {
         id: undoSlot
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 18
-        height: 16
+        width: 28
+        height: 28
 
         UndoChip {
             visible: root.dirty

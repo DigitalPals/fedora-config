@@ -14,6 +14,7 @@ Item {
     required property rect centerIslandRect
     required property rect rightIslandRect
     required property bool live
+    property real outputAvailableHeight: 560
 
     readonly property var sources: ({
             control: "../Popovers/ControlCenterPopover.qml",
@@ -27,7 +28,8 @@ Item {
             bluetooth: "../Popovers/BluetoothPopover.qml",
             tailscale: "../Popovers/TailscalePopover.qml",
             battery: "../Popovers/BatteryPopover.qml",
-            notifications: "../Popovers/NotifsPopover.qml"
+            notifications: "../Popovers/NotifsPopover.qml",
+            settings: "../Settings/SettingsView.qml"
         })
 
     property bool presented: false
@@ -162,6 +164,20 @@ Item {
         };
     }
 
+    // Large surfaces may opt in to the output envelope. The shadow budget
+    // is removed before they calculate their implicit size.
+    function updateAvailableSize(item) {
+        if (!item)
+            return;
+        const shadowSpace = 48;
+        if (item.availableWidth !== undefined)
+            item.availableWidth = Math.max(320, host.width
+                - 2 * (Theme.barSideMargin + Theme.popRadius + shadowSpace));
+        if (item.availableHeight !== undefined)
+            item.availableHeight = Math.max(280, host.outputAvailableHeight
+                - host.barBottom - shadowSpace);
+    }
+
     function rememberTargets(geometry) {
         targetBodyX = geometry.bodyX;
         targetBodyW = geometry.bodyW;
@@ -226,6 +242,8 @@ Item {
             if (loader.item.drawBackground !== undefined)
                 loader.item.drawBackground = false;
 
+            updateAvailableSize(loader.item);
+
             const geometry = geometryFor(loader.item);
             const firstOpen = frontSlot < 0 || openProgress < 0.01;
             const oldSlot = frontSlot;
@@ -253,11 +271,17 @@ Item {
     }
 
     function retargetFront() {
-        if (frontSlot < 0)
+        // During a cross-fade, the outgoing slot remains front until the new
+        // component has completed. Ignore its late implicit-size signals or
+        // it can overwrite the incoming panel's geometry (notably the
+        // 420px Control Center -> 720px Settings transition).
+        if (frontSlot < 0 || !Popouts.open
+                || nameFor(frontSlot) !== Popouts.currentName)
             return;
         const loader = loaderFor(frontSlot);
         if (!loader.item)
             return;
+        updateAvailableSize(loader.item);
         const geometry = geometryFor(loader.item);
         rememberTargets(geometry);
         animateToTargets();
@@ -329,6 +353,12 @@ Item {
     }
 
     onLiveChanged: sync()
+    onCenterIslandRectChanged: {
+        if (Popouts.currentName === "settings")
+            retargetFront();
+    }
+    onWidthChanged: retargetFront()
+    onHeightChanged: retargetFront()
     Component.onCompleted: sync()
 
     Timer {
@@ -511,16 +541,25 @@ Item {
             anchors.fill: parent
             focus: host.presented && Popouts.open
 
-            Keys.onEscapePressed: Popouts.close()
+            Keys.onEscapePressed: event => {
+                const item = host.frontSlot >= 0
+                    ? host.loaderFor(host.frontSlot).item : null;
+                if (!item || !item.handleEscape || !item.handleEscape())
+                    Popouts.close();
+                event.accepted = true;
+            }
 
             Loader {
                 id: loaderA
+                readonly property bool fillBody: host.slotAName === "settings"
                 active: host.slotAName !== ""
                 source: active ? host.sources[host.slotAName] : ""
-                x: (parent.width - implicitWidth) / 2
+                x: fillBody ? 0 : (parent.width - implicitWidth) / 2
+                width: fillBody ? parent.width : implicitWidth
+                height: fillBody ? parent.height : implicitHeight
                 // Content pins to the fused edge, so growth reveals it from
                 // the bar on either position.
-                y: host.bottomBar ? parent.height - implicitHeight : 0
+                y: fillBody ? 0 : host.bottomBar ? parent.height - implicitHeight : 0
                 opacity: 0
                 enabled: host.frontSlot === 0 && Popouts.open
                 focus: enabled
@@ -538,10 +577,13 @@ Item {
 
             Loader {
                 id: loaderB
+                readonly property bool fillBody: host.slotBName === "settings"
                 active: host.slotBName !== ""
                 source: active ? host.sources[host.slotBName] : ""
-                x: (parent.width - implicitWidth) / 2
-                y: host.bottomBar ? parent.height - implicitHeight : 0
+                x: fillBody ? 0 : (parent.width - implicitWidth) / 2
+                width: fillBody ? parent.width : implicitWidth
+                height: fillBody ? parent.height : implicitHeight
+                y: fillBody ? 0 : host.bottomBar ? parent.height - implicitHeight : 0
                 opacity: 0
                 enabled: host.frontSlot === 1 && Popouts.open
                 focus: enabled

@@ -38,7 +38,12 @@ PanelWindow {
     HyprlandFocusGrab {
         active: root.live && Popouts.open
         windows: [root.bar, root]
-        onCleared: Popouts.close()
+        onCleared: {
+            // Deactivating the old monitor host during a settings handoff is
+            // not an outside click. The newly live host takes over the grab.
+            if (root.live || Popouts.currentName !== "settings")
+                Popouts.close();
+        }
     }
 
     IslandPopout {
@@ -46,6 +51,7 @@ PanelWindow {
         width: root.bar.width
         height: root.implicitHeight
         live: root.live
+        outputAvailableHeight: root.screen ? root.screen.height : 560
         leftIslandRect: root.bar.leftIslandRect
         centerIslandRect: root.bar.centerIslandRect
         rightIslandRect: root.bar.rightIslandRect

@@ -19,4 +19,18 @@ Singleton {
         }
         return screens.length > 0 ? screens[0] : null;
     }
+
+    readonly property var barScreen: {
+        const screens = Quickshell.screens;
+        if (Settings.monitor !== "All") {
+            const pinned = screens.find(screen => screen.name === Settings.monitor);
+            if (pinned !== undefined)
+                return pinned;
+        }
+        return focused;
+    }
+
+    function hasBar(screen) {
+        return screen !== null && screen === barScreen;
+    }
 }

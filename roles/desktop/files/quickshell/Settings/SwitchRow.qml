@@ -9,16 +9,17 @@ Item {
     property string description: ""
     property bool checked: false
     property bool dirty: false
+    readonly property bool narrow: width < 440
     signal toggled(bool value)
     signal resetRequested()
 
-    height: 28
+    height: narrow ? 48 : 32
 
     Text {
         id: labelText
         anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        width: 90
+        y: root.narrow ? 2 : (parent.height - height) / 2
+        width: root.narrow ? parent.width - 82 : 90
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
@@ -26,22 +27,23 @@ Item {
     }
 
     Text {
-        anchors.left: labelText.right
-        anchors.right: control.left
-        anchors.rightMargin: 10
-        anchors.verticalCenter: parent.verticalCenter
+        x: root.narrow ? 0 : 90
+        y: root.narrow ? 24 : (parent.height - height) / 2
+        width: root.narrow ? parent.width - 4 : control.x - x - 10
         text: root.description
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
         color: Theme.textDim
-        elide: Text.ElideRight
+        elide: root.narrow ? Text.ElideNone : Text.ElideRight
+        wrapMode: root.narrow ? Text.Wrap : Text.NoWrap
+        maximumLineCount: root.narrow ? 2 : 1
     }
 
     SettingsSwitch {
         id: control
         anchors.right: undoSlot.left
         anchors.rightMargin: 2
-        anchors.verticalCenter: parent.verticalCenter
+        y: root.narrow ? 0 : (parent.height - height) / 2
         checked: root.checked
         onToggled: value => root.toggled(value)
     }
@@ -50,8 +52,8 @@ Item {
         id: undoSlot
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 18
-        height: 16
+        width: 28
+        height: 28
 
         UndoChip {
             visible: root.dirty

@@ -14,7 +14,8 @@ Item {
     property bool gradientTrack: false
     signal moved(real value)
 
-    height: 16
+    height: 28
+    activeFocusOnTab: !dimmed
 
     readonly property real ratio: Math.max(0, Math.min(1, (value - min) / (max - min)))
 
@@ -24,6 +25,31 @@ Item {
         v = Math.max(min, Math.min(max, v));
         if (v !== value)
             moved(v);
+    }
+
+    function applyValue(next) {
+        const clamped = Math.max(min, Math.min(max,
+            Math.round(next / step) * step));
+        if (clamped !== value)
+            moved(clamped);
+    }
+
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Left || event.key === Qt.Key_Down)
+            applyValue(value - step);
+        else if (event.key === Qt.Key_Right || event.key === Qt.Key_Up)
+            applyValue(value + step);
+        else if (event.key === Qt.Key_PageDown)
+            applyValue(value - step * 10);
+        else if (event.key === Qt.Key_PageUp)
+            applyValue(value + step * 10);
+        else if (event.key === Qt.Key_Home)
+            applyValue(min);
+        else if (event.key === Qt.Key_End)
+            applyValue(max);
+        else
+            return;
+        event.accepted = true;
     }
 
     Rectangle {
@@ -59,11 +85,15 @@ Item {
         height: 10
         radius: 5
         color: Theme.textHi
+        border.width: root.activeFocus ? 2 : 0
+        border.color: Theme.accent
     }
 
     MouseArea {
         anchors.fill: parent
         enabled: !root.dimmed
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
         onPressed: mouse => root.apply(mouse.x)
         onPositionChanged: mouse => {
             if (pressed)

@@ -50,11 +50,13 @@ Singleton {
     property string wallAccentFor: defaults.wallAccentFor
 
     // ---- Runtime state (not persisted) -----------------------------------
-    property bool open: false
-    property var screen: null
+    property bool panelOpen: false
     property string page: "appearance"
     property bool loaded: false
     property bool firstRun: false
+    property bool savePending: false
+    property bool saveError: false
+    property double lastSavedAt: 0
 
     // Guards saves while loaded values are being applied.
     property bool ready: false
@@ -64,21 +66,40 @@ Singleton {
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
-    // ---- Window lifecycle (Launcher pattern) -----------------------------
-    function toggleWindow(targetPage) {
-        if (open) {
-            closeWindow();
-            return;
-        }
-        if (targetPage)
+    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "system"]
+
+    // ---- Connected-popout lifecycle -------------------------------------
+    function showPanel(targetPage) {
+        if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;
-        Popouts.close();
-        screen = Screens.focused;
-        open = true;
+        // Never inherit Control Center's right-side module anchor.
+        Popouts.openPanel("settings", "center", Qt.rect(0, 0, 0, 0));
+        panelOpen = true;
     }
 
-    function closeWindow() {
-        open = false;
+    function togglePanel(targetPage) {
+        if (panelOpen && Popouts.open && Popouts.currentName === "settings")
+            closePanel();
+        else
+            showPanel(targetPage);
+    }
+
+    function closePanel() {
+        if (Popouts.currentName === "settings")
+            Popouts.close();
+        panelOpen = false;
+    }
+
+    function sectionDirty(section) {
+        const map = {
+            wallpaper: ["wall", "shuffle"],
+            appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
+            bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
+            modules: ["mods"],
+            system: ["clock24", "unit", "warmth", "osd", "pollMax"]
+        };
+        return (map[section] || []).some(key =>
+            JSON.stringify(root[key]) !== JSON.stringify(defaults[key]));
     }
 
     // ---- Writers ---------------------------------------------------------
@@ -166,12 +187,22 @@ Singleton {
     function saveNow() {
         if (!ready)
             return;
-        store.setText(SettingsHelpers.serialize(snapshot()));
+        saveError = false;
+        try {
+            store.setText(SettingsHelpers.serialize(snapshot()));
+            savePending = false;
+            lastSavedAt = Date.now();
+        } catch (error) {
+            savePending = false;
+            saveError = true;
+            console.warn("settings save failed:", error);
+        }
     }
 
     function scheduleSave() {
         if (!ready)
             return;
+        savePending = true;
         saveTimer.restart();
     }
 
@@ -214,6 +245,14 @@ Singleton {
         onFileChanged: reload()
         onLoaded: root.applyLoaded(text())
         onLoadFailed: root.applyLoaded("")
+    }
+
+    Connections {
+        target: Popouts
+
+        function onChanged() {
+            root.panelOpen = Popouts.open && Popouts.currentName === "settings";
+        }
     }
 
     // Force the load to complete during singleton construction so the first

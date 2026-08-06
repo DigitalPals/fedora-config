@@ -10,7 +10,7 @@ Row {
     signal resetRequested()
 
     spacing: 6
-    height: 16
+    height: 28
 
     Text {
         anchors.verticalCenter: parent.verticalCenter

@@ -4,7 +4,7 @@ import "../Common"
 
 // Bar layout page (design v2): live position/floating preview, position,
 // floating + edge gap, behavior switches, and monitor pinning.
-Item {
+SettingsPage {
     id: page
 
     Column {
@@ -20,20 +20,22 @@ Item {
                 + (Settings.autoHide ? " · auto-hide" : "")
 
             Rectangle {
-                x: Settings.floating ? 10 : 0
+                readonly property real previewGap: Settings.floating
+                    ? Math.max(4, Math.min(20, Settings.gap)) : 0
+                x: previewGap
                 y: Settings.position === "top"
-                    ? (Settings.floating ? 8 : 0)
-                    : parent.height - height - (Settings.floating ? 8 : 0)
-                width: parent.width - (Settings.floating ? 20 : 0)
+                    ? previewGap
+                    : parent.height - height - previewGap
+                width: parent.width - previewGap * 2
                 height: 17
                 radius: Settings.floating ? Math.max(2, Math.round(Settings.barRadius * 0.5)) : 0
                 color: Theme.barBg
                 opacity: Settings.autoHide ? 0.4 : 1
 
-                Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                Behavior on opacity { NumberAnimation { duration: 200 } }
+                Behavior on x { NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic } }
+                Behavior on y { NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: Theme.popoutContentFadeDuration } }
 
                 Rectangle {
                     anchors.left: parent.left
@@ -129,8 +131,9 @@ Item {
         }
 
         PillRow {
+            width: parent.width
             mono: true
-            model: [{ value: "All", label: "All" }].concat(
+            model: [{ value: "All", label: "Follow focus" }].concat(
                 Quickshell.screens.map(s => ({ value: s.name, label: s.name })))
             current: Settings.monitor
             onPicked: value => Settings.set("monitor", value)

@@ -19,13 +19,14 @@ PanelWindow {
     // margin clears the bar zone instead of hugging the screen edge.
     readonly property bool atTop: Settings.osd === "top"
     readonly property int barClearance: Theme.barTopMargin + Theme.barHeight + 12
+    readonly property bool sharesBarScreen: Screens.hasBar(root.screen)
     anchors {
         top: atTop
         bottom: !atTop
     }
     margins {
-        top: atTop && Settings.position === "top" ? barClearance : 12
-        bottom: !atTop && Settings.position === "bottom" ? barClearance : 12
+        top: atTop && Settings.position === "top" && sharesBarScreen ? barClearance : 12
+        bottom: !atTop && Settings.position === "bottom" && sharesBarScreen ? barClearance : 12
     }
     // Breathing room around the pill for the drop shadow and exit slide.
     readonly property int pad: 48

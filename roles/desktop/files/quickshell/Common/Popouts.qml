@@ -38,7 +38,8 @@ Singleton {
             bluetooth: "right",
             tailscale: "right",
             battery: "right",
-            notifications: "right"
+            notifications: "right",
+            settings: "center"
         })
 
     function openPanel(name, isle, anchor) {

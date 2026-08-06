@@ -5,11 +5,16 @@ import "../Common"
 
 // Appearance page (design v2): live bar miniature, height/radius sliders
 // with presets, menu font picker, accent swatches + from-wallpaper accent.
-Item {
+SettingsPage {
     id: page
 
     readonly property var accentChoices: ["#9ecbeb", "#a992e0", "#79b88b", "#d3b47e", "#e8837a"]
     readonly property string tempPreview: Settings.unit === "f" ? "70°" : "21°"
+
+    function pickAccent(value) {
+        Settings.set("accent", value);
+        Settings.set("accentWall", false);
+    }
 
     SystemClock {
         id: clock
@@ -106,12 +111,14 @@ Item {
             step: 1
             value: Settings.barRadius
             unit: "px"
+            dimmed: !Settings.floating
             dirty: Settings.barRadius !== Settings.defaults.barRadius
             onMoved: value => Settings.set("barRadius", value)
             onResetRequested: Settings.resetKeys(["barRadius"])
         }
 
         PillRow {
+            width: parent.width
             pillHeight: 22
             padH: 9
             model: [
@@ -134,18 +141,42 @@ Item {
             spacing: 2
 
             Repeater {
+                id: fontRepeater
                 model: Settings.fontChoices
 
                 delegate: Rectangle {
                     id: fontRow
 
                     required property var modelData
+                    required property int index
                     readonly property bool selected: Settings.font === modelData.id
 
                     width: parent.width
                     height: 28
                     radius: 7
-                    color: fontRow.selected ? Theme.accentAlpha(0.09) : "transparent"
+                    color: fontRow.selected ? Theme.accentAlpha(0.14)
+                        : fontMouse.pressed ? Theme.hoverFillStrong
+                        : fontMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Theme.accent
+                    activeFocusOnTab: true
+
+                    Keys.onPressed: event => {
+                        let next = -1;
+                        if (event.key === Qt.Key_Up || event.key === Qt.Key_Left)
+                            next = Math.max(0, index - 1);
+                        else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right)
+                            next = Math.min(Settings.fontChoices.length - 1, index + 1);
+                        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space) {
+                            Settings.set("font", modelData.id); event.accepted = true; return;
+                        }
+                        if (next >= 0) {
+                            Settings.set("font", Settings.fontChoices[next].id);
+                            fontRepeater.itemAt(next).forceActiveFocus();
+                            event.accepted = true;
+                        }
+                    }
 
                     Rectangle {
                         id: radioRing
@@ -192,8 +223,14 @@ Item {
                     }
 
                     MouseArea {
+                        id: fontMouse
                         anchors.fill: parent
-                        onClicked: Settings.set("font", fontRow.modelData.id)
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            fontRow.forceActiveFocus();
+                            Settings.set("font", fontRow.modelData.id);
+                        }
                     }
                 }
             }
@@ -210,17 +247,37 @@ Item {
             spacing: 9
 
             Repeater {
+                id: swatchRepeater
                 model: page.accentChoices
 
                 delegate: Item {
                     id: swatch
 
                     required property string modelData
+                    required property int index
                     readonly property bool selected: !Settings.accentWall
                         && Settings.accent === modelData
 
                     width: 26
                     height: 26
+                    activeFocusOnTab: true
+
+                    Keys.onPressed: event => {
+                        let next = -1;
+                        if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
+                            next = Math.max(0, index - 1);
+                        else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
+                            next = Math.min(page.accentChoices.length - 1, index + 1);
+                        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space) {
+                            page.pickAccent(modelData); event.accepted = true; return;
+                        }
+                        if (next >= 0) {
+                            page.pickAccent(page.accentChoices[next]);
+                            swatchRepeater.itemAt(next).forceActiveFocus();
+                            event.accepted = true;
+                        }
+                    }
 
                     Rectangle {
                         anchors.centerIn: parent
@@ -236,20 +293,23 @@ Item {
                         color: "transparent"
                         border.width: 1.5
                         border.color: swatch.modelData
-                        visible: swatch.selected
+                        visible: swatch.selected || swatch.activeFocus
                     }
 
                     MouseArea {
                         anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            Settings.set("accent", swatch.modelData);
-                            Settings.set("accentWall", false);
+                            swatch.forceActiveFocus();
+                            page.pickAccent(swatch.modelData);
                         }
                     }
                 }
             }
 
             Rectangle {
+                id: wallpaperAccent
                 anchors.verticalCenter: parent.verticalCenter
                 width: 1
                 height: 16
@@ -262,6 +322,17 @@ Item {
                 height: 24
                 radius: 12
                 color: Settings.accentWall ? Theme.accentAlpha(0.16) : Theme.hoverFill
+                activeFocusOnTab: true
+                border.width: activeFocus ? 1 : 0
+                border.color: Wallpaper.accentError !== "" ? Theme.red : Theme.accent
+
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                            || event.key === Qt.Key_Space) {
+                        Settings.set("accentWall", !Settings.accentWall);
+                        event.accepted = true;
+                    }
+                }
 
                 Row {
                     id: fwRow
@@ -286,7 +357,9 @@ Item {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "From wallpaper"
+                        text: Wallpaper.accentBusy ? "Extracting color…"
+                            : Wallpaper.accentError !== "" ? Wallpaper.accentError
+                            : "From wallpaper"
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontCaption
                         color: Settings.accentWall ? Theme.textHi : Theme.textMid
@@ -295,7 +368,12 @@ Item {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: Settings.set("accentWall", !Settings.accentWall)
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        wallpaperAccent.forceActiveFocus();
+                        Settings.set("accentWall", !Settings.accentWall);
+                    }
                 }
             }
         }

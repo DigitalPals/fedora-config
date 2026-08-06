@@ -476,7 +476,7 @@ Surface {
                     id: gearMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: Settings.toggleWindow()
+                    onClicked: Settings.showPanel()
                 }
             }
 

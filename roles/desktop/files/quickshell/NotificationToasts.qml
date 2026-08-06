@@ -17,7 +17,8 @@ PanelWindow {
         top: true
         right: true
     }
-    margins.top: Settings.position === "top" ? Theme.barTopMargin + Theme.barHeight : 8
+    margins.top: Settings.position === "top" && Screens.hasBar(root.screen)
+        ? Theme.barTopMargin + Theme.barHeight : 8
 
     readonly property int shadowPad: 36
     readonly property int cardWidth: 420

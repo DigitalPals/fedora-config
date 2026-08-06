@@ -23,6 +23,24 @@ ShellRoot {
         }
     }
 
+    // Shell-wide because the connected settings panel can move between
+    // monitor-specific bar hosts. The external IPC contract stays intact.
+    IpcHandler {
+        target: "settings"
+
+        function toggle(): void {
+            Settings.togglePanel();
+        }
+
+        function open(page: string): void {
+            Settings.showPanel(page);
+        }
+
+        function close(): void {
+            Settings.closePanel();
+        }
+    }
+
     // Pinged by brightness-control after brightnessctl runs; volume needs
     // no IPC because the OSD watches Pipewire directly.
     IpcHandler {
@@ -39,7 +57,8 @@ ShellRoot {
         target: Screens
 
         function onFocusedChanged() {
-            Popouts.close();
+            if (Popouts.currentName !== "settings")
+                Popouts.close();
         }
     }
 
@@ -123,7 +142,6 @@ ShellRoot {
     }
 
     LauncherWindow {}
-    SettingsWindow {}
     NotificationToasts {}
     OsdWindow {}
 

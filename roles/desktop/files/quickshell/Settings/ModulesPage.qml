@@ -30,13 +30,22 @@ Item {
 
     readonly property int pitch: 31          // 28px row + 3px gap
     readonly property int rowsStartY: 20     // column header + gap
+    readonly property bool stacked: width < 520
+    readonly property var columnOrder: ["left", "center", "right"]
 
     function cancelDrag() {
         dragMod = null;
         dropAt = null;
     }
 
-    function columnIdAt(x) {
+    function columnIdAt(x, y) {
+        if (stacked) {
+            if (y < colC.y)
+                return "left";
+            if (y < colR.y)
+                return "center";
+            return "right";
+        }
         if (x < colC.x - 4)
             return "left";
         if (x < colR.x - 4)
@@ -45,12 +54,47 @@ Item {
     }
 
     function updateDrop(pos) {
-        const col = columnIdAt(pos.x);
+        if (pos.x < 0 || pos.x > columnsRow.width
+                || pos.y < rowsStartY - pitch || pos.y > columnsRow.height) {
+            dropAt = null;
+            return;
+        }
+        const col = columnIdAt(pos.x, pos.y);
         const list = Settings.mods[col];
         const local = pos.y - rowsStartY;
         const idx = Math.max(0, Math.min(list.length, Math.floor((local + pitch / 2) / pitch)));
         if (!dropAt || dropAt.col !== col || dropAt.idx !== idx)
             dropAt = { col: col, idx: idx };
+    }
+
+    function keyboardToggle(row) {
+        if (!dragActive) {
+            dragMod = { id: row.modelData.id, name: row.meta.name, fromCol: row.colId };
+            dropAt = { col: row.colId, idx: row.index };
+        } else {
+            commitDrag();
+        }
+    }
+
+    function keyboardMove(key) {
+        if (!dragActive || !dropAt)
+            return false;
+        let colIndex = columnOrder.indexOf(dropAt.col);
+        if (key === Qt.Key_Left)
+            colIndex = Math.max(0, colIndex - 1);
+        else if (key === Qt.Key_Right)
+            colIndex = Math.min(columnOrder.length - 1, colIndex + 1);
+        else if (key !== Qt.Key_Up && key !== Qt.Key_Down)
+            return false;
+        const col = columnOrder[colIndex];
+        let idx = dropAt.idx;
+        if (key === Qt.Key_Up)
+            idx--;
+        else if (key === Qt.Key_Down)
+            idx++;
+        idx = Math.max(0, Math.min(Settings.mods[col].length, idx));
+        dropAt = { col: col, idx: idx };
+        return true;
     }
 
     function commitDrag() {
@@ -117,9 +161,20 @@ Item {
         height: 28
         radius: 7
         color: modelData.on ? Theme.cardFill : "transparent"
-        border.width: modelData.on ? 0 : 1
-        border.color: Qt.rgba(1, 1, 1, 0.14)
-        opacity: row.dragged ? 0.35 : 1
+        border.width: activeFocus ? 1 : 0
+        border.color: activeFocus ? Theme.accent : Qt.rgba(1, 1, 1, 0.14)
+        opacity: row.dragged ? 0.35 : modelData.on ? 1 : 0.55
+        activeFocusOnTab: true
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Space) {
+                page.keyboardToggle(row); event.accepted = true;
+            } else if (event.key === Qt.Key_Escape && page.dragActive) {
+                page.cancelDrag(); event.accepted = true;
+            } else if (page.keyboardMove(event.key)) {
+                event.accepted = true;
+            }
+        }
 
         MouseArea {
             id: dragArea
@@ -144,6 +199,7 @@ Item {
                     page.commitDrag();
             }
             onCanceled: page.cancelDrag()
+            onClicked: row.forceActiveFocus()
         }
 
         Item {
@@ -211,6 +267,8 @@ Item {
         property bool pinnedTail: false
 
         readonly property var list: Settings.mods[colId]
+        readonly property int naturalHeight: page.rowsStartY
+            + list.length * page.pitch + (pinnedTail ? page.pitch * 2 : 0)
 
         Text {
             text: column.title
@@ -229,6 +287,36 @@ Item {
             Repeater {
                 model: column.list
                 delegate: ModuleRow { colId: column.colId }
+            }
+
+            // Idle inhibit and Control Center are permanent tail items in
+            // the real right island, outside Settings.mods.
+            Rectangle {
+                visible: column.pinnedTail
+                width: parent.width
+                height: 28
+                radius: Theme.rowRadius
+                color: Theme.cardFill
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 22
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Idle inhibit"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.textLow
+                }
+
+                Text {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "pinned"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.textFaint
+                }
             }
 
             Rectangle {
@@ -258,6 +346,8 @@ Item {
                     color: Theme.textFaint
                 }
             }
+
+
         }
 
         // Insertion caret in the row gap — an overlay, so rows never move.
@@ -342,6 +432,24 @@ Item {
                     delegate: MiniChip {}
                 }
 
+                Rectangle { width: 1; height: 14; color: Theme.hairline }
+
+                Rectangle {
+                    height: 18
+                    width: idleText.implicitWidth + 10
+                    radius: 4
+                    color: Theme.cardFill
+
+                    Text {
+                        id: idleText
+                        anchors.centerIn: parent
+                        text: "Idle"
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        color: Theme.textLow
+                    }
+                }
+
                 Rectangle {
                     height: 18
                     width: ccText.implicitWidth + 10
@@ -363,60 +471,79 @@ Item {
         }
     }
 
-    Item {
-        id: columnsRow
+    Flickable {
+        id: columnsViewport
         anchors.top: miniBar.bottom
         anchors.topMargin: 10
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: footnote.top
         anchors.bottomMargin: 8
+        contentWidth: width
+        contentHeight: columnsRow.height
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+
+        Item {
+        id: columnsRow
+        width: columnsViewport.width
+        height: page.stacked
+            ? colL.naturalHeight + colC.naturalHeight + colR.naturalHeight + 16
+            : columnsViewport.height
 
         readonly property real unit: (width - 16) / 3.15
 
         ModuleColumn {
             id: colL
             x: 0
-            width: columnsRow.unit
-            height: parent.height
+            y: 0
+            width: page.stacked ? parent.width : columnsRow.unit
+            height: page.stacked ? naturalHeight : parent.height
             colId: "left"
             title: "LEFT"
         }
 
         ModuleColumn {
             id: colC
-            x: columnsRow.unit + 8
-            width: columnsRow.unit
-            height: parent.height
+            x: page.stacked ? 0 : columnsRow.unit + 8
+            y: page.stacked ? colL.y + colL.height + 8 : 0
+            width: page.stacked ? parent.width : columnsRow.unit
+            height: page.stacked ? naturalHeight : parent.height
             colId: "center"
             title: "CENTER"
         }
 
         ModuleColumn {
             id: colR
-            x: (columnsRow.unit + 8) * 2
-            width: columnsRow.unit * 1.15
-            height: parent.height
+            x: page.stacked ? 0 : (columnsRow.unit + 8) * 2
+            y: page.stacked ? colC.y + colC.height + 8 : 0
+            width: page.stacked ? parent.width : columnsRow.unit * 1.15
+            height: page.stacked ? naturalHeight : parent.height
             colId: "right"
             title: "RIGHT"
+            pinnedTail: true
+        }
         }
     }
 
     Text {
         id: footnote
         anchors.left: parent.left
+        anchors.right: parent.right
         anchors.bottom: parent.bottom
-        text: "Auto-hide rules stay: Media only while playing · Bluetooth only when connected · Battery on laptops"
+        text: "Drag, or press Space to pick up; arrows move; Space drops; Escape cancels. Auto rules: Media while playing · Bluetooth connected · Battery on laptops."
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
         color: Theme.textFaint
+        wrapMode: Text.Wrap
+        maximumLineCount: 2
     }
 
     // Floating proxy row that follows the pointer during a drag.
     Rectangle {
         visible: page.dragActive
-        x: columnsRow.x + page.dragPos.x + 8
-        y: columnsRow.y + page.dragPos.y - 14
+        x: columnsViewport.x + page.dragPos.x + 8
+        y: columnsViewport.y + page.dragPos.y - columnsViewport.contentY - 14
         width: proxyRow.implicitWidth + 16
         height: 28
         radius: 7

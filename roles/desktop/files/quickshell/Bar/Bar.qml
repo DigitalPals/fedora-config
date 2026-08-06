@@ -42,8 +42,7 @@ PanelWindow {
     // mask shrinks to a thin reveal strip at the screen edge, so clicks
     // pass through the vacated area (design v2 Auto-hide).
     property bool revealed: true
-    readonly property bool hidden: Settings.autoHide && !revealed
-        && !Popouts.open && !Settings.open
+    readonly property bool hidden: Settings.autoHide && !revealed && !Popouts.open
     property real hideShift: hidden
         ? (Settings.position === "top" ? -1 : 1) * (Theme.barTopMargin + Theme.barHeight + 12)
         : 0
@@ -76,8 +75,8 @@ PanelWindow {
             }
         }
 
-        function onOpenChanged() {
-            if (!Settings.open && Settings.autoHide)
+        function onPanelOpenChanged() {
+            if (!Settings.panelOpen && Settings.autoHide)
                 hideTimer.restart();
         }
     }
@@ -89,6 +88,13 @@ PanelWindow {
             if (!Popouts.open && Settings.autoHide)
                 hideTimer.restart();
         }
+    }
+
+    // A persisted auto-hide setting does not emit onAutoHideChanged during
+    // construction, so explicitly arm the initial idle countdown.
+    Component.onCompleted: {
+        if (Settings.autoHide)
+            hideTimer.restart();
     }
 
     mask: Region { item: barWindow.hidden ? revealStrip : barStrip }
@@ -236,7 +242,7 @@ PanelWindow {
         target: Settings
 
         function onModsChanged() {
-            if (!Popouts.open)
+            if (!Popouts.open || Popouts.currentName === "settings")
                 return;
             Qt.callLater(() => {
                 if (Popouts.open && !barWindow.moduleForPanel(Popouts.currentName))
@@ -292,7 +298,8 @@ PanelWindow {
     // module switches straight to its popout — no click needed until the
     // popout is dismissed again.
     function hoverOpen(name, isle, item) {
-        if (!Popouts.open || Popouts.currentName === name)
+        if (!Popouts.open || Popouts.currentName === name
+                || Popouts.currentName === "settings")
             return;
         pendingHoverName = name;
         pendingHoverIsland = isle;
@@ -335,6 +342,14 @@ PanelWindow {
             Qt.callLater(() => {
                 if (!barWindow.visible || !Popouts.open)
                     return;
+                if (Popouts.currentName === "settings") {
+                    if (Popouts.island !== "center" || Popouts.anchorRect.width !== 0) {
+                        Popouts.island = "center";
+                        Popouts.anchorRect = Qt.rect(0, 0, 0, 0);
+                        Popouts.changed();
+                    }
+                    return;
+                }
                 const item = barWindow.moduleForPanel(Popouts.currentName);
                 if (!item || item.width <= 0)
                     return;
@@ -420,7 +435,7 @@ PanelWindow {
         MouseArea {
             anchors.fill: barSlab
             acceptedButtons: Qt.RightButton
-            onClicked: Settings.toggleWindow()
+            onClicked: Settings.togglePanel()
         }
     }
 

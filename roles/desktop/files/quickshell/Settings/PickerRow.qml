@@ -12,16 +12,19 @@ Item {
     property string caption: ""
     property bool captionMono: true
     property bool dirty: false
+    readonly property bool narrow: width < 440
+    readonly property real captionWidth: caption === "" ? 0
+        : Math.min(180, captionText.implicitWidth)
     signal picked(var value)
     signal resetRequested()
 
-    height: 24
+    height: narrow ? 58 : 32
 
     Text {
         id: labelText
         anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        width: 90
+        y: root.narrow ? 0 : (parent.height - height) / 2
+        width: root.narrow ? parent.width - 130 : 90
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
@@ -30,17 +33,20 @@ Item {
 
     PillRow {
         id: pills
-        anchors.left: labelText.right
-        anchors.verticalCenter: parent.verticalCenter
+        x: root.narrow ? 0 : 90
+        y: root.narrow ? 29 : (parent.height - height) / 2
+        width: root.narrow ? parent.width
+            : Math.max(100, parent.width - x - undoSlot.width
+                - root.captionWidth - (root.captionWidth > 0 ? 10 : 0))
         onPicked: value => root.picked(value)
     }
 
     Text {
-        anchors.left: pills.right
-        anchors.leftMargin: 10
-        anchors.right: undoSlot.left
-        anchors.rightMargin: 4
-        anchors.verticalCenter: parent.verticalCenter
+        id: captionText
+        y: root.narrow ? 0 : (parent.height - height) / 2
+        x: root.narrow ? Math.max(labelText.width, parent.width - implicitWidth - undoSlot.width - 6)
+            : undoSlot.x - root.captionWidth
+        width: root.narrow ? Math.max(0, undoSlot.x - x - 4) : root.captionWidth
         horizontalAlignment: Text.AlignRight
         text: root.caption
         font.family: root.captionMono ? Theme.fontMono : Theme.fontMenu
@@ -53,8 +59,8 @@ Item {
         id: undoSlot
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 18
-        height: 16
+        width: 28
+        height: 28
 
         UndoChip {
             visible: root.dirty

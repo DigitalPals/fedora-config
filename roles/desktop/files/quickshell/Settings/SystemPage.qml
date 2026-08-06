@@ -4,12 +4,13 @@ import "../Common"
 
 // System page (design v2): clock/temperature formats, night-light warmth,
 // OSD placement, T3 usage polling, and the config-file footer.
-Item {
+SettingsPage {
     id: page
 
     // One 1s tick drives both the live clock caption and the poll
     // countdown, derived from Usage state without mutating it.
     property double nowSecs: Date.now() / 1000
+    property bool resetArmed: false
 
     Timer {
         interval: 1000
@@ -18,12 +19,35 @@ Item {
         onTriggered: page.nowSecs = Date.now() / 1000
     }
 
+    Timer {
+        id: resetConfirmTimer
+        interval: 4000
+        onTriggered: page.resetArmed = false
+    }
+
+    function requestResetAll() {
+        if (!resetArmed) {
+            resetArmed = true;
+            resetConfirmTimer.restart();
+            return;
+        }
+        resetConfirmTimer.stop();
+        resetArmed = false;
+        Settings.resetAll();
+    }
+
+    function openConfig() {
+        Settings.saveNow();
+        Qt.callLater(() => Quickshell.execDetached(["xdg-open", Settings.filePath]));
+    }
+
     readonly property date nowDate: new Date(page.nowSecs * 1000)
     readonly property int pollLeft: Usage.updatedAt > 0
         ? Math.max(0, Usage.pollIntervalSecs - Math.floor(page.nowSecs - Usage.updatedAt / 1000))
         : Usage.nextPollSecs
 
     Column {
+        id: generalSettings
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
@@ -74,12 +98,14 @@ Item {
         }
 
         Text {
-            leftPadding: 100
+            width: parent.width
+            leftPadding: page.width < 440 ? 0 : 100
             text: "Tint applies while Night light is on in Control Center — "
                 + (SysInfo.nightLight ? "currently on" : "currently off")
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontCaption
             color: Theme.textDim
+            wrapMode: Text.Wrap
         }
 
         SectionHeader {
@@ -116,57 +142,46 @@ Item {
     }
 
     Column {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        y: generalSettings.height + 10
+        width: parent.width
         spacing: 8
 
         SectionHeader {
             label: "CONFIG"
         }
 
-        Item {
+        SettingsCard {
             width: parent.width
-            height: 16
+            implicitHeight: 52
 
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(80, parent.width - configActions.width - 18)
                 text: "~/.local/state/quickshell/shell-settings.json"
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontCaption
                 color: Theme.textFaint
+                elide: Text.ElideMiddle
             }
 
             Row {
+                id: configActions
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 12
+                spacing: 4
 
-                Text {
+                SettingsAction {
                     text: "Open"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightMedium
-                    color: Theme.accent
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Quickshell.execDetached(["xdg-open", Settings.filePath])
-                    }
+                    glyph: ""
+                    onTriggered: page.openConfig()
                 }
 
-                Text {
-                    text: "Reset all"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightMedium
-                    color: Theme.redText
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Settings.resetAll()
-                    }
+                SettingsAction {
+                    text: page.resetArmed ? "Confirm reset" : "Reset all"
+                    glyph: page.resetArmed ? "" : "↺"
+                    danger: true
+                    onTriggered: page.requestResetAll()
                 }
             }
         }
