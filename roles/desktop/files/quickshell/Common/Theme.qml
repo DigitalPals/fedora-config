@@ -127,7 +127,6 @@ Singleton {
     readonly property int popoutTabMinWidth: 104
     readonly property int popoutTabPadding: 24
     readonly property int popoutTabRadius: 17
-    readonly property int popoutJoinOverlap: 2
     readonly property int popoutMotionDuration: 290
     readonly property int popoutCloseDuration: 210
     readonly property int popoutContentFadeDuration: 150

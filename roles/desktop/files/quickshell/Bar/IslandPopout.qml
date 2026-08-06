@@ -54,8 +54,6 @@ Item {
     property real renderedBodyX: 0
     property real renderedBodyW: 1
     property real renderedBodyH: 0
-    property real renderedTabX: 0
-    property real renderedTabW: 1
     property real openProgress: 0
 
     readonly property rect activeIslandRect: Popouts.island === "left" ? leftIslandRect
@@ -63,16 +61,25 @@ Item {
     readonly property rect effectiveAnchor: Popouts.anchorRect.width > 0
         ? Popouts.anchorRect : activeIslandRect
     readonly property real barBottom: activeIslandRect.y + activeIslandRect.height
-    readonly property real bridgeInset: Math.min(Theme.popoutTabRadius,
-        Math.max(1, renderedTabW / 3))
-    readonly property real bridgeLeft: renderedTabX + bridgeInset
-    readonly property real bridgeRight: renderedTabX + renderedTabW - bridgeInset
-    readonly property real bridgeY: barBottom - Theme.popoutJoinOverlap
+    readonly property real bloomProgress: Math.max(0, Math.min(1, openProgress))
+    // One shared radius keeps the crown genuinely circular while it opens;
+    // separate width/depth interpolation reads as a diagonal bevel.
+    readonly property real flareRadius: Math.min(
+        Theme.popRadius * bloomProgress,
+        Math.max(0, renderedBodyH / 2))
+    readonly property real bridgeLeft: Math.max(Theme.barSideMargin,
+        renderedBodyX - flareRadius)
+    readonly property real bridgeRight: Math.min(host.width - Theme.barSideMargin,
+        renderedBodyX + renderedBodyW + flareRadius)
+    // The arc begins at the slab's exact lower edge. Starting it inside the
+    // bar clips its horizontal tangent and leaves a visible kink at high DPR.
+    readonly property real bridgeY: barBottom
     readonly property real bodyTop: bridgeY
     readonly property real bodyRight: renderedBodyX + renderedBodyW
     readonly property real bodyBottom: bodyTop + Math.max(0, renderedBodyH)
     readonly property real effectiveRadius: Math.max(0.01,
         Math.min(Theme.popRadius, renderedBodyW / 2, Math.max(0.02, renderedBodyH) / 2))
+    readonly property real bodySideTop: bodyTop + flareRadius
     readonly property real requiredHeight: presented
         ? barBottom + envelopeBodyH + 48
         : 0
@@ -113,9 +120,10 @@ Item {
         const anchor = effectiveAnchor;
         const contentW = item && item.implicitWidth > 0 ? item.implicitWidth : Theme.popWidth;
         const contentH = item && item.implicitHeight > 0 ? item.implicitHeight : 1;
-        const maxW = Math.max(1, host.width - 2 * Theme.barSideMargin);
-        const bodyW = Math.min(!anchored && Popouts.island === "center"
-            ? Math.max(activeIslandRect.width, contentW) : contentW, maxW);
+        const bodyMargin = Theme.barSideMargin + Theme.popRadius;
+        const maxW = Math.max(1, host.width - 2 * bodyMargin);
+        const bodyW = Math.round(Math.min(!anchored && Popouts.island === "center"
+            ? Math.max(activeIslandRect.width, contentW) : contentW, maxW));
 
         let bodyX;
         if (anchored)
@@ -126,13 +134,13 @@ Item {
             bodyX = activeIslandRect.x + activeIslandRect.width - bodyW;
         else
             bodyX = activeIslandRect.x + (activeIslandRect.width - bodyW) / 2;
-        bodyX = clamp(bodyX, Theme.barSideMargin,
-            host.width - Theme.barSideMargin - bodyW);
+        bodyX = Math.round(clamp(bodyX, bodyMargin,
+            host.width - bodyMargin - bodyW));
 
-        const tabW = Math.min(maxW, Math.max(Theme.popoutTabMinWidth,
-            anchor.width + 2 * Theme.popoutTabPadding));
-        const tabX = clamp(anchor.x + (anchor.width - tabW) / 2,
-            Theme.barSideMargin, host.width - Theme.barSideMargin - tabW);
+        const tabW = Math.round(Math.min(maxW, Math.max(Theme.popoutTabMinWidth,
+            anchor.width + 2 * Theme.popoutTabPadding)));
+        const tabX = Math.round(clamp(anchor.x + (anchor.width - tabW) / 2,
+            Theme.barSideMargin, host.width - Theme.barSideMargin - tabW));
         const collapsedW = Math.max(24,
             Math.min(bodyW, tabW - 2 * Theme.popoutTabRadius));
         const collapsedX = tabX + (tabW - collapsedW) / 2;
@@ -144,9 +152,7 @@ Item {
             tabX: tabX,
             tabW: tabW,
             collapsedX: collapsedX,
-            collapsedW: collapsedW,
-            anchorX: anchor.x,
-            anchorW: Math.max(1, anchor.width)
+            collapsedW: collapsedW
         };
     }
 
@@ -162,8 +168,6 @@ Item {
     function snapCollapsed(geometry) {
         geometryAnimations = false;
         openProgress = 0;
-        renderedTabX = geometry.anchorX;
-        renderedTabW = geometry.anchorW;
         renderedBodyX = geometry.collapsedX;
         renderedBodyW = geometry.collapsedW;
         renderedBodyH = 0;
@@ -172,8 +176,6 @@ Item {
     function animateToTargets() {
         geometryAnimations = true;
         closing = false;
-        renderedTabX = targetTabX;
-        renderedTabW = targetTabW;
         renderedBodyX = targetBodyX;
         renderedBodyW = targetBodyW;
         renderedBodyH = targetBodyH;
@@ -360,22 +362,6 @@ Item {
             easing.bezierCurve: host.closing ? Theme.popoutExitCurve : Theme.popoutEnterCurve
         }
     }
-    Behavior on renderedTabX {
-        enabled: host.geometryAnimations
-        NumberAnimation {
-            duration: host.closing ? Theme.popoutCloseDuration : Theme.popoutMotionDuration
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: host.closing ? Theme.popoutExitCurve : Theme.popoutEnterCurve
-        }
-    }
-    Behavior on renderedTabW {
-        enabled: host.geometryAnimations
-        NumberAnimation {
-            duration: host.closing ? Theme.popoutCloseDuration : Theme.popoutMotionDuration
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: host.closing ? Theme.popoutExitCurve : Theme.popoutEnterCurve
-        }
-    }
     Behavior on renderedBodyX {
         enabled: host.geometryAnimations
         NumberAnimation {
@@ -405,7 +391,8 @@ Item {
     // band remains visible at either join.
     Item {
         x: 0
-        y: host.barBottom - Theme.popoutJoinOverlap
+        // Never let the body shadow tint the bar's final pixel row.
+        y: host.barBottom
         width: parent.width
         height: Math.max(0, parent.height - y)
         clip: true
@@ -439,14 +426,12 @@ Item {
                 x: host.bridgeRight
                 y: host.bridgeY
             }
-            PathCubic {
-                control1X: host.bridgeRight
-                control1Y: host.bridgeY
-                control2X: host.bodyRight - Math.min(20,
-                    Math.max(0, host.bodyRight - host.bridgeRight) * 0.22)
-                control2Y: host.bodyTop
+            PathArc {
                 x: host.bodyRight
-                y: host.bodyTop
+                y: host.bodySideTop
+                radiusX: Math.max(0.01, host.flareRadius)
+                radiusY: Math.max(0.01, host.flareRadius)
+                direction: PathArc.Counterclockwise
             }
             PathLine {
                 x: host.bodyRight
@@ -470,16 +455,14 @@ Item {
             }
             PathLine {
                 x: host.renderedBodyX
-                y: host.bodyTop
+                y: host.bodySideTop
             }
-            PathCubic {
-                control1X: host.renderedBodyX + Math.min(20,
-                    Math.max(0, host.bridgeLeft - host.renderedBodyX) * 0.22)
-                control1Y: host.bodyTop
-                control2X: host.bridgeLeft
-                control2Y: host.bridgeY
+            PathArc {
                 x: host.bridgeLeft
                 y: host.bridgeY
+                radiusX: Math.max(0.01, host.flareRadius)
+                radiusY: Math.max(0.01, host.flareRadius)
+                direction: PathArc.Counterclockwise
             }
         }
     }
