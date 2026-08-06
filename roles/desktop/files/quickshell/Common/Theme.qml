@@ -119,4 +119,19 @@ Singleton {
     readonly property int pickerRowHeight: 40
     readonly property int popRadius: 14
     readonly property int rowRadius: 9
+
+    // Connected popout motion. The trigger remains in the menubar while the
+    // panel expands from its position directly beneath the bar. Spatial
+    // motion is intentionally a little slower than opacity so the chrome
+    // reads as one continuous surface while copy stays crisp.
+    readonly property int popoutTabMinWidth: 104
+    readonly property int popoutTabPadding: 24
+    readonly property int popoutTabRadius: 17
+    readonly property int popoutJoinOverlap: 2
+    readonly property int popoutMotionDuration: 290
+    readonly property int popoutCloseDuration: 210
+    readonly property int popoutContentFadeDuration: 150
+    readonly property int popoutContentRevealDelay: 45
+    readonly property var popoutEnterCurve: [0.38, 1.15, 0.22, 1.0, 1.0, 1.0]
+    readonly property var popoutExitCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0]
 }

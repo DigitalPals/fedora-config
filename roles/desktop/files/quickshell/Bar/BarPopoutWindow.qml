@@ -15,24 +15,20 @@ PanelWindow {
     // bar may show a panel or take the focus grab.
     readonly property bool live: bar.visible
 
-    visible: live && Popouts.open
+    // Map immediately on open intent so the first Loader can incubate. Once
+    // Popouts.open drops, `presented` keeps the surface alive through the
+    // closing animation.
+    visible: live && (Popouts.open || popout.presented)
     anchors {
         top: true
         left: true
         right: true
     }
-    implicitHeight: Math.max(1, leftPopout.requiredHeight,
-        centerPopout.requiredHeight, rightPopout.requiredHeight)
+    implicitHeight: Math.max(1, popout.requiredHeight)
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
 
-    mask: Region {
-        regions: [
-            Region { item: leftPopout.maskItem },
-            Region { item: centerPopout.maskItem },
-            Region { item: rightPopout.maskItem }
-        ]
-    }
+    mask: Region { item: popout.maskItem }
 
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: root.visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
@@ -45,23 +41,12 @@ PanelWindow {
     }
 
     IslandPopout {
-        id: leftPopout
+        id: popout
+        width: root.bar.width
+        height: root.implicitHeight
         live: root.live
-        islandRect: root.bar.leftIslandRect
-        isle: "left"
-    }
-
-    IslandPopout {
-        id: centerPopout
-        live: root.live
-        islandRect: root.bar.centerIslandRect
-        isle: "center"
-    }
-
-    IslandPopout {
-        id: rightPopout
-        live: root.live
-        islandRect: root.bar.rightIslandRect
-        isle: "right"
+        leftIslandRect: root.bar.leftIslandRect
+        centerIslandRect: root.bar.centerIslandRect
+        rightIslandRect: root.bar.rightIslandRect
     }
 }

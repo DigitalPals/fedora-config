@@ -29,10 +29,7 @@ PanelWindow {
     exclusiveZone: Theme.barTopMargin + Theme.barHeight - 2
     color: "transparent"
 
-    mask: Region {
-        item: barStrip
-
-    }
+    mask: Region { item: barStrip }
 
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     WlrLayershell.namespace: "qs-bar"
@@ -120,6 +117,30 @@ PanelWindow {
         return Qt.rect(p.x, p.y, item.width, item.height);
     }
 
+    function moduleForPanel(name) {
+        switch (name) {
+        case "media": return mediaChip;
+        case "calendar": return clockChip;
+        case "weather": return weatherChip;
+        case "t3code": return t3Chip;
+        case "usage": return usageChips;
+        case "audio": return audioIcon;
+        case "wifi": return wifiIcon;
+        case "bluetooth": return btIcon.visible ? btIcon : null;
+        case "battery": return batteryIcon.visible ? batteryIcon : null;
+        case "notifications": return bellModule;
+        case "control": return controlIcon;
+        default: return null;
+        }
+    }
+
+    function sameAnchor(a, b) {
+        return Math.abs(a.x - b.x) < 0.5
+            && Math.abs(a.y - b.y) < 0.5
+            && Math.abs(a.width - b.width) < 0.5
+            && Math.abs(a.height - b.height) < 0.5;
+    }
+
     function togglePopout(name, isle, item) {
         Popouts.toggle(name, isle, anchorOf(item));
     }
@@ -155,6 +176,31 @@ PanelWindow {
                 Popouts.openPanel(barWindow.pendingHoverName, barWindow.pendingHoverIsland,
                     barWindow.pendingHoverAnchor);
             barWindow.pendingHoverName = "";
+        }
+    }
+
+    // IPC opens and transitions initiated inside a popout do not carry a new
+    // module rectangle. The visible bar resolves every named module again so
+    // the tab and panel always travel together, even when an old anchor is
+    // still present from the previous view.
+    Connections {
+        target: Popouts
+
+        function onChanged() {
+            if (!barWindow.visible || !Popouts.open)
+                return;
+            Qt.callLater(() => {
+                if (!barWindow.visible || !Popouts.open)
+                    return;
+                const item = barWindow.moduleForPanel(Popouts.currentName);
+                if (!item || item.width <= 0)
+                    return;
+                const anchor = barWindow.anchorOf(item);
+                if (barWindow.sameAnchor(Popouts.anchorRect, anchor))
+                    return;
+                Popouts.anchorRect = anchor;
+                Popouts.changed();
+            });
         }
     }
 
@@ -518,6 +564,7 @@ PanelWindow {
             }
 
             Item {
+                id: bellModule
                 width: bellIcon.width
                 height: Theme.barHeight
                 anchors.verticalCenter: parent.verticalCenter
