@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Services.Notifications
+import "NotifHelpers.js" as Helpers
 
 Singleton {
     id: root
@@ -54,12 +55,28 @@ Singleton {
         hideToast(entry, false);
     }
 
+    function defaultAction(entry) {
+        return entry && entry.live ? Helpers.defaultAction(entry.actions) : null;
+    }
+
+    function secondaryActions(entry) {
+        return entry && entry.live ? Helpers.secondaryActions(entry.actions) : [];
+    }
+
+    function canActivate(entry) {
+        return defaultAction(entry) !== null;
+    }
+
+    function invokeDefault(entry) {
+        const action = defaultAction(entry);
+        if (action)
+            invoke(entry, action);
+    }
+
     // Critical toasts never reach this: they persist until dismissed
     // (design t4), so only normal urgencies deplete.
     function timeoutFor(entry) {
-        if (entry.expireTimeout > 0 && entry.expireTimeout <= 120)
-            return Math.round(entry.expireTimeout * 1000);
-        return 6000;
+        return Helpers.timeoutMs(Helpers.visibleCharacterCount(entry), entry.expireTimeout);
     }
 
     readonly property NotificationServer server: NotificationServer {
@@ -68,13 +85,22 @@ Singleton {
         bodySupported: true
         actionsSupported: true
         imageSupported: true
+        extraHints: ["x-kde-origin-name"]
 
         onNotification: notif => {
             notif.tracked = true;
             // Keep this: icon-resolution misses are impossible to diagnose
             // after the fact without knowing what the sender actually sent.
-            console.log(`notification: app="${notif.appName}" icon="${notif.appIcon}" image="${notif.image}"`);
+            console.log(`notification: app="${notif.appName}" desktop="${notif.desktopEntry}" icon="${notif.appIcon}" image="${notif.image}"`);
             const arrived = Date.now();
+            const hints = Object.assign({}, notif.hints || {});
+            const presentation = Helpers.derivePresentation({
+                appName: notif.appName,
+                desktopEntry: notif.desktopEntry,
+                summary: notif.summary,
+                body: notif.body,
+                hints: hints
+            });
             const entry = {
                 key: `${notif.id}-${arrived}`,
                 notif: notif,
@@ -82,9 +108,17 @@ Singleton {
                 arrived: arrived,
                 appName: notif.appName,
                 appIcon: notif.appIcon,
+                desktopEntry: notif.desktopEntry,
+                hints: hints,
                 image: notif.image,
                 summary: notif.summary,
                 body: notif.body,
+                displayAppName: presentation.displayAppName,
+                displaySummary: presentation.displaySummary,
+                displayBody: presentation.displayBody,
+                webOrigin: presentation.webOrigin,
+                brandIcon: presentation.brandIcon === "whatsapp"
+                    ? Quickshell.shellDir + "/assets/whatsapp.svg" : "",
                 urgency: notif.urgency,
                 expireTimeout: notif.expireTimeout,
                 actions: notif.actions
@@ -124,39 +158,51 @@ Singleton {
     // carries. Senders write anything from exact ids ("google-chrome") to
     // display names ("Google Chrome", "Firefox"), so try the id heuristic,
     // a dashed lowercase form, and finally the entries' display names.
-    function entryIcon(appName) {
-        if (!appName)
+    function entryIcon(identity) {
+        if (!identity)
             return "";
-        const entry = DesktopEntries.heuristicLookup(appName)
-            || DesktopEntries.heuristicLookup(appName.toLowerCase().replace(/\s+/g, "-"));
+        const entry = DesktopEntries.heuristicLookup(identity)
+            || DesktopEntries.heuristicLookup(identity.toLowerCase().replace(/\s+/g, "-"));
         if (entry && entry.icon)
             return entry.icon;
-        const lower = appName.toLowerCase();
+        const lower = identity.toLowerCase();
         const byName = DesktopEntries.applications.values.find(e => e.name && e.name.toLowerCase() === lower);
         return byName && byName.icon ? byName.icon : "";
     }
 
+    function resolvedIcon(value) {
+        if (!value)
+            return "";
+        if (value.startsWith("/"))
+            return "file://" + value;
+        if (value.startsWith("file://") || value.startsWith("data:")
+                || value.startsWith("qrc:") || value.startsWith("image://"))
+            return value;
+        const themed = Quickshell.iconPath(value, true);
+        return themed !== "" ? themed : "";
+    }
+
     // Image source for an entry's icon slot. Every step falls through when
-    // it cannot produce something loadable: the appIcon hint (a theme icon
-    // name, or a file path some apps send), then the app's desktop-entry
-    // icon, then the notification's own image (e.g. Chrome sends the site
-    // favicon). "" means: show the glyph fallback.
+    // it cannot produce something loadable. Once a browser notification has
+    // a web origin, its browser logo is deliberately excluded: a known brand
+    // wins, followed by the site's supplied image and the web glyph fallback.
+    // Native applications use app icon, desktop entry, attached image, glyph.
     function iconSource(entry) {
-        const hint = entry.appIcon || "";
-        if (hint) {
-            if (hint.startsWith("/"))
-                return "file://" + hint;
-            if (hint.startsWith("file://") || hint.startsWith("data:"))
-                return hint;
-            const themed = Quickshell.iconPath(hint, true);
-            if (themed !== "")
-                return themed;
+        let source = resolvedIcon(entry.brandIcon || "");
+        if (source !== "")
+            return source;
+        if (entry.webOrigin) {
+            source = resolvedIcon(entry.image || "");
+            return source;
         }
-        const named = entryIcon(entry.appName);
+        source = resolvedIcon(entry.appIcon || "");
+        if (source !== "")
+            return source;
+        const named = entryIcon(entry.desktopEntry || entry.appName);
         if (named !== "") {
-            const themed = Quickshell.iconPath(named, true);
-            if (themed !== "")
-                return themed;
+            source = resolvedIcon(named);
+            if (source !== "")
+                return source;
         }
         return entry.image || "";
     }

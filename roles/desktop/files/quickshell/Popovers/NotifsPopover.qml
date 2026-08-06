@@ -4,22 +4,21 @@ import Quickshell.Services.Notifications
 import Quickshell.Widgets
 import "../Common"
 
-// Notification center (design t4, 4d + 4e merged): entries group per app.
-// A collapsed group reads as a 4e stack — newest entry previewed, +N
-// badge, depth peek behind — and clicking it expands to 4d flat rows
-// under a group header with a group-clear ×. The header carries the
-// count badge and clear-all; groups whose newest entry is over an hour
-// old sit dimmed under an EARLIER separator; DND is a proper toggle row
-// in the footer.
+// Notification center built from the same anatomy as the popup card: source
+// icon, app · summary header, timestamp, wrapped body, whole-card default
+// activation, contextual actions, and hover-to-dismiss. Repeated sources are
+// collapsed under one card and expand into a source-headed list.
 Surface {
     id: root
+
+    implicitWidth: Theme.popWideWidth
+    spacing: 10
 
     SystemClock {
         id: relativeClock
         precision: SystemClock.Seconds
     }
 
-    // Groups expanded to their row list this open; keyed by app name.
     property var expandedApps: ({})
 
     function toggleApp(app) {
@@ -37,7 +36,7 @@ Surface {
         const seen = {};
         const list = [];
         for (const entry of Notifs.entries.slice(0, 18)) {
-            const key = entry.appName || "Other";
+            const key = entry.displayAppName || "Other";
             let group = seen[key];
             if (!group) {
                 group = { app: key, items: [] };
@@ -50,15 +49,17 @@ Surface {
     }
 
     readonly property real nowMs: relativeClock.date.getTime()
-    readonly property var recentGroups: groups.filter(g => nowMs - g.items[0].arrived < 3600000)
-    readonly property var earlierGroups: groups.filter(g => nowMs - g.items[0].arrived >= 3600000)
+    readonly property var recentGroups: groups.filter(group =>
+        nowMs - group.items[0].arrived < 3600000)
+    readonly property var earlierGroups: groups.filter(group =>
+        nowMs - group.items[0].arrived >= 3600000)
 
-    // ---- shared bits -----------------------------------------------------
+    // ---- shared card pieces ---------------------------------------------
 
     component AppIcon: Item {
         id: iconSlot
         required property var entry
-        property int iconSize: 15
+        property int iconSize: 28
         property bool urgent: false
 
         Image {
@@ -76,95 +77,228 @@ Surface {
         Text {
             visible: !iconImg.visible
             anchors.centerIn: parent
-            text: iconSlot.urgent ? "" : ""
+            text: iconSlot.urgent ? "" : iconSlot.entry.webOrigin ? "" : ""
             font.family: Theme.fontIcon
-            font.pixelSize: Math.max(Theme.fontCaption, iconSlot.iconSize - 2)
-            color: iconSlot.urgent ? Theme.redText : Theme.textMid
+            font.pixelSize: Math.max(Theme.fontCaption, iconSlot.iconSize - 8)
+            color: iconSlot.urgent ? Theme.redText : Theme.accent
         }
     }
 
-    component NotifRow: Rectangle {
-        id: row
+    component ActionPills: Row {
+        id: pills
         required property var entry
-        readonly property bool urgent: entry.urgency === NotificationUrgency.Critical
-        readonly property string bodyText: (entry.body || "").replace(/<[^>]*>/g, "")
+        property bool reveal: false
+        readonly property var items: reveal ? Notifs.secondaryActions(entry) : []
 
-        width: parent.width - 4
-        x: 2
-        height: rowCol.implicitHeight + 12
-        radius: Theme.rowRadius
-        color: urgent ? Theme.redBgSoft : rowMouse.containsMouse ? Theme.hoverFill : "transparent"
+        visible: items.length > 0
+        spacing: 6
 
-        Column {
-            id: rowCol
-            // Indented under the group header's icon chip (4d).
-            x: 33
-            y: 6
-            width: parent.width - 43
-            spacing: 2
+        Repeater {
+            model: pills.items
 
-            Item {
-                width: parent.width
-                height: sumText.implicitHeight
+            delegate: Rectangle {
+                required property var modelData
+                required property int index
+
+                height: 24
+                width: Math.min(actionText.implicitWidth + 20, 146)
+                radius: 7
+                color: index === 0
+                    ? (actionMouse.containsMouse ? Theme.accentBg : Theme.accentBgSoft)
+                    : (actionMouse.containsMouse ? Theme.hoverFillStrong
+                        : Qt.rgba(1, 1, 1, 0.05))
+                readonly property color foreground: index === 0
+                    ? Theme.accent : Theme.textMid
 
                 Text {
-                    id: sumText
-                    width: parent.width - 52
-                    text: row.entry.summary || row.bodyText
+                    id: actionText
+                    anchors.centerIn: parent
+                    width: parent.width - 16
+                    text: parent.modelData.text
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.fontCaption
                     font.weight: Theme.weightMedium
-                    color: Theme.textHi
+                    color: parent.foreground
+                    horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                 }
 
-                Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 16
-                    text: Notifs.timeAgo(row.entry.arrived, root.nowMs)
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightMedium
-                    color: Theme.textDim
-                }
-
-                Text {
-                    visible: rowMouse.containsMouse || rowCloseMouse.containsMouse
-                    anchors.right: parent.right
-                    text: ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontCaption
-                    color: rowCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
-
-                    MouseArea {
-                        id: rowCloseMouse
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        onClicked: Notifs.dismiss(row.entry)
-                    }
+                MouseArea {
+                    id: actionMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Notifs.invoke(pills.entry, parent.modelData)
                 }
             }
+        }
+    }
 
-            Text {
-                visible: text !== "" && text !== sumText.text
-                width: parent.width
-                text: row.bodyText
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
-                color: Theme.textLow
-                elide: Text.ElideRight
-                maximumLineCount: 2
-                wrapMode: Text.Wrap
-                lineHeight: Theme.proseLineHeight
-            }
+    component NotifCard: Rectangle {
+        id: card
+        required property var entry
+        property int groupCount: 1
+        property bool showApp: true
+        property bool nested: false
+        property bool groupUrgent: false
+        signal activated
+        signal closeRequested
+
+        readonly property bool urgent: groupUrgent
+            || entry.urgency === NotificationUrgency.Critical
+        readonly property bool hovered: cardHover.hovered
+        readonly property bool actionable: groupCount > 1 || Notifs.canActivate(entry)
+
+        height: cardContent.implicitHeight + (nested ? 16 : 24)
+        radius: nested ? Theme.rowRadius : 11
+        color: urgent ? Theme.redBgSoft
+            : hovered ? Theme.hoverFill : nested ? "transparent" : Theme.cardFill
+        border.width: nested ? 0 : 1
+        border.color: urgent ? Theme.redBorder : Theme.hairlineSoft
+
+        Rectangle {
+            visible: card.nested
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            height: 1
+            color: Theme.hairlineSoft
+        }
+
+        HoverHandler {
+            id: cardHover
         }
 
         MouseArea {
-            id: rowMouse
             anchors.fill: parent
-            hoverEnabled: true
-            z: -1
+            cursorShape: card.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: {
+                if (card.actionable)
+                    card.activated();
+            }
+        }
+
+        Row {
+            id: cardContent
+            x: card.nested ? 10 : 12
+            y: card.nested ? 8 : 12
+            width: parent.width - x * 2
+            spacing: card.showApp ? 12 : 0
+
+            AppIcon {
+                visible: card.showApp
+                width: 28
+                height: 28
+                entry: card.entry
+                urgent: card.urgent
+            }
+
+            Column {
+                width: cardContent.width - (card.showApp ? 40 : 0)
+                spacing: 5
+
+                Item {
+                    width: parent.width
+                    height: Math.max(cardHeader.implicitHeight, cardTrailing.height)
+
+                    Text {
+                        id: cardHeader
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - cardTrailing.width - 8
+                        text: card.showApp
+                            ? card.entry.displayAppName
+                                + (card.entry.displaySummary
+                                    ? " · " + card.entry.displaySummary : "")
+                            : (card.entry.displaySummary || card.entry.displayAppName)
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontSecondary
+                        font.weight: Theme.weightSemibold
+                        color: Theme.textHi
+                        elide: Text.ElideRight
+                    }
+
+                    Item {
+                        id: cardTrailing
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: card.groupCount > 1 ? 60 : 32
+                        height: 20
+
+                        Rectangle {
+                            visible: card.groupCount > 1
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: groupCountText.implicitWidth + 12
+                            height: 20
+                            radius: 6
+                            color: Theme.accentBg
+
+                            Text {
+                                id: groupCountText
+                                anchors.centerIn: parent
+                                text: card.groupCount
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.fontCaption
+                                font.weight: Theme.weightSemibold
+                                font.features: Theme.tabularNumberFeatures
+                                color: Theme.accent
+                            }
+                        }
+
+                        Text {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !card.hovered
+                            text: Notifs.timeAgo(card.entry.arrived, root.nowMs)
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightMedium
+                            font.features: Theme.tabularNumberFeatures
+                            color: Theme.textDim
+                        }
+
+                        Text {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: card.hovered
+                            text: "×"
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontHeading
+                            color: closeMouse.containsMouse ? Theme.textHi : Theme.textDim
+
+                            MouseArea {
+                                id: closeMouse
+                                anchors.fill: parent
+                                anchors.margins: -6
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: card.closeRequested()
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    visible: text !== ""
+                    width: parent.width
+                    text: card.entry.displayBody || ""
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    color: card.urgent ? Theme.textHi : Theme.textLow
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                    lineHeight: 1.25
+                }
+
+                ActionPills {
+                    entry: card.entry
+                    reveal: card.hovered && card.groupCount === 1
+                }
+            }
         }
     }
 
@@ -174,253 +308,144 @@ Surface {
         property bool dim: false
         readonly property bool expanded: root.expandedApps[group.app] === true
         readonly property var newest: group.items[0]
-        readonly property bool hasUrgent: group.items.some(i => i.urgency === NotificationUrgency.Critical)
+        readonly property bool hasUrgent: group.items.some(item =>
+            item.urgency === NotificationUrgency.Critical)
 
         width: parent.width
-        opacity: dim ? 0.65 : 1
+        opacity: dim ? 0.7 : 1
 
-        // ---- collapsed: 4e stack card ------------------------------------
-        Item {
+        NotifCard {
             visible: !block.expanded
-            width: parent.width - 4
-            x: 2
-            height: stackCard.height + (block.group.items.length > 2 ? 8 : block.group.items.length > 1 ? 4 : 0)
-
-            Rectangle {
-                visible: block.group.items.length > 2
-                anchors.bottom: parent.bottom
-                x: 14
-                width: parent.width - 28
-                height: 12
-                radius: 10
-                color: Theme.cardFill
-                opacity: 0.5
+            width: parent.width
+            entry: block.newest
+            groupCount: block.group.items.length
+            groupUrgent: block.hasUrgent
+            onActivated: {
+                if (block.group.items.length > 1)
+                    root.toggleApp(block.group.app);
+                else
+                    Notifs.invokeDefault(block.newest);
             }
-
-            Rectangle {
-                visible: block.group.items.length > 1
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: block.group.items.length > 2 ? 4 : 0
-                x: 7
-                width: parent.width - 14
-                height: 12
-                radius: 11
-                color: Theme.cardFill
-                opacity: 0.75
-            }
-
-            Rectangle {
-                id: stackCard
-                width: parent.width
-                height: cardRow.implicitHeight + 20
-                radius: 11
-                color: cardMouse.containsMouse ? Theme.hoverFill : Theme.cardFill
-                border.width: 1
-                border.color: block.hasUrgent ? Theme.redBorder : Theme.hairlineSoft
-
-                Row {
-                    id: cardRow
-                    x: 12
-                    y: 10
-                    width: parent.width - 24
-                    spacing: 10
-
-                    Rectangle {
-                        width: 28
-                        height: 28
-                        radius: 8
-                        color: Qt.rgba(1, 1, 1, 0.06)
-
-                        AppIcon {
-                            anchors.fill: parent
-                            entry: block.newest
-                            iconSize: 15
-                            urgent: block.hasUrgent
-                        }
-                    }
-
-                    Column {
-                        width: parent.width - 38
-                        spacing: 2
-
-                        Item {
-                            width: parent.width
-                            height: appText.implicitHeight
-
-                            Row {
-                                id: leftBits
-                                spacing: 6
-
-                                Text {
-                                    id: appText
-                                    width: Math.min(implicitWidth, cardRow.width - 38 - rightBits.width - 60)
-                                    text: block.group.app
-                                    font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontBody
-                                    font.weight: Theme.weightSemibold
-                                    color: Theme.textHi
-                                    elide: Text.ElideRight
-                                }
-
-                                Rectangle {
-                                    visible: block.group.items.length > 1
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: plusText.implicitWidth + 12
-                                    height: plusText.implicitHeight + 4
-                                    radius: 6
-                                    color: Theme.accentBg
-
-                                    Text {
-                                        id: plusText
-                                        anchors.centerIn: parent
-                                        text: "+" + (block.group.items.length - 1)
-                                        font.family: Theme.fontMono
-                                        font.pixelSize: Theme.fontCaption
-                                        font.weight: Theme.weightSemibold
-                                        color: Theme.accent
-                                    }
-                                }
-                            }
-
-                            Row {
-                                id: rightBits
-                                anchors.right: parent.right
-                                spacing: 8
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: Notifs.timeAgo(block.newest.arrived, root.nowMs)
-                                    font.family: Theme.fontMono
-                                    font.pixelSize: Theme.fontCaption
-                                    font.weight: Theme.weightMedium
-                                    color: Theme.textDim
-                                }
-
-                                Text {
-                                    visible: cardMouse.containsMouse || cardCloseMouse.containsMouse
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: ""
-                                    font.family: Theme.fontIcon
-                                    font.pixelSize: Theme.fontCaption
-                                    color: cardCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
-
-                                    MouseArea {
-                                        id: cardCloseMouse
-                                        anchors.fill: parent
-                                        anchors.margins: -4
-                                        hoverEnabled: true
-                                        onClicked: root.clearGroup(block.group)
-                                    }
-                                }
-                            }
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: block.newest.summary || (block.newest.body || "").replace(/<[^>]*>/g, "")
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontSecondary
-                            color: Theme.icon
-                            elide: Text.ElideRight
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: cardMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    z: -1
-                    onClicked: root.toggleApp(block.group.app)
-                }
-            }
+            onCloseRequested: root.clearGroup(block.group)
         }
 
-        // ---- expanded: 4d group header + flat rows -----------------------
-        Column {
+        Rectangle {
             visible: block.expanded
             width: parent.width
+            height: expandedColumn.implicitHeight + 2
+            radius: 11
+            color: Theme.cardFill
+            border.width: 1
+            border.color: block.hasUrgent ? Theme.redBorder : Theme.hairlineSoft
+            clip: true
 
-            Item {
-                width: parent.width - 4
-                x: 2
-                height: Theme.controlHeight
+            Column {
+                id: expandedColumn
+                x: 1
+                y: 1
+                width: parent.width - 2
 
-                Row {
-                    x: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7
+                Item {
+                    id: groupHeader
+                    width: parent.width
+                    height: 44
 
-                    Rectangle {
-                        width: 18
-                        height: 18
-                        radius: 5
-                        color: Qt.rgba(1, 1, 1, 0.06)
+                    HoverHandler {
+                        id: groupHeaderHover
+                    }
 
-                        AppIcon {
-                            anchors.fill: parent
-                            entry: block.newest
-                            iconSize: 11
-                            urgent: block.hasUrgent
-                        }
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.rightMargin: 34
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.toggleApp(block.group.app)
+                    }
+
+                    AppIcon {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24
+                        height: 24
+                        iconSize: 24
+                        entry: block.newest
+                        urgent: block.hasUrgent
                     }
 
                     Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 44
                         anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - 110
                         text: block.group.app
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontSecondary
                         font.weight: Theme.weightSemibold
-                        color: Theme.icon
+                        color: Theme.textHi
+                        elide: Text.ElideRight
+                    }
+
+                    Rectangle {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 42
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: expandedCount.implicitWidth + 12
+                        height: 20
+                        radius: 6
+                        color: Theme.accentBg
+
+                        Text {
+                            id: expandedCount
+                            anchors.centerIn: parent
+                            text: block.group.items.length
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightSemibold
+                            font.features: Theme.tabularNumberFeatures
+                            color: Theme.accent
+                        }
                     }
 
                     Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 13
                         anchors.verticalCenter: parent.verticalCenter
-                        text: block.group.items.length
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontCaption
-                        font.weight: Theme.weightMedium
-                        color: Theme.textFaint
+                        text: groupHeaderHover.hovered ? "×" : "⌃"
+                        font.family: Theme.fontMenu
+                        font.pixelSize: groupHeaderHover.hovered
+                            ? Theme.fontHeading : Theme.fontBody
+                        color: groupCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
+
+                        MouseArea {
+                            id: groupCloseMouse
+                            anchors.fill: parent
+                            anchors.margins: -6
+                            enabled: groupHeaderHover.hovered
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.clearGroup(block.group)
+                        }
                     }
                 }
 
-                Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontCaption
-                    color: groupCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
+                Repeater {
+                    model: block.group.items
 
-                    MouseArea {
-                        id: groupCloseMouse
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        onClicked: root.clearGroup(block.group)
+                    delegate: NotifCard {
+                        required property var modelData
+                        width: expandedColumn.width
+                        entry: modelData
+                        nested: true
+                        showApp: false
+                        onActivated: Notifs.invokeDefault(entry)
+                        onCloseRequested: Notifs.dismiss(entry)
                     }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.rightMargin: 26
-                    onClicked: root.toggleApp(block.group.app)
-                }
-            }
-
-            Repeater {
-                model: block.group.items
-
-                delegate: NotifRow {
-                    required property var modelData
-                    entry: modelData
                 }
             }
         }
     }
 
-    // ---- header ----------------------------------------------------------
+    // ---- header ---------------------------------------------------------
 
     Item {
         width: parent.width
@@ -435,7 +460,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Notifications"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.fontHeading
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -444,17 +469,18 @@ Surface {
                 visible: Notifs.count > 0
                 anchors.verticalCenter: parent.verticalCenter
                 width: countText.implicitWidth + 12
-                height: countText.implicitHeight + 4
-                radius: 6
+                height: 22
+                radius: 7
                 color: Theme.accentBg
 
                 Text {
                     id: countText
                     anchors.centerIn: parent
                     text: Notifs.count
-                    font.family: Theme.fontMono
+                    font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontCaption
                     font.weight: Theme.weightSemibold
+                    font.features: Theme.tabularNumberFeatures
                     color: Theme.accent
                 }
             }
@@ -474,29 +500,46 @@ Surface {
             MouseArea {
                 id: clearMouse
                 anchors.fill: parent
+                anchors.margins: -4
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: Notifs.clearAll()
             }
         }
     }
 
-    Text {
+    Item {
         visible: Notifs.count === 0
         width: parent.width
-        topPadding: 10
-        bottomPadding: 14
-        text: "No notifications"
-        horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontSecondary
-        color: Theme.textDim
+        height: 70
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 6
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: ""
+                font.family: Theme.fontIcon
+                font.pixelSize: Theme.iconLarge
+                color: Theme.textFaint
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "No notifications"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
+                color: Theme.textDim
+            }
+        }
     }
 
-    // ---- groups ----------------------------------------------------------
+    // ---- grouped history ------------------------------------------------
 
     Column {
         width: parent.width
-        spacing: 6
+        spacing: 8
 
         Repeater {
             model: root.recentGroups
@@ -548,7 +591,7 @@ Surface {
 
     HDivider {}
 
-    // ---- footer: Do Not Disturb -----------------------------------------
+    // ---- footer ---------------------------------------------------------
 
     Item {
         width: parent.width
@@ -568,7 +611,7 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             checked: Notifs.dnd
-            onToggled: v => Notifs.dnd = v
+            onToggled: value => Notifs.dnd = value
         }
     }
 }

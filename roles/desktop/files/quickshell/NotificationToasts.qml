@@ -5,12 +5,9 @@ import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import "Common"
 
-// Notification popups (design t4, treatment 4b): the quietest possible —
-// each toast is a single 38px one-liner row, app · body · time, sized to
-// its content and right-aligned under the bar. Actions and the close ×
-// only appear on hover, which also pauses the countdown. Critical
-// urgency expands to two lines, goes red-border (same treatment as mute)
-// and persists until dismissed. Newest of max 3 stacks on top.
+// Readable fixed-width notification cards. Newest of at most three is on top;
+// normal cards use an adaptive 8–12 second timer, paused while hovered, and
+// critical cards persist until explicitly dismissed.
 PanelWindow {
     id: root
 
@@ -20,14 +17,11 @@ PanelWindow {
         top: true
         right: true
     }
-    margins {
-        top: Theme.barTopMargin + Theme.barHeight
-    }
-    // Widest card plus breathing room for the drop shadows; the right
-    // side only gets the bar margin, which softly clips the blur there.
+    margins.top: Theme.barTopMargin + Theme.barHeight
+
     readonly property int shadowPad: 36
-    readonly property int maxCard: 420
-    implicitWidth: maxCard + shadowPad + Theme.barSideMargin
+    readonly property int cardWidth: 420
+    implicitWidth: cardWidth + shadowPad + Theme.barSideMargin
     implicitHeight: toastColumn.implicitHeight + 12 + shadowPad
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
@@ -36,13 +30,10 @@ PanelWindow {
     WlrLayershell.namespace: "qs-notifications"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-    // Pointer input only over the stack; the shadow gutter falls through.
     mask: Region {
         item: toastColumn
     }
 
-    // Coarse clock for the relative timestamps; only critical toasts
-    // live long enough to age past "now".
     property real now: Date.now()
 
     Timer {
@@ -58,7 +49,7 @@ PanelWindow {
         anchors.topMargin: 12
         anchors.right: parent.right
         anchors.rightMargin: Theme.barSideMargin
-        width: root.maxCard
+        width: root.cardWidth
         spacing: 8
 
         add: Transition {
@@ -92,31 +83,25 @@ PanelWindow {
                 Rectangle {
                     id: card
 
-                    readonly property bool critical: slot.modelData.urgency === NotificationUrgency.Critical
-                    readonly property bool hovered: hover.hovered
-                    readonly property string bodyText: (slot.modelData.body || "").replace(/<[^>]*>/g, "")
-                    readonly property var actions: slot.modelData.live ? slot.modelData.actions.slice(0, 2) : []
+                    readonly property bool critical: slot.modelData.urgency
+                        === NotificationUrgency.Critical
+                    readonly property bool hovered: cardHover.hovered
+                    readonly property var actions: Notifs.secondaryActions(slot.modelData)
+                    readonly property bool actionable: Notifs.canActivate(slot.modelData)
                     property int remaining: Notifs.timeoutFor(slot.modelData)
 
-                    anchors.right: parent.right
-                    width: Math.min(inner.implicitWidth + 28, toastColumn.width)
-                    height: critical ? inner.implicitHeight + 18 : 38
-                    radius: 11
+                    width: parent.width
+                    height: cardContent.implicitHeight + 24
+                    radius: 12
                     clip: true
-                    color: hovered && !critical ? "#16171d" : Theme.popBg
+                    color: critical ? Theme.redBgSoft
+                        : hovered ? "#16171d" : Theme.popBg
                     border.width: 1
                     border.color: critical ? Theme.redBorder
                         : hovered ? Qt.rgba(1, 1, 1, 0.14) : Theme.popBorder
 
-                    Behavior on width {
-                        NumberAnimation {
-                            duration: 140
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-
                     HoverHandler {
-                        id: hover
+                        id: cardHover
                     }
 
                     Timer {
@@ -132,173 +117,166 @@ PanelWindow {
                         }
                     }
 
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: card.actionable
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Notifs.invokeDefault(slot.modelData)
+                    }
+
                     Row {
-                        id: inner
+                        id: cardContent
                         x: 14
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 10
+                        y: 12
+                        width: parent.width - 28
+                        spacing: 12
 
                         Item {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 15
-                            height: 15
+                            id: iconSlot
+                            width: 28
+                            height: 28
 
                             Image {
                                 id: appIcon
                                 anchors.fill: parent
                                 source: Notifs.iconSource(slot.modelData)
-                                sourceSize: Qt.size(15, 15)
+                                sourceSize: Qt.size(28, 28)
                                 fillMode: Image.PreserveAspectFit
                                 asynchronous: true
-                                // source is a url, so a strict compare against
-                                // "" never matches; readiness also covers icon
-                                // names that fail to resolve.
                                 visible: status === Image.Ready
                             }
 
                             Text {
                                 anchors.centerIn: parent
                                 visible: !appIcon.visible
-                                text: card.critical ? "" : ""
+                                text: card.critical ? ""
+                                    : slot.modelData.webOrigin ? "" : ""
                                 font.family: Theme.fontIcon
-                                font.pixelSize: 12
+                                font.pixelSize: 18
                                 color: card.critical ? Theme.redText : Theme.accent
                             }
                         }
 
-                        // ---- one-liner: app · body · time -----------------
-                        Text {
-                            id: nameText
-                            visible: !card.critical
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: slot.modelData.appName || "Notification"
-                            font.family: Theme.fontSans
-                            font.pixelSize: 12
-                            font.weight: 600
-                            color: Theme.textHi
-                        }
-
-                        Text {
-                            id: lineText
-                            visible: !card.critical
-                            anchors.verticalCenter: parent.verticalCenter
-                            readonly property real chrome: 28 + 15 + nameText.implicitWidth
-                                + timeText.implicitWidth + inner.spacing * 3
-                                + (card.hovered ? actionsRow.implicitWidth + closeText.implicitWidth + inner.spacing * (card.actions.length > 0 ? 2 : 1) : 0)
-                            width: Math.max(40, Math.min(implicitWidth, toastColumn.width - chrome))
-                            text: slot.modelData.summary || card.bodyText
-                            font.family: Theme.fontSans
-                            font.pixelSize: 12
-                            color: Theme.icon
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            id: timeText
-                            visible: !card.critical
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Notifs.timeAgo(slot.modelData.arrived, root.now)
-                            font.family: Theme.fontMono
-                            font.pixelSize: 10
-                            font.weight: 500
-                            color: Theme.textDim
-                        }
-
-                        // ---- critical: two lines, persists ----------------
                         Column {
-                            visible: card.critical
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 1
+                            id: copy
+                            width: cardContent.width - iconSlot.width - cardContent.spacing
+                            spacing: 5
 
-                            Text {
-                                width: Math.min(implicitWidth, 300)
-                                text: slot.modelData.summary || slot.modelData.appName || "Notification"
-                                font.family: Theme.fontSans
-                                font.pixelSize: 12
-                                font.weight: 600
-                                color: Theme.textHi
-                                elide: Text.ElideRight
+                            Item {
+                                width: parent.width
+                                height: Math.max(headerText.implicitHeight, trailing.height)
+
+                                Text {
+                                    id: headerText
+                                    anchors.left: parent.left
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - trailing.width - 8
+                                    text: slot.modelData.displayAppName
+                                        + (slot.modelData.displaySummary
+                                            ? " · " + slot.modelData.displaySummary : "")
+                                    font.family: Theme.fontSans
+                                    font.pixelSize: 12
+                                    font.weight: 600
+                                    color: Theme.textHi
+                                    elide: Text.ElideRight
+                                }
+
+                                Item {
+                                    id: trailing
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 32
+                                    height: 18
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: !card.hovered
+                                        text: Notifs.timeAgo(slot.modelData.arrived, root.now)
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: 10
+                                        font.weight: 500
+                                        color: Theme.textDim
+                                    }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: card.hovered
+                                        text: "×"
+                                        font.family: Theme.fontSans
+                                        font.pixelSize: 17
+                                        color: closeMouse.containsMouse ? Theme.textHi : Theme.textLow
+
+                                        MouseArea {
+                                            id: closeMouse
+                                            anchors.fill: parent
+                                            anchors.margins: -6
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Notifs.dismiss(slot.modelData)
+                                        }
+                                    }
+                                }
                             }
 
                             Text {
                                 visible: text !== ""
-                                width: Math.min(implicitWidth, 300)
-                                text: card.bodyText
+                                width: parent.width
+                                text: slot.modelData.displayBody || ""
                                 font.family: Theme.fontSans
-                                font.pixelSize: 11
-                                color: Theme.icon
+                                font.pixelSize: 12
+                                color: card.critical ? Theme.textHi : Theme.icon
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
                                 elide: Text.ElideRight
+                                lineHeight: 1.15
                             }
-                        }
 
-                        Text {
-                            visible: card.critical
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "CRITICAL"
-                            font.family: Theme.fontMono
-                            font.pixelSize: 9
-                            font.weight: 600
-                            font.letterSpacing: 0.8
-                            color: Theme.redText
-                        }
+                            Row {
+                                id: actionsRow
+                                visible: card.hovered && card.actions.length > 0
+                                spacing: 6
 
-                        // ---- hover extras: action pills + close -----------
-                        Row {
-                            id: actionsRow
-                            visible: card.hovered && card.actions.length > 0
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 6
+                                Repeater {
+                                    model: card.actions
 
-                            Repeater {
-                                model: card.actions
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        required property int index
 
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    required property int index
+                                        height: 24
+                                        width: Math.min(actionText.implicitWidth + 20, 160)
+                                        radius: 7
+                                        color: index === 0
+                                            ? (actionMouse.containsMouse
+                                                ? Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.22)
+                                                : Theme.accentBg)
+                                            : (actionMouse.containsMouse
+                                                ? Theme.hoverFillStrong : Qt.rgba(1, 1, 1, 0.07))
+                                        readonly property color fg: index === 0
+                                            ? Theme.accent : Theme.icon
 
-                                    height: 22
-                                    width: actionText.implicitWidth + 20
-                                    radius: 7
-                                    color: index === 0
-                                        ? (actionMouse.containsMouse ? Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.22) : Theme.accentBg)
-                                        : (actionMouse.containsMouse ? Theme.hoverFillStrong : Qt.rgba(1, 1, 1, 0.07))
-                                    readonly property color fg: index === 0 ? Theme.accent : Theme.icon
+                                        Text {
+                                            id: actionText
+                                            anchors.centerIn: parent
+                                            width: parent.width - 16
+                                            text: parent.modelData.text
+                                            font.family: Theme.fontSans
+                                            font.pixelSize: 11
+                                            font.weight: 500
+                                            color: parent.fg
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                        }
 
-                                    Text {
-                                        id: actionText
-                                        anchors.centerIn: parent
-                                        text: parent.modelData.text
-                                        font.family: Theme.fontSans
-                                        font.pixelSize: 11
-                                        font.weight: 500
-                                        color: parent.fg
-                                    }
-
-                                    MouseArea {
-                                        id: actionMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: Notifs.invoke(slot.modelData, parent.modelData)
+                                        MouseArea {
+                                            id: actionMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Notifs.invoke(slot.modelData, parent.modelData)
+                                        }
                                     }
                                 }
-                            }
-                        }
-
-                        Text {
-                            id: closeText
-                            visible: card.hovered
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "×"
-                            font.family: Theme.fontSans
-                            font.pixelSize: 13
-                            color: closeMouse.containsMouse ? Theme.textHi : Theme.textLow
-
-                            MouseArea {
-                                id: closeMouse
-                                anchors.fill: parent
-                                anchors.margins: -5
-                                hoverEnabled: true
-                                onClicked: Notifs.dismiss(slot.modelData)
                             }
                         }
                     }
