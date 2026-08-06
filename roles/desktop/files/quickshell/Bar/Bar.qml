@@ -15,7 +15,8 @@ PanelWindow {
     id: barWindow
 
     anchors {
-        top: true
+        top: Settings.position === "top"
+        bottom: Settings.position === "bottom"
         left: true
         right: true
     }
@@ -23,13 +24,74 @@ PanelWindow {
         : width >= Theme.breakpointMedium ? 1 : 0
     readonly property int closedHeight: Theme.barTopMargin + Theme.barHeight + 34
     implicitHeight: closedHeight
+    // The bar edge's y inside this window: hugging the anchored screen edge
+    // with the configured gap on either position.
+    readonly property real barY: Settings.position === "top"
+        ? Theme.barTopMargin : height - Theme.barTopMargin - Theme.barHeight
     // Balanced spacing: with Hyprland's gaps_out (10) on top of the
-    // exclusive zone, windows end up exactly barTopMargin (8) below the
-    // bar's bottom edge — the same gap as above the bar.
-    exclusiveZone: Theme.barTopMargin + Theme.barHeight - 2
+    // exclusive zone, windows end up exactly barTopMargin below the bar's
+    // inner edge — the same gap as outside it. The -2 is tuned for the
+    // floating gap; attached bars reserve their exact height. Auto-hide and
+    // "reserve space" off both drop the zone entirely.
+    exclusiveZone: Settings.autoHide || !Settings.exclusive ? 0
+        : Theme.barTopMargin + Theme.barHeight - (Settings.floating ? 2 : 0)
     color: "transparent"
 
-    mask: Region { item: barStrip }
+    // ---- auto-hide ----------------------------------------------------
+    // The window stays mapped; only the content slides away and the input
+    // mask shrinks to a thin reveal strip at the screen edge, so clicks
+    // pass through the vacated area (design v2 Auto-hide).
+    property bool revealed: true
+    readonly property bool hidden: Settings.autoHide && !revealed
+        && !Popouts.open && !Settings.open
+    property real hideShift: hidden
+        ? (Settings.position === "top" ? -1 : 1) * (Theme.barTopMargin + Theme.barHeight + 12)
+        : 0
+
+    Behavior on hideShift {
+        NumberAnimation {
+            duration: 200
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Timer {
+        id: hideTimer
+        interval: 1600
+        onTriggered: {
+            if (Settings.autoHide && !barHover.hovered)
+                barWindow.revealed = false;
+        }
+    }
+
+    Connections {
+        target: Settings
+
+        function onAutoHideChanged() {
+            if (Settings.autoHide) {
+                hideTimer.restart();
+            } else {
+                hideTimer.stop();
+                barWindow.revealed = true;
+            }
+        }
+
+        function onOpenChanged() {
+            if (!Settings.open && Settings.autoHide)
+                hideTimer.restart();
+        }
+    }
+
+    Connections {
+        target: Popouts
+
+        function onOpenChanged() {
+            if (!Popouts.open && Settings.autoHide)
+                hideTimer.restart();
+        }
+    }
+
+    mask: Region { item: barWindow.hidden ? revealStrip : barStrip }
 
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     WlrLayershell.namespace: "qs-bar"
@@ -99,6 +161,9 @@ PanelWindow {
     // Published in window coordinates for the independent popout layer.
     // Keeping the menu in another Wayland surface prevents its Loader and
     // height changes from resizing/remapping the menubar itself.
+    // The y here is deliberately position-independent: it encodes the
+    // island's distance from the bar's fused screen edge, which is what the
+    // popout geometry consumes — IslandPopout mirrors itself for bottom bars.
     readonly property rect leftIslandRect: Qt.rect(
         Theme.barSideMargin, Theme.barTopMargin,
         leftCluster.width, leftCluster.height)
@@ -117,20 +182,98 @@ PanelWindow {
         return Qt.rect(p.x, p.y, item.width, item.height);
     }
 
+    // Panel-name → module item, maintained by the settings-driven module
+    // components as their Loaders create and destroy them. Read only from
+    // imperative code paths, so plain mutation without notify is fine.
+    property var panelAnchors: ({})
+
+    function registerPanel(name, item) {
+        panelAnchors[name] = item;
+    }
+
+    function unregisterPanel(name, item) {
+        if (panelAnchors[name] === item)
+            delete panelAnchors[name];
+    }
+
+    // The design's standing auto-rules: Media only while playing, Bluetooth
+    // only when connected, Battery only on laptops (design v2 Modules page).
+    function autoRule(id) {
+        switch (id) {
+        case "media": return mediaVisible;
+        case "bt": return btConnected;
+        case "batt": return battery !== null && battery.isLaptopBattery;
+        default: return true;
+        }
+    }
+
+    function anyVisibleBefore(list, index) {
+        for (let i = 0; i < index; i++) {
+            if (list[i].on && autoRule(list[i].id))
+                return true;
+        }
+        return false;
+    }
+
+    function anyVisibleAfter(list, index) {
+        for (let i = index + 1; i < list.length; i++) {
+            if (list[i].on && autoRule(list[i].id))
+                return true;
+        }
+        return false;
+    }
+
     function moduleForPanel(name) {
-        switch (name) {
-        case "media": return mediaChip;
-        case "calendar": return clockChip;
-        case "weather": return weatherChip;
-        case "t3code": return t3Chip;
-        case "usage": return usageChips;
-        case "audio": return audioIcon;
-        case "wifi": return wifiIcon;
-        case "bluetooth": return btIcon.visible ? btIcon : null;
-        case "battery": return batteryIcon.visible ? batteryIcon : null;
-        case "notifications": return bellModule;
-        case "control": return controlIcon;
-        default: return null;
+        if (name === "control")
+            return controlIcon;
+        const item = panelAnchors[name];
+        return item && item.visible ? item : null;
+    }
+
+    // A module disabled from the settings window takes its open popout with
+    // it; callLater lets the Repeater rebuild settle first.
+    Connections {
+        target: Settings
+
+        function onModsChanged() {
+            if (!Popouts.open)
+                return;
+            Qt.callLater(() => {
+                if (Popouts.open && !barWindow.moduleForPanel(Popouts.currentName))
+                    Popouts.close();
+            });
+        }
+    }
+
+    readonly property var moduleComponents: ({
+        ws: cmpWs, media: cmpMedia, clock: cmpClock, weather: cmpWeather,
+        t3: cmpT3, vol: cmpVol, wifi: cmpWifi, batt: cmpBatt, bell: cmpBell, bt: cmpBt
+    })
+
+    // One slot per configured module: loads the module's component when the
+    // module is enabled and its auto-rule allows it, and hands composites
+    // their island plus divider context.
+    component ModuleSlot: Loader {
+        id: slot
+
+        required property var modelData
+        required property int index
+        property string col: "left"
+        property var colList: []
+
+        anchors.verticalCenter: parent.verticalCenter
+        active: modelData.on && barWindow.autoRule(modelData.id)
+        visible: active
+        sourceComponent: barWindow.moduleComponents[slot.modelData.id]
+        onLoaded: {
+            if ("isle" in item)
+                item.isle = slot.col;
+            if ("dividerBefore" in item)
+                item.dividerBefore = Qt.binding(() =>
+                    barWindow.anyVisibleBefore(slot.colList, slot.index));
+            if ("dividerAfter" in item)
+                item.dividerAfter = Qt.binding(() =>
+                    barWindow.anyVisibleAfter(slot.colList, slot.index));
         }
     }
 
@@ -208,19 +351,51 @@ PanelWindow {
     Item {
         id: barStrip
         x: 0
-        y: 0
+        y: Settings.position === "top" ? 0 : barWindow.height - height
         width: parent.width
         height: Theme.barTopMargin + Theme.barHeight + 4
+    }
+
+    // Hover target while hidden: a thin strip hugging the bar's screen edge.
+    Item {
+        id: revealStrip
+        x: 0
+        y: Settings.position === "top" ? 0 : barWindow.height - height
+        width: parent.width
+        height: 8
+    }
+
+    // Tracks the pointer over whatever the window's input mask admits.
+    Item {
+        anchors.fill: parent
+        z: 100
+
+        HoverHandler {
+            id: barHover
+
+            onHoveredChanged: {
+                if (hovered) {
+                    hideTimer.stop();
+                    barWindow.revealed = true;
+                } else if (Settings.autoHide) {
+                    hideTimer.restart();
+                }
+            }
+        }
     }
 
     // One continuous menubar slab behind all three sections, rendered
     // beneath the popout surfaces so its shadow never falls on an open
     // panel.
     Item {
-        anchors.fill: parent
-        anchors.topMargin: Theme.barTopMargin
-        anchors.leftMargin: Theme.barSideMargin
-        anchors.rightMargin: Theme.barSideMargin
+        x: Theme.barSideMargin
+        y: barWindow.barY
+        width: parent.width - 2 * Theme.barSideMargin
+        height: Theme.barHeight
+
+        transform: Translate {
+            y: barWindow.hideShift
+        }
 
         RectangularShadow {
             anchors.fill: barSlab
@@ -238,15 +413,28 @@ PanelWindow {
             radius: Theme.clusterRadius
             color: Theme.barBg
         }
+
+        // Right-click anywhere on the slab opens Shell settings (design v2).
+        // Module mouse areas only accept the left button, so right-clicks
+        // fall through the layout layer to this area.
+        MouseArea {
+            anchors.fill: barSlab
+            acceptedButtons: Qt.RightButton
+            onClicked: Settings.toggleWindow()
+        }
     }
 
     // ---- layout ------------------------------------------------------
 
     Item {
-        anchors.fill: parent
-        anchors.topMargin: Theme.barTopMargin
-        anchors.leftMargin: Theme.barSideMargin
-        anchors.rightMargin: Theme.barSideMargin
+        x: Theme.barSideMargin
+        y: barWindow.barY
+        width: parent.width - 2 * Theme.barSideMargin
+        height: Theme.barHeight
+
+        transform: Translate {
+            y: barWindow.hideShift
+        }
 
         // LEFT — workspaces + media
         Cluster {
@@ -255,11 +443,35 @@ PanelWindow {
             padding: 5
             spacing: 2
 
-            Workspaces {}
-
-            Divider {
-                visible: barWindow.mediaVisible
+            Repeater {
+                model: Settings.mods.left
+                delegate: ModuleSlot { col: "left"; colList: Settings.mods.left }
             }
+
+            Component {
+                id: cmpWs
+
+                Workspaces {
+                    property string isle: "left"
+                }
+            }
+
+            Component {
+                id: cmpMedia
+
+                Row {
+                    id: mediaModule
+
+                    property string isle: "left"
+                    property bool dividerBefore: false
+                    spacing: 2
+
+                    Component.onCompleted: barWindow.registerPanel("media", mediaChip)
+                    Component.onDestruction: barWindow.unregisterPanel("media", mediaChip)
+
+                    Divider {
+                        visible: mediaModule.dividerBefore
+                    }
 
             Rectangle {
                 id: mediaChip
@@ -305,9 +517,9 @@ PanelWindow {
                     id: mediaMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("media", "left", mediaChip)
+                    onEntered: barWindow.hoverOpen("media", mediaModule.isle, mediaChip)
                     onExited: barWindow.cancelHover("media")
-                    onClicked: barWindow.togglePopout("media", "left", mediaChip)
+                    onClicked: barWindow.togglePopout("media", mediaModule.isle, mediaChip)
                 }
 
                 BarTooltip {
@@ -315,6 +527,8 @@ PanelWindow {
                     text: barWindow.player ? barWindow.player.trackTitle : "Media"
                     y: parent.height + 6
                     x: (parent.width - width) / 2
+                }
+            }
                 }
             }
         }
@@ -326,8 +540,20 @@ PanelWindow {
             padding: 5
             spacing: 3
 
+            Repeater {
+                model: Settings.mods.center
+                delegate: ModuleSlot { col: "center"; colList: Settings.mods.center }
+            }
+
+            Component {
+                id: cmpClock
+
             Rectangle {
                 id: clockChip
+                property string isle: "center"
+
+                Component.onCompleted: barWindow.registerPanel("calendar", clockChip)
+                Component.onDestruction: barWindow.unregisterPanel("calendar", clockChip)
                 anchors.verticalCenter: parent.verticalCenter
                 implicitWidth: clockRow.implicitWidth + 14
                 implicitHeight: Theme.chipHeight
@@ -341,7 +567,7 @@ PanelWindow {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Qt.formatDateTime(clock.date, "HH:mm")
+                        text: Qt.formatDateTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.barTextSize
                         font.weight: Theme.weightSemibold
@@ -363,9 +589,9 @@ PanelWindow {
                     id: clockMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("calendar", "center", clockChip)
+                    onEntered: barWindow.hoverOpen("calendar", clockChip.isle, clockChip)
                     onExited: barWindow.cancelHover("calendar")
-                    onClicked: barWindow.togglePopout("calendar", "center", clockChip)
+                    onClicked: barWindow.togglePopout("calendar", clockChip.isle, clockChip)
                 }
 
                 BarTooltip {
@@ -375,10 +601,25 @@ PanelWindow {
                     x: (parent.width - width) / 2
                 }
             }
-
-            Divider {
-                visible: Weather.ready
             }
+
+            Component {
+                id: cmpWeather
+
+                Row {
+                    id: weatherModule
+
+                    property string isle: "center"
+                    property bool dividerBefore: false
+                    spacing: 3
+                    visible: Weather.ready
+
+                    Component.onCompleted: barWindow.registerPanel("weather", weatherChip)
+                    Component.onDestruction: barWindow.unregisterPanel("weather", weatherChip)
+
+                    Divider {
+                        visible: weatherModule.dividerBefore && Weather.ready
+                    }
 
             // Quiet weather chip next to the clock (design 1g).
             Rectangle {
@@ -427,9 +668,9 @@ PanelWindow {
                     id: weatherMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("weather", "center", weatherChip)
+                    onEntered: barWindow.hoverOpen("weather", weatherModule.isle, weatherChip)
                     onExited: barWindow.cancelHover("weather")
-                    onClicked: barWindow.togglePopout("weather", "center", weatherChip)
+                    onClicked: barWindow.togglePopout("weather", weatherModule.isle, weatherChip)
                 }
 
                 BarTooltip {
@@ -437,6 +678,8 @@ PanelWindow {
                     text: Weather.place + " · " + Weather.condition
                     y: parent.height + 6
                     x: (parent.width - width) / 2
+                }
+            }
                 }
             }
         }
@@ -448,12 +691,43 @@ PanelWindow {
             padding: 6
             spacing: 1
 
+            Repeater {
+                model: Settings.mods.right
+                delegate: ModuleSlot { col: "right"; colList: Settings.mods.right }
+            }
+
+            // T3 + model usage travel as one module: the chips share the AI
+            // corner and their internal divider (design v2 "T3 usage chips").
+            Component {
+                id: cmpT3
+
+                Row {
+                    id: t3Row
+
+                    property string isle: "right"
+                    property bool dividerBefore: false
+                    property bool dividerAfter: false
+                    spacing: 1
+
+                    Component.onCompleted: {
+                        barWindow.registerPanel("t3code", t3Chip);
+                        barWindow.registerPanel("usage", usageChips);
+                    }
+                    Component.onDestruction: {
+                        barWindow.unregisterPanel("t3code", t3Chip);
+                        barWindow.unregisterPanel("usage", usageChips);
+                    }
+
+                    Divider {
+                        visible: t3Row.dividerBefore
+                    }
+
             T3Chip {
                 id: t3Chip
                 displayMode: barWindow.layoutMode
                 held: barWindow.popoutOpen("t3code")
-                onClicked: barWindow.togglePopout("t3code", "right", t3Chip)
-                onEntered: barWindow.hoverOpen("t3code", "right", t3Chip)
+                onClicked: barWindow.togglePopout("t3code", t3Row.isle, t3Chip)
+                onEntered: barWindow.hoverOpen("t3code", t3Row.isle, t3Chip)
                 onExited: barWindow.cancelHover("t3code")
             }
 
@@ -471,7 +745,7 @@ PanelWindow {
                         Popouts.close();
                     } else {
                         Usage.selected = key;
-                        Popouts.openPanel("usage", "right", barWindow.anchorOf(usageChips));
+                        Popouts.openPanel("usage", t3Row.isle, barWindow.anchorOf(usageChips));
                     }
                 }
                 onChipEntered: key => {
@@ -479,9 +753,15 @@ PanelWindow {
                     // shows that provider's usage view (design 1d).
                     if (Popouts.open)
                         Usage.selected = key;
-                    barWindow.hoverOpen("usage", "right", usageChips);
+                    barWindow.hoverOpen("usage", t3Row.isle, usageChips);
                 }
                 onChipExited: barWindow.cancelHover("usage")
+            }
+
+                    Divider {
+                        visible: t3Row.dividerAfter
+                    }
+                }
             }
 
             Divider {}
@@ -497,15 +777,22 @@ PanelWindow {
                 onClicked: SysInfo.idleInhibited = !SysInfo.idleInhibited
             }
 
+            Component {
+                id: cmpVol
+
             BarIcon {
                 id: audioIcon
+                property string isle: "right"
+
+                Component.onCompleted: barWindow.registerPanel("audio", audioIcon)
+                Component.onDestruction: barWindow.unregisterPanel("audio", audioIcon)
                 glyph: barWindow.sinkMuted || barWindow.volume === 0 ? "" : barWindow.volume < 50 ? "" : ""
                 label: barWindow.layoutMode === 0 ? "" : barWindow.volume + "%"
                 held: barWindow.popoutOpen("audio")
                 alert: barWindow.sinkMuted
                 tooltip: "Audio · wheel volume · middle mute"
                 tooltipAlign: 1
-                onClicked: barWindow.togglePopout("audio", "right", audioIcon)
+                onClicked: barWindow.togglePopout("audio", audioIcon.isle, audioIcon)
                 onMiddleClicked: {
                     if (barWindow.sink && barWindow.sink.audio)
                         barWindow.sink.audio.muted = !barWindow.sink.audio.muted;
@@ -514,36 +801,63 @@ PanelWindow {
                     if (barWindow.sink && barWindow.sink.audio)
                         barWindow.sink.audio.volume = Math.max(0, Math.min(1, barWindow.sink.audio.volume + steps * 0.05));
                 }
-                onEntered: barWindow.hoverOpen("audio", "right", audioIcon)
+                onEntered: barWindow.hoverOpen("audio", audioIcon.isle, audioIcon)
                 onExited: barWindow.cancelHover("audio")
             }
 
+            }
+
+            Component {
+                id: cmpWifi
+
             BarIcon {
                 id: wifiIcon
+                property string isle: "right"
+
+                Component.onCompleted: barWindow.registerPanel("wifi", wifiIcon)
+                Component.onDestruction: barWindow.unregisterPanel("wifi", wifiIcon)
                 glyph: ""
                 held: barWindow.popoutOpen("wifi")
                 idleColor: Networking.wifiEnabled ? (barWindow.wifiActive !== null ? Theme.icon : Theme.textLow) : Theme.textFaint
                 tooltip: barWindow.wifiActive ? "Wi-Fi · " + barWindow.wifiActive.name : "Wi-Fi"
                 tooltipAlign: 1
-                onClicked: barWindow.togglePopout("wifi", "right", wifiIcon)
-                onEntered: barWindow.hoverOpen("wifi", "right", wifiIcon)
+                onClicked: barWindow.togglePopout("wifi", wifiIcon.isle, wifiIcon)
+                onEntered: barWindow.hoverOpen("wifi", wifiIcon.isle, wifiIcon)
                 onExited: barWindow.cancelHover("wifi")
             }
 
+            }
+
+            Component {
+                id: cmpBt
+
             BarIcon {
                 id: btIcon
+                property string isle: "right"
+
+                Component.onCompleted: barWindow.registerPanel("bluetooth", btIcon)
+                Component.onDestruction: barWindow.unregisterPanel("bluetooth", btIcon)
                 visible: barWindow.btConnected
                 glyph: ""
                 held: barWindow.popoutOpen("bluetooth")
                 tooltip: "Bluetooth connected"
                 tooltipAlign: 1
-                onClicked: barWindow.togglePopout("bluetooth", "right", btIcon)
-                onEntered: barWindow.hoverOpen("bluetooth", "right", btIcon)
+                onClicked: barWindow.togglePopout("bluetooth", btIcon.isle, btIcon)
+                onEntered: barWindow.hoverOpen("bluetooth", btIcon.isle, btIcon)
                 onExited: barWindow.cancelHover("bluetooth")
             }
 
+            }
+
+            Component {
+                id: cmpBatt
+
             BarIcon {
                 id: batteryIcon
+                property string isle: "right"
+
+                Component.onCompleted: barWindow.registerPanel("battery", batteryIcon)
+                Component.onDestruction: barWindow.unregisterPanel("battery", batteryIcon)
                 visible: barWindow.battery !== null && barWindow.battery.isLaptopBattery
                 // md-battery_high / md-battery_charging_high. The charging
                 // glyph carries its own bolt, so nothing is overlaid; it is
@@ -558,13 +872,22 @@ PanelWindow {
                 idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon
                 tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%" + (barWindow.charging ? " · charging" : "")
                 tooltipAlign: 1
-                onClicked: barWindow.togglePopout("battery", "right", batteryIcon)
-                onEntered: barWindow.hoverOpen("battery", "right", batteryIcon)
+                onClicked: barWindow.togglePopout("battery", batteryIcon.isle, batteryIcon)
+                onEntered: barWindow.hoverOpen("battery", batteryIcon.isle, batteryIcon)
                 onExited: barWindow.cancelHover("battery")
             }
 
+            }
+
+            Component {
+                id: cmpBell
+
             Item {
                 id: bellModule
+                property string isle: "right"
+
+                Component.onCompleted: barWindow.registerPanel("notifications", bellModule)
+                Component.onDestruction: barWindow.unregisterPanel("notifications", bellModule)
                 width: bellIcon.width
                 height: Theme.barHeight
                 anchors.verticalCenter: parent.verticalCenter
@@ -575,8 +898,8 @@ PanelWindow {
                     tooltip: Notifs.count + (Notifs.count === 1 ? " notification" : " notifications")
                     tooltipAlign: 1
                     held: barWindow.popoutOpen("notifications")
-                    onClicked: barWindow.togglePopout("notifications", "right", bellIcon)
-                    onEntered: barWindow.hoverOpen("notifications", "right", bellIcon)
+                    onClicked: barWindow.togglePopout("notifications", bellModule.isle, bellIcon)
+                    onEntered: barWindow.hoverOpen("notifications", bellModule.isle, bellIcon)
                     onExited: barWindow.cancelHover("notifications")
                 }
 
@@ -601,7 +924,7 @@ PanelWindow {
                 }
             }
 
-            Divider {}
+            }
 
             BarIcon {
                 id: controlIcon

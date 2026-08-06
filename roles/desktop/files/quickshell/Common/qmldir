@@ -9,3 +9,4 @@ singleton SysInfo SysInfo.qml
 singleton Osd Osd.qml
 singleton Weather Weather.qml
 singleton Wallpaper Wallpaper.qml
+singleton Settings Settings.qml

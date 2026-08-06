@@ -99,11 +99,20 @@ ShellRoot {
 
             required property ShellScreen modelData
             readonly property bool onFocusedScreen: modelData !== null && modelData === Screens.focused
+            // "All" keeps today's follow-focus behavior; a pinned monitor
+            // holds the bar there. A pinned name that is not currently
+            // connected falls back to follow-focus so the bar never vanishes.
+            readonly property bool barEnabled: {
+                if (Settings.monitor === "All"
+                    || !Quickshell.screens.some(s => s.name === Settings.monitor))
+                    return onFocusedScreen;
+                return modelData !== null && modelData.name === Settings.monitor;
+            }
 
             Bar {
                 id: bar
                 screen: barScope.modelData
-                visible: barScope.onFocusedScreen
+                visible: barScope.barEnabled
             }
 
             BarPopoutWindow {
@@ -114,10 +123,11 @@ ShellRoot {
     }
 
     LauncherWindow {}
+    SettingsWindow {}
     NotificationToasts {}
     OsdWindow {}
 
-    // Touch the singletons so notifications collect and usage polls from
-    // session start, not first popover open.
-    readonly property var _init: [Notifs.server, Usage.pollIntervalSecs]
+    // Touch the singletons so notifications collect, usage polls, and
+    // settings load from session start, not first popover open.
+    readonly property var _init: [Notifs.server, Usage.pollIntervalSecs, Settings.loaded]
 }

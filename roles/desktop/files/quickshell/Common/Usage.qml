@@ -13,7 +13,15 @@ Singleton {
             kimi: { name: "Kimi", title: "Kimi Code", brand: Theme.brandKimi, icon: "kimi", cmd: "kimi login" }
         })
 
-    readonly property int pollIntervalSecs: 300
+    readonly property int pollIntervalSecs: Settings.pollMax
+
+    Connections {
+        target: Settings
+
+        function onPollMaxChanged() {
+            root.refresh();
+        }
+    }
     property var data: ({})
     property bool loading: true
     property double updatedAt: 0

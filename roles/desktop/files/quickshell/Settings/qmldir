@@ -1,0 +1,18 @@
+# Sibling-type resolution inside Settings/ relies on this explicit index —
+# the engine's implicit directory scan proved unreliable for this directory.
+# Every Settings/*.qml type must be listed (settings.test.cjs enforces it).
+AppearancePage AppearancePage.qml
+BarLayoutPage BarLayoutPage.qml
+ModulesPage ModulesPage.qml
+PickerRow PickerRow.qml
+PillRow PillRow.qml
+PreviewStrip PreviewStrip.qml
+SectionHeader SectionHeader.qml
+SettingsSlider SettingsSlider.qml
+SettingsSwitch SettingsSwitch.qml
+SettingsView SettingsView.qml
+SliderRow SliderRow.qml
+SwitchRow SwitchRow.qml
+SystemPage SystemPage.qml
+UndoChip UndoChip.qml
+WallpaperPage WallpaperPage.qml

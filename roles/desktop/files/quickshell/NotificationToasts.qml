@@ -17,7 +17,7 @@ PanelWindow {
         top: true
         right: true
     }
-    margins.top: Theme.barTopMargin + Theme.barHeight
+    margins.top: Settings.position === "top" ? Theme.barTopMargin + Theme.barHeight : 8
 
     readonly property int shadowPad: 36
     readonly property int cardWidth: 420
@@ -248,7 +248,7 @@ PanelWindow {
                                         radius: 7
                                         color: index === 0
                                             ? (actionMouse.containsMouse
-                                                ? Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.22)
+                                                ? Theme.accentAlpha(0.22)
                                                 : Theme.accentBg)
                                             : (actionMouse.containsMouse
                                                 ? Theme.hoverFillStrong : Qt.rgba(1, 1, 1, 0.07))

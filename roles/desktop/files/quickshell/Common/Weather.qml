@@ -32,6 +32,15 @@ Singleton {
         + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,is_day"
         + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
         + "&timezone=auto&forecast_days=5"
+        + (Settings.unit === "f" ? "&temperature_unit=fahrenheit" : "")
+
+    Connections {
+        target: Settings
+
+        function onUnitChanged() {
+            root.refresh();
+        }
+    }
 
     function describe(code) {
         if (code === 0)

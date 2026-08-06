@@ -56,6 +56,12 @@ Item {
     property real renderedBodyH: 0
     property real openProgress: 0
 
+    // Island rect y values are position-independent distances from the
+    // fused screen edge (see Bar.qml). All geometry below is computed in
+    // that top-bar frame; for a bottom bar only the SURFACE is mirrored
+    // vertically while content and input region get direct flipped math.
+    readonly property bool bottomBar: Settings.position === "bottom"
+
     readonly property rect activeIslandRect: Popouts.island === "left" ? leftIslandRect
         : Popouts.island === "center" ? centerIslandRect : rightIslandRect
     readonly property rect effectiveAnchor: Popouts.anchorRect.width > 0
@@ -386,6 +392,17 @@ Item {
             easing.bezierCurve: host.closing ? Theme.popoutExitCurve : Theme.popoutEnterCurve
         }
     }
+    // Everything inside this frame is authored for a top bar and mirrored
+    // wholesale for a bottom bar; text-free geometry only.
+    Item {
+        id: mirrorFrame
+        anchors.fill: parent
+
+        transform: Scale {
+            yScale: host.bottomBar ? -1 : 1
+            origin.y: host.height / 2
+        }
+
     // The rectangular body owns the broad soft shadow. The connector is
     // opaque and overlaps both the body and the bar tab, so no seam or shadow
     // band remains visible at either join.
@@ -406,7 +423,8 @@ Item {
             radius: host.effectiveRadius
             blur: 48
             spread: 0
-            offset.y: 16
+            // Mirrored for bottom bars, so it lands downward either way.
+            offset.y: host.bottomBar ? -16 : 16
             color: Qt.rgba(0, 0, 0, 0.5)
         }
     }
@@ -466,23 +484,25 @@ Item {
             }
         }
     }
+    }
 
     // The layer-shell input mask can be rectangular; visual clipping remains
     // the curved shape above. Keeping the region tight avoids stealing input
-    // from the desktop around the panel.
+    // from the desktop around the panel. Flipped directly rather than via
+    // the mirror frame — mask regions must come from untransformed geometry.
     Item {
         id: hitRegion
         x: Math.min(host.bridgeLeft, host.renderedBodyX)
-        y: host.bridgeY
+        y: host.bottomBar ? host.height - host.bodyBottom : host.bridgeY
         width: Math.max(host.bridgeRight, host.bodyRight) - x
-        height: Math.max(0, host.bodyBottom - y)
+        height: Math.max(0, host.bodyBottom - host.bridgeY)
         visible: host.presented && height > 0.5
     }
 
     Item {
         id: contentClip
         x: host.renderedBodyX
-        y: host.bodyTop
+        y: host.bottomBar ? host.height - host.bodyTop - height : host.bodyTop
         width: Math.max(1, host.renderedBodyW)
         height: Math.max(0, host.renderedBodyH)
         clip: true
@@ -498,7 +518,9 @@ Item {
                 active: host.slotAName !== ""
                 source: active ? host.sources[host.slotAName] : ""
                 x: (parent.width - implicitWidth) / 2
-                y: 0
+                // Content pins to the fused edge, so growth reveals it from
+                // the bar on either position.
+                y: host.bottomBar ? parent.height - implicitHeight : 0
                 opacity: 0
                 enabled: host.frontSlot === 0 && Popouts.open
                 focus: enabled
@@ -519,7 +541,7 @@ Item {
                 active: host.slotBName !== ""
                 source: active ? host.sources[host.slotBName] : ""
                 x: (parent.width - implicitWidth) / 2
-                y: 0
+                y: host.bottomBar ? parent.height - implicitHeight : 0
                 opacity: 0
                 enabled: host.frontSlot === 1 && Popouts.open
                 focus: enabled

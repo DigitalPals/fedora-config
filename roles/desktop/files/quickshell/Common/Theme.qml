@@ -31,7 +31,9 @@ Singleton {
     readonly property color dotDim: "#4a4e5c"
     readonly property color icon: "#a7adbd"
 
-    readonly property color accent: "#9ecbeb"
+    // Settings-driven: the accent (and its derived fills below) follows the
+    // Shell settings accent, which defaults to the original #9ecbeb.
+    readonly property color accent: Settings.effectiveAccent
     readonly property color accentFg: "#0e0f13"
     readonly property color red: "#e8837a"
     readonly property color redText: "#ffb3ab"
@@ -42,9 +44,15 @@ Singleton {
     readonly property color amberBg: Qt.rgba(211 / 255, 180 / 255, 126 / 255, 0.14)
     readonly property color amberBgSoft: Qt.rgba(211 / 255, 180 / 255, 126 / 255, 0.08)
     readonly property color amberBorder: Qt.rgba(211 / 255, 180 / 255, 126 / 255, 0.35)
-    readonly property color accentBg: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.14)
-    readonly property color accentBgSoft: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.09)
+    readonly property color accentBg: Qt.rgba(accent.r, accent.g, accent.b, 0.14)
+    readonly property color accentBgSoft: Qt.rgba(accent.r, accent.g, accent.b, 0.09)
     readonly property color connected: "#79b88b"
+
+    // Accent at an arbitrary alpha, for the few fills outside the two
+    // standard tints. Tracks the settings accent like accentBg does.
+    function accentAlpha(alpha) {
+        return Qt.rgba(accent.r, accent.g, accent.b, alpha);
+    }
 
     // Weather icon tints — the one place the bar carries real color, so
     // they stay a shade below full saturation to sit inside the palette.
@@ -61,9 +69,13 @@ Singleton {
     readonly property color brandCodex: "#4fb8a8"
     readonly property color brandKimi: "#4d6bfe"
 
-    // Typography
+    // Typography. fontMenu is settings-driven; the family strings live in
+    // SettingsHelpers.FONT_CHOICES so the picker and this token agree.
     readonly property string fontSans: "IBM Plex Sans"
-    readonly property string fontMenu: "OPPO Sans 4.0"
+    readonly property string fontMenu: {
+        const choice = Settings.fontChoices.find(f => f.id === Settings.font);
+        return choice ? choice.family : "OPPO Sans 4.0";
+    }
     readonly property string fontMono: "JetBrains Mono"
     readonly property string fontIcon: "JetBrainsMono Nerd Font"
 
@@ -95,11 +107,13 @@ Singleton {
     readonly property int barIconSize: 14
     readonly property var tabularNumberFeatures: ({ "tnum": 1 })
 
-    // Metrics
-    readonly property int barHeight: 30
-    readonly property int barTopMargin: 8
-    readonly property int barSideMargin: 12
-    readonly property int clusterRadius: 9
+    // Metrics. Bar geometry is settings-driven; the defaults reproduce the
+    // original literals (30 / 8 / 12 / 9). Attached (non-floating) bars sit
+    // edge-to-edge with square corners.
+    readonly property int barHeight: Settings.barHeight
+    readonly property int barTopMargin: Settings.floating ? Settings.gap : 0
+    readonly property int barSideMargin: Settings.floating ? Settings.gap + 4 : 0
+    readonly property int clusterRadius: Settings.floating ? Settings.barRadius : 0
     readonly property int chipRadius: 6
     readonly property int chipHeight: 24
     readonly property int tooltipHeight: 26

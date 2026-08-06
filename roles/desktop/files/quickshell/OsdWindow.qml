@@ -15,11 +15,17 @@ PanelWindow {
     // Stay mapped through the fade-out; unmap once the pill is gone.
     visible: Osd.active || pill.opacity > 0.001
     screen: Screens.focused
+    // Placement follows Shell settings; when pill and bar share an edge the
+    // margin clears the bar zone instead of hugging the screen edge.
+    readonly property bool atTop: Settings.osd === "top"
+    readonly property int barClearance: Theme.barTopMargin + Theme.barHeight + 12
     anchors {
-        bottom: true
+        top: atTop
+        bottom: !atTop
     }
     margins {
-        bottom: 12
+        top: atTop && Settings.position === "top" ? barClearance : 12
+        bottom: !atTop && Settings.position === "bottom" ? barClearance : 12
     }
     // Breathing room around the pill for the drop shadow and exit slide.
     readonly property int pad: 48
@@ -69,7 +75,7 @@ PanelWindow {
         id: pill
 
         x: root.pad
-        y: root.pad + (Osd.active ? 0 : 10)
+        y: root.pad + (Osd.active ? 0 : root.atTop ? -10 : 10)
         opacity: Osd.active ? 1 : 0
         implicitWidth: row.implicitWidth + 28
         implicitHeight: 40

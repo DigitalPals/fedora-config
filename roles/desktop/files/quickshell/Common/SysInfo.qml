@@ -36,8 +36,30 @@ Singleton {
     }
 
     Process {
-        command: ["hyprsunset", "--temperature", "4000"]
+        id: sunsetProc
+        command: ["hyprsunset", "--temperature", String(Settings.warmth)]
         running: root.nightLight
+    }
+
+    // Command changes are inert on a running process, so a warmth change
+    // restarts it — debounced so a slider drag doesn't churn processes.
+    Timer {
+        id: warmthRestart
+        interval: 300
+        onTriggered: {
+            if (root.nightLight) {
+                sunsetProc.running = false;
+                sunsetProc.running = true;
+            }
+        }
+    }
+
+    Connections {
+        target: Settings
+
+        function onWarmthChanged() {
+            warmthRestart.restart();
+        }
     }
 
     // Tailscale status

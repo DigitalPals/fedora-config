@@ -212,7 +212,7 @@ Column {
             radius: 10
             color: Theme.accentBgSoft
             border.width: 1
-            border.color: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.18)
+            border.color: Theme.accentAlpha(0.18)
         }
 
         Rectangle {
@@ -834,7 +834,7 @@ Column {
                     radius: 8
                     color: Theme.accentBgSoft
                     border.width: 1
-                    border.color: Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.3)
+                    border.color: Theme.accentAlpha(0.3)
 
                     Column {
                         id: planColumn

@@ -15,6 +15,13 @@ Item {
     z: 1000
     visible: ready && text !== "" && !Popouts.open
 
+    // Call sites place the tip 6px below their module (y: parent.height + 6);
+    // with a bottom bar this shifts it to 6px above instead.
+    transform: Translate {
+        y: Settings.position === "bottom" && root.parent
+            ? -(root.height + root.parent.height + 12) : 0
+    }
+
     onHoveredChanged: {
         if (hovered)
             delay.restart();

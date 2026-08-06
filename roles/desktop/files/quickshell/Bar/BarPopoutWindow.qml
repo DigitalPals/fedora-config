@@ -20,7 +20,8 @@ PanelWindow {
     // closing animation.
     visible: live && (Popouts.open || popout.presented)
     anchors {
-        top: true
+        top: Settings.position === "top"
+        bottom: Settings.position === "bottom"
         left: true
         right: true
     }

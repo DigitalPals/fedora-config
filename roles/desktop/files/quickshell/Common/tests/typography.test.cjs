@@ -58,21 +58,40 @@ test("semantic typography tokens retain the intended logical-pixel scale", () =>
 
 test("menu typography is OPPO Sans and retains compact macOS-like metrics", () => {
     assert.equal(stringToken("fontSans"), "IBM Plex Sans");
-    assert.equal(stringToken("fontMenu"), "OPPO Sans 4.0");
     assert.deepEqual([
-        intToken("barHeight"),
         intToken("chipHeight"),
         intToken("tooltipHeight"),
-        intToken("clusterRadius"),
         intToken("chipRadius"),
         intToken("barTextSize"),
         intToken("barIconSize"),
-    ], [30, 24, 26, 9, 6, 13, 14]);
+    ], [24, 26, 6, 13, 14]);
     assert.match(theme, /readonly property var tabularNumberFeatures:\s*\(\{\s*"tnum":\s*1\s*\}\)/);
 });
 
+test("settings-driven tokens default to the original menu metrics", () => {
+    // fontMenu / barHeight / clusterRadius moved from literals to Shell
+    // settings bindings; the defaults must still reproduce the design values
+    // and Theme must actually bind to Settings rather than re-hardcode.
+    const H = require("../SettingsHelpers.js");
+    const d = H.defaults();
+    assert.equal(d.barHeight, 30);
+    assert.equal(d.barRadius, 9);
+    assert.equal(d.gap, 8);
+    assert.equal(d.floating, true);
+    assert.equal(d.accent, "#9ecbeb");
+    const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
+    assert.equal(menuChoice.family, "OPPO Sans 4.0");
+
+    assert.match(theme, /readonly property int barHeight:\s*Settings\.barHeight/);
+    assert.match(theme, /readonly property int clusterRadius:\s*Settings\.floating\s*\?\s*Settings\.barRadius\s*:\s*0/);
+    assert.match(theme, /readonly property color accent:\s*Settings\.effectiveAccent/);
+    assert.match(theme, /Settings\.fontChoices/);
+    // Derived accent fills must track the dynamic accent, not the old literal.
+    assert.doesNotMatch(theme, /158 \/ 255/);
+});
+
 test("OPPO Sans is scoped to the bar and its popovers", () => {
-    for (const file of [...qmlFiles("Bar"), ...qmlFiles("Popovers")]) {
+    for (const file of [...qmlFiles("Bar"), ...qmlFiles("Popovers"), ...qmlFiles("Settings")]) {
         const source = fs.readFileSync(file, "utf8");
         const label = path.relative(shellDir, file);
         assert.doesNotMatch(source, /Theme\.fontSans/, `${label} bypasses Theme.fontMenu`);
@@ -101,7 +120,7 @@ test("all visible bar values use OPPO Sans with tabular figures", () => {
 });
 
 test("bar and popovers use semantic sizes with a twelve-pixel text floor", () => {
-    const files = [...qmlFiles("Bar"), ...qmlFiles("Popovers")];
+    const files = [...qmlFiles("Bar"), ...qmlFiles("Popovers"), ...qmlFiles("Settings")];
     const textTokens = [...theme.matchAll(/readonly property int (font\w+):\s*(\d+)/g)];
     assert.ok(textTokens.length > 0);
     for (const [, name, value] of textTokens)

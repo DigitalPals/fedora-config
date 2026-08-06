@@ -49,7 +49,7 @@ Surface {
         width: (root.width - 2 * root.padding - 12) / 3
         height: Theme.tileHeight
         radius: Theme.rowRadius
-        color: tile.on ? (tileMouse.containsMouse ? Qt.rgba(158 / 255, 203 / 255, 235 / 255, 0.14) : Theme.accentBgSoft)
+        color: tile.on ? (tileMouse.containsMouse ? Theme.accentBg : Theme.accentBgSoft)
              : (tileMouse.containsMouse ? Theme.hoverFill : Theme.cardFill)
 
         Column {
@@ -455,6 +455,30 @@ Surface {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: 4
+
+            // Shell settings gear (design v2) — opens the settings window,
+            // which closes this popout on its way in.
+            Rectangle {
+                width: 26
+                height: Theme.controlHeight
+                radius: 6
+                color: gearMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "" // gear
+                    font.family: Theme.fontIcon
+                    font.pixelSize: Theme.fontBody
+                    color: gearMouse.containsMouse ? Theme.textHi : Theme.textLow
+                }
+
+                MouseArea {
+                    id: gearMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: Settings.toggleWindow()
+                }
+            }
 
             Repeater {
                 model: [

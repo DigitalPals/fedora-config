@@ -181,6 +181,7 @@ if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyp
     pass 'Quickshell loaded its configuration without errors'
   fi
   check 'Quickshell launcher IPC responds' qs ipc call launcher close
+  check 'Quickshell settings IPC responds' qs ipc call settings close
   check 'portal service active' user_unit_active xdg-desktop-portal.service
   check 'Hyprland portal active' user_unit_active xdg-desktop-portal-hyprland.service
   check 'Quickshell notification service owns the desktop bus name' \
