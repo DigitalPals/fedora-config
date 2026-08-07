@@ -1136,7 +1136,7 @@ from the WP1.3 helper (today `Bar.qml:145–168`, `MediaPopover.qml:17–24`).
 
 ## Phase 3 — Panel registry and module resolution
 
-> **Phase complete** (`5a641dd`, `8a1801d`). Two corrections worth carrying
+> **Phase complete** (`5a641dd`, `7c8b8f7`). Two corrections worth carrying
 > forward: `missing-property` cannot drop until WP4.2/WP4.4 — all 14 are
 > dynamic-type accesses, not sibling-resolution failures — and Quickshell
 > does not watch `qmldir` files, so a qmldir edit needs a `.qml` touch to
