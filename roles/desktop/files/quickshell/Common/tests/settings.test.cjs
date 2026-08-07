@@ -210,13 +210,28 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const picker = read("Settings/PickerRow.qml");
     const system = read("Settings/SystemPage.qml");
 
-    assert.match(view, /preferredHeight:\s*620/);
+    assert.match(view, /preferredHeight:\s*640/);
     assert.match(page, /scrollGutter:\s*scrollbarVisible \? 8 : 0/);
     assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
     for (const row of [slider, picker])
         assert.match(row, /Settings\.font === "mono" \? 104 : 90/);
     assert.doesNotMatch(system, /resetArmed|Confirm reset/);
     assert.match(system, /onTriggered:\s*Settings\.resetAll\(\)/);
+});
+
+test("touchpad scroll speed defaults to Hyprland's factor and applies live", () => {
+    const settings = read("Common/Settings.qml");
+    const helpers = read("Common/SettingsHelpers.js");
+    const system = read("Settings/SystemPage.qml");
+    const input = fs.readFileSync(path.resolve(shellDir, "../input.lua"), "utf8");
+
+    assert.match(helpers, /scrollFactor:\s*1\.0/);
+    assert.match(helpers, /realIn\(parsed\.scrollFactor, 0\.2, 2\.0, 0\.1/);
+    assert.match(settings, /"input:touchpad:scroll_factor"/);
+    assert.match(system, /min:\s*0\.2[\s\S]*max:\s*2\.0[\s\S]*step:\s*0\.1/);
+    assert.match(input, /persisted_scroll_factor\(\)/);
+    assert.match(input, /"scrollFactor"%s\*:%s\*\(\[%d%\.\]\+\)/);
+    assert.doesNotMatch(input, /scroll_factor\s*=\s*0\.4/);
 });
 
 test("the settings store keeps its fixed literal state path", () => {

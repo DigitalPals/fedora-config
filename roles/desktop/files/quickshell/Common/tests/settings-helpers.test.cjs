@@ -20,6 +20,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.warmth, 3400);
     assert.equal(d.osd, "top");
     assert.equal(d.pollMax, 300);
+    assert.equal(d.scrollFactor, 1.0);
     assert.equal(d.shuffle, "Off");
     assert.equal(d.wallDir, "~/Pictures/Wallpapers");
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
@@ -61,6 +62,10 @@ test("merge clamps and snaps numeric ranges", () => {
     assert.equal(H.merge({ warmth: 3333 }).warmth, 3350);
     assert.equal(H.merge({ warmth: 100 }).warmth, 1900);
     assert.equal(H.merge({ warmth: NaN }).warmth, 3400);
+    assert.equal(H.merge({ scrollFactor: 1.26 }).scrollFactor, 1.3);
+    assert.equal(H.merge({ scrollFactor: 0.01 }).scrollFactor, 0.2);
+    assert.equal(H.merge({ scrollFactor: 4 }).scrollFactor, 2.0);
+    assert.equal(H.merge({ scrollFactor: "1.5" }).scrollFactor, 1.0);
 });
 
 test("merge falls back on invalid enums, colors and names", () => {

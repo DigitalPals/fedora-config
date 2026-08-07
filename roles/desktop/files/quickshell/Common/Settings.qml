@@ -44,6 +44,7 @@ Singleton {
     property int warmth: defaults.warmth
     property string osd: defaults.osd
     property int pollMax: defaults.pollMax
+    property real scrollFactor: defaults.scrollFactor
     property var mods: defaults.mods
     // Wallpaper-accent extraction cache: the derived color and the wallpaper
     // it was derived from, persisted so magick never re-runs across restarts.
@@ -102,7 +103,7 @@ Singleton {
             appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
             bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
             modules: ["mods"],
-            system: ["clock24", "unit", "warmth", "osd", "pollMax"]
+            system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor"]
         };
         return (map[section] || []).some(key =>
             JSON.stringify(root[key]) !== JSON.stringify(defaults[key]));
@@ -170,7 +171,7 @@ Singleton {
             appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
             bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
             modules: ["mods"],
-            system: ["clock24", "unit", "warmth", "osd", "pollMax"]
+            system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor"]
         };
         const labels = {
             wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar layout",
@@ -210,7 +211,7 @@ Singleton {
             font: font, accent: accent, accentWall: accentWall, position: position,
             floating: floating, gap: gap, autoHide: autoHide, exclusive: exclusive,
             monitor: monitor, clock24: clock24, unit: unit, warmth: warmth,
-            osd: osd, pollMax: pollMax, mods: mods,
+            osd: osd, pollMax: pollMax, scrollFactor: scrollFactor, mods: mods,
             wallAccent: wallAccent, wallAccentFor: wallAccentFor
         };
     }
@@ -245,6 +246,7 @@ Singleton {
         warmth = merged.warmth;
         osd = merged.osd;
         pollMax = merged.pollMax;
+        scrollFactor = merged.scrollFactor;
         mods = merged.mods;
         wallAccent = merged.wallAccent;
         wallAccentFor = merged.wallAccentFor;
@@ -252,6 +254,7 @@ Singleton {
         migrationPending = parsed !== null && parsed.v !== 3;
         firstRun = parsed === null;
         loaded = true;
+        applyScrollFactor();
     }
 
     function saveNow() {
@@ -299,6 +302,10 @@ Singleton {
     onWarmthChanged: scheduleSave()
     onOsdChanged: scheduleSave()
     onPollMaxChanged: scheduleSave()
+    onScrollFactorChanged: {
+        scheduleSave();
+        applyScrollFactor();
+    }
     onModsChanged: scheduleSave()
     onWallAccentChanged: scheduleSave()
     onWallAccentForChanged: scheduleSave()
@@ -313,6 +320,40 @@ Singleton {
         id: resetTimer
         interval: 8000
         onTriggered: root.clearUndo()
+    }
+
+    // Debounce pointer motion from the slider, then apply the final value to
+    // Hyprland immediately. input.lua reads the same persisted setting so a
+    // compositor reload or reboot retains it.
+    property real dispatchedScrollFactor: -1
+
+    function applyScrollFactor() {
+        if (loaded)
+            scrollApplyTimer.restart();
+    }
+
+    Timer {
+        id: scrollApplyTimer
+        interval: 75
+        onTriggered: {
+            if (scrollFactorProc.running)
+                return;
+            root.dispatchedScrollFactor = root.scrollFactor;
+            scrollFactorProc.command = ["hyprctl", "keyword",
+                "input:touchpad:scroll_factor", root.scrollFactor.toFixed(1)];
+            scrollFactorProc.running = true;
+        }
+    }
+
+    Process {
+        id: scrollFactorProc
+
+        onExited: exitCode => {
+            if (exitCode !== 0)
+                console.warn("could not apply touchpad scroll speed:", exitCode);
+            if (Math.abs(root.dispatchedScrollFactor - root.scrollFactor) > 0.001)
+                scrollApplyTimer.restart();
+        }
     }
 
     FileView {

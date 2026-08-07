@@ -32,10 +32,10 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: 10
+        spacing: 8
 
         SectionHeader {
-            label: "FORMATS"
+            label: "GENERAL"
         }
 
         PickerRow {
@@ -58,6 +58,20 @@ SettingsPage {
             dirty: Settings.unit !== Settings.defaults.unit
             onPicked: value => Settings.set("unit", value)
             onResetRequested: Settings.resetKeys(["unit"])
+        }
+
+        SliderRow {
+            width: parent.width
+            label: "Scroll speed"
+            min: 0.2
+            max: 2.0
+            step: 0.1
+            decimals: 1
+            value: Settings.scrollFactor
+            unit: "×"
+            dirty: Math.abs(Settings.scrollFactor - Settings.defaults.scrollFactor) > 0.001
+            onMoved: value => Settings.set("scrollFactor", value)
+            onResetRequested: Settings.resetKeys(["scrollFactor"], "Touchpad scroll speed")
         }
 
         SectionHeader {

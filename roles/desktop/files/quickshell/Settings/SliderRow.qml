@@ -15,6 +15,7 @@ Item {
     property alias gradientTrack: slider.gradientTrack
     property alias hueTrack: slider.hueTrack
     property string unit: "px"
+    property int decimals: 0
     property bool dirty: false
     readonly property bool narrow: width < 440
     readonly property int labelWidth: Settings.font === "mono" ? 104 : 90
@@ -49,7 +50,7 @@ Item {
         y: root.narrow ? 0 : (parent.height - height) / 2
         width: 44
         horizontalAlignment: Text.AlignRight
-        text: Math.round(slider.value) + " " + root.unit
+        text: slider.value.toFixed(root.decimals) + " " + root.unit
         font.family: Theme.fontMono
         font.pixelSize: Theme.fontCaption
         color: Theme.textMid

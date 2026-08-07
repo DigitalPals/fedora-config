@@ -15,7 +15,7 @@ FocusScope {
     readonly property int gutter: 12
     readonly property int navWidth: compactNav ? 52 : 156
     readonly property int preferredWidth: 720
-    readonly property int preferredHeight: 620
+    readonly property int preferredHeight: 640
     readonly property int pageIndex: Math.max(0,
         navItems.findIndex(item => item.id === Settings.page))
     readonly property bool dragActive: pageLoader.item

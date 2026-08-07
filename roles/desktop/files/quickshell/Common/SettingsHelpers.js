@@ -53,6 +53,7 @@ function defaults() {
         warmth: 3400,
         osd: "top",
         pollMax: 300,
+        scrollFactor: 1.0,
         mods: defaultMods(),
         wallAccent: "",
         wallAccentFor: ""
@@ -64,6 +65,13 @@ function intIn(value, min, max, step, fallback) {
         return fallback;
     var snapped = step > 1 ? Math.round(value / step) * step : Math.round(value);
     return Math.min(max, Math.max(min, snapped));
+}
+
+function realIn(value, min, max, step, fallback) {
+    if (typeof value !== "number" || !isFinite(value))
+        return fallback;
+    var snapped = Math.round(value / step) * step;
+    return Math.min(max, Math.max(min, Number(snapped.toFixed(6))));
 }
 
 function enumIn(value, options, fallback) {
@@ -206,6 +214,7 @@ function merge(parsed) {
         warmth: intIn(parsed.warmth, 1900, 4500, 50, d.warmth),
         osd: enumIn(parsed.osd, ["top", "bottom"], d.osd),
         pollMax: enumIn(parsed.pollMax, [60, 300, 600], d.pollMax),
+        scrollFactor: realIn(parsed.scrollFactor, 0.2, 2.0, 0.1, d.scrollFactor),
         mods: migrateMods(parsed.mods, parsed.v),
         wallAccent: hexIn(parsed.wallAccent, ""),
         wallAccentFor: typeof parsed.wallAccentFor === "string" ? parsed.wallAccentFor : ""
