@@ -176,7 +176,11 @@ real stale-binding risk, and these account for the bulk of the 421
 settings module detail view, T3 pages, and Bluetooth popover all still work in
 a live deploy copy.
 
-### [ ] WP0.4 Flip lint to warnings-as-errors for the cleared categories
+### [x] WP0.4 Flip lint to warnings-as-errors for the cleared categories
+
+> Done. Each of the three promoted categories was probed by introducing a
+> violation and confirming `tests/qml-lint` exits nonzero and names it first.
+> `missing-property` stays a warning at 14.
 
 **Files touched:** `tests/qml-lint`, `.qmllint.ini`
 **Depends on:** WP0.3
