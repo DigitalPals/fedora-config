@@ -144,6 +144,40 @@ test("a peer missing every field still renders as a row", () => {
     assert.deepEqual(peers, [{ name: "?", online: false, ip: "", os: "", exitOption: false, exit: false }]);
 });
 
+test("this machine's own status comes out of the same body as the peer list", () => {
+    assert.deepEqual(H.tailscaleSelf(TS_JSON), {
+        running: true,
+        host: "xps",
+        net: "",
+        ip: "100.93.129.14",
+        exitNode: false
+    });
+});
+
+test("self status reads MagicDNSSuffix and the exit-node flag", () => {
+    const self = H.tailscaleSelf(JSON.stringify({
+        BackendState: "Running",
+        MagicDNSSuffix: "tail1234.ts.net",
+        Self: { HostName: "xps", TailscaleIPs: ["100.0.0.1"] },
+        ExitNodeStatus: { Online: true }
+    }));
+    assert.equal(self.net, "tail1234.ts.net");
+    assert.equal(self.exitNode, true);
+});
+
+test("a stopped backend is readable status, not unreadable output", () => {
+    // The distinction the old bare `catch` collapsed: `tailscale down` must
+    // not look like a dead tailscaled.
+    const stopped = H.tailscaleSelf(JSON.stringify({ BackendState: "Stopped", Self: {} }));
+    assert.equal(stopped.running, false);
+    assert.equal(stopped.host, "");
+    assert.equal(H.tailscaleSelf("failed to connect to local tailscaled"), null);
+    assert.equal(H.tailscaleSelf(""), null);
+    assert.equal(H.tailscaleSelf("[]"), null);
+    assert.equal(H.tailscaleSelf(JSON.stringify({ Self: [] })), null);
+    assert.equal(H.tailscaleSelf(undefined), null);
+});
+
 test("an empty tailnet is an empty list; unreadable output is null, never a list", () => {
     // The whole point: "0 of 0 devices online" must only ever mean this.
     assert.deepEqual(H.tailscalePeers(JSON.stringify({ BackendState: "Running" })), []);

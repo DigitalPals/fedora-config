@@ -24,12 +24,19 @@ Singleton {
     readonly property bool ready: sink !== null && sink.audio !== null
     readonly property bool sourceReady: source !== null && source.audio !== null
 
+    // Percent for labels and glyph thresholds; `level` is the same reading on
+    // Pipewire's own 0..1 scale, for sliders that would otherwise snap to
+    // whole percents on read-back.
     readonly property int volume: ready ? Math.round(sink.audio.volume * 100) : 0
+    readonly property real level: ready ? sink.audio.volume : 0
     readonly property bool muted: ready && sink.audio.muted
+
+    readonly property int sourceVolume: sourceReady ? Math.round(source.audio.volume * 100) : 0
+    readonly property real sourceLevel: sourceReady ? source.audio.volume : 0
     readonly property bool sourceMuted: sourceReady && source.audio.muted
 
-    // Fraction, 0..1, clamped — the wheel handlers all stepped and clamped
-    // this identically.
+    // Setters take the 0..1 scale and clamp — the wheel handlers all stepped
+    // and clamped this identically.
     function setVolume(fraction) {
         if (!ready)
             return;
@@ -44,6 +51,18 @@ Singleton {
     function toggleMuted() {
         if (ready)
             sink.audio.muted = !sink.audio.muted;
+    }
+
+    // Pipewire remembers this as a preference, so it survives the node
+    // disappearing and coming back.
+    function setDefaultSink(node) {
+        Pipewire.preferredDefaultAudioSink = node;
+    }
+
+    function setSourceVolume(fraction) {
+        if (!sourceReady)
+            return;
+        source.audio.volume = Math.max(0, Math.min(1, fraction));
     }
 
     function toggleSourceMuted() {

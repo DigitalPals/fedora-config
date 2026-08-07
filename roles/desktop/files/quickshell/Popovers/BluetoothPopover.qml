@@ -6,14 +6,7 @@ import "../Common"
 Surface {
     id: root
 
-    readonly property var adapter: Bluetooth.defaultAdapter
-    readonly property var devices: {
-        if (!adapter || !adapter.enabled)
-            return [];
-        return Bluetooth.devices.values
-            .filter(d => d.paired || d.connected)
-            .sort((a, b) => (b.connected - a.connected) || a.deviceName.localeCompare(b.deviceName));
-    }
+    readonly property var devices: BluetoothState.devices
 
     // Header + toggle
     Item {
@@ -34,20 +27,19 @@ Surface {
             anchors.right: parent.right
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            checked: root.adapter !== null && root.adapter.enabled
+            checked: BluetoothState.enabled
             onToggled: v => {
-                if (root.adapter)
-                    root.adapter.enabled = v;
+                BluetoothState.setEnabled(v);
             }
         }
     }
 
     Text {
-        visible: root.adapter === null || !root.adapter.enabled
+        visible: !BluetoothState.enabled
         width: parent.width
         topPadding: 12
         bottomPadding: 14
-        text: root.adapter === null ? "No Bluetooth adapter" : "Bluetooth is off"
+        text: BluetoothState.adapter === null ? "No Bluetooth adapter" : "Bluetooth is off"
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontSecondary
@@ -55,7 +47,7 @@ Surface {
     }
 
     Text {
-        visible: root.adapter !== null && root.adapter.enabled && root.devices.length === 0
+        visible: BluetoothState.enabled && root.devices.length === 0
         width: parent.width
         topPadding: 12
         bottomPadding: 14

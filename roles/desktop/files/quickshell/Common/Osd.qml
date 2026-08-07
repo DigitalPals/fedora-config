@@ -1,7 +1,6 @@
 pragma Singleton
 import QtQuick
 import Quickshell
-import Quickshell.Services.Pipewire
 
 // Volume / brightness OSD state (design t3, shape 3a). One instance for
 // both meters: a new key swaps the pill's content in place instead of
@@ -13,11 +12,10 @@ Singleton {
     property string kind: "volume" // "volume" | "brightness"
     readonly property bool active: linger.running
 
-    readonly property var sink: Pipewire.defaultAudioSink
-
-    PwObjectTracker {
-        objects: [Pipewire.defaultAudioSink]
-    }
+    // A local handle rather than reading Audio.sink at each site: the
+    // onSinkChanged handler below is what re-arms the settle grace, and a
+    // change handler needs a property on this object to hang off.
+    readonly property var sink: Audio.sink
 
     // Pipewire replays volume and mute while the sink binds at session
     // start, and again whenever the default sink changes; neither is a

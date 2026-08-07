@@ -27,4 +27,36 @@ Singleton {
     // Whether the radio itself is on, which is independent of whether it
     // has associated with anything.
     readonly property bool enabled: Networking.wifiEnabled
+
+    // The other networks in range, strongest first and deduplicated by name:
+    // one SSID on several APs is one row to the user. Empty while the radio
+    // is off so a stale scan cannot outlive it.
+    readonly property var others: {
+        if (!device || !enabled)
+            return [];
+        const seen = new Set();
+        return device.networks.values
+            .filter(n => !n.connected && n.name && n.name !== "")
+            .sort((a, b) => b.signalStrength - a.signalStrength)
+            .filter(n => {
+                if (seen.has(n.name))
+                    return false;
+                seen.add(n.name);
+                return true;
+            })
+            .slice(0, 7);
+    }
+
+    readonly property bool scanning: device !== null && device.scannerEnabled
+
+    function setEnabled(value) {
+        Networking.wifiEnabled = value;
+    }
+
+    // The scanner is a live radio cost, so it stays opt-in: only the Wi-Fi
+    // popover turns it on, and only while it is open.
+    function setScanning(value) {
+        if (device)
+            device.scannerEnabled = value;
+    }
 }

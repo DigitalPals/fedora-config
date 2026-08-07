@@ -946,6 +946,11 @@ from local derivation to the singleton.
 >   the phase's real remaining behavioural content.
 >
 > WP2.1–2.5 below are kept only as the record of what each singleton absorbs.
+>
+> **Phase complete** (`814bce7`, WP2B). Read WP2B's first note before
+> adding any `acquire()`/`release()` call: the refcount must key on
+> `visible` via `Common/Claim.qml`, not on construction, because
+> `IslandPopout` latches the Control Center and it is never destroyed.
 
 ### [x] WP2A Five service singletons + Bar.qml migration
 
@@ -989,7 +994,84 @@ from local derivation to the singleton.
 `Common/BluetoothState.qml`, `Common/Battery.qml`, `Common/Media.qml` (all
 new), `Common/qmldir`, `Bar/Bar.qml`
 
-### [ ] WP2B Remaining consumers + Tailscale unification
+### [x] WP2B Remaining consumers + Tailscale unification
+
+> Done. **The headline is a regression this WP introduced and then fixed** —
+> the plan's own prescription was the cause, so read this before writing any
+> more `acquire()`/`release()` calls:
+> - The plan says the refcount goes in `Component.onCompleted`/`onDestruction`.
+>   That is wrong now. WP1.8 latches the Control Center (`IslandPopout.warmNames`),
+>   so it is constructed once and **never destroyed** — `release()` never fired
+>   and the pollers ran for the rest of the session, strictly worse than the
+>   `Popouts.open` gate being replaced. Measured, not reasoned: with
+>   instrumentation counting timer firings, 4 stat samples and 1 tailscale spawn
+>   in 16s while open, and *the same again* in the 20s after closing.
+> - Fixed with `Common/Claim.qml`, a small primitive that holds a claim while
+>   `active` is true and releases on teardown, keyed on the item's `visible`.
+>   Window visibility propagates down to items, so it tracks latched and
+>   non-latched panels alike — verified directly: the latched panel reports
+>   `visible=false` on close while never being destroyed. After the fix: 0
+>   firings when closed, never above `watchers=1` across three open/close
+>   cycles.
+> - The `Claim` signals are edge-paired by construction, so a consumer cannot
+>   double-release. Four call sites use it (Control Center ×2 singletons,
+>   Tailscale, Usage popover, Settings System page).
+>
+> Other notes:
+> - **`Common/Tailscale.qml` is a new singleton, not an extension of `SysInfo`.**
+>   The plan offered either; SysInfo is already a grab-bag of CPU/RAM/temp/
+>   backlight/idle-inhibit and Phase 4–6 want it smaller. The two old spawns had
+>   *different* quality: the control centre's parsed self-status behind a bare
+>   `catch` that could not tell a dead tailscaled from `tailscale down`, while
+>   the popover's classified failures properly. One run now answers both, with
+>   the popover's error handling and an unreadable read clearing `running`
+>   rather than leaving a stale "connected".
+> - New `ProcHelpers.tailscaleSelf()` beside `tailscalePeers()`, +3 tests
+>   (134 → 137), including the case the bare `catch` collapsed.
+> - Debounce unified at **1400ms**, the longer of the two — 1200ms occasionally
+>   read the pre-toggle state back.
+> - **`Usage.nextPollSecs` became derived rather than counted down.** Three
+>   copies of that arithmetic existed because the counter was unreliable: the
+>   popover resynced on open, and `SystemPage` recomputed its own and only fell
+>   back to the shared value when `updatedAt` was 0. It is now anchored on when
+>   the poll *period* started, not on `updatedAt` — the timer fires on schedule
+>   whether or not the fetch it started succeeded, so anchoring on data arrival
+>   would have stalled the countdown at 0 through every failed fetch.
+> - **Scope extended by one line:** SysInfo's 10s temperature poll ran
+>   unconditionally for the whole session for a single reader — the same stat
+>   card as CPU and RAM. Same watcher basis now. It was not in the plan's list
+>   because the plan only named the two `Popouts.open` gates; this one was worse.
+> - `AudioPopover` keeps its enumerated device list and that list's tracker, as
+>   WP2A predicted: it is popover-scoped, and binding every sink node shell-wide
+>   would be waste. Its tracker dropped the two defaults, which `Common/Audio.qml`
+>   now covers permanently.
+> - `Common/qmldir` gained its first non-singleton entry (`Claim`).
+> - **Verified live**: every migrated popover screenshotted and correct — audio
+>   3%/100% with the right device name, Wi-Fi with SSID/signal/IP/others/
+>   "Scanning…", battery "Fully charged" with the power-profile row, Control
+>   Center tiles, Tailscale self row plus peer list from the single spawn, and
+>   both countdowns ticking (popover 4:09 → 4:01, System page 3:38 → 3:31).
+> - **Not exercised: the Tailscale toggle itself.** `Tailscale.toggle()` runs
+>   `tailscale down`/`up`, and this machine reaches the T3 server over the
+>   tailnet, so testing it would drop a live connection. The command and the
+>   refresh-after-settling shape are unchanged from the two call sites it
+>   replaces; only the interval and the location moved.
+> - One pre-existing warning is *not* from this WP and was checked rather than
+>   assumed: opening the audio popover logs `channelVolumes and channelMap are
+>   not the same size` for a RAOP network sink. Reproduced on the pre-WP2B
+>   commit; that node is in the device list, which both versions bind identically.
+
+**Files touched:** `Common/Tailscale.qml`, `Common/Claim.qml` (both new),
+`Common/Audio.qml`, `Common/WifiState.qml`, `Common/Osd.qml`,
+`Common/SysInfo.qml`, `Common/Usage.qml`, `Common/ProcHelpers.js`,
+`Common/qmldir`, `Common/tests/proc-helpers.test.cjs`,
+`Popovers/{ControlCenter,Audio,Wifi,Bluetooth,Battery,Media,Tailscale,Usage}Popover.qml`,
+`Settings/SystemPage.qml`
+
+<details>
+<summary>Original WP2B specification</summary>
+
+### WP2B Remaining consumers + Tailscale unification
 
 **Files touched:** `Popovers/ControlCenterPopover.qml`, `Common/Osd.qml`,
 `Popovers/AudioPopover.qml`, `Popovers/WifiPopover.qml`,
@@ -1019,6 +1101,8 @@ there); same for the other services. All popovers + OSD + bar behave
 identically (screenshot pass over each popout via
 `qs ipc call popouts toggle <name>`). Note this config has `vol`, `bt` and
 `media` off — use the fake-`HOME` second instance to see those.
+
+</details>
 
 ---
 

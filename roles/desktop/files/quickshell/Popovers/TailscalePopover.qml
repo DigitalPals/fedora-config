@@ -1,9 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import "../Common"
-import "../Common/ProcHelpers.js" as ProcHelpers
 
 // Tailscale detail view: tailnet status, this machine, and the peer
 // list from `tailscale status --json`. Clicking a peer copies its
@@ -11,33 +9,13 @@ import "../Common/ProcHelpers.js" as ProcHelpers
 Surface {
     id: root
 
-    property var peers: []
-    // A status run has come back, either way. An empty `peers` with no
-    // statusError is a genuinely empty tailnet; a failed run says so
-    // instead of counting to zero.
-    property bool statusKnown: false
-    property string statusError: ""
     property string copiedIp: ""
 
-    function refresh() {
-        statusProc.staleRuns += statusProc.running ? 1 : 0;
-        statusProc.running = false;
-        statusProc.running = true;
-    }
-
-    function settle(exitCode, body, errText) {
-        statusKnown = true;
-        const list = exitCode === 0 ? ProcHelpers.tailscalePeers(body) : null;
-        if (list !== null) {
-            peers = list;
-            statusError = "";
-            return;
-        }
-        peers = [];
-        statusError = exitCode === 0
-            ? "tailscale status returned output this shell could not read"
-            : ProcHelpers.commandError("tailscale status", exitCode, errText);
-        console.warn("tailscale peers unavailable:", statusError);
+    // The peer list is live only while this panel is up.
+    Claim {
+        active: root.visible
+        onClaimed: Tailscale.acquire()
+        onReleased: Tailscale.release()
     }
 
     function copyIp(ip) {
@@ -52,57 +30,6 @@ Surface {
         id: copiedReset
         interval: 1600
         onTriggered: root.copiedIp = ""
-    }
-
-    Process {
-        id: statusProc
-        // `tailscale status --json` writes its complaint to stderr and exits
-        // nonzero when tailscaled is unreachable; both streams close before
-        // exited(), and the falling edge of `running` is the only signal
-        // there is when the binary cannot be launched at all.
-        //
-        // Runs killed by refresh() have yet to report in: their exit lands as
-        // a crash some time after the replacement started, and is not news.
-        property int staleRuns: 0
-        property string body: ""
-        property string errText: ""
-        property bool exitSeen: false
-        property int lastExit: 0
-
-        command: ["tailscale", "status", "--json"]
-        running: true
-
-        stdout: StdioCollector {
-            onStreamFinished: statusProc.body = text
-        }
-        stderr: StdioCollector {
-            onStreamFinished: statusProc.errText = text
-        }
-        onExited: (exitCode, exitStatus) => {
-            statusProc.exitSeen = true;
-            statusProc.lastExit = exitCode;
-        }
-        onRunningChanged: {
-            if (running) {
-                body = "";
-                errText = "";
-                exitSeen = false;
-                lastExit = 0;
-            } else if (staleRuns > 0) {
-                staleRuns--;
-            } else {
-                root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
-            }
-        }
-    }
-
-    Timer {
-        id: toggleRefresh
-        interval: 1400
-        onTriggered: {
-            SysInfo.refreshTailscale();
-            root.refresh();
-        }
     }
 
     // Header + toggle
@@ -124,17 +51,17 @@ Surface {
             anchors.right: parent.right
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            checked: SysInfo.tsRunning
+            checked: Tailscale.running
             onToggled: v => {
                 Quickshell.execDetached(["sh", "-c", v ? "tailscale up" : "tailscale down"]);
-                toggleRefresh.restart();
+                Tailscale.toggle();
             }
         }
     }
 
     // This machine
     Rectangle {
-        visible: SysInfo.tsRunning
+        visible: Tailscale.running
         width: parent.width - 4
         x: 2
         height: Theme.tileHeight
@@ -167,7 +94,7 @@ Surface {
 
                 Text {
                     width: parent.width
-                    text: SysInfo.tsHost + (SysInfo.tsNet !== "" ? " · " + SysInfo.tsNet : "")
+                    text: Tailscale.host + (Tailscale.net !== "" ? " · " + Tailscale.net : "")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontBody
                     font.weight: Theme.weightMedium
@@ -177,12 +104,12 @@ Surface {
 
                 Text {
                     width: parent.width
-                    text: root.copiedIp === SysInfo.tsIp && SysInfo.tsIp !== ""
-                        ? "Copied " + SysInfo.tsIp
-                        : "Connected · " + SysInfo.tsIp + (SysInfo.tsExitNode ? " · exit node active" : "")
+                    text: root.copiedIp === Tailscale.ip && Tailscale.ip !== ""
+                        ? "Copied " + Tailscale.ip
+                        : "Connected · " + Tailscale.ip + (Tailscale.exitNode ? " · exit node active" : "")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontSecondary
-                    color: root.copiedIp === SysInfo.tsIp && SysInfo.tsIp !== "" ? Theme.accent : Theme.textLow
+                    color: root.copiedIp === Tailscale.ip && Tailscale.ip !== "" ? Theme.accent : Theme.textLow
                     elide: Text.ElideRight
                 }
             }
@@ -190,13 +117,13 @@ Surface {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: root.copyIp(SysInfo.tsIp)
+            onClicked: root.copyIp(Tailscale.ip)
         }
     }
 
     // Off / loading states
     Text {
-        visible: !SysInfo.tsRunning
+        visible: !Tailscale.running
         width: parent.width
         topPadding: 14
         bottomPadding: 14
@@ -208,7 +135,7 @@ Surface {
     }
 
     Text {
-        visible: SysInfo.tsRunning && !root.statusKnown
+        visible: Tailscale.running && !Tailscale.statusKnown
         width: parent.width
         topPadding: 10
         bottomPadding: 10
@@ -220,11 +147,11 @@ Surface {
     }
 
     Text {
-        visible: SysInfo.tsRunning && root.statusError !== ""
+        visible: Tailscale.running && Tailscale.statusError !== ""
         width: parent.width
         topPadding: 10
         bottomPadding: 10
-        text: "Peer list unavailable\n" + root.statusError
+        text: "Peer list unavailable\n" + Tailscale.statusError
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
         font.family: Theme.fontMenu
@@ -234,7 +161,7 @@ Surface {
 
     // Peers
     Repeater {
-        model: SysInfo.tsRunning ? root.peers.slice(0, 8) : []
+        model: Tailscale.running ? Tailscale.peers.slice(0, 8) : []
 
         delegate: Rectangle {
             id: peerRow
@@ -320,7 +247,7 @@ Surface {
     }
 
     HDivider {
-        visible: SysInfo.tsRunning
+        visible: Tailscale.running
     }
 
     // Footer
@@ -332,14 +259,14 @@ Surface {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
             text: {
-                if (!SysInfo.tsRunning || !root.statusKnown)
+                if (!Tailscale.running || !Tailscale.statusKnown)
                     return "click a device to copy its IP";
                 // Never count to zero on a failed status run: that is the
                 // one thing an empty tailnet is allowed to say.
-                if (root.statusError !== "")
+                if (Tailscale.statusError !== "")
                     return "peer status unavailable";
-                const online = root.peers.filter(p => p.online).length;
-                return online + " of " + root.peers.length + " devices online · click to copy IP";
+                const online = Tailscale.peers.filter(p => p.online).length;
+                return online + " of " + Tailscale.peers.length + " devices online · click to copy IP";
             }
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontSecondary

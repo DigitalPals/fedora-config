@@ -9,18 +9,12 @@ import "../Common"
 Surface {
     id: root
 
-    Component.onCompleted: {
-        if (Usage.updatedAt > 0) {
-            const elapsed = Math.floor((Date.now() - Usage.updatedAt) / 1000);
-            Usage.nextPollSecs = Math.max(0, Usage.pollIntervalSecs - elapsed);
-        }
-    }
-
-    Timer {
-        interval: 1000
-        running: true
-        repeat: true
-        onTriggered: Usage.nextPollSecs = Math.max(0, Usage.nextPollSecs - 1)
+    // Usage derives the countdown and ticks it only while a view asks;
+    // no resync on open, because a derived value cannot drift.
+    Claim {
+        active: root.visible
+        onClaimed: Usage.acquireCountdown()
+        onReleased: Usage.releaseCountdown()
     }
 
     // Right-island popouts run a touch wider (design t5).

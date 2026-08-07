@@ -1,9 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
-import Quickshell.Networking
-import Quickshell.Bluetooth
-import Quickshell.Services.Pipewire
 import "../Common"
 
 // Control Center v2 (design 1f): DMS-style density — compact toggle
@@ -16,18 +13,22 @@ Surface {
     padding: Theme.surfacePadding
     spacing: 8
 
-    readonly property var wifiDevice: Networking.devices.values.find(d => d.networks !== undefined) ?? null
-    readonly property var wifiActive: wifiDevice ? (wifiDevice.networks.values.find(n => n.connected) ?? null) : null
-    readonly property var btAdapter: Bluetooth.defaultAdapter
-
-    readonly property var sink: Pipewire.defaultAudioSink
-    readonly property int volume: sink && sink.audio ? Math.round(sink.audio.volume * 100) : 0
-
     readonly property string lockCmd: "hyprlock --config " + Quickshell.env("HOME") + "/.config/hypr/hyprlock.conf --immediate-render --no-fade-in"
     readonly property string binDir: Quickshell.env("HOME") + "/.local/bin/"
 
-    PwObjectTracker {
-        objects: [Pipewire.defaultAudioSink]
+    // The stat cards and the Tailscale tile are live only while this panel
+    // is on screen, so it says so rather than the singletons guessing from
+    // Popouts. Keyed on `visible`, not construction: this panel is latched.
+    Claim {
+        active: root.visible
+        onClaimed: {
+            SysInfo.acquire();
+            Tailscale.acquire();
+        }
+        onReleased: {
+            SysInfo.release();
+            Tailscale.release();
+        }
     }
 
     function run(cmd) {
@@ -259,33 +260,29 @@ Surface {
         Tile {
             glyph: ""
             title: "Wi-Fi"
-            on: Networking.wifiEnabled
+            on: WifiState.enabled
             chevron: true
-            onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
+            onToggled: WifiState.setEnabled(!WifiState.enabled)
             onExpanded: Popouts.openPanel("wifi", "right")
         }
 
         Tile {
             glyph: ""
             title: "Bluetooth"
-            on: root.btAdapter !== null && root.btAdapter.enabled
+            on: BluetoothState.enabled
             chevron: true
             onToggled: {
-                if (root.btAdapter)
-                    root.btAdapter.enabled = !root.btAdapter.enabled;
+                BluetoothState.toggle();
             }
             onExpanded: Popouts.openPanel("bluetooth", "right")
         }
 
         Tile {
-            iconSource: Quickshell.shellDir + "/assets/tailscale" + (SysInfo.tsRunning ? "" : "-dim") + ".svg"
+            iconSource: Quickshell.shellDir + "/assets/tailscale" + (Tailscale.running ? "" : "-dim") + ".svg"
             title: "Tailscale"
-            on: SysInfo.tsRunning
+            on: Tailscale.running
             chevron: true
-            onToggled: {
-                Quickshell.execDetached(["sh", "-c", SysInfo.tsRunning ? "tailscale down" : "tailscale up"]);
-                tsRefresh.restart();
-            }
+            onToggled: Tailscale.toggle()
             onExpanded: Popouts.openPanel("tailscale", "right")
         }
 
@@ -311,12 +308,6 @@ Surface {
         }
     }
 
-    Timer {
-        id: tsRefresh
-        interval: 1200
-        onTriggered: SysInfo.refreshTailscale()
-    }
-
     // ---- Volume / brightness meters -------------------------------------
     Rectangle {
         width: parent.width
@@ -334,11 +325,10 @@ Surface {
             MeterRow {
                 glyph: ""
                 label: "VOLUME"
-                percent: root.sink && root.sink.audio ? root.volume : -1
-                ready: root.sink !== null && root.sink.audio !== null
+                percent: Audio.ready ? Audio.volume : -1
+                ready: Audio.ready
                 onMoved: v => {
-                    if (root.sink && root.sink.audio)
-                        root.sink.audio.volume = v;
+                    Audio.setVolume(v);
                 }
             }
 

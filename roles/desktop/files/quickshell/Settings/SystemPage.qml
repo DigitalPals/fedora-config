@@ -7,8 +7,9 @@ import "../Common"
 SettingsPage {
     id: page
 
-    // One 1s tick drives both the live clock caption and the poll
-    // countdown, derived from Usage state without mutating it.
+    // This tick drives the live clock caption. The poll countdown used to
+    // ride on it too; Usage derives that itself now, and ticks it only
+    // while a view has asked for it.
     property double nowSecs: Date.now() / 1000
     Timer {
         interval: 1000
@@ -17,15 +18,21 @@ SettingsPage {
         onTriggered: page.nowSecs = Date.now() / 1000
     }
 
+    Claim {
+        active: page.visible
+        onClaimed: Usage.acquireCountdown()
+        onReleased: Usage.releaseCountdown()
+    }
+
     function openConfig() {
         Settings.saveNow();
         Qt.callLater(() => Quickshell.execDetached(["xdg-open", Settings.filePath]));
     }
 
     readonly property date nowDate: new Date(page.nowSecs * 1000)
-    readonly property int pollLeft: Usage.updatedAt > 0
-        ? Math.max(0, Usage.pollIntervalSecs - Math.floor(page.nowSecs - Usage.updatedAt / 1000))
-        : Usage.nextPollSecs
+    // Usage owns this now; it used to be recomputed here because the
+    // shared counter only advanced while the usage popover was open.
+    readonly property int pollLeft: Usage.nextPollSecs
 
     Column {
         id: generalSettings

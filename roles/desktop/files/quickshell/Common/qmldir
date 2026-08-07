@@ -15,3 +15,7 @@ singleton WifiState WifiState.qml
 singleton BluetoothState BluetoothState.qml
 singleton Battery Battery.qml
 singleton Media Media.qml
+singleton Tailscale Tailscale.qml
+
+# Plain types (not singletons)
+Claim Claim.qml

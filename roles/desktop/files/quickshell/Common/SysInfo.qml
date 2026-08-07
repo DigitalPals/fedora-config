@@ -90,13 +90,6 @@ Singleton {
         }
     }
 
-    // Tailscale status
-    property bool tsRunning: false
-    property string tsHost: ""
-    property string tsNet: ""
-    property string tsIp: ""
-    property bool tsExitNode: false
-
     Process {
         command: ["cat", "/etc/hostname"]
         running: true
@@ -177,25 +170,6 @@ Singleton {
         }
     }
 
-    Process {
-        id: tsProc
-        command: ["tailscale", "status", "--json"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const s = JSON.parse(text);
-                    root.tsRunning = s.BackendState === "Running";
-                    root.tsHost = s.Self && s.Self.HostName || "";
-                    root.tsNet = s.MagicDNSSuffix || "";
-                    root.tsIp = s.Self && s.Self.TailscaleIPs && s.Self.TailscaleIPs[0] || "";
-                    root.tsExitNode = !!(s.ExitNodeStatus && s.ExitNodeStatus.Online);
-                } catch (e) {
-                    root.tsRunning = false;
-                }
-            }
-        }
-    }
-
     // Backlight. Reading is a plain sysfs read — the OSD asks for a fresh
     // value on every brightness key press, and forking brightnessctl for
     // that is the most expensive thing on the hot path. Writing still goes
@@ -250,11 +224,6 @@ Singleton {
         }
     }
 
-    function refreshTailscale() {
-        tsProc.running = false;
-        tsProc.running = true;
-    }
-
     // Backlight sysfs attributes do not deliver inotify events, so there is
     // nothing to watch: every consumer that can observe an external change
     // (the OSD, over IPC from brightness-control) calls this instead.
@@ -265,13 +234,27 @@ Singleton {
         readBrightness();
     }
 
-    // CPU / RAM sampling for the Control Center stat cards. Only sampled
-    // while a popout is up: nothing else displays these values, and idle
-    // wakeups are not free on battery. triggeredOnStart refreshes the
-    // cards the moment a popout opens.
+    // ---- watchers ---------------------------------------------------
+    // Which views are on screen is their business, not this singleton's:
+    // it used to sample whenever *any* popout was open, so opening the
+    // media panel read /proc/stat for nobody. A view that wants these
+    // figures says so for as long as it is alive.
+    property int watchers: 0
+
+    function acquire() {
+        watchers++;
+    }
+
+    function release() {
+        watchers = Math.max(0, watchers - 1);
+    }
+
+    // CPU / RAM sampling for the Control Center stat cards. Idle wakeups
+    // are not free on battery, and nothing else displays these values.
+    // triggeredOnStart refreshes the cards the moment a watcher arrives.
     Timer {
         interval: 5000
-        running: Popouts.open
+        running: root.watchers > 0
         repeat: true
         triggeredOnStart: true
         onTriggered: {
@@ -282,9 +265,12 @@ Singleton {
         }
     }
 
+    // Temperature has exactly one reader, the same stat card as CPU and
+    // RAM, but used to poll for the whole session. Same watcher basis;
+    // triggeredOnStart still fills the card on open.
     Timer {
         interval: 10000
-        running: true
+        running: root.watchers > 0
         repeat: true
         triggeredOnStart: true
         onTriggered: {
@@ -295,19 +281,14 @@ Singleton {
         }
     }
 
-    // Tailscale state is read by the control centre and the Tailscale panel;
-    // brightness by the control centre and the OSD, and the OSD asks for a
-    // fresh read itself after every key press. Polling for every popout meant
-    // a `tailscale status --json` fork each time any panel opened.
-    // triggeredOnStart keeps the refresh-on-open behaviour.
+    // Brightness is read by the control centre; the OSD asks for a fresh
+    // read itself after every key press. Tailscale moved to its own
+    // singleton, which polls on the same watcher basis.
     Timer {
         interval: 30000
-        running: Popouts.open && ["control", "tailscale"].includes(Popouts.currentName)
+        running: root.watchers > 0
         repeat: true
         triggeredOnStart: true
-        onTriggered: {
-            tsProc.running = true;
-            root.refreshBrightness();
-        }
+        onTriggered: root.refreshBrightness()
     }
 }

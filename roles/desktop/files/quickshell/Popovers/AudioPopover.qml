@@ -12,19 +12,20 @@ Surface {
     // Output device list stays collapsed behind a disclosure row.
     property bool devicesOpen: false
 
-    readonly property var sink: Pipewire.defaultAudioSink
-    readonly property var source: Pipewire.defaultAudioSource
     // Default sink first, then local (ALSA) devices, then network sinks;
     // capped so the popover stays compact with many cast targets around.
     readonly property var sinks: {
         const all = Pipewire.nodes.values.filter(n => n.isSink && !n.isStream);
-        const rank = n => n === Pipewire.defaultAudioSink ? 0 : (n.name || "").startsWith("alsa") ? 1 : 2;
+        const rank = n => n === Audio.sink ? 0 : (n.name || "").startsWith("alsa") ? 1 : 2;
         return all.sort((a, b) => rank(a) - rank(b)
             || (a.description || a.name).localeCompare(b.description || b.name)).slice(0, 6);
     }
 
+    // Only the extra devices: Common/Audio.qml already tracks the two
+    // defaults for the whole shell, and this list is worth binding only
+    // while the picker is on screen.
     PwObjectTracker {
-        objects: [Pipewire.defaultAudioSink, Pipewire.defaultAudioSource].concat(root.sinks)
+        objects: root.sinks
     }
 
     SectionLabel {
@@ -44,7 +45,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             width: 18
             horizontalAlignment: Text.AlignHCenter
-            text: root.sink && root.sink.audio && root.sink.audio.muted ? "\uf026" : "\uf028"
+            text: Audio.muted ? "\uf026" : "\uf028"
             font.family: Theme.fontIcon
             font.pixelSize: Theme.fontBody
             color: Theme.textMid
@@ -52,8 +53,7 @@ Surface {
             MouseArea {
                 anchors.fill: parent
                 onClicked: {
-                    if (root.sink && root.sink.audio)
-                        root.sink.audio.muted = !root.sink.audio.muted;
+                    Audio.toggleMuted();
                 }
             }
         }
@@ -63,10 +63,9 @@ Surface {
             width: parent.width - 84
             height: 10
             interactive: true
-            value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
+            value: Audio.level
             onMoved: v => {
-                if (root.sink && root.sink.audio)
-                    root.sink.audio.volume = v;
+                Audio.setVolume(v);
             }
         }
 
@@ -74,7 +73,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             width: 26
             horizontalAlignment: Text.AlignRight
-            text: root.sink && root.sink.audio ? Math.round(root.sink.audio.volume * 100) : "--"
+            text: Audio.ready ? Audio.volume : "--"
             font.family: Theme.fontMono
             font.pixelSize: Theme.fontSecondary
             font.weight: Theme.weightMedium
@@ -108,7 +107,7 @@ Surface {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.width - 70
-                text: root.sink ? (root.sink.description || root.sink.nickname || root.sink.name) : "No output device"
+                text: Audio.sink ? (Audio.sink.description || Audio.sink.nickname || Audio.sink.name) : "No output device"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontBody
                 color: discMouse.containsMouse ? Theme.textMid : Theme.textLow
@@ -136,7 +135,7 @@ Surface {
                 id: sink
 
                 required property var modelData
-                readonly property bool isDefault: modelData === Pipewire.defaultAudioSink
+                readonly property bool isDefault: modelData === Audio.sink
 
                 width: parent.width - 4
                 x: 2
@@ -174,7 +173,7 @@ Surface {
                     id: devMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: Pipewire.preferredDefaultAudioSink = sink.modelData
+                    onClicked: Audio.setDefaultSink(sink.modelData)
                 }
             }
         }
@@ -200,21 +199,20 @@ Surface {
             width: Theme.controlHeight
             height: Theme.controlHeight
             radius: 6
-            color: root.source && root.source.audio && root.source.audio.muted ? Theme.redBg : "transparent"
+            color: Audio.sourceMuted ? Theme.redBg : "transparent"
 
             Text {
                 anchors.centerIn: parent
-                text: root.source && root.source.audio && root.source.audio.muted ? "\uf131" : "\uf130"
+                text: Audio.sourceMuted ? "\uf131" : "\uf130"
                 font.family: Theme.fontIcon
                 font.pixelSize: Theme.fontBody
-                color: root.source && root.source.audio && root.source.audio.muted ? Theme.redText : Theme.textMid
+                color: Audio.sourceMuted ? Theme.redText : Theme.textMid
             }
 
             MouseArea {
                 anchors.fill: parent
                 onClicked: {
-                    if (root.source && root.source.audio)
-                        root.source.audio.muted = !root.source.audio.muted;
+                    Audio.toggleSourceMuted();
                 }
             }
         }
@@ -224,12 +222,11 @@ Surface {
             width: parent.width - 84
             height: 10
             interactive: true
-            opacity: root.source && root.source.audio && root.source.audio.muted ? 0.45 : 1
-            fillColor: root.source && root.source.audio && root.source.audio.muted ? Theme.textLow : Theme.accent
-            value: root.source && root.source.audio ? root.source.audio.volume : 0
+            opacity: Audio.sourceMuted ? 0.45 : 1
+            fillColor: Audio.sourceMuted ? Theme.textLow : Theme.accent
+            value: Audio.sourceLevel
             onMoved: v => {
-                if (root.source && root.source.audio)
-                    root.source.audio.volume = v;
+                Audio.setSourceVolume(v);
             }
         }
 
@@ -237,11 +234,11 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             width: 26
             horizontalAlignment: Text.AlignRight
-            text: root.source && root.source.audio ? Math.round(root.source.audio.volume * 100) : "--"
+            text: Audio.sourceReady ? Audio.sourceVolume : "--"
             font.family: Theme.fontMono
             font.pixelSize: Theme.fontSecondary
             font.weight: Theme.weightMedium
-            color: root.source && root.source.audio && root.source.audio.muted ? Theme.textDim : Theme.textLow
+            color: Audio.sourceMuted ? Theme.textDim : Theme.textLow
         }
     }
 }

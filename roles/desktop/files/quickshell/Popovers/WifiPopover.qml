@@ -10,7 +10,6 @@ import "../Common/StatusHelpers.js" as StatusHelpers
 Surface {
     id: root
 
-    readonly property var device: Networking.devices.values.find(d => d.networks !== undefined) ?? null
     property string ipAddress: ""
 
     Process {
@@ -24,8 +23,8 @@ Surface {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["ip", "-j", "-4", "addr", "show", root.device ? root.device.name : ""]
-        running: root.device !== null
+        command: ["ip", "-j", "-4", "addr", "show", WifiState.device ? WifiState.device.name : ""]
+        running: WifiState.device !== null
 
         stdout: StdioCollector {
             onStreamFinished: ipProc.body = text
@@ -53,31 +52,10 @@ Surface {
                 console.warn("wifi address lookup failed:", ProcHelpers.commandError("ip", status, errText));
         }
     }
-    readonly property var active: device ? (device.networks.values.find(n => n.connected) ?? null) : null
-    readonly property var others: {
-        if (!device || !Networking.wifiEnabled)
-            return [];
-        const seen = new Set();
-        return device.networks.values
-            .filter(n => !n.connected && n.name && n.name !== "")
-            .sort((a, b) => b.signalStrength - a.signalStrength)
-            .filter(n => {
-                if (seen.has(n.name))
-                    return false;
-                seen.add(n.name);
-                return true;
-            })
-            .slice(0, 7);
-    }
-
-    Component.onCompleted: {
-        if (device && device.scannerEnabled !== undefined)
-            device.scannerEnabled = true;
-    }
-    Component.onDestruction: {
-        if (device && device.scannerEnabled !== undefined)
-            device.scannerEnabled = false;
-    }
+    // The scan runs only while this view is alive; WifiState owns the
+    // device, but the radio cost belongs to whoever is showing the list.
+    Component.onCompleted: WifiState.setScanning(true)
+    Component.onDestruction: WifiState.setScanning(false)
 
     // Header + toggle
     Item {
@@ -98,14 +76,14 @@ Surface {
             anchors.right: parent.right
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            checked: Networking.wifiEnabled
-            onToggled: v => Networking.wifiEnabled = v
+            checked: WifiState.enabled
+            onToggled: v => WifiState.setEnabled(v)
         }
     }
 
     // Connected network
     Rectangle {
-        visible: root.active !== null
+        visible: WifiState.connected
         width: parent.width - 4
         x: 2
         height: Theme.tileHeight
@@ -133,7 +111,7 @@ Surface {
                 spacing: 1
 
                 Text {
-                    text: root.active ? root.active.name : ""
+                    text: WifiState.name
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontBody
                     font.weight: Theme.weightMedium
@@ -144,10 +122,10 @@ Surface {
 
                 Text {
                     text: {
-                        if (!root.active)
+                        if (!WifiState.active)
                             return "";
                         let parts = ["Connected"];
-                        const s = StatusHelpers.signalPercent(root.active.signalStrength);
+                        const s = WifiState.signal;
                         if (s >= 0)
                             parts.push(s + "%");
                         if (root.ipAddress !== "")
@@ -186,7 +164,7 @@ Surface {
 
     // Wi-Fi off state
     Text {
-        visible: !Networking.wifiEnabled
+        visible: !WifiState.enabled
         width: parent.width
         topPadding: 14
         bottomPadding: 14
@@ -199,7 +177,7 @@ Surface {
 
     // Other networks
     Repeater {
-        model: root.others
+        model: WifiState.others
 
         delegate: Rectangle {
             id: net
@@ -260,18 +238,18 @@ Surface {
     }
 
     HDivider {
-        visible: Networking.wifiEnabled
+        visible: WifiState.enabled
     }
 
     Item {
-        visible: Networking.wifiEnabled
+        visible: WifiState.enabled
         width: parent.width
         height: Theme.rowHeight
 
         Text {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
-            text: root.device && root.device.scannerEnabled ? "Scanning…" : ""
+            text: WifiState.scanning ? "Scanning…" : ""
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontSecondary
             color: Theme.textDim

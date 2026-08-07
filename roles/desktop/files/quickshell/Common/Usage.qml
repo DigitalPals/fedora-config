@@ -47,7 +47,32 @@ Singleton {
     // is not a failure.
     property string fetchError: ""
     property double updatedAt: 0
-    property int nextPollSecs: pollIntervalSecs
+    // Seconds until the next scheduled fetch, derived from when the current
+    // poll period started rather than counted down. A counter is only right
+    // while something ticks it, which is why the popover used to resync on
+    // open and the settings page recomputed its own copy; both now read this.
+    // Anchored on the period, not on updatedAt: the timer fires on schedule
+    // whether or not the fetch it started succeeded.
+    property double pollStartedAt: 0
+    property double countdownNow: 0
+    readonly property int nextPollSecs: {
+        if (!pollEnabled || pollStartedAt <= 0 || countdownNow <= 0)
+            return pollIntervalSecs;
+        const elapsed = Math.floor((countdownNow - pollStartedAt) / 1000);
+        return Math.max(0, Math.min(pollIntervalSecs, pollIntervalSecs - elapsed));
+    }
+
+    // Only the views that show the countdown pay for a 1 Hz tick.
+    property int countdownWatchers: 0
+
+    function acquireCountdown() {
+        countdownWatchers++;
+        countdownNow = Date.now();
+    }
+
+    function releaseCountdown() {
+        countdownWatchers = Math.max(0, countdownWatchers - 1);
+    }
     property string selected: "claude"
 
     // Session-window usage sampled at every poll, per provider, kept for
@@ -97,11 +122,12 @@ Singleton {
 
     function refresh() {
         start();
-        nextPollSecs = pollIntervalSecs;
         // A manual refresh from the popover still works with the module off;
         // it just must not leave the poll timer running behind its binding.
-        if (pollEnabled)
+        if (pollEnabled) {
+            pollStartedAt = Date.now();
             pollTimer.restart();
+        }
     }
 
     function formatReset(resetsAt) {
@@ -289,9 +315,14 @@ Singleton {
         interval: root.pollIntervalSecs * 1000
         running: root.pollEnabled
         repeat: true
+        // Switching the module back on starts a fresh period.
+        onRunningChanged: {
+            if (running)
+                root.pollStartedAt = Date.now();
+        }
         onTriggered: {
+            root.pollStartedAt = Date.now();
             root.start();
-            root.nextPollSecs = root.pollIntervalSecs;
         }
     }
 
@@ -309,6 +340,14 @@ Singleton {
             return;
         loading = true;
         fetchProc.running = true;
+    }
+
+    Timer {
+        interval: 1000
+        running: root.countdownWatchers > 0
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.countdownNow = Date.now()
     }
 
     onPollEnabledChanged: warmUp()

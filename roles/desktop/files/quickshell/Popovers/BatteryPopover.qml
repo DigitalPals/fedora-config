@@ -1,19 +1,12 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+// Still needed for the PowerProfile/PowerProfiles controls below;
+// the battery reading itself comes from Common/Battery.qml.
 import Quickshell.Services.UPower
 import "../Common"
-import "../Common/StatusHelpers.js" as StatusHelpers
 
 Surface {
     id: root
-
-    readonly property var battery: UPower.displayDevice
-    readonly property real pct: StatusHelpers.batteryPercent(battery)
-    // Shared with the bar chip, which draws "charging" and "full" the same
-    // way while this view names them apart.
-    readonly property string chargeState: StatusHelpers.chargeState(battery)
-    readonly property bool charging: chargeState === "charging"
-    readonly property bool full: chargeState === "full"
 
     function fmtDuration(secs) {
         if (!secs || secs <= 0)
@@ -37,7 +30,7 @@ Surface {
 
             Text {
                 anchors.baseline: percent.baseline
-                text: Math.round(root.pct)
+                text: Math.round(Battery.percent)
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontDisplay
                 font.weight: Theme.weightSemibold
@@ -61,7 +54,7 @@ Surface {
                 spacing: 6
 
                 Text {
-                    visible: root.charging
+                    visible: Battery.charging
                     anchors.verticalCenter: parent.verticalCenter
                     text: "\uf0e7"
                     font.family: Theme.fontIcon
@@ -71,7 +64,7 @@ Surface {
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.full ? "Fully charged" : root.charging ? "Charging" : "On battery"
+                    text: Battery.full ? "Fully charged" : Battery.charging ? "Charging" : "On battery"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontBody
                     font.weight: Theme.weightMedium
@@ -82,12 +75,12 @@ Surface {
             Text {
                 visible: text !== ""
                 text: {
-                    if (!root.battery)
+                    if (!Battery.device)
                         return "";
-                    if (root.charging && root.battery.timeToFull > 0)
-                        return root.fmtDuration(root.battery.timeToFull) + " until full";
-                    if (!root.charging && !root.full && root.battery.timeToEmpty > 0)
-                        return root.fmtDuration(root.battery.timeToEmpty) + " remaining";
+                    if (Battery.charging && Battery.device.timeToFull > 0)
+                        return root.fmtDuration(Battery.device.timeToFull) + " until full";
+                    if (!Battery.charging && !Battery.full && Battery.device.timeToEmpty > 0)
+                        return root.fmtDuration(Battery.device.timeToEmpty) + " remaining";
                     return "";
                 }
                 font.family: Theme.fontMenu
@@ -107,8 +100,8 @@ Surface {
             width: parent.width - 24
             anchors.verticalCenter: parent.verticalCenter
             height: 10
-            value: root.pct / 100
-            fillColor: root.pct <= 10 && !root.charging ? Theme.red : root.pct <= 20 && !root.charging ? Theme.amber : Theme.accent
+            value: Battery.percent / 100
+            fillColor: Battery.percent <= 10 && !Battery.charging ? Theme.red : Battery.percent <= 20 && !Battery.charging ? Theme.amber : Theme.accent
         }
     }
 

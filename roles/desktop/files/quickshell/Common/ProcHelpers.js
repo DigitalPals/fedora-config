@@ -125,13 +125,37 @@ function tailscalePeers(text) {
     return list;
 }
 
+// This machine's own entry in the same `tailscale status --json` body, so
+// one run answers both "am I on the tailnet" and "who else is". Null for
+// output that cannot be read, which the caller must tell apart from a
+// readable status that simply says the backend is stopped — otherwise a dead
+// tailscaled would render identically to a deliberate `tailscale down`.
+function tailscaleSelf(text) {
+    var status = parseJson(text);
+    if (!status || typeof status !== "object" || Array.isArray(status))
+        return null;
+    var self = status.Self;
+    if (self === undefined || self === null)
+        self = {};
+    if (typeof self !== "object" || Array.isArray(self))
+        return null;
+    return {
+        running: status.BackendState === "Running",
+        host: String(self.HostName || ""),
+        net: String(status.MagicDNSSuffix || ""),
+        ip: self.TailscaleIPs && self.TailscaleIPs[0] || "",
+        exitNode: !!(status.ExitNodeStatus && status.ExitNodeStatus.Online)
+    };
+}
+
 var exported = {
     NOT_STARTED: NOT_STARTED,
     CURL_EXIT: CURL_EXIT,
     lastLine: lastLine,
     commandError: commandError,
     firstIpv4: firstIpv4,
-    tailscalePeers: tailscalePeers
+    tailscalePeers: tailscalePeers,
+    tailscaleSelf: tailscaleSelf
 };
 
 if (typeof module !== "undefined" && module.exports)

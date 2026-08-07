@@ -14,15 +14,15 @@ Surface {
     // its own twelve-pixel-or-larger inset.
     padding: 0
 
-    readonly property var players: Mpris.players.values
+    readonly property var players: Media.players
     property int sourceIdx: -1
 
     // The source switcher's manual pick wins; without one this falls back to
-    // the same choice the bar chip makes.
+    // Media.player, which is literally what the bar chip shows.
     readonly property var player: {
         if (sourceIdx >= 0 && sourceIdx < players.length)
             return players[sourceIdx];
-        return StatusHelpers.activePlayer(players);
+        return Media.player;
     }
 
     property real pos: 0
