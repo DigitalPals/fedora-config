@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import "PanelRegistryData.js" as PanelRegistry
 
 // Shared state for the connected island popouts (design t5): every view
 // is fused to its bar island, each island owns one popout surface, and
@@ -26,21 +27,8 @@ Singleton {
     // Island a popout opens on when the caller does not say (IPC, bar
     // modules). Panels opened from inside another popout may override —
     // e.g. the Control Center morphs to Wi-Fi details on the right island.
-    readonly property var defaultIsland: ({
-            control: "right",
-            calendar: "center",
-            media: "left",
-            weather: "center",
-            usage: "right",
-            t3code: "right",
-            audio: "right",
-            wifi: "right",
-            bluetooth: "right",
-            tailscale: "right",
-            battery: "right",
-            notifications: "right",
-            settings: "center"
-        })
+    // Derived, not hand-maintained: see Common/PanelRegistryData.js.
+    readonly property var defaultIsland: PanelRegistry.islandMap()
 
     function openPanel(name, isle, anchor) {
         island = isle ?? defaultIsland[name] ?? "right";

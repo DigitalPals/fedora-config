@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Wayland
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
+import "../Common/PanelRegistryData.js" as PanelRegistry
 
 PanelWindow {
     id: barWindow
@@ -249,12 +250,6 @@ PanelWindow {
         return item && item.visible ? item : null;
     }
 
-    // Popouts that no bar module owns: settings opens from the settings
-    // window and tailscale from the Control Center, so moduleForPanel() is
-    // always null for them and the sweep below would close them on any
-    // module change. Stopgap — WP3.1's panel registry replaces this list.
-    readonly property var unanchoredPanels: ["settings", "tailscale"]
-
     // A module disabled from the settings window takes its open popout with
     // it; callLater lets the Repeater rebuild settle first.
     Connections {
@@ -265,8 +260,10 @@ PanelWindow {
             // Every output runs this handler, but only the mapped bar holds
             // the modules the open popout hangs under; the others would see
             // an empty panelAnchors and close someone else's panel.
+            // A panel no module owns (settings, tailscale) can never fail
+            // this sweep honestly: moduleForPanel() is always null for it.
             if (!barWindow.visible || !Popouts.open
-                || barWindow.unanchoredPanels.indexOf(Popouts.currentName) !== -1)
+                || PanelRegistry.ownerless(Popouts.currentName))
                 return;
             Qt.callLater(() => {
                 if (Popouts.open && !barWindow.moduleForPanel(Popouts.currentName))
@@ -428,7 +425,7 @@ PanelWindow {
             Qt.callLater(() => {
                 if (!barWindow.visible || !Popouts.open)
                     return;
-                if (Popouts.currentName === "settings") {
+                if (PanelRegistry.centerAnchored(Popouts.currentName)) {
                     if (Popouts.island !== "center" || Popouts.anchorRect.width !== 0) {
                         Popouts.island = "center";
                         Popouts.anchorRect = Qt.rect(0, 0, 0, 0);

@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Wayland
 import "../Common"
+import "../Common/PanelRegistryData.js" as PanelRegistry
 
 // Popouts use their own layer surface. Their content and native height may
 // change while switching modules, but the menubar's surface remains stable.
@@ -39,9 +40,9 @@ PanelWindow {
         active: root.live && Popouts.open
         windows: [root.bar, root]
         onCleared: {
-            // Deactivating the old monitor host during a settings handoff is
-            // not an outside click. The newly live host takes over the grab.
-            if (root.live || Popouts.currentName !== "settings")
+            // Deactivating the old monitor host during a handoff is not an
+            // outside click. The newly live host takes over the grab.
+            if (root.live || !PanelRegistry.persistsAcrossHosts(Popouts.currentName))
                 Popouts.close();
         }
     }

@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import "Bar"
 import "Common"
+import "Common/PanelRegistryData.js" as PanelRegistry
 
 ShellRoot {
     id: shell
@@ -57,7 +58,9 @@ ShellRoot {
         target: Screens
 
         function onFocusedChanged() {
-            if (Popouts.currentName !== "settings")
+            // Panels that can hand themselves to the newly live bar stay;
+            // everything else belonged to the bar that just went away.
+            if (!PanelRegistry.persistsAcrossHosts(Popouts.currentName))
                 Popouts.close();
         }
     }

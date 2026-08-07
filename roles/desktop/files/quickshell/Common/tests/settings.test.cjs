@@ -42,16 +42,25 @@ test("the settings IPC target is declared exactly once shell-wide", () => {
 
 test("settings is a connected center popout rather than a modal window", () => {
     const shell = read("shell.qml");
-    const popouts = read("Common/Popouts.qml");
-    const host = read("Bar/IslandPopout.qml");
     const settings = read("Common/Settings.qml");
+    const registry = require("../PanelRegistryData.js");
 
     assert.equal(fs.existsSync(path.join(shellDir, "SettingsWindow.qml")), false);
     assert.doesNotMatch(shell, /SettingsWindow\s*\{/);
-    assert.match(popouts, /settings:\s*"center"/);
-    assert.match(host, /settings:\s*"\.\.\/Settings\/SettingsView\.qml"/);
+
+    // These used to be matched as literal text in Popouts.qml and
+    // IslandPopout.qml. Both derive from the registry now, so the registry is
+    // where the claim belongs — and asserting it here rather than on rendered
+    // source means reformatting those maps cannot fail this test.
+    const panel = registry.byName(registry.SETTINGS);
+    assert.ok(panel, "the settings panel must be registered");
+    assert.equal(panel.island, "center");
+    assert.equal(panel.source, "Settings/SettingsView.qml");
+    assert.equal(panel.centerAnchored, true);
+
+    // Opened through the popout host with no module anchor to inherit.
     assert.match(settings,
-        /Popouts\.openPanel\("settings",\s*"center",\s*Qt\.rect\(0,\s*0,\s*0,\s*0\)\)/);
+        /Popouts\.openPanel\(PanelRegistry\.SETTINGS,[\s\S]{0,80}?Qt\.rect\(0,\s*0,\s*0,\s*0\)\)/);
 });
 
 test("edge join shortens the mirrored connector without adding a corner cap", () => {
@@ -80,7 +89,8 @@ test("settings exposes responsive output and keyboard contracts", () => {
     assert.match(view, /function handleEscape\(\): bool/);
     assert.match(host, /item\.availableWidth !== undefined/);
     assert.match(host, /item\.availableHeight !== undefined/);
-    assert.match(host, /fillBody:\s*host\.slotAName === "settings"/);
+    // Which panels fill the body is a registry flag now, not a name test.
+    assert.match(host, /fillBody:\s*PanelRegistry\.fillsBody\(host\.slotAName\)/);
     // Settings lays out once at its target size and is revealed by the
     // animating clip; binding it to the clip would relayout every frame.
     assert.match(host, /width:\s*fillBody \? Math\.max\(1, host\.targetBodyW\) : implicitWidth/);

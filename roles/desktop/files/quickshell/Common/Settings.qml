@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Notifications
 import "SettingsHelpers.js" as SettingsHelpers
+import "PanelRegistryData.js" as PanelRegistry
 
 // Shell settings store (design v2, "Shell settings"). Single source of truth
 // for user-tunable shell configuration: merged over defaults on load,
@@ -107,20 +108,22 @@ Singleton {
     function showPanel(targetPage) {
         if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;
-        // Never inherit Control Center's right-side module anchor.
-        Popouts.openPanel("settings", "center", Qt.rect(0, 0, 0, 0));
+        // Never inherit Control Center's right-side module anchor; this
+        // panel is centerAnchored, so it owns no module's position.
+        Popouts.openPanel(PanelRegistry.SETTINGS,
+            PanelRegistry.island(PanelRegistry.SETTINGS), Qt.rect(0, 0, 0, 0));
         panelOpen = true;
     }
 
     function togglePanel(targetPage) {
-        if (panelOpen && Popouts.open && Popouts.currentName === "settings")
+        if (panelOpen && Popouts.open && Popouts.currentName === PanelRegistry.SETTINGS)
             closePanel();
         else
             showPanel(targetPage);
     }
 
     function closePanel() {
-        if (Popouts.currentName === "settings")
+        if (Popouts.currentName === PanelRegistry.SETTINGS)
             Popouts.close();
         panelOpen = false;
     }
@@ -504,7 +507,7 @@ Singleton {
         target: Popouts
 
         function onChanged() {
-            root.panelOpen = Popouts.open && Popouts.currentName === "settings";
+            root.panelOpen = Popouts.open && Popouts.currentName === PanelRegistry.SETTINGS;
         }
     }
 

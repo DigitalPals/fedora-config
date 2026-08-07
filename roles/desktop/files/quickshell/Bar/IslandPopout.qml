@@ -3,6 +3,7 @@ import QtQuick.Effects
 import QtQuick.Shapes
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
+import "../Common/PanelRegistryData.js" as PanelRegistry
 
 // One persistent connected surface for every bar module. Triggers stay in
 // the menubar while this host grows the panel directly from the bar edge.
@@ -17,21 +18,10 @@ Item {
     required property bool live
     property real outputAvailableHeight: 560
 
-    readonly property var sources: ({
-            control: "../Popovers/ControlCenterPopover.qml",
-            calendar: "../Popovers/CalendarPopover.qml",
-            media: "../Popovers/MediaPopover.qml",
-            weather: "../Popovers/WeatherPopover.qml",
-            usage: "../Popovers/UsagePopover.qml",
-            t3code: "../Popovers/T3CodePopover.qml",
-            audio: "../Popovers/AudioPopover.qml",
-            wifi: "../Popovers/WifiPopover.qml",
-            bluetooth: "../Popovers/BluetoothPopover.qml",
-            tailscale: "../Popovers/TailscalePopover.qml",
-            battery: "../Popovers/BatteryPopover.qml",
-            notifications: "../Popovers/NotifsPopover.qml",
-            settings: "../Settings/SettingsView.qml"
-        })
+    // Derived from Common/PanelRegistryData.js, which stores paths from the
+    // shell root; this host lives one directory down. The strings this
+    // produces are the ones that were hand-written here before.
+    readonly property var sources: PanelRegistry.sourceMap("../")
 
     // Panels whose instance may outlive a close, so reopening them skips
     // incubation entirely. Entry criteria: every piece of state the view
@@ -403,7 +393,7 @@ Item {
 
     onLiveChanged: sync()
     onCenterIslandRectChanged: {
-        if (Popouts.currentName === "settings")
+        if (PanelRegistry.centerAnchored(Popouts.currentName))
             retargetFront();
     }
     onWidthChanged: retargetFront()
@@ -607,7 +597,7 @@ Item {
 
             Loader {
                 id: loaderA
-                readonly property bool fillBody: host.slotAName === "settings"
+                readonly property bool fillBody: PanelRegistry.fillsBody(host.slotAName)
                 active: host.slotAName !== ""
                 asynchronous: true
                 source: active ? host.sources[host.slotAName] : ""
@@ -637,7 +627,7 @@ Item {
 
             Loader {
                 id: loaderB
-                readonly property bool fillBody: host.slotBName === "settings"
+                readonly property bool fillBody: PanelRegistry.fillsBody(host.slotBName)
                 active: host.slotBName !== ""
                 asynchronous: true
                 source: active ? host.sources[host.slotBName] : ""

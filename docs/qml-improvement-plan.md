@@ -1136,7 +1136,52 @@ from the WP1.3 helper (today `Bar.qml:145–168`, `MediaPopover.qml:17–24`).
 
 ## Phase 3 — Panel registry and module resolution
 
-### [ ] WP3.1 `PanelRegistry` as single source of truth
+### [x] WP3.1 `PanelRegistry` as single source of truth
+
+> Done. `Common/PanelRegistryData.js` describes all 13 panels; `Popouts`'
+> island map and `IslandPopout`'s source map are now one line each, and the
+> `unanchoredPanels` stopgap WP1.4 left in `Bar.qml` is gone — "no module owns
+> this panel" is a fact the registry states rather than a list to keep in sync.
+> Notes:
+> - **Sources are stored relative to the shell root**, and `IslandPopout` asks
+>   for them with `sourceMap("../")`. That reproduces the exact strings that
+>   were hand-written in the file before, so path resolution provably did not
+>   change; a data module in `Common/` holding paths only correct relative to
+>   `Bar/` would have been a trap for the next host.
+> - The three flags map cleanly onto the eight hardcoded checks:
+>   `centerAnchored` (Bar's geometry sweep, the host's centre-island retarget),
+>   `fillsBody` (both slot loaders), `persistsAcrossHosts` (`shell.qml`'s
+>   focus-change dismissal, `BarPopoutWindow`'s focus-grab handoff).
+>   `Settings.qml`'s four self-references use a `SETTINGS` constant. The only
+>   remaining `"settings"` literal outside `Settings/` is `shell.qml`'s **IPC
+>   target name**, which is a different key space and correctly left alone.
+> - `PANEL_LESS_MODULES` (`ws`, `idle`) exists so the test can insist the two
+>   key spaces account for each other *completely*. Without it, a typo'd
+>   `moduleId` would just look like another module that happens to own no panel.
+> - **Two assertions in `settings.test.cjs` had to change**, and they are the
+>   brittleness WP1.2's note predicted: they matched the island and source maps
+>   as literal source text, which no longer exists. Rewritten to assert against
+>   the registry — where the claim now belongs, and where reformatting cannot
+>   break it.
+> - **The test was checked for teeth on all four drift classes**: a panel in
+>   `Bar.qml` but not the registry (2 failures), a typo'd `moduleId`, a source
+>   pointing at a missing file, and a consumer reverted to `=== "settings"`
+>   (names the exact file and line). Suite 137 → 148.
+> - **Verified live**: all 12 module panels open over
+>   `qs ipc call popouts toggle <name>`, with island placement matching the
+>   derived map — media on the left, calendar centred under the clock, the rest
+>   right. Settings opens centred and body-filling. `persistsAcrossHosts` was
+>   exercised in both directions on a second output: settings survives the
+>   focused-screen change and hands itself to the returning bar, while the
+>   Control Center is dismissed with the bar that spawned it.
+> - Note for later: `hyprctl output create headless` does **not** always name
+>   the output `HEADLESS-1`; it was `HEADLESS-2` this time, and the Lua focus
+>   dispatch fails with "monitor not found" on a stale name. Read the name back.
+
+<details>
+<summary>Original WP3.1 specification</summary>
+
+### WP3.1 `PanelRegistry` as single source of truth
 
 **Files touched:** `Common/PanelRegistryData.js` (new), `Common/Popouts.qml`,
 `Bar/IslandPopout.qml`, `Bar/Bar.qml`, `Common/tests/panel-registry.test.cjs` (new)
@@ -1162,6 +1207,8 @@ in 8 places.
 **Accept:** test fails if a panel is added to one map but not the registry;
 tailscale stopgap from WP1.4 replaced by proper registration; all popouts
 still open via `qs ipc call popouts toggle <name>`.
+
+</details>
 
 ### [ ] WP3.2 qmldir everywhere + generalized sync test
 
