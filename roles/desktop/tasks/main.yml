@@ -31,6 +31,11 @@
       - brightnessctl
       - playerctl
       - socat
+      # Runtime dependencies of the Quickshell bar that were only ever
+      # installed transitively: curl fetches the weather, iw reads the Wi-Fi
+      # link rate.
+      - curl
+      - iw
       - tesseract
       - tesseract-langpack-eng
       - hunspell-nl
@@ -231,6 +236,30 @@
     - { src: hypridle.conf.j2, dest: hypridle.conf }
     - { src: hyprlock.conf.j2, dest: hyprlock.conf }
 
+# The copy below is unconditional, so broken QML would land on disk and only
+# surface at the next shell reload, far from the change that caused it. Run
+# the same static check tests/run uses, against the source tree, first.
+# Skip with --skip-tags quickshell-lint; it is read-only, so it also runs
+# under --check. tests/qml-lint exits 0 with a SKIP when qmllint is absent.
+- name: Check the Quickshell configuration before installing it
+  ansible.builtin.command: "{{ playbook_dir }}/tests/qml-lint"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  register: quickshell_lint
+  tags: [quickshell, quickshell-lint]
+
+# Reported separately so the findings themselves reach the terminal: a failing
+# command module puts them in stdout, which the compact callback drops in
+# favor of "non-zero return code".
+- name: Refuse to install a Quickshell configuration that qmllint rejects
+  ansible.builtin.fail:
+    msg: "{{ quickshell_lint.stdout | default(quickshell_lint.stderr) | default('qmllint failed') }}"
+  when: quickshell_lint.rc | default(0) != 0
+  tags: [quickshell, quickshell-lint]
+
 - name: Install Quickshell menubar configuration
   become: true
   become_user: "{{ primary_user }}"
@@ -239,6 +268,19 @@
     dest: "{{ primary_home }}/.config/quickshell/"
     mode: "0644"
     directory_mode: "0755"
+  register: quickshell_config
+  tags: [quickshell]
+
+# Deliberately no restart handler: Quickshell watches its config directory and
+# hot-reloads, and a forced restart mid-session is more disruptive than the
+# problem it would solve.
+- name: Report that the shell will hot-reload the new configuration
+  ansible.builtin.debug:
+    msg: >-
+      Quickshell configuration changed; the running shell reloads it on its
+      own. Check `journalctl --user -u quickshell.service -n 50` if the bar
+      looks wrong.
+  when: quickshell_config is changed
   tags: [quickshell]
 
 - name: Remove retired generic Quickshell launcher components

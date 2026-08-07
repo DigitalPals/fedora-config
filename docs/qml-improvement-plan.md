@@ -235,7 +235,16 @@ the user's recoverable file with defaults.
 `shell-settings.json` and reloading produces the backup file and the
 announcement, not silent data loss.
 
-### [ ] WP0.6 Deploy-time validation in the Ansible role
+### [x] WP0.6 Deploy-time validation in the Ansible role
+
+> Done. Deviation: the check is split into a `command` with
+> `failed_when: false` plus a `fail` task, because the repo's compact stdout
+> callback reports a failed `command` as bare "non-zero return code" and drops
+> the findings; routing them through `msg` puts the actual syntax error on
+> screen. Tagged `quickshell-lint` (so `--skip-tags quickshell-lint` bypasses
+> only the check) and `check_mode: false` so `--check` still validates.
+> Verified: a broken QML file aborts with `changed 0` and nothing reaches
+> `~/.config/quickshell`; a normal run is unchanged and idempotent.
 
 **Files touched:** `roles/desktop/tasks/main.yml`, possibly
 `roles/desktop/handlers/main.yml`
