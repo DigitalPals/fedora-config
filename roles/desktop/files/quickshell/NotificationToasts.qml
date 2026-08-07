@@ -134,16 +134,24 @@ PanelWindow {
                         id: cardHover
                     }
 
-                    Timer {
-                        interval: 100
-                        repeat: true
+                    // One continuous countdown instead of a 100ms tick: the
+                    // progress bar moves at display rate and the card needs
+                    // no repeating timer. Hovering stops the sequence with
+                    // `remaining` frozen; unhovering restarts it from the
+                    // frozen value with a freshly captured duration.
+                    SequentialAnimation {
                         running: !card.hovered && !card.critical
-                        onTriggered: {
-                            card.remaining -= interval;
-                            if (card.remaining <= 0) {
-                                stop();
-                                Notifs.hideToast(slot.modelData, true);
-                            }
+                        ScriptAction {
+                            script: countdown.duration = Math.max(1, card.remaining)
+                        }
+                        NumberAnimation {
+                            id: countdown
+                            target: card
+                            property: "remaining"
+                            to: 0
+                        }
+                        ScriptAction {
+                            script: Notifs.hideToast(slot.modelData, true)
                         }
                     }
 
@@ -331,10 +339,6 @@ PanelWindow {
                                 ? parent.width * Math.max(0, Math.min(1, card.remaining / card.total))
                                 : 0
                             color: Theme.accent
-
-                            Behavior on width {
-                                NumberAnimation { duration: 100 }
-                            }
                         }
                     }
                 }

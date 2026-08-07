@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Static QML smoke check for the quickshell config: catches syntax errors and
+# unresolved references before a shell reload, complementing the runtime
+# journal grep in tests/verify-xps. Warnings are informational; only hard
+# errors fail the check, so Quickshell-specific static-analysis noise never
+# blocks a deploy.
+set -uo pipefail
+
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+shell_dir="$repo_root/roles/desktop/files/quickshell"
+
+# Fedora installs the binary as qmllint-qt6.
+qmllint=$(command -v qmllint-qt6 || command -v qmllint || true)
+if [[ -z $qmllint ]]; then
+  printf 'SKIP  qmllint not installed (dnf install qt6-qtdeclarative-devel)\n' >&2
+  exit 0
+fi
+
+failures=0
+checked=0
+while IFS= read -r -d '' file; do
+  checked=$((checked + 1))
+  output=$("$qmllint" -I /usr/lib64/qt6/qml -I "$shell_dir" "$file" 2>&1)
+  errors=$(grep -E '^(Error|.*\.qml:[0-9]+:[0-9]+: Error)' <<<"$output" || true)
+  if [[ -n $errors ]]; then
+    printf '\033[31mFAIL\033[0m  %s\n' "${file#"$shell_dir"/}"
+    printf '%s\n' "$errors"
+    failures=$((failures + 1))
+  fi
+done < <(find "$shell_dir" -name '*.qml' -print0 | sort -z)
+
+if ((failures > 0)); then
+  printf '%d of %d QML files with errors\n' "$failures" "$checked"
+  exit 1
+fi
+printf '\033[32mPASS\033[0m  %d QML files, no qmllint errors\n' "$checked"

@@ -41,6 +41,8 @@
       # QtWebSockets QML module for the T3 Code bar client; Fedora ships
       # the QML plugin in the -devel subpackage.
       - qt6-qtwebsockets-devel
+      # qmllint for the quickshell QML smoke check (tests/qml-lint).
+      - qt6-qtdeclarative-devel
     state: present
   when: not ansible_check_mode
 

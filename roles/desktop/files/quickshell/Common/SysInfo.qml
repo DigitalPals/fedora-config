@@ -261,10 +261,13 @@ Singleton {
         brightnessProc.running = true;
     }
 
-    // CPU / RAM sampling for the Control Center stat cards.
+    // CPU / RAM sampling for the Control Center stat cards. Only sampled
+    // while a popout is up: nothing else displays these values, and idle
+    // wakeups are not free on battery. triggeredOnStart refreshes the
+    // cards the moment a popout opens.
     Timer {
         interval: 5000
-        running: true
+        running: Popouts.open
         repeat: true
         triggeredOnStart: true
         onTriggered: {
@@ -299,9 +302,12 @@ Singleton {
         }
     }
 
+    // The tailscale/brightness/bitrate consumers are all popout content,
+    // and their popovers refresh on open as well; no need to poll while
+    // nothing is shown.
     Timer {
         interval: 30000
-        running: true
+        running: Popouts.open
         repeat: true
         triggeredOnStart: true
         onTriggered: {
