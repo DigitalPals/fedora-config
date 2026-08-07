@@ -77,8 +77,23 @@ is manual.
 
 - [ ] Mini preview mirrors order and enablement (disabled = dashed chip),
       including Idle inhibit and Control Center.
-- [ ] Each detail-capable module cycles Auto, Prefer detail, and Always compact;
-      Prefer detail compacts only after Auto modules.
+- [ ] The cog appears only on configurable modules (Workspaces, Media, Clock,
+      Weather, T3 Code, Model usage, Volume, Battery, Notifications) and turns
+      accent when that module's options or detail policy left their defaults.
+- [ ] The cog opens the module's settings sub-page in place (list hidden, back
+      button focused); Back or Esc returns to the list with the row refocused;
+      a second Esc closes the window as before.
+- [ ] Detail policy (Auto / Prefer detail / Always compact) is picked on the
+      sub-page; Prefer detail compacts only after Auto modules.
+- [ ] Per-module options apply live: clock seconds/date format, battery and
+      volume percentage toggles and thresholds, media title format and width,
+      usage provider toggles and warn/critical thresholds, T3 label and pulse,
+      workspaces min slots / hide empty / dots, bell badge dot/count/off.
+- [ ] Weather place/latitude/longitude edits commit on Enter or focus loss and
+      refetch; Esc inside a text field restores the value without closing
+      anything; junk input snaps back to the stored value.
+- [ ] Reset page on Modules resets layout, detail policies, and all module
+      options (with Undo); per-row undo chips reset one option.
 - [ ] Toggles apply to the bar instantly; auto-rules keep working (Media
       only while playing, Bluetooth only when connected, Battery on
       laptops).
@@ -125,7 +140,7 @@ is manual.
       accumulated wheel step, not once per raw event.
 - [ ] Tab/arrow traversal, automatic focus scrolling, roles/states/actions,
       and Orca announcements work for navigation, custom controls, resets,
-      drag/drop, policy buttons, and save errors.
+      drag/drop, module cogs and their sub-pages, and save errors.
 - [ ] `journalctl --user -u quickshell.service` free of QML errors and
       binding loops after exercising every page.
 - [ ] `tests/verify-xps` passes.

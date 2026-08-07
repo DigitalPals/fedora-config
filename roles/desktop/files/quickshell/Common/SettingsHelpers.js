@@ -32,6 +32,22 @@ function defaultMods() {
     };
 }
 
+// Per-module options: one object per configurable module id. Modules absent
+// here (wifi, bt, idle, control) have no options and get no settings cog.
+function defaultModOpts() {
+    return {
+        ws: { minSlots: 5, hideEmpty: false, style: "numbers" },
+        media: { titleFormat: "title-artist", maxWidth: 220 },
+        clock: { seconds: false, showDate: true, dateFormat: "ddd dd" },
+        weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
+        t3: { showLabel: true, pulse: true },
+        usage: { claude: true, codex: true, kimi: true, warnAt: 25, critAt: 10 },
+        vol: { step: 5, showPct: true, middleClick: "mute" },
+        batt: { showPct: true, warnAt: 20, critAt: 10 },
+        bell: { badge: "dot" }
+    };
+}
+
 function defaults() {
     return {
         wall: "snow-capped-mountains-with-full-moon-lo.jpg",
@@ -65,6 +81,7 @@ function defaults() {
         notifProgress: true,
         notifBodyLines: 2,
         mods: defaultMods(),
+        modOpts: defaultModOpts(),
         wallAccent: "",
         wallAccentFor: ""
     };
@@ -90,6 +107,15 @@ function enumIn(value, options, fallback) {
 
 function boolIn(value, fallback) {
     return typeof value === "boolean" ? value : fallback;
+}
+
+function textIn(value, maxLen, fallback) {
+    if (typeof value !== "string")
+        return fallback;
+    if (value.indexOf("\0") !== -1 || value.indexOf("\n") !== -1 || value.indexOf("\r") !== -1)
+        return fallback;
+    var trimmed = value.trim();
+    return trimmed !== "" && trimmed.length <= maxLen ? trimmed : fallback;
 }
 
 function hexIn(value, fallback) {
@@ -154,6 +180,74 @@ function normalizeMods(raw) {
     MODULE_IDS.forEach(function(id) {
         if (!seen[id])
             next[defaultCol[id]].push({ id: id, on: defaultOn[id], detail: "auto" });
+    });
+    return next;
+}
+
+// Per-key validators for module options. Shared by normalizeModOpts and any
+// UI that needs a key's bounds; fallback comes from defaultModOpts.
+var MOD_OPT_CHECKS = {
+    ws: {
+        minSlots: function(v, d) { return intIn(v, 1, 10, 1, d); },
+        hideEmpty: boolIn,
+        style: function(v, d) { return enumIn(v, ["numbers", "dots"], d); }
+    },
+    media: {
+        titleFormat: function(v, d) {
+            return enumIn(v, ["title-artist", "title", "artist-title"], d);
+        },
+        maxWidth: function(v, d) { return intIn(v, 120, 360, 20, d); }
+    },
+    clock: {
+        seconds: boolIn,
+        showDate: boolIn,
+        dateFormat: function(v, d) {
+            return enumIn(v, ["ddd dd", "ddd d MMM", "dd MMM", "dd-MM"], d);
+        }
+    },
+    weather: {
+        place: function(v, d) { return textIn(v, 40, d); },
+        lat: function(v, d) { return realIn(v, -90, 90, 0.0001, d); },
+        lon: function(v, d) { return realIn(v, -180, 180, 0.0001, d); },
+        pollMins: function(v, d) { return intIn(v, 5, 60, 5, d); }
+    },
+    t3: { showLabel: boolIn, pulse: boolIn },
+    usage: {
+        claude: boolIn,
+        codex: boolIn,
+        kimi: boolIn,
+        warnAt: function(v, d) { return intIn(v, 10, 50, 5, d); },
+        critAt: function(v, d) { return intIn(v, 5, 25, 5, d); }
+    },
+    vol: {
+        step: function(v, d) { return intIn(v, 1, 10, 1, d); },
+        showPct: boolIn,
+        middleClick: function(v, d) { return enumIn(v, ["mute", "none"], d); }
+    },
+    batt: {
+        showPct: boolIn,
+        warnAt: function(v, d) { return intIn(v, 10, 40, 5, d); },
+        critAt: function(v, d) { return intIn(v, 5, 20, 5, d); }
+    },
+    bell: {
+        badge: function(v, d) { return enumIn(v, ["dot", "count", "off"], d); }
+    }
+};
+
+// Sanitize persisted module options: known modules and keys only, each value
+// through its validator; anything unknown or invalid falls back to defaults.
+function normalizeModOpts(raw) {
+    var next = defaultModOpts();
+    if (!raw || typeof raw !== "object")
+        return next;
+    Object.keys(MOD_OPT_CHECKS).forEach(function(id) {
+        var entry = raw[id];
+        if (!entry || typeof entry !== "object")
+            return;
+        Object.keys(MOD_OPT_CHECKS[id]).forEach(function(key) {
+            if (key in entry)
+                next[id][key] = MOD_OPT_CHECKS[id][key](entry[key], next[id][key]);
+        });
     });
     return next;
 }
@@ -238,6 +332,7 @@ function merge(parsed) {
         notifProgress: boolIn(parsed.notifProgress, d.notifProgress),
         notifBodyLines: intIn(parsed.notifBodyLines, 0, 3, 1, d.notifBodyLines),
         mods: migrateMods(parsed.mods, parsed.v),
+        modOpts: normalizeModOpts(parsed.modOpts),
         wallAccent: hexIn(parsed.wallAccent, ""),
         wallAccentFor: typeof parsed.wallAccentFor === "string" ? parsed.wallAccentFor : ""
     };
@@ -344,7 +439,9 @@ var exported = {
     FONT_CHOICES: FONT_CHOICES,
     defaults: defaults,
     defaultMods: defaultMods,
+    defaultModOpts: defaultModOpts,
     normalizeMods: normalizeMods,
+    normalizeModOpts: normalizeModOpts,
     migrateMods: migrateMods,
     pathIn: pathIn,
     detailIn: detailIn,

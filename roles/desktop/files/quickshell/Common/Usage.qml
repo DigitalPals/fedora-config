@@ -58,9 +58,9 @@ Singleton {
         const rem = minRemaining(key);
         if (rem < 0)
             return "none";
-        if (rem <= 10)
+        if (rem <= Settings.modOpts.usage.critAt)
             return "crit";
-        if (rem <= 25)
+        if (rem <= Settings.modOpts.usage.warnAt)
             return "warn";
         return "ok";
     }

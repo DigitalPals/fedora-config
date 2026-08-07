@@ -34,6 +34,28 @@ Item {
     property string announcement: ""
     readonly property bool dragActive: dragMod !== null
 
+    // ---- per-module settings sub-page -------------------------------------
+    property string subPage: ""
+    readonly property bool subPageActive: subPage !== ""
+
+    function openSubPage(id) {
+        if (dragActive)
+            return;
+        subPage = id;
+        announcement = moduleMeta[id].name + " settings.";
+        Qt.callLater(() => {
+            if (detailLoader.item)
+                detailLoader.item.focusFirst();
+        });
+    }
+
+    function closeSubPage() {
+        const id = subPage;
+        subPage = "";
+        announcement = "Module list.";
+        Qt.callLater(() => focusModule(id));
+    }
+
     readonly property int pitch: 31          // 28px row + 3px gap
     readonly property int rowsStartY: 20     // column header + gap
     readonly property bool stacked: width < 520
@@ -211,18 +233,6 @@ Item {
                 y - columnsViewport.height + 12);
     }
 
-    function policyLabel(policy) {
-        return policy === "prefer" ? "Prefer detail"
-            : policy === "compact" ? "Always compact" : "Auto";
-    }
-
-    function cyclePolicy(entry) {
-        const choices = ["auto", "prefer", "compact"];
-        const next = choices[(choices.indexOf(entry.detail) + 1) % choices.length];
-        Settings.setModuleDetail(entry.id, next);
-        announcement = moduleMeta[entry.id].name + " detail policy: " + policyLabel(next) + ".";
-    }
-
     // ---- components -------------------------------------------------------
     component MiniChip: Rectangle {
         required property var modelData
@@ -322,7 +332,7 @@ Item {
         Item {
             anchors.left: parent.left
             anchors.leftMargin: 8
-            anchors.right: policyButton.visible ? policyButton.left : rowSwitch.left
+            anchors.right: cogButton.visible ? cogButton.left : rowSwitch.left
             anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             height: parent.height
@@ -365,15 +375,15 @@ Item {
         }
 
         Rectangle {
-            id: policyButton
-            visible: row.meta.detail === true
+            id: cogButton
+            visible: Settings.defaults.modOpts[row.modelData.id] !== undefined
             anchors.right: rowSwitch.left
             anchors.rightMargin: 1
             anchors.verticalCenter: parent.verticalCenter
             width: 22
             height: 22
             radius: 5
-            color: policyMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+            color: cogMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accent
             activeFocusOnTab: visible
@@ -382,36 +392,40 @@ Item {
                     page.revealRow(row);
             }
             Accessible.role: Accessible.Button
-            Accessible.name: row.meta.name + " detail policy, " + page.policyLabel(row.modelData.detail)
-            Accessible.onPressAction: page.cyclePolicy(row.modelData)
-            Controls.ToolTip.visible: policyMouse.containsMouse
-            Controls.ToolTip.text: page.policyLabel(row.modelData.detail)
+            Accessible.name: row.meta.name + " settings"
+            Accessible.onPressAction: page.openSubPage(row.modelData.id)
+            Controls.ToolTip.visible: cogMouse.containsMouse
+            Controls.ToolTip.text: "Module settings"
+
+            // Dirty when the detail policy or any module option left default.
+            readonly property bool optsDirty: row.modelData.detail !== "auto"
+                || JSON.stringify(Settings.modOpts[row.modelData.id])
+                    !== JSON.stringify(Settings.defaults.modOpts[row.modelData.id])
 
             Text {
                 anchors.centerIn: parent
-                text: row.modelData.detail === "compact" ? "C"
-                    : row.modelData.detail === "prefer" ? "D" : "A"
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.fontCaption
-                color: row.modelData.detail === "auto" ? Theme.textDim : Theme.accent
+                text: "\u{F0493}"
+                font.family: Theme.fontIcon
+                font.pixelSize: Theme.iconSmall
+                color: cogButton.optsDirty ? Theme.accent : Theme.textDim
             }
 
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                         || event.key === Qt.Key_Space) {
-                    page.cyclePolicy(row.modelData);
+                    page.openSubPage(row.modelData.id);
                     event.accepted = true;
                 }
             }
 
             MouseArea {
-                id: policyMouse
+                id: cogMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    policyButton.forceActiveFocus();
-                    page.cyclePolicy(row.modelData);
+                    cogButton.forceActiveFocus();
+                    page.openSubPage(row.modelData.id);
                 }
             }
         }
@@ -504,6 +518,7 @@ Item {
     // ---- layout -----------------------------------------------------------
     SectionHeader {
         id: previewHeader
+        visible: !page.subPageActive
         label: "LIVE PREVIEW"
         dirty: Settings.modsModified
         onResetRequested: Settings.resetKeys(["mods"], "Modules")
@@ -511,6 +526,7 @@ Item {
 
     Rectangle {
         id: miniBar
+        visible: !page.subPageActive
         anchors.top: previewHeader.bottom
         anchors.topMargin: 10
         width: parent.width
@@ -565,6 +581,7 @@ Item {
 
     Flickable {
         id: columnsViewport
+        visible: !page.subPageActive
         anchors.top: miniBar.bottom
         anchors.topMargin: 10
         anchors.left: parent.left
@@ -642,10 +659,11 @@ Item {
 
     Text {
         id: footnote
+        visible: !page.subPageActive
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        text: "Drag, or Space to pick up; arrows move; Space drops; Escape cancels. A = Auto · D = Prefer detail · C = Always compact."
+        text: "Drag, or Space to pick up; arrows move; Space drops; Escape cancels. The cog opens a module's settings."
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
         color: Theme.textFaint
@@ -687,6 +705,20 @@ Item {
                 font.pixelSize: Theme.fontCaption
                 color: Theme.textHi
             }
+        }
+    }
+
+    // Per-module settings sub-page: replaces the list content while open;
+    // the list keeps its instance (and scroll position) underneath.
+    Loader {
+        id: detailLoader
+        anchors.fill: parent
+        active: page.subPageActive
+        sourceComponent: ModuleDetailView {
+            moduleId: page.subPage
+            moduleName: (page.moduleMeta[page.subPage] ?? ({ name: "" })).name
+            hasDetail: (page.moduleMeta[page.subPage] ?? ({})).detail === true
+            onBackRequested: page.closeSubPage()
         }
     }
 

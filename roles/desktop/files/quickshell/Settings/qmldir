@@ -4,6 +4,7 @@
 AppearancePage AppearancePage.qml
 BarLayoutPage BarLayoutPage.qml
 FolderDialog FolderDialog.qml
+ModuleDetailView ModuleDetailView.qml
 ModulesPage ModulesPage.qml
 NotificationsPage NotificationsPage.qml
 PickerRow PickerRow.qml
@@ -12,6 +13,7 @@ PreviewStrip PreviewStrip.qml
 SectionHeader SectionHeader.qml
 SettingsSlider SettingsSlider.qml
 SettingsSwitch SettingsSwitch.qml
+SettingsTextRow SettingsTextRow.qml
 SettingsAction SettingsAction.qml
 SettingsCard SettingsCard.qml
 SettingsPage SettingsPage.qml

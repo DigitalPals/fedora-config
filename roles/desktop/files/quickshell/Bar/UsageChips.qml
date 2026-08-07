@@ -17,6 +17,9 @@ Item {
     property int displayMode: 2
 
     readonly property var availableKeys: Usage.providerKeys.filter(k => {
+        // Providers the user toggled off keep their popover tab.
+        if (Settings.modOpts.usage[k] !== true)
+            return false;
         const p = Usage.provider(k);
         if (!p)
             return false;

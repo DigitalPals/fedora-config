@@ -614,7 +614,7 @@ PanelWindow {
                     property bool dividerBefore: false
                     spacing: 2
                     readonly property real detailSaving: mediaTitle.implicitWidth > 0
-                        ? Math.min(mediaTitle.implicitWidth, Theme.mediaTitleWideWidth) + 6 : 0
+                        ? Math.min(mediaTitle.implicitWidth, Settings.modOpts.media.maxWidth) + 6 : 0
 
                     Component.onCompleted: barWindow.registerPanel("media", mediaChip)
                     Component.onDestruction: barWindow.unregisterPanel("media", mediaChip)
@@ -660,14 +660,19 @@ PanelWindow {
                         text: {
                             if (!barWindow.player)
                                 return "";
+                            const format = Settings.modOpts.media.titleFormat;
                             const artist = barWindow.player.trackArtist;
-                            return barWindow.player.trackTitle + (artist ? " — " + artist : "");
+                            const title = barWindow.player.trackTitle;
+                            if (format === "title" || !artist)
+                                return title;
+                            return format === "artist-title"
+                                ? artist + " — " + title : title + " — " + artist;
                         }
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.barTextSize
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
-                        width: Math.min(implicitWidth, Theme.mediaTitleWideWidth)
+                        width: Math.min(implicitWidth, Settings.modOpts.media.maxWidth)
 
                         Behavior on color {
                             ColorAnimation { duration: Theme.chipFadeDuration }
@@ -717,7 +722,8 @@ PanelWindow {
             Rectangle {
                 id: clockChip
                 property string isle: "center"
-                readonly property real detailSaving: clockDate.implicitWidth + 6
+                readonly property real detailSaving: Settings.modOpts.clock.showDate
+                    ? clockDate.implicitWidth + 6 : 0
 
                 Component.onCompleted: barWindow.registerPanel("calendar", clockChip)
                 Component.onDestruction: barWindow.unregisterPanel("calendar", clockChip)
@@ -738,7 +744,9 @@ PanelWindow {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Qt.formatDateTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
+                        text: Qt.formatDateTime(clock.date, Settings.clock24
+                            ? (Settings.modOpts.clock.seconds ? "HH:mm:ss" : "HH:mm")
+                            : (Settings.modOpts.clock.seconds ? "h:mm:ss AP" : "h:mm AP"))
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.barTextSize
                         font.weight: Theme.weightSemibold
@@ -748,9 +756,9 @@ PanelWindow {
 
                     Text {
                         id: clockDate
-                        visible: !barWindow.moduleCompact("clock")
+                        visible: Settings.modOpts.clock.showDate && !barWindow.moduleCompact("clock")
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Qt.formatDateTime(clock.date, "ddd dd")
+                        text: Qt.formatDateTime(clock.date, Settings.modOpts.clock.dateFormat)
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.barTextSize
                         font.features: Theme.tabularNumberFeatures
@@ -896,7 +904,8 @@ PanelWindow {
                     property string isle: "right"
                     property bool dividerBefore: false
                     spacing: 1
-                    readonly property real detailSaving: t3Chip.detailSaving
+                    readonly property real detailSaving: Settings.modOpts.t3.showLabel
+                        ? t3Chip.detailSaving : 0
 
                     Component.onCompleted: barWindow.registerPanel("t3code", t3Chip)
                     Component.onDestruction: barWindow.unregisterPanel("t3code", t3Chip)
@@ -907,7 +916,8 @@ PanelWindow {
 
                     T3Chip {
                         id: t3Chip
-                        displayMode: barWindow.moduleCompact("t3") ? 0 : 2
+                        displayMode: barWindow.moduleCompact("t3")
+                            || !Settings.modOpts.t3.showLabel ? 0 : 2
                         held: barWindow.popoutOpen("t3code")
                         onClicked: barWindow.togglePopout("t3code", t3Module.isle, t3Chip)
                         onEntered: barWindow.hoverOpen("t3code", t3Module.isle, t3Chip)
@@ -1002,22 +1012,25 @@ PanelWindow {
                 Component.onCompleted: barWindow.registerPanel("audio", audioIcon)
                 Component.onDestruction: barWindow.unregisterPanel("audio", audioIcon)
                 glyph: barWindow.sinkMuted || barWindow.volume === 0 ? "" : barWindow.volume < 50 ? "" : ""
-                label: barWindow.volume + "%"
+                label: Settings.modOpts.vol.showPct ? barWindow.volume + "%" : ""
                 compact: barWindow.moduleCompact("vol")
                 held: barWindow.popoutOpen("audio")
                 alert: barWindow.sinkMuted
                 tooltip: "Audio " + barWindow.volume + "%"
                     + (barWindow.sinkMuted ? " · muted" : "")
-                    + " · wheel volume · middle mute"
+                    + " · wheel volume"
+                    + (Settings.modOpts.vol.middleClick === "mute" ? " · middle mute" : "")
                 tooltipAlign: 1
                 onClicked: barWindow.togglePopout("audio", audioIcon.isle, audioIcon)
                 onMiddleClicked: {
-                    if (barWindow.sink && barWindow.sink.audio)
+                    if (Settings.modOpts.vol.middleClick === "mute"
+                            && barWindow.sink && barWindow.sink.audio)
                         barWindow.sink.audio.muted = !barWindow.sink.audio.muted;
                 }
                 onWheeled: steps => {
                     if (barWindow.sink && barWindow.sink.audio)
-                        barWindow.sink.audio.volume = Math.max(0, Math.min(1, barWindow.sink.audio.volume + steps * 0.05));
+                        barWindow.sink.audio.volume = Math.max(0, Math.min(1,
+                            barWindow.sink.audio.volume + steps * (Settings.modOpts.vol.step / 100)));
                 }
                 onEntered: barWindow.hoverOpen("audio", audioIcon.isle, audioIcon)
                 onExited: barWindow.cancelHover("audio")
@@ -1084,11 +1097,13 @@ PanelWindow {
                 // of the cluster keeps its position.
                 glyph: barWindow.charging ? "󱊦" : "󱊣"
                 glyphWidth: 13.5
-                label: Math.round(barWindow.batteryPct) + "%"
+                // An empty label also zeroes BarIcon's detailSaving, so
+                // fitBar never budgets for a percentage that is never shown.
+                label: Settings.modOpts.batt.showPct ? Math.round(barWindow.batteryPct) + "%" : ""
                 compact: barWindow.moduleCompact("batt")
-                alert: !barWindow.charging && barWindow.batteryPct <= 10
+                alert: !barWindow.charging && barWindow.batteryPct <= Settings.modOpts.batt.critAt
                 held: barWindow.popoutOpen("battery")
-                idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon
+                idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= Settings.modOpts.batt.warnAt && !barWindow.charging ? Theme.amber : Theme.icon
                 tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%" + (barWindow.charging ? " · charging" : "")
                 tooltipAlign: 1
                 onClicked: barWindow.togglePopout("battery", batteryIcon.isle, batteryIcon)
@@ -1123,22 +1138,42 @@ PanelWindow {
                 }
 
                 Rectangle {
-                    visible: Notifs.count > 0
+                    id: bellBadge
+                    readonly property bool showCount: Settings.modOpts.bell.badge === "count"
+                    visible: Notifs.count > 0 && Settings.modOpts.bell.badge !== "off"
                     anchors.top: bellIcon.top
-                    anchors.topMargin: -1
+                    anchors.topMargin: showCount ? -3 : -1
                     anchors.right: bellIcon.right
-                    anchors.rightMargin: 3
-                    width: 10
-                    height: 10
-                    radius: 5
-                    color: Theme.barBg
+                    anchors.rightMargin: showCount ? 0 : 3
+                    width: showCount ? Math.max(height, badgeCount.implicitWidth + 8) : 10
+                    height: showCount ? 15 : 10
+                    radius: height / 2
+                    // Count mode is a single accent pill ringed in bar color;
+                    // dot mode keeps the original barBg ring + inner dot.
+                    color: showCount
+                        ? (Notifs.hasUrgent ? Theme.red : Theme.accent) : Theme.barBg
+                    border.width: showCount ? 1 : 0
+                    border.color: Theme.barBg
 
                     Rectangle {
+                        visible: !bellBadge.showCount
                         anchors.centerIn: parent
                         width: 6
                         height: 6
                         radius: 3
                         color: Notifs.hasUrgent ? Theme.red : Theme.accent
+                    }
+
+                    Text {
+                        id: badgeCount
+                        visible: bellBadge.showCount
+                        anchors.centerIn: parent
+                        text: Notifs.count > 99 ? "99+" : Notifs.count
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
+                        font.features: Theme.tabularNumberFeatures
+                        color: Theme.accentFg
                     }
                 }
             }
@@ -1169,6 +1204,6 @@ PanelWindow {
 
     SystemClock {
         id: clock
-        precision: SystemClock.Minutes
+        precision: Settings.modOpts.clock.seconds ? SystemClock.Seconds : SystemClock.Minutes
     }
 }

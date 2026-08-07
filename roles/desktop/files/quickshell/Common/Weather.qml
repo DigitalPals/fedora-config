@@ -4,15 +4,16 @@ import Quickshell
 import Quickshell.Io
 
 // Open-Meteo backed weather state for the bar chip + popover. No API key;
-// coordinates are fixed here (QS_WEATHER_LAT/LON/PLACE override them).
+// location and cadence come from the weather module's settings (the old
+// QS_WEATHER_* env vars are seeded into them once by Settings).
 Singleton {
     id: root
 
-    readonly property string latitude: Quickshell.env("QS_WEATHER_LAT") || "52.78"
-    readonly property string longitude: Quickshell.env("QS_WEATHER_LON") || "6.90"
-    readonly property string place: Quickshell.env("QS_WEATHER_PLACE") || "Emmen"
+    readonly property string latitude: String(Settings.modOpts.weather.lat)
+    readonly property string longitude: String(Settings.modOpts.weather.lon)
+    readonly property string place: Settings.modOpts.weather.place
 
-    readonly property int pollIntervalSecs: 1200
+    readonly property int pollIntervalSecs: Settings.modOpts.weather.pollMins * 60
 
     property bool ready: false
     property double updatedAt: 0
@@ -39,6 +40,13 @@ Singleton {
 
         function onUnitChanged() {
             root.refresh();
+        }
+
+        // Any modOpts write lands here; only refetch when it moved the
+        // request (location change), not on unrelated module options.
+        function onModOptsChanged() {
+            if (root.url !== root.fetchedUrl)
+                root.refresh();
         }
     }
 
@@ -156,7 +164,10 @@ Singleton {
         }
     }
 
+    property string fetchedUrl: ""
+
     function refresh() {
+        fetchedUrl = url;
         fetchProc.running = false;
         fetchProc.running = true;
     }

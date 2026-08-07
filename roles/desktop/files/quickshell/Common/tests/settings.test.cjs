@@ -304,6 +304,43 @@ test("notification settings drive the toasts and the notification center", () =>
             `${name} must use Notifs.setDnd`);
 });
 
+test("per-module options live under one validated modOpts key", () => {
+    const helpers = read("Common/SettingsHelpers.js");
+    const settings = read("Common/Settings.qml");
+
+    assert.match(helpers, /function defaultModOpts/);
+    assert.match(helpers, /function normalizeModOpts/);
+    assert.match(helpers, /modOpts:\s*normalizeModOpts\(parsed\.modOpts\)/);
+    assert.match(settings, /"mods", "modOpts"/);
+    assert.match(settings, /function setModuleOption/);
+    assert.match(settings, /onModOptsChanged:\s*scheduleSave/);
+    // The QS_WEATHER_* env vars survive exactly one upgrade as a seed; a file
+    // that already carries modOpts must never take them again.
+    assert.match(settings, /function seedWeatherFromEnv/);
+    assert.match(settings, /parsed\.modOpts !== undefined/);
+    assert.doesNotMatch(read("Common/Weather.qml"), /Quickshell\.env\("QS_WEATHER/,
+        "Weather must read its location from Settings, not the environment");
+});
+
+test("the module cog opens a per-module sub-page inside the Modules page", () => {
+    const modules = read("Settings/ModulesPage.qml");
+    const view = read("Settings/SettingsView.qml");
+    const detail = read("Settings/ModuleDetailView.qml");
+
+    assert.doesNotMatch(modules, /cyclePolicy/,
+        "the A/D/C policy cycler is replaced by the cog + sub-page");
+    assert.match(modules, /function openSubPage/);
+    assert.match(modules, /if \(dragActive\)\s*\n\s*return;/,
+        "a drag in progress must not be interrupted by opening a sub-page");
+    assert.match(modules, /ModuleDetailView \{/);
+    assert.match(modules, /id:\s*cogButton/);
+    assert.match(view, /subPageActive \?\? false/,
+        "Escape must close an open module sub-page before clearing search");
+    assert.match(detail, /Settings\.setModuleDetail\(view\.moduleId/,
+        "the detail policy control lives on the sub-page, stored in mods");
+    assert.match(detail, /Settings\.setModuleOption/);
+});
+
 test("the settings store keeps its fixed literal state path", () => {
     const settings = read("Common/Settings.qml");
     assert.match(settings,

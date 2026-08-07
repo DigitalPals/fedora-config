@@ -43,6 +43,81 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.right[8].on, true);
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
+    assert.deepEqual(Object.keys(d.modOpts),
+        ["ws", "media", "clock", "weather", "t3", "usage", "vol", "batt", "bell"]);
+    assert.equal(d.modOpts.ws.minSlots, 5);
+    assert.equal(d.modOpts.media.maxWidth, 220);
+    assert.equal(d.modOpts.clock.seconds, false);
+    assert.equal(d.modOpts.clock.dateFormat, "ddd dd");
+    assert.deepEqual(d.modOpts.weather,
+        { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 });
+    assert.equal(d.modOpts.usage.warnAt, 25);
+    assert.equal(d.modOpts.usage.critAt, 10);
+    assert.equal(d.modOpts.vol.step, 5);
+    assert.equal(d.modOpts.vol.middleClick, "mute");
+    assert.deepEqual(d.modOpts.batt, { showPct: true, warnAt: 20, critAt: 10 });
+    assert.equal(d.modOpts.bell.badge, "dot");
+});
+
+test("normalizeModOpts drops unknown modules and keys", () => {
+    const next = H.normalizeModOpts({
+        flux: { on: true },
+        wifi: { anything: 1 },
+        clock: { seconds: true, bogus: "x" },
+        vol: "not-an-object"
+    });
+    assert.ok(!("flux" in next) && !("wifi" in next));
+    assert.equal(next.clock.seconds, true);
+    assert.ok(!("bogus" in next.clock));
+    assert.deepEqual(next.vol, H.defaultModOpts().vol);
+    assert.deepEqual(H.normalizeModOpts(null), H.defaultModOpts());
+    assert.deepEqual(H.normalizeModOpts("nope"), H.defaultModOpts());
+});
+
+test("normalizeModOpts clamps, snaps, and validates option values", () => {
+    const next = H.normalizeModOpts({
+        ws: { minSlots: 99, style: "triangles" },
+        media: { maxWidth: 133, titleFormat: "title" },
+        weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
+        usage: { warnAt: 8, critAt: 60, claude: "yes" },
+        vol: { step: 0, middleClick: "detonate" },
+        batt: { warnAt: 33, critAt: 3 },
+        bell: { badge: "count" }
+    });
+    assert.equal(next.ws.minSlots, 10);
+    assert.equal(next.ws.style, "numbers");
+    assert.equal(next.media.maxWidth, 140);
+    assert.equal(next.media.titleFormat, "title");
+    assert.equal(next.weather.lat, 90, "out-of-range latitude clamps like other numerics");
+    assert.equal(next.weather.lon, -12.3457);
+    assert.equal(next.weather.place, "Emmen Centrum");
+    assert.equal(next.weather.pollMins, 5);
+    assert.equal(next.usage.warnAt, 10);
+    assert.equal(next.usage.critAt, 25);
+    assert.equal(next.usage.claude, true, "non-boolean falls back to default");
+    assert.equal(next.vol.step, 1);
+    assert.equal(next.vol.middleClick, "mute");
+    assert.equal(next.batt.warnAt, 35, "snaps to step 5");
+    assert.equal(next.batt.critAt, 5);
+    assert.equal(next.bell.badge, "count");
+});
+
+test("weather place rejects control characters and oversized strings", () => {
+    const d = H.defaultModOpts().weather.place;
+    assert.equal(H.normalizeModOpts({ weather: { place: "a\nb" } }).weather.place, d);
+    assert.equal(H.normalizeModOpts({ weather: { place: "a\0b" } }).weather.place, d);
+    assert.equal(H.normalizeModOpts({ weather: { place: "   " } }).weather.place, d);
+    assert.equal(H.normalizeModOpts({ weather: { place: "x".repeat(41) } }).weather.place, d);
+    assert.equal(H.normalizeModOpts({ weather: { place: "x".repeat(40) } }).weather.place,
+        "x".repeat(40));
+});
+
+test("merge fills a missing modOpts from defaults and sanitizes a partial one", () => {
+    assert.deepEqual(H.merge({ barHeight: 36 }).modOpts, H.defaultModOpts());
+    const merged = H.merge({ modOpts: { batt: { showPct: false } } });
+    assert.equal(merged.modOpts.batt.showPct, false);
+    assert.equal(merged.modOpts.batt.warnAt, 20);
+    assert.deepEqual(merged.modOpts.clock, H.defaultModOpts().clock);
 });
 
 test("merge over a partial object fills the rest from defaults", () => {

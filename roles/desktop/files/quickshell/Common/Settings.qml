@@ -56,6 +56,7 @@ Singleton {
     property bool notifProgress: defaults.notifProgress
     property int notifBodyLines: defaults.notifBodyLines
     property var mods: defaults.mods
+    property var modOpts: defaults.modOpts
     // Wallpaper-accent extraction cache: the derived color and the wallpaper
     // it was derived from, persisted so magick never re-runs across restarts.
     property string wallAccent: defaults.wallAccent
@@ -90,7 +91,7 @@ Singleton {
         wallpaper: ["wall", "wallDir", "shuffle"],
         appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
         bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
-        modules: ["mods"],
+        modules: ["mods", "modOpts"],
         notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
             "notifProgress", "notifBodyLines"],
@@ -161,6 +162,14 @@ Singleton {
         mods = next;
     }
 
+    function setModuleOption(id, key, value) {
+        clearUndo();
+        migrationPending = false;
+        const next = SettingsHelpers.clone(modOpts);
+        next[id][key] = value;
+        modOpts = SettingsHelpers.normalizeModOpts(next);
+    }
+
     function setModuleOrder(left, center, right) {
         clearUndo();
         migrationPending = false;
@@ -175,7 +184,9 @@ Singleton {
         resetSnapshot = previous;
         resetLabel = label || (keys.length === 1 ? "Setting" : "Settings");
         for (const key of keys)
-            root[key] = key === "mods" ? SettingsHelpers.defaultMods() : defaults[key];
+            root[key] = key === "mods" ? SettingsHelpers.defaultMods()
+                : key === "modOpts" ? SettingsHelpers.defaultModOpts()
+                : defaults[key];
         announcement = resetLabel + " reset. Undo available for eight seconds.";
         resetTimer.restart();
     }
@@ -225,8 +236,30 @@ Singleton {
             notifDuration: notifDuration, notifPosition: notifPosition,
             notifDensity: notifDensity, notifIcons: notifIcons,
             notifProgress: notifProgress, notifBodyLines: notifBodyLines,
-            mods: mods, wallAccent: wallAccent, wallAccentFor: wallAccentFor
+            mods: mods, modOpts: modOpts,
+            wallAccent: wallAccent, wallAccentFor: wallAccentFor
         };
+    }
+
+    // One-time migration of the old QS_WEATHER_* env configuration: only a
+    // file that predates modOpts (or no file at all) takes the env values;
+    // after the first save modOpts exists on disk and the seed never re-fires.
+    function seedWeatherFromEnv(parsed, modOptions) {
+        if (parsed !== null && parsed.modOpts !== undefined)
+            return modOptions;
+        const lat = Quickshell.env("QS_WEATHER_LAT");
+        const lon = Quickshell.env("QS_WEATHER_LON");
+        const place = Quickshell.env("QS_WEATHER_PLACE");
+        if (!lat && !lon && !place)
+            return modOptions;
+        const next = SettingsHelpers.clone(modOptions);
+        if (lat)
+            next.weather.lat = Number(lat);
+        if (lon)
+            next.weather.lon = Number(lon);
+        if (place)
+            next.weather.place = place;
+        return SettingsHelpers.normalizeModOpts(next);
     }
 
     function applyLoaded(rawText) {
@@ -271,6 +304,7 @@ Singleton {
         notifProgress = merged.notifProgress;
         notifBodyLines = merged.notifBodyLines;
         mods = merged.mods;
+        modOpts = seedWeatherFromEnv(parsed, merged.modOpts);
         wallAccent = merged.wallAccent;
         wallAccentFor = merged.wallAccentFor;
         ready = true;
@@ -340,6 +374,7 @@ Singleton {
     onNotifProgressChanged: scheduleSave()
     onNotifBodyLinesChanged: scheduleSave()
     onModsChanged: scheduleSave()
+    onModOptsChanged: scheduleSave()
     onWallAccentChanged: scheduleSave()
     onWallAccentForChanged: scheduleSave()
 

@@ -76,7 +76,7 @@ Item {
                 height: 5
                 radius: 3
                 color: Theme.accent
-                opacity: pulseOpacity
+                opacity: Settings.modOpts.t3.pulse ? pulseOpacity : 1
 
                 // A slow five-pixel pulse does not benefit from driving the
                 // entire Wayland surface at the monitor's 120 Hz refresh rate.
@@ -85,7 +85,7 @@ Item {
                 Timer {
                     interval: 33
                     repeat: true
-                    running: runningDot.visible
+                    running: runningDot.visible && Settings.modOpts.t3.pulse
                     onRunningChanged: {
                         runningDot.pulseStartedAt = Date.now();
                         runningDot.pulseOpacity = 1;

@@ -7,7 +7,8 @@ Row {
     spacing: 2
     anchors.verticalCenter: parent.verticalCenter
 
-    readonly property int slots: Math.max(5, ...Hyprland.workspaces.values.map(w => w.id))
+    readonly property int slots: Math.max(Settings.modOpts.ws.minSlots,
+        ...Hyprland.workspaces.values.map(w => w.id))
 
     Repeater {
         model: root.slots
@@ -19,11 +20,14 @@ Row {
             readonly property bool exists: ws !== null
             readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === wsId
             readonly property bool urgent: exists && ws.urgent
+            readonly property bool hidden: Settings.modOpts.ws.hideEmpty && !exists && !focused
             // Only workspaces that actually exist get a numbered chip;
-            // empty slots stay compact dots.
-            readonly property bool showNumber: exists
+            // empty slots stay compact dots. Dots style keeps everything
+            // a dot, with the focused workspace picked out in accent.
+            readonly property bool showNumber: exists && Settings.modOpts.ws.style === "numbers"
 
-            width: showNumber ? (focused ? 28 : Theme.chipHeight) : 20
+            visible: !hidden
+            width: hidden ? 0 : showNumber ? (focused ? 28 : Theme.chipHeight) : 20
             height: Theme.chipHeight
 
             Behavior on width {
@@ -64,10 +68,12 @@ Row {
             Rectangle {
                 visible: !parent.showNumber
                 anchors.centerIn: parent
-                width: 4
-                height: 4
-                radius: 2
-                color: parent.exists ? Theme.textLow : Theme.dotDim
+                width: parent.focused ? 6 : 4
+                height: width
+                radius: width / 2
+                color: parent.focused ? Theme.accent
+                    : parent.urgent ? Theme.red
+                    : parent.exists ? Theme.textLow : Theme.dotDim
             }
 
             MouseArea {

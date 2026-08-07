@@ -96,10 +96,14 @@ FocusScope {
     }
 
     // Called by IslandPopout. A module drag consumes the first Escape, an
-    // active rail search the next.
+    // open module sub-page the next, an active rail search the one after.
     function handleEscape(): bool {
         if (dragActive) {
             cancelDrag();
+            return true;
+        }
+        if (pageLoader.item && (pageLoader.item.subPageActive ?? false)) {
+            pageLoader.item.closeSubPage();
             return true;
         }
         if (navQuery !== "") {
