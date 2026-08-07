@@ -583,7 +583,38 @@ hosting screen. Single-screen behavior unchanged.
 **Accept:** `tests/run` green; idle `quickshell` CPU visibly drops
 (compare `top` over 60s before/after); weather/usage/t3 chips still update.
 
-### [ ] WP1.7 ∥ Brightness via sysfs FileView
+### [x] WP1.7 ∥ Brightness via sysfs FileView
+
+> Done. `brightnessProc` is gone; a one-shot `sh -c` discovery process finds
+> `/sys/class/backlight/*` and two `FileView`s read `brightness` and
+> `max_brightness`, mirroring the `sensorDiscovery`/`tempView` pattern.
+> `brightnessctl` still does every write. `brightness` stays `-1` until the
+> first successful read. Notes:
+> - This machine has one backlight, `intel_backlight` (`max_brightness` 512).
+>   brightnessctl's percent is a *rounded* ratio, not truncated — verified with
+>   `brightnessctl -m -p set N` (pretend mode, no write) at 511→100%, 383→75%,
+>   508→99%, 3→1%, 2→0%. Implemented as `Math.round(value * 100 / backlightMax)`.
+>   A truncating implementation would have been off by one across most of the
+>   range.
+> - No `watchChanges`: backlight sysfs attributes deliver no inotify events
+>   (already documented at `Common/Osd.qml`). `refreshBrightness()` keeps an
+>   explicit `reload()` and remains the sole re-read path; `brightness-control`
+>   runs `brightnessctl set` to completion before pinging
+>   `qs ipc call osd brightness`, so there is no read-before-write race.
+> - `setBrightness()` still sets `brightness` optimistically rather than
+>   re-reading, so the slider and the OSD scroll wheel do not fight a delayed
+>   read-back. Unchanged behaviour.
+> - The discovery one-liner takes the first `/sys/class/backlight/*` entry with
+>   a readable `brightness`. On a machine with both `acpi_video0` and a vendor
+>   backlight this could pick a different device than brightnessctl does; not
+>   reproducible here with a single device.
+> - **Verified live:** the control centre reads 100%, `brightnessctl -m` reports
+>   100%, sysfs is 512/512 and the shell's formula gives 100% — all three agree.
+>   The "no fork on the read path" check via `strace` was not run (yama
+>   `ptrace_scope=1` blocks attaching without privilege); the code path no
+>   longer contains a `Process`, which is the same claim statically.
+
+
 
 **Files touched:** `Common/SysInfo.qml` (serialize with WP1.6 — same file)
 **Depends on:** WP1.6 (merge into the same session/agent as WP1.6 if easier)

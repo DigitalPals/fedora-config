@@ -196,15 +196,57 @@ Singleton {
         }
     }
 
+    // Backlight. Reading is a plain sysfs read — the OSD asks for a fresh
+    // value on every brightness key press, and forking brightnessctl for
+    // that is the most expensive thing on the hot path. Writing still goes
+    // through brightnessctl: sysfs backlight writes need privileges that it
+    // gets from systemd-logind.
+    property string backlightPath: ""
+    property int backlightMax: 0
+
+    // Discover the backlight once, like the CPU sensor above.
     Process {
-        id: brightnessProc
-        command: ["brightnessctl", "-m"]
+        id: backlightDiscovery
+        command: ["sh", "-c", "for d in /sys/class/backlight/*; do [ -r \"$d/brightness\" ] && { printf '%s' \"$d\"; exit; }; done"]
+        running: true
         stdout: StdioCollector {
-            onStreamFinished: {
-                const pct = parseInt((text.trim().split(",")[3] || "").replace("%", ""));
-                if (!isNaN(pct))
-                    root.brightness = pct;
-            }
+            onStreamFinished: root.backlightPath = text.trim()
+        }
+    }
+
+    FileView {
+        id: backlightMaxView
+        path: root.backlightPath === "" ? "" : root.backlightPath + "/max_brightness"
+        printErrors: false
+        onLoaded: {
+            const value = parseInt(backlightMaxView.text().trim());
+            root.backlightMax = isNaN(value) || value <= 0 ? 0 : value;
+            root.readBrightness();
+        }
+    }
+
+    FileView {
+        id: backlightView
+        path: root.backlightPath === "" ? "" : root.backlightPath + "/brightness"
+        printErrors: false
+        onLoaded: root.readBrightness()
+    }
+
+    // brightnessctl reports a plain rounded ratio of brightness/max_brightness
+    // (verified against `brightnessctl -m -p set N` across the range), so the
+    // OSD, the control-centre slider and the CLI all agree.
+    function readBrightness() {
+        if (backlightMax <= 0)
+            return;
+        const value = parseInt(backlightView.text().trim());
+        if (!isNaN(value))
+            brightness = Math.max(0, Math.min(100, Math.round(value * 100 / backlightMax)));
+    }
+
+    onBacklightPathChanged: {
+        if (backlightPath !== "") {
+            backlightMaxView.reload();
+            backlightView.reload();
         }
     }
 
@@ -213,9 +255,14 @@ Singleton {
         tsProc.running = true;
     }
 
+    // Backlight sysfs attributes do not deliver inotify events, so there is
+    // nothing to watch: every consumer that can observe an external change
+    // (the OSD, over IPC from brightness-control) calls this instead.
     function refreshBrightness() {
-        brightnessProc.running = false;
-        brightnessProc.running = true;
+        if (backlightPath === "")
+            return;
+        backlightView.reload();
+        readBrightness();
     }
 
     // CPU / RAM sampling for the Control Center stat cards. Only sampled
