@@ -312,9 +312,45 @@ from `onStatusChanged` when status becomes `Ready` while `paired && state !== "c
 true after state file load); state recovers to connecting/connected without a
 restart.
 
-### [ ] WP1.2 T3 notifications must respect DND / quiet hours
+### [x] WP1.2 T3 notifications must respect DND / quiet hours
 
-**Files touched:** `Common/T3Code.qml`, `Common/Notifs.qml`
+> Done, but **the premise was wrong**: `org.freedesktop.Notifications` is owned
+> by this shell's own `NotificationServer`, so `notify-send` looped back into
+> `onNotification` and `if (!root.toastsSuppressed && !notif.lastGeneration)`
+> already suppressed the toast. The stated acceptance check passed before this
+> change. The real defects were a fork per transition and a gate that only
+> worked *by accident* of this shell owning the bus name — install any other
+> notification daemon and DND silently stops applying to T3. Notes:
+> - `Notifs.publish(source, notif)` is now the single entry constructor for both
+>   the D-Bus path and the new `Notifs.send(request)`; a synthetic notification
+>   runs the same `derivePresentation`, gets the same field shape, and obeys the
+>   same 50-entry / 3-toast bounds. Shell sends are `live: false` /
+>   `notif: null` / `actions: []`, already handled everywhere, keyed
+>   `shell-<serial>-<arrived>` so they cannot collide with D-Bus keys.
+> - `notifyTransition` calls the helper, preserving appName "T3 Code" and icon
+>   "utilities-terminal". It loses only a live remote object (T3 notifications
+>   carry no actions) and the icon-diagnosis `console.log`.
+> - **WP0.5's follow-up is included**: both corruption announcements now also
+>   raise a critical notification via `Settings.notifyCorruption()`. The
+>   `Settings`↔`Notifs` mutual reference is safe because both call sites are in
+>   `corruptBackupProc.onExited` — the `mv` must start and finish first, so it
+>   cannot run during singleton construction, and it is a one-shot call, not a
+>   binding. Under DND it still only reaches the center: `toastsSuppressed`
+>   gates all urgencies, and changing that would affect every critical
+>   notification.
+> - Shaped so `Common/tests/settings.test.cjs` keeps matching
+>   `root.announcement = "The settings file could not be read.` as literal
+>   source text, rather than editing a test this WP does not own. That assertion
+>   is brittle — worth relaxing to a text-presence check next time someone is in
+>   that file.
+> - Two `notify-send` callers remain: `Common/Launcher.qml` should migrate;
+>   `Settings/NotificationsPage.qml`'s test button arguably should not, since
+>   exercising the real D-Bus round trip is its point.
+> - Verified live via the corruption route (see the commit): a critical toast
+>   rendered with the right app name, summary and body. The **DND-on** case was
+>   not exercised — it needs a T3 thread transition on demand.
+
+**Files touched:** `Common/T3Code.qml`, `Common/Notifs.qml`, `Common/Settings.qml`
 **Depends on:** Phase 0; serialize with WP1.1 (same file)
 
 `notifyTransition` (~line 341) shells out to `notify-send` directly, bypassing

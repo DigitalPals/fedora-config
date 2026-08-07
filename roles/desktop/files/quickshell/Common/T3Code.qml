@@ -348,8 +348,12 @@ Singleton {
             what = "finished";
         else
             return;
-        Quickshell.execDetached(["notify-send", "-a", "T3 Code", "-i", "utilities-terminal",
-            th.title, th.project + " · " + what]);
+        Notifs.send({
+            appName: "T3 Code",
+            appIcon: "utilities-terminal",
+            summary: th.title,
+            body: th.project + " · " + what
+        });
     }
 
     // ---- state file ------------------------------------------------------

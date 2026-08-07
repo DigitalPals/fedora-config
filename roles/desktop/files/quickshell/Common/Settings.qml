@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.Notifications
 import "SettingsHelpers.js" as SettingsHelpers
 
 // Shell settings store (design v2, "Shell settings"). Single source of truth
@@ -278,6 +279,25 @@ Singleton {
         corruptBackupProc.running = true;
     }
 
+    // `announcement` only ever reaches an Accessible.AlertMessage inside the
+    // settings window, so a user who never opens it would never learn their
+    // settings file was unreadable. Corruption — and only corruption — also
+    // raises a critical notification, which persists until dismissed.
+    //
+    // This is the one place Settings reaches for Notifs, which binds back to
+    // Settings.notifDnd. It is a one-shot call from a Process exit handler,
+    // never a binding, and it cannot run before both singletons exist: the
+    // `mv` has to start and finish first. The dependency rule above stands.
+    function notifyCorruption(message) {
+        Notifs.send({
+            appName: "Shell settings",
+            appIcon: "preferences-system",
+            urgency: NotificationUrgency.Critical,
+            summary: "Settings file problem",
+            body: message
+        });
+    }
+
     function applyLoaded(rawText) {
         const result = SettingsHelpers.parse(rawText);
         // Before the no-op check below: a corrupt file whose defaults happen to
@@ -455,12 +475,14 @@ Singleton {
                 root.corruptBackupPending = false;
                 root.announcement = "The settings file could not be read. It was kept as "
                     + corruptBackupProc.backupPath + " and the defaults were restored.";
+                root.notifyCorruption(root.announcement);
                 return;
             }
             // Deliberately leaves corruptBackupPending set: saving now would
             // overwrite the file we just failed to copy.
             root.announcement = "The settings file could not be read or backed up. "
                 + "Settings will not be saved until " + root.filePath + " is moved aside.";
+            root.notifyCorruption(root.announcement);
             console.warn("settings: backing up", root.filePath, "failed with exit", exitCode);
         }
     }

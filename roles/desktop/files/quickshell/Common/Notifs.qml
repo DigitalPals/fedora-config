@@ -97,6 +97,82 @@ Singleton {
             entry.expireTimeout, Settings.notifDuration * 1000);
     }
 
+    // Serial for keys of shell-originated notifications, which have no
+    // D-Bus id to key on.
+    property int localSerial: 0
+
+    // The one place an entry is built and bounded, so a shell-originated
+    // notification is presented exactly like a D-Bus one. `notif` is null for
+    // shell senders: no remote object, no actions, which the rest of this file
+    // already treats as an expired entry (see dismiss/hideToast/iconSource).
+    function publish(source, notif) {
+        const arrived = Date.now();
+        const hints = Object.assign({}, source.hints || {});
+        const presentation = Helpers.derivePresentation({
+            appName: source.appName,
+            desktopEntry: source.desktopEntry,
+            summary: source.summary,
+            body: source.body,
+            hints: hints
+        });
+        const entry = {
+            key: notif ? `${notif.id}-${arrived}` : `shell-${++localSerial}-${arrived}`,
+            notif: notif ?? null,
+            live: !!notif,
+            arrived: arrived,
+            appName: source.appName ?? "",
+            appIcon: source.appIcon ?? "",
+            desktopEntry: source.desktopEntry ?? "",
+            hints: hints,
+            image: source.image ?? "",
+            summary: source.summary ?? "",
+            body: source.body ?? "",
+            displayAppName: presentation.displayAppName,
+            displaySummary: presentation.displaySummary,
+            displayBody: presentation.displayBody,
+            webOrigin: presentation.webOrigin,
+            brandIcon: presentation.brandIcon === "whatsapp"
+                ? Quickshell.shellDir + "/assets/whatsapp.svg" : "",
+            urgency: source.urgency ?? NotificationUrgency.Normal,
+            expireTimeout: source.expireTimeout ?? -1,
+            actions: notif ? notif.actions : []
+        };
+        const evicted = entries.slice(49);
+        entries = [entry].concat(entries.slice(0, 49));
+        for (const old of evicted) {
+            if (old.live && old.notif)
+                old.notif.expire();
+        }
+        if (!toastsSuppressed && !(notif && notif.lastGeneration)) {
+            const dropped = toasts.slice(2);
+            toasts = [entry].concat(toasts.slice(0, 2));
+            for (const old of dropped) {
+                if (old.live && old.notif)
+                    old.notif.expire();
+            }
+        }
+        return entry;
+    }
+
+    // Single in-shell path for notifications the shell raises itself. Going
+    // out to `notify-send` and back in over D-Bus costs a process per toast
+    // and only honours DND/quiet hours by accident of this shell owning
+    // org.freedesktop.Notifications. Suppressed sends still reach the
+    // notification center, exactly as a remote notification would.
+    function send(request) {
+        const options = request ?? {};
+        return publish({
+            appName: options.appName || "Shell",
+            appIcon: options.appIcon ?? "",
+            desktopEntry: options.desktopEntry ?? "",
+            image: options.image ?? "",
+            summary: options.summary ?? "",
+            body: options.body ?? "",
+            urgency: options.urgency,
+            expireTimeout: options.expireTimeout
+        }, null).key;
+    }
+
     readonly property NotificationServer server: NotificationServer {
         keepOnReload: true
         persistenceSupported: true
@@ -110,51 +186,17 @@ Singleton {
             // Keep this: icon-resolution misses are impossible to diagnose
             // after the fact without knowing what the sender actually sent.
             console.log(`notification: app="${notif.appName}" desktop="${notif.desktopEntry}" icon="${notif.appIcon}" image="${notif.image}"`);
-            const arrived = Date.now();
-            const hints = Object.assign({}, notif.hints || {});
-            const presentation = Helpers.derivePresentation({
-                appName: notif.appName,
-                desktopEntry: notif.desktopEntry,
-                summary: notif.summary,
-                body: notif.body,
-                hints: hints
-            });
-            const entry = {
-                key: `${notif.id}-${arrived}`,
-                notif: notif,
-                live: true,
-                arrived: arrived,
+            const entry = root.publish({
                 appName: notif.appName,
                 appIcon: notif.appIcon,
                 desktopEntry: notif.desktopEntry,
-                hints: hints,
+                hints: notif.hints,
                 image: notif.image,
                 summary: notif.summary,
                 body: notif.body,
-                displayAppName: presentation.displayAppName,
-                displaySummary: presentation.displaySummary,
-                displayBody: presentation.displayBody,
-                webOrigin: presentation.webOrigin,
-                brandIcon: presentation.brandIcon === "whatsapp"
-                    ? Quickshell.shellDir + "/assets/whatsapp.svg" : "",
                 urgency: notif.urgency,
-                expireTimeout: notif.expireTimeout,
-                actions: notif.actions
-            };
-            const evicted = root.entries.slice(49);
-            root.entries = [entry].concat(root.entries.slice(0, 49));
-            for (const old of evicted) {
-                if (old.live && old.notif)
-                    old.notif.expire();
-            }
-            if (!root.toastsSuppressed && !notif.lastGeneration) {
-                const dropped = root.toasts.slice(2);
-                root.toasts = [entry].concat(root.toasts.slice(0, 2));
-                for (const old of dropped) {
-                    if (old.live && old.notif)
-                        old.notif.expire();
-                }
-            }
+                expireTimeout: notif.expireTimeout
+            }, notif);
             notif.closed.connect(() => {
                 root.updateEntry(entry.key, { live: false, notif: null, actions: [] });
                 root.toasts = root.toasts.filter(item => item.key !== entry.key);
