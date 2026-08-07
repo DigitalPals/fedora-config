@@ -160,6 +160,7 @@ Surface {
         height: Theme.controlHeight
 
         Text {
+            id: sourceLabel
             x: 6
             anchors.verticalCenter: parent.verticalCenter
             text: "open-meteo"
@@ -172,13 +173,21 @@ Surface {
             anchors.right: parent.right
             anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.RichText
-            text: Weather.updatedAt > 0
-                ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Weather.updatedAt), "HH:mm")}</font>`
-                : "loading…"
+            // The reason is plain text from curl, so it renders as itself
+            // rather than as markup, and elides instead of running under the
+            // source label. The journal has it in full.
+            width: parent.width - 20 - sourceLabel.implicitWidth
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideRight
+            textFormat: Weather.offline ? Text.PlainText : Text.RichText
+            text: Weather.offline
+                ? Weather.fetchError
+                : Weather.updatedAt > 0
+                    ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Weather.updatedAt), "HH:mm")}</font>`
+                    : "loading…"
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontCaption
-            color: Theme.textDim
+            color: Weather.offline ? Theme.redText : Theme.textDim
         }
     }
 }

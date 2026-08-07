@@ -623,16 +623,25 @@ Surface {
         Text {
             x: 6
             anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.RichText
-            text: Usage.updatedAt > 0
-                ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Usage.updatedAt), "HH:mm:ss")}</font>`
-                : "Loading…"
+            // A fetcher failure is plain text — a Python traceback can carry
+            // "<module>" and would otherwise be read as markup — and elides
+            // instead of running under the countdown. The journal has it in
+            // full.
+            width: parent.width - 12 - nextPoll.implicitWidth - 8
+            elide: Text.ElideRight
+            textFormat: Usage.fetchError !== "" ? Text.PlainText : Text.RichText
+            text: Usage.fetchError !== ""
+                ? Usage.fetchError
+                : Usage.updatedAt > 0
+                    ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Usage.updatedAt), "HH:mm:ss")}</font>`
+                    : "Loading…"
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontCaption
-            color: Theme.textDim
+            color: Usage.fetchError !== "" ? Theme.redText : Theme.textDim
         }
 
         Text {
+            id: nextPoll
             anchors.right: parent.right
             anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter

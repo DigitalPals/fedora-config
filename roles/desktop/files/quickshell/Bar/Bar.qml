@@ -791,20 +791,24 @@ PanelWindow {
                     property string isle: "center"
                     property bool dividerBefore: false
                     spacing: 3
-                    visible: Weather.ready
+                    // An enabled weather module stays on the bar while it is
+                    // offline: a chip that vanishes cannot say why. Only the
+                    // gap before the first forecast lands is blank.
+                    readonly property bool shown: Weather.ready || Weather.offline
+                    visible: shown
                     readonly property real detailSaving: weatherCondition.implicitWidth + 5
 
                     Component.onCompleted: barWindow.registerPanel("weather", weatherChip)
                     Component.onDestruction: barWindow.unregisterPanel("weather", weatherChip)
 
                     Divider {
-                        visible: weatherModule.dividerBefore && Weather.ready
+                        visible: weatherModule.dividerBefore && weatherModule.shown
                     }
 
             // Quiet weather chip next to the clock (design 1g).
             Rectangle {
                 id: weatherChip
-                visible: Weather.ready
+                visible: weatherModule.shown
                 anchors.verticalCenter: parent.verticalCenter
                 implicitWidth: weatherRow.implicitWidth + 12
                 implicitHeight: Theme.chipHeight
@@ -820,6 +824,9 @@ PanelWindow {
                     anchors.centerIn: parent
                     spacing: 5
 
+                    // Weather.code is -1 until a forecast lands, and both
+                    // glyph() and glyphColor() already answer that with the
+                    // na mark in Theme.textDim — no fallback needed here.
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Weather.glyph(Weather.code, Weather.isDay)
@@ -830,19 +837,23 @@ PanelWindow {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Weather.temp + "°"
+                        // Weather.temp is 0 with nothing loaded, and "0°" is a
+                        // reading. A dash is not.
+                        text: Weather.ready ? Weather.temp + "°" : "—"
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.barTextSize
                         font.weight: Theme.weightSemibold
                         font.features: Theme.tabularNumberFeatures
-                        color: Theme.textMid
+                        // Dimmed while offline, so a forecast that has stopped
+                        // being refreshed does not read as current.
+                        color: Weather.offline ? Theme.textFaint : Theme.textMid
                     }
 
                     Text {
                         id: weatherCondition
                         visible: !barWindow.moduleCompact("weather")
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Weather.condition
+                        text: Weather.ready ? Weather.condition : "unavailable"
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.barTextSize
                         color: barWindow.popoutOpen("weather") || weatherMouse.containsMouse ? Theme.textMid : Theme.textLow
@@ -865,7 +876,10 @@ PanelWindow {
 
                 BarTooltip {
                     hovered: weatherMouse.containsMouse
-                    text: Weather.place + " · " + Weather.condition
+                    // Offline is the one state the chip cannot spell out in
+                    // the width it has, so the reason goes here.
+                    text: Weather.place + " · "
+                        + (Weather.offline ? Weather.fetchError : Weather.condition)
                     y: parent.height + 6
                     x: (parent.width - width) / 2
                 }

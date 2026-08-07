@@ -698,7 +698,55 @@ read path; value matches `brightnessctl -m`.
 of intermediate frames or simple wall-clock via journal timestamps); no visual
 regressions in the meters (screenshot diff).
 
-### [ ] WP1.9 ∥ Process hygiene: exit codes, stderr, silent catches
+### [x] WP1.9 ∥ Process hygiene: exit codes, stderr, silent catches
+
+> Done. Runtime findings first, since they changed the design: Quickshell emits
+> **no `exited` at all** when a binary cannot be launched — only the falling
+> edge of `running` — so the LauncherView pattern this WP points at is not
+> sufficient on its own (LauncherView has the same latent stuck-`loading` bug;
+> left alone as out of scope). All four producers settle on `runningChanged`
+> with a `NOT_STARTED` sentinel, and count `staleRuns` because a restart's kill
+> reports itself as a crash exit *after* the replacement has started, which
+> would otherwise render as a spurious error for the length of every refresh.
+> Two plan corrections: `NetworkDevice.address` is the randomized **MAC**
+> (`4A:06:51:7D:95:E4` here), so `WifiPopover` took the
+> `["ip","-j","-4","addr","show",name]` + `JSON.parse` route — verified to
+> return the same address the `jq` pipeline did; and `jq` **is** declared, in
+> `roles/apps/defaults/main.yml:54`, so the unquoted interpolation and the
+> swallowed stderr were the real defects. Notes:
+> - New `Common/ProcHelpers.js` + `proc-helpers.test.cjs` (10 tests) holds
+>   exit-code/stderr classification, curl's silent exit codes (6 DNS, 7 connect,
+>   22 HTTP, 28 timeout — `curl -sf` emits no stderr, so the status is the whole
+>   report), and the `ip`/`tailscale` JSON shapes. `tailscalePeers()` returns
+>   `null` rather than `[]` for unreadable output, so "0 of 0 devices online"
+>   can only mean an empty tailnet.
+> - `Weather` gained `fetchError`/`offline` beside a `ready` that keeps its
+>   latching "there is something to draw" meaning, so stale-but-drawable is
+>   distinguishable from never-loaded. Logging is on message *change*, not per
+>   attempt — the 30 s retry would otherwise write 120 journal lines an hour.
+> - `Usage` gained `fetchError` that stays empty while the module is off, so
+>   "off" cannot read as "broken", and `loading` now clears on every terminal
+>   edge including never-started.
+> - **Scope extended past the listed files to the consumers**, because the
+>   acceptance criteria could not otherwise pass — the states existed and
+>   nothing rendered them. The weather chip used to vanish behind
+>   `visible: Weather.ready`, so an offline-at-startup module was invisible
+>   rather than informative; it now stays on the bar (na glyph, dimmed "—",
+>   "unavailable", reason in the tooltip). `UsageChips` separates "the fetcher
+>   broke" from "every provider is signed out". Both popover footers carry the
+>   reason as `Text.PlainText`, because a traceback containing `<module>` would
+>   otherwise be eaten as markup by those RichText footers.
+> - The offline chip is never wider than a ready one, so the fit machinery
+>   needed no change; `detailSaving` is now more honest than before (it used to
+>   report a 5px saving for a module occupying zero width).
+> - Verified headlessly against the real files: offline weather, missing script,
+>   missing binary, dead tailscaled, bogus device, stacked restarts. **The bar
+>   chip's offline rendering is static-only** — a `PanelWindow` cannot load
+>   modules without mapping a surface — and the live happy path was confirmed
+>   after deploy. The two acceptance checks (`nmcli networking off`, moving
+>   `usage-fetch.py` aside) were **not** run; they are quick and worth doing.
+
+
 
 **Files touched:** `Common/Weather.qml`, `Common/Usage.qml`,
 `Popovers/TailscalePopover.qml`, `Popovers/WifiPopover.qml`

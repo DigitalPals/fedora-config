@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../Common"
+import "../Common/ProcHelpers.js" as ProcHelpers
 
 // Tailscale detail view: tailnet status, this machine, and the peer
 // list from `tailscale status --json`. Clicking a peer copies its
@@ -11,12 +12,32 @@ Surface {
     id: root
 
     property var peers: []
+    // A status run has come back, either way. An empty `peers` with no
+    // statusError is a genuinely empty tailnet; a failed run says so
+    // instead of counting to zero.
     property bool statusKnown: false
+    property string statusError: ""
     property string copiedIp: ""
 
     function refresh() {
+        statusProc.staleRuns += statusProc.running ? 1 : 0;
         statusProc.running = false;
         statusProc.running = true;
+    }
+
+    function settle(exitCode, body, errText) {
+        statusKnown = true;
+        const list = exitCode === 0 ? ProcHelpers.tailscalePeers(body) : null;
+        if (list !== null) {
+            peers = list;
+            statusError = "";
+            return;
+        }
+        peers = [];
+        statusError = exitCode === 0
+            ? "tailscale status returned output this shell could not read"
+            : ProcHelpers.commandError("tailscale status", exitCode, errText);
+        console.warn("tailscale peers unavailable:", statusError);
     }
 
     function copyIp(ip) {
@@ -35,26 +56,42 @@ Surface {
 
     Process {
         id: statusProc
+        // `tailscale status --json` writes its complaint to stderr and exits
+        // nonzero when tailscaled is unreachable; both streams close before
+        // exited(), and the falling edge of `running` is the only signal
+        // there is when the binary cannot be launched at all.
+        //
+        // Runs killed by refresh() have yet to report in: their exit lands as
+        // a crash some time after the replacement started, and is not news.
+        property int staleRuns: 0
+        property string body: ""
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
         command: ["tailscale", "status", "--json"]
         running: true
+
         stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const s = JSON.parse(text);
-                    const list = Object.values(s.Peer ?? {}).map(p => ({
-                        name: (p.DNSName || p.HostName || "?").split(".")[0],
-                        online: !!p.Online,
-                        ip: p.TailscaleIPs && p.TailscaleIPs[0] || "",
-                        os: p.OS || "",
-                        exitOption: !!p.ExitNodeOption,
-                        exit: !!p.ExitNode
-                    }));
-                    list.sort((a, b) => (b.online - a.online) || a.name.localeCompare(b.name));
-                    root.peers = list;
-                } catch (e) {
-                    root.peers = [];
-                }
-                root.statusKnown = true;
+            onStreamFinished: statusProc.body = text
+        }
+        stderr: StdioCollector {
+            onStreamFinished: statusProc.errText = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            statusProc.exitSeen = true;
+            statusProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else if (staleRuns > 0) {
+                staleRuns--;
+            } else {
+                root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
             }
         }
     }
@@ -182,6 +219,19 @@ Surface {
         color: Theme.textDim
     }
 
+    Text {
+        visible: SysInfo.tsRunning && root.statusError !== ""
+        width: parent.width
+        topPadding: 10
+        bottomPadding: 10
+        text: "Peer list unavailable\n" + root.statusError
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontSecondary
+        color: Theme.redText
+    }
+
     // Peers
     Repeater {
         model: SysInfo.tsRunning ? root.peers.slice(0, 8) : []
@@ -284,6 +334,10 @@ Surface {
             text: {
                 if (!SysInfo.tsRunning || !root.statusKnown)
                     return "click a device to copy its IP";
+                // Never count to zero on a failed status run: that is the
+                // one thing an empty tailnet is allowed to say.
+                if (root.statusError !== "")
+                    return "peer status unavailable";
                 const online = root.peers.filter(p => p.online).length;
                 return online + " of " + root.peers.length + " devices online · click to copy IP";
             }

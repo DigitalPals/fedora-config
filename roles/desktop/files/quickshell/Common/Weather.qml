@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "ProcHelpers.js" as ProcHelpers
 
 // Open-Meteo backed weather state for the bar chip + popover. No API key;
 // location and cadence come from the weather module's settings (the old
@@ -15,7 +16,16 @@ Singleton {
 
     readonly property int pollIntervalSecs: Settings.modOpts.weather.pollMins * 60
 
+    // Three states, and consumers need all three apart. `ready` stays true
+    // once a forecast has ever landed, so it is "there is something to
+    // draw", not "the last fetch worked":
+    //   !ready && !offline  — the first fetch has not come back yet
+    //   !ready && offline   — nothing to draw and no way to get it
+    //   ready && offline    — the last known sky, now going stale
     property bool ready: false
+    // Why the last fetch failed, "" while it is working.
+    property string fetchError: ""
+    readonly property bool offline: fetchError !== ""
     property double updatedAt: 0
     property int temp: 0
     property int feels: 0
@@ -133,9 +143,10 @@ Singleton {
         return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
     }
 
+    // True when the body was a forecast this shell could read.
     function apply(text) {
         if (text.trim() === "")
-            return;
+            return false;
         try {
             const d = JSON.parse(text);
             const cur = d.current;
@@ -159,8 +170,10 @@ Singleton {
             days = out;
             updatedAt = Date.now();
             ready = true;
+            return true;
         } catch (e) {
             console.warn("weather parse failed:", e);
+            return false;
         }
     }
 
@@ -168,15 +181,66 @@ Singleton {
 
     function refresh() {
         fetchedUrl = url;
+        fetchProc.staleRuns += fetchProc.running ? 1 : 0;
         fetchProc.running = false;
         fetchProc.running = true;
     }
 
+    // Everything a finished fetch has to say, in one place: the body when the
+    // request worked, ProcHelpers.NOT_STARTED when curl never ran.
+    function settle(exitCode, body, errText) {
+        if (exitCode === 0 && apply(body)) {
+            fetchError = "";
+            return;
+        }
+        const reason = exitCode === 0
+            ? "open-meteo sent a forecast this shell could not read"
+            : ProcHelpers.commandError("curl", exitCode, errText, ProcHelpers.CURL_EXIT);
+        // The retry timer runs every 30s until a forecast lands, so log the
+        // transition rather than every attempt.
+        if (fetchError !== reason)
+            console.warn("weather unavailable:", reason);
+        fetchError = reason;
+    }
+
     Process {
         id: fetchProc
+        // `curl -sf` says nothing at all when it fails: -s silences the error
+        // text and -f empties the body on an HTTP error, so the exit status
+        // is the entire report. It arrives after both streams close, and on
+        // the falling edge of `running` even when curl never started.
+        //
+        // Runs killed by refresh() have yet to report in: their exit lands as
+        // a crash some time after the replacement started, and is not news.
+        property int staleRuns: 0
+        property string body: ""
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
         command: ["curl", "-sf", "--max-time", "15", root.url]
+
         stdout: StdioCollector {
-            onStreamFinished: root.apply(text)
+            onStreamFinished: fetchProc.body = text
+        }
+        stderr: StdioCollector {
+            onStreamFinished: fetchProc.errText = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            fetchProc.exitSeen = true;
+            fetchProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else if (staleRuns > 0) {
+                staleRuns--;
+            } else {
+                root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
+            }
         }
     }
 

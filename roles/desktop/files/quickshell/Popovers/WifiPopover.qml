@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Networking
 import "../Common"
+import "../Common/ProcHelpers.js" as ProcHelpers
 import "../Common/StatusHelpers.js" as StatusHelpers
 
 Surface {
@@ -14,10 +15,42 @@ Surface {
 
     Process {
         id: ipProc
-        command: ["sh", "-c", "ip -j -4 addr show " + (root.device ? root.device.name : "") + " 2>/dev/null | jq -r '.[0].addr_info[0].local // empty'"]
+        // NetworkDevice.address is the (randomized) MAC, not the IPv4
+        // address — checked against a live instance — so the address still
+        // comes from `ip`. Argv form: no shell, so the device name cannot be
+        // read as syntax, and no `jq` for a field JSON.parse already has.
+        property string body: ""
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["ip", "-j", "-4", "addr", "show", root.device ? root.device.name : ""]
         running: root.device !== null
+
         stdout: StdioCollector {
-            onStreamFinished: root.ipAddress = text.trim()
+            onStreamFinished: ipProc.body = text
+        }
+        stderr: StdioCollector {
+            onStreamFinished: ipProc.errText = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            ipProc.exitSeen = true;
+            ipProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            const status = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            root.ipAddress = status === 0 ? ProcHelpers.firstIpv4(body) : "";
+            // The address is a detail line, so a failure stays out of the
+            // popover — but it stops disappearing without a word.
+            if (status !== 0)
+                console.warn("wifi address lookup failed:", ProcHelpers.commandError("ip", status, errText));
         }
     }
     readonly property var active: device ? (device.networks.values.find(n => n.connected) ?? null) : null

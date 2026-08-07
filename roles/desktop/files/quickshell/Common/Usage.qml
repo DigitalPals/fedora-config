@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "ProcHelpers.js" as ProcHelpers
 
 Singleton {
     id: root
@@ -39,6 +40,12 @@ Singleton {
     }
     property var data: ({})
     property bool loading: true
+    // Why the last `usage-fetch.py` run produced nothing usable, "" when it
+    // worked. Distinct from a provider's own {"status": "error"} row — this
+    // is the fetcher itself failing, so no provider figure is trustworthy.
+    // Stays "" while the module is off: nothing is being fetched, and that
+    // is not a failure.
+    property string fetchError: ""
     property double updatedAt: 0
     property int nextPollSecs: pollIntervalSecs
     property string selected: "claude"
@@ -80,10 +87,16 @@ Singleton {
         return "ok";
     }
 
-    function refresh() {
+    // Start a fetch, replacing one already in flight.
+    function start() {
         loading = true;
+        fetchProc.staleRuns += fetchProc.running ? 1 : 0;
         fetchProc.running = false;
         fetchProc.running = true;
+    }
+
+    function refresh() {
+        start();
         nextPollSecs = pollIntervalSecs;
         // A manual refresh from the popover still works with the module off;
         // it just must not leave the poll timer running behind its binding.
@@ -201,19 +214,72 @@ Singleton {
         }
     }
 
+    // Everything a finished run has to say, in one place. `loading` clears
+    // here whatever happened, including the case where python3 itself could
+    // not be launched (ProcHelpers.NOT_STARTED) and no output ever arrived.
+    function settle(exitCode, body, errText) {
+        loading = false;
+        if (exitCode !== 0) {
+            fetchError = ProcHelpers.commandError("usage-fetch.py", exitCode, errText);
+            console.warn("usage-fetch failed:", fetchError);
+            return;
+        }
+        let parsed = null;
+        try {
+            parsed = JSON.parse(body);
+        } catch (e) {
+            console.warn("usage-fetch parse failed:", e);
+        }
+        if (!parsed || typeof parsed !== "object") {
+            fetchError = "usage-fetch.py returned output this shell could not read";
+            return;
+        }
+        // Deliberately outside the try: a throw out of recordSamples() should
+        // reach the journal as itself, not pose as unreadable output.
+        data = parsed;
+        updatedAt = Date.now();
+        recordSamples();
+        fetchError = "";
+    }
+
     Process {
         id: fetchProc
+        // The script prints JSON and exits 0 even when a provider is signed
+        // out — a nonzero status or a silent start failure means the fetcher
+        // itself broke, and its traceback is on stderr. Both streams close
+        // before exited(), and the falling edge of `running` is the only
+        // signal that arrives when the binary cannot be launched at all.
+        //
+        // Runs killed by start() have yet to report in: their exit lands as a
+        // crash some time after the replacement started, and is not news.
+        property int staleRuns: 0
+        property string body: ""
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
         command: ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py"]
+
         stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    root.data = JSON.parse(text);
-                    root.updatedAt = Date.now();
-                    root.recordSamples();
-                } catch (e) {
-                    console.warn("usage-fetch parse failed:", e);
-                }
-                root.loading = false;
+            onStreamFinished: fetchProc.body = text
+        }
+        stderr: StdioCollector {
+            onStreamFinished: fetchProc.errText = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            fetchProc.exitSeen = true;
+            fetchProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else if (staleRuns > 0) {
+                staleRuns--;
+            } else {
+                root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
             }
         }
     }
@@ -224,9 +290,7 @@ Singleton {
         running: root.pollEnabled
         repeat: true
         onTriggered: {
-            root.loading = true;
-            fetchProc.running = false;
-            fetchProc.running = true;
+            root.start();
             root.nextPollSecs = root.pollIntervalSecs;
         }
     }
@@ -238,6 +302,7 @@ Singleton {
     function warmUp() {
         if (!pollEnabled) {
             loading = false;
+            fetchError = "";
             return;
         }
         if (fetchProc.running)

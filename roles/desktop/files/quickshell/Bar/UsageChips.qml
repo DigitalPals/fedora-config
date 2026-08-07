@@ -99,10 +99,15 @@ Item {
                     id: emptyText
                     visible: root.displayMode > 0
                     anchors.verticalCenter: parent.verticalCenter
-                    text: Usage.loading && !Usage.anyOk ? "Models…" : "Models offline"
+                    // "offline" is every provider being signed out, which the
+                    // fetcher reports perfectly well; "unavailable" is the
+                    // fetcher itself having failed, which it cannot.
+                    text: Usage.loading && !Usage.anyOk ? "Models…"
+                        : Usage.fetchError !== "" ? "Models unavailable"
+                        : "Models offline"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.barTextSize
-                    color: Theme.textFaint
+                    color: Usage.fetchError !== "" ? Theme.redText : Theme.textFaint
                 }
             }
 
