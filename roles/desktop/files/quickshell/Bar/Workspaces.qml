@@ -14,6 +14,8 @@ Row {
         model: root.slots
 
         delegate: Item {
+            id: slot
+
             required property int index
             readonly property int wsId: index + 1
             readonly property var ws: Hyprland.workspaces.values.find(w => w.id === wsId) ?? null
@@ -41,10 +43,10 @@ Row {
                 "hl.dsp.focus({ workspace = " + wsId + " })")
 
             Rectangle {
-                visible: parent.showNumber
+                visible: slot.showNumber
                 anchors.fill: parent
                 radius: Theme.chipRadius
-                color: parent.focused ? Theme.accent : parent.urgent ? Theme.redBg : wsMouse.containsMouse ? Theme.hoverFill : "transparent"
+                color: slot.focused ? Theme.accent : slot.urgent ? Theme.redBg : wsMouse.containsMouse ? Theme.hoverFill : "transparent"
 
                 Behavior on color {
                     ColorAnimation { duration: Theme.chipFadeDuration }
@@ -52,12 +54,12 @@ Row {
 
                 Text {
                     anchors.centerIn: parent
-                    text: wsId
+                    text: slot.wsId
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.barTextSize
-                    font.weight: parent.parent.focused || parent.parent.urgent ? Theme.weightSemibold : Theme.weightMedium
+                    font.weight: slot.focused || slot.urgent ? Theme.weightSemibold : Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
-                    color: parent.parent.focused ? Theme.accentFg : parent.parent.urgent ? Theme.redText : wsMouse.containsMouse ? Theme.textHi : Theme.textLow
+                    color: slot.focused ? Theme.accentFg : slot.urgent ? Theme.redText : wsMouse.containsMouse ? Theme.textHi : Theme.textLow
 
                     Behavior on color {
                         ColorAnimation { duration: Theme.chipFadeDuration }
@@ -66,14 +68,14 @@ Row {
             }
 
             Rectangle {
-                visible: !parent.showNumber
+                visible: !slot.showNumber
                 anchors.centerIn: parent
-                width: parent.focused ? 6 : 4
+                width: slot.focused ? 6 : 4
                 height: width
                 radius: width / 2
-                color: parent.focused ? Theme.accent
-                    : parent.urgent ? Theme.red
-                    : parent.exists ? Theme.textLow : Theme.dotDim
+                color: slot.focused ? Theme.accent
+                    : slot.urgent ? Theme.red
+                    : slot.exists ? Theme.textLow : Theme.dotDim
             }
 
             MouseArea {
@@ -82,15 +84,15 @@ Row {
                 hoverEnabled: true
                 // This Hyprland build speaks the Lua IPC dialect: raw
                 // dispatch text is evaluated as `hl.dispatch(<text>)`.
-                onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + parent.wsId + " })")
+                onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + slot.wsId + " })")
             }
 
             BarTooltip {
                 hovered: wsMouse.containsMouse
-                text: "Workspace " + wsId
-                    + (focused ? " · current" : urgent ? " · urgent" : exists ? "" : " · empty")
-                y: parent.height + 6
-                x: (parent.width - width) / 2
+                text: "Workspace " + slot.wsId
+                    + (slot.focused ? " · current" : slot.urgent ? " · urgent" : slot.exists ? "" : " · empty")
+                y: slot.height + 6
+                x: (slot.width - width) / 2
             }
         }
     }

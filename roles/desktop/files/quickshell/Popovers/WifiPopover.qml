@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -174,6 +175,8 @@ Surface {
         model: root.others
 
         delegate: Rectangle {
+            id: net
+
             required property var modelData
 
             width: parent.width - 4
@@ -195,13 +198,13 @@ Surface {
                     font.family: Theme.fontIcon
                     font.pixelSize: Theme.fontBody
                     color: Theme.textMid
-                    opacity: 0.35 + 0.65 * Math.min(1, Math.max(0, root.pct(modelData.signalStrength)) / 100)
+                    opacity: 0.35 + 0.65 * Math.min(1, Math.max(0, root.pct(net.modelData.signalStrength)) / 100)
                 }
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: root.width - 86
-                    text: modelData.name
+                    text: net.modelData.name
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontBody
                     color: Theme.textMid
@@ -213,7 +216,7 @@ Surface {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                visible: modelData.security !== WifiSecurityType.None
+                visible: net.modelData.security !== WifiSecurityType.None
                 text: "\uf023"
                 font.family: Theme.fontIcon
                 font.pixelSize: Theme.fontCaption
@@ -224,7 +227,7 @@ Surface {
                 id: netMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                onClicked: modelData.connect()
+                onClicked: net.modelData.connect()
             }
         }
     }

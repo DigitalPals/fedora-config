@@ -24,10 +24,13 @@ PanelWindow {
         top: atTop
         bottom: !atTop
     }
+    // PanelWindow.margins is a Quickshell group qmllint cannot resolve.
+    // qmllint disable unqualified
     margins {
         top: atTop && Settings.position === "top" && sharesBarScreen ? barClearance : 12
         bottom: !atTop && Settings.position === "bottom" && sharesBarScreen ? barClearance : 12
     }
+    // qmllint enable unqualified
     // Breathing room around the pill for the drop shadow and exit slide.
     readonly property int pad: 48
     implicitWidth: pill.implicitWidth + pad * 2

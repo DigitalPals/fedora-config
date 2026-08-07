@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
@@ -377,6 +378,8 @@ Surface {
         model: root.rows
 
         delegate: Rectangle {
+            id: resultRow
+
             required property var modelData
             required property int index
             readonly property bool isSelected: index === root.selected
@@ -394,8 +397,8 @@ Surface {
 
                 Image {
                     anchors.fill: parent
-                    visible: modelData.kind === "app" && source !== ""
-                    source: modelData.kind === "app" ? Quickshell.iconPath(modelData.app.icon, true) : ""
+                    visible: resultRow.modelData.kind === "app" && source !== ""
+                    source: resultRow.modelData.kind === "app" ? Quickshell.iconPath(resultRow.modelData.app.icon, true) : ""
                     sourceSize: Qt.size(24, 24)
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
@@ -403,11 +406,11 @@ Surface {
 
                 Text {
                     anchors.centerIn: parent
-                    visible: modelData.kind !== "app"
-                    text: root.glyphFor(modelData.kind)
+                    visible: resultRow.modelData.kind !== "app"
+                    text: root.glyphFor(resultRow.modelData.kind)
                     font.family: Theme.fontIcon
                     font.pixelSize: 15
-                    color: isSelected ? Theme.textHi : Theme.textMid
+                    color: resultRow.isSelected ? Theme.textHi : Theme.textMid
                 }
             }
 
@@ -420,20 +423,20 @@ Surface {
                 Text {
                     width: parent.width
                     textFormat: Text.StyledText
-                    text: root.titleFor(modelData)
+                    text: root.titleFor(resultRow.modelData)
                     font.family: Theme.fontSans
                     font.pixelSize: 13
                     font.weight: 500
-                    color: isSelected ? Theme.textHi : Theme.textMid
+                    color: resultRow.isSelected ? Theme.textHi : Theme.textMid
                     elide: Text.ElideRight
                 }
 
                 Text {
                     width: parent.width
-                    text: root.subtitleFor(modelData)
+                    text: root.subtitleFor(resultRow.modelData)
                     font.family: Theme.fontSans
                     font.pixelSize: 11
-                    color: isSelected ? Theme.textLow : Theme.textDim
+                    color: resultRow.isSelected ? Theme.textLow : Theme.textDim
                     elide: Text.ElideMiddle
                 }
             }
@@ -442,18 +445,18 @@ Surface {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: isSelected ? "↵" : "alt+" + (index + 1)
+                text: resultRow.isSelected ? "↵" : "alt+" + (resultRow.index + 1)
                 font.family: Theme.fontMono
                 font.pixelSize: 11
-                color: isSelected ? Theme.textDim : Theme.textFaint
+                color: resultRow.isSelected ? Theme.textDim : Theme.textFaint
             }
 
             MouseArea {
                 id: rowMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                onEntered: root.selected = index
-                onClicked: root.activate(modelData)
+                onEntered: root.selected = resultRow.index
+                onClicked: root.activate(resultRow.modelData)
             }
         }
     }

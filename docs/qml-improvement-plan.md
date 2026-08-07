@@ -137,7 +137,24 @@ hardcodes `-I /usr/lib64/qt6/qml`.
 **Accept:** `tests/qml-lint` runs in under ~4s, exits 0, and a deliberately
 introduced syntax error is caught. Warning count drops accordingly.
 
-### [ ] WP0.3 `pragma ComponentBehavior: Bound` everywhere it is needed
+### [x] WP0.3 `pragma ComponentBehavior: Bound` everywhere it is needed
+
+> Done — 421 `[unqualified]` → 0, in one commit rather than batches of five
+> (the pragma landed in all 28 files at once and qmllint then named every site
+> that needed follow-up work, which was faster and no riskier). Notes:
+> - The pragma is load-bearing, not cosmetic: a probe against a live Quickshell
+>   confirmed a delegate that reads `modelData` without declaring it required
+>   silently produces *nothing* under the pragma — and qmllint flags exactly
+>   those sites. Zero `[unqualified]` therefore means no broken delegate.
+> - `Bar/Workspaces.qml` needed no pragma, only ids; its `parent.parent.focused`
+>   chains became `slot.focused`, which also cleared 4 `missing-property`.
+> - Six delegates gained ids (`slot`, `dev`, `resultRow`, `sink`, `day`, `net`)
+>   so children could qualify against them.
+> - Three sites are false positives with inline `// qmllint disable unqualified`
+>   and the reason at the site: `PanelWindow.margins` (×2) and ids declared
+>   under `FileView.adapter` (`Common/Usage.qml`), whose type qmllint cannot
+>   resolve. Runtime resolution of both was verified against a live instance.
+> - `missing-property` 18 → 14; still a warning, per WP0.4.
 
 **Files touched:** the 28 files qmllint flags (worst: `Settings/ModuleDetailView.qml`
 (104 unqualified warnings), `Settings/ModulesPage.qml` (49), `LauncherView.qml`

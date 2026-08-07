@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Services.Pipewire
 import "../Common"
@@ -132,6 +133,8 @@ Surface {
             model: root.sinks
 
             delegate: Rectangle {
+                id: sink
+
                 required property var modelData
                 readonly property bool isDefault: modelData === Pipewire.defaultAudioSink
 
@@ -150,7 +153,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 18
                         horizontalAlignment: Text.AlignHCenter
-                        text: isDefault ? "\uf00c" : ""
+                        text: sink.isDefault ? "\uf00c" : ""
                         font.family: Theme.fontIcon
                         font.pixelSize: Theme.fontBody
                         color: Theme.accent
@@ -159,10 +162,10 @@ Surface {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         width: root.width - 70
-                        text: modelData.description || modelData.nickname || modelData.name
+                        text: sink.modelData.description || sink.modelData.nickname || sink.modelData.name
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontBody
-                        color: isDefault ? Theme.textHi : Theme.textLow
+                        color: sink.isDefault ? Theme.textHi : Theme.textLow
                         elide: Text.ElideRight
                     }
                 }
@@ -171,7 +174,7 @@ Surface {
                     id: devMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: Pipewire.preferredDefaultAudioSink = modelData
+                    onClicked: Pipewire.preferredDefaultAudioSink = sink.modelData
                 }
             }
         }

@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 import Quickshell
@@ -31,10 +32,13 @@ PanelWindow {
         left: root.onLeft
         right: !root.onLeft
     }
+    // PanelWindow.margins is a Quickshell group qmllint cannot resolve.
+    // qmllint disable unqualified
     margins.top: root.onTop
         ? (root.barSameEdge ? Theme.barTopMargin + Theme.barHeight : 8) : 0
     margins.bottom: !root.onTop
         ? (root.barSameEdge ? Theme.barTopMargin + Theme.barHeight : 8) : 0
+    // qmllint enable unqualified
 
     readonly property int shadowPad: 36
     readonly property int cardWidth: 420

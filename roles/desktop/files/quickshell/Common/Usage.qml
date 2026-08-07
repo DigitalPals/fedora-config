@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 pragma Singleton
 import QtQuick
 import Quickshell
@@ -127,9 +128,14 @@ Singleton {
             next[k] = arr;
         }
         history = next;
+        // FileView.adapter has an incomplete type in the qmltypes, so qmllint
+        // cannot see ids declared under it. The id resolves normally at
+        // runtime — verified against a live instance under this pragma.
+        // qmllint disable unqualified
         histData.claude = next.claude;
         histData.codex = next.codex;
         histData.kimi = next.kimi;
+        // qmllint enable unqualified
         histFile.writeAdapter();
     }
 
@@ -162,11 +168,13 @@ Singleton {
         id: histFile
         path: Quickshell.env("HOME") + "/.local/state/quickshell-usage-history.json"
         printErrors: false
+        // qmllint disable unqualified
         onLoaded: root.history = {
             claude: histData.claude ?? [],
             codex: histData.codex ?? [],
             kimi: histData.kimi ?? []
         }
+        // qmllint enable unqualified
 
         JsonAdapter {
             id: histData

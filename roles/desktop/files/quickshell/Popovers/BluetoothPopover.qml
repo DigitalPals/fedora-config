@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Bluetooth
 import "../Common"
@@ -69,6 +70,8 @@ Surface {
         model: root.devices
 
         delegate: Rectangle {
+            id: dev
+
             required property var modelData
             readonly property bool busy: modelData.state === BluetoothDeviceState.Connecting || modelData.state === BluetoothDeviceState.Disconnecting
 
@@ -89,7 +92,7 @@ Surface {
                     width: 18
                     horizontalAlignment: Text.AlignHCenter
                     text: {
-                        const icon = modelData.icon || "";
+                        const icon = dev.modelData.icon || "";
                         if (icon.includes("headset") || icon.includes("headphone") || icon.includes("audio"))
                             return "\uf025";
                         if (icon.includes("input-gaming"))
@@ -104,7 +107,7 @@ Surface {
                     }
                     font.family: Theme.fontIcon
                     font.pixelSize: Theme.fontBody
-                    color: modelData.connected ? Theme.accent : Theme.textMid
+                    color: dev.modelData.connected ? Theme.accent : Theme.textMid
                 }
 
                 Column {
@@ -114,18 +117,18 @@ Surface {
 
                     Text {
                         width: parent.width
-                        text: modelData.deviceName
+                        text: dev.modelData.deviceName
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontBody
-                        font.weight: modelData.connected ? Theme.weightMedium : Theme.weightRegular
-                        color: modelData.connected ? Theme.textHi : Theme.textMid
+                        font.weight: dev.modelData.connected ? Theme.weightMedium : Theme.weightRegular
+                        color: dev.modelData.connected ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
                     }
 
                     Text {
-                        visible: modelData.connected
+                        visible: dev.modelData.connected
                         width: parent.width
-                        text: "Connected" + (modelData.batteryAvailable ? " · " + Math.round(modelData.battery * 100) + "%" : "")
+                        text: "Connected" + (dev.modelData.batteryAvailable ? " · " + Math.round(dev.modelData.battery * 100) + "%" : "")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontSecondary
                         color: Theme.textLow
@@ -137,18 +140,18 @@ Surface {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: busy ? "…" : modelData.connected ? "Disconnect" : modelData.paired ? "Paired" : "Not connected"
+                text: dev.busy ? "…" : dev.modelData.connected ? "Disconnect" : dev.modelData.paired ? "Paired" : "Not connected"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontSecondary
-                font.weight: modelData.connected ? Theme.weightMedium : Theme.weightRegular
-                color: modelData.connected ? (actionMouse.containsMouse ? Theme.red : Theme.textDim) : Theme.textDim
+                font.weight: dev.modelData.connected ? Theme.weightMedium : Theme.weightRegular
+                color: dev.modelData.connected ? (actionMouse.containsMouse ? Theme.red : Theme.textDim) : Theme.textDim
 
                 MouseArea {
                     id: actionMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    enabled: modelData.connected
-                    onClicked: modelData.disconnect()
+                    enabled: dev.modelData.connected
+                    onClicked: dev.modelData.disconnect()
                 }
             }
 
@@ -158,8 +161,8 @@ Surface {
                 hoverEnabled: true
                 z: -1
                 onClicked: {
-                    if (!modelData.connected && !busy)
-                        modelData.connect();
+                    if (!dev.modelData.connected && !dev.busy)
+                        dev.modelData.connect();
                 }
             }
         }

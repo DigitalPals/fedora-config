@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "../Common"
@@ -115,6 +116,8 @@ Surface {
             model: 42
 
             delegate: Item {
+                id: day
+
                 required property int index
                 readonly property var cell: {
                     const first = root.shown;
@@ -132,16 +135,16 @@ Surface {
                     width: parent.width - 2
                     height: Theme.calendarCellSize
                     radius: Theme.chipRadius
-                    color: parent.isToday ? Theme.accent : "transparent"
+                    color: day.isToday ? Theme.accent : "transparent"
 
                     Text {
                         anchors.centerIn: parent
-                        text: cell.getDate()
+                        text: day.cell.getDate()
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.fontSecondary
-                        font.weight: isToday ? Theme.weightSemibold : Theme.weightRegular
+                        font.weight: day.isToday ? Theme.weightSemibold : Theme.weightRegular
                         // Adjacent-month dates are still content, not decoration.
-                        color: isToday ? Theme.accentFg : inMonth ? Theme.textMid : Theme.textFaint
+                        color: day.isToday ? Theme.accentFg : day.inMonth ? Theme.textMid : Theme.textFaint
                     }
                 }
             }
