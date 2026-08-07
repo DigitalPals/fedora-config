@@ -47,6 +47,40 @@ grim -o "$(hyprctl monitors -j | jq -r '.[0].name')" /tmp/shot.png
 
 Do not commit while the live config dir contains an unsynced throwaway copy —
 the Ansible role is the source of truth; `~/.config/quickshell` is disposable.
+`rsync -a --delete` from the repo is the one-command way back, and it also
+reloads the shell.
+
+**Techniques the Phase 1 verification pass established** (all cheap, all
+non-destructive — prefer these to the disruptive checks some WPs still name):
+
+- **`console.log` never reaches stdout or the qslog**, with any
+  `QT_LOGGING_RULES`. A harness that needs to report must write a file:
+  `Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", text, path])`.
+  `console.warn` *does* reach `journalctl --user -u quickshell.service`, which
+  is what makes temporary instrumentation the most reliable probe.
+- **Offscreen component harness**: `qs -p <file.qml>` runs any single file as
+  its own instance. Point `HOME` at a scratch dir holding a *copy* of
+  `~/.local/state/quickshell/shell-settings.json` so the probe cannot write the
+  real one. A root `ShellRoot` + `PanelWindow` is enough to get real focus
+  behaviour; `activeFocus` resolves without `WlrKeyboardFocus.OnDemand`, so a
+  probe need not steal the user's keyboard.
+- **Prove the probe has teeth**: reconstruct the pre-fix code in the throwaway
+  copy and confirm the probe fails. Several WP notes claim a fix is
+  load-bearing; this is how that claim gets checked.
+- **Multi-monitor without hardware**: `hyprctl output create headless`, then
+  read the name back (`HEADLESS-1`). This Hyprland speaks a **Lua dispatch
+  dialect** — `hyprctl dispatch 'hl.dsp.focus({ monitor = "<name>" })'`; plain
+  `focusmonitor`/`movecursor` do not exist. Focus may refuse to move to an
+  empty output, so the reliable way to exercise a bar's `visible` binding is to
+  pin `barEnabled` to the output in the deployed `shell.qml`.
+  `hyprctl layers -j` shows which output each `qs-*` surface is mapped to.
+- **Triggering shell-internal code paths live**: add a throwaway `IpcHandler`
+  target to the deployed `shell.qml` exposing the call and a `stats()` string.
+  Far cheaper than staging the real-world event, and it exercises the shipped
+  code rather than a copy.
+- **Reading `Loader.active` instrumentation**: `active` defaults to **true**,
+  so `onActiveChanged` fires only for slots that evaluate false. Absence of
+  `active=true` lines is a logging artifact, not a gate that failed to open.
 
 ### Style ground rules for all agents
 
@@ -275,6 +309,14 @@ All WPs here are small. ∥ = parallelizable. **Serialize anything touching
 `Bar/Bar.qml` (WP1.4, WP1.6) and anything touching `Common/T3Code.qml`
 (WP1.1, WP1.2, WP1.5, WP1.6).**
 
+> **Phase complete.** All ten WPs landed (`b0fcc8a` … `20af650`), and every
+> acceptance check a WP note recorded as unrun was cleared on 2026-08-07 —
+> WP1.2's DND-on case, WP1.4 items 2–3 on a second output, WP1.8's focus
+> handoff, both of WP1.9's, and WP1.10 against the live shell. The one item
+> deliberately left is WP1.8's latch *timing*, which needs frame-level capture.
+> The methods are written up under "Runtime validation" so later phases do not
+> have to rediscover them.
+
 ### [x] WP1.1 T3 socket reconnect wedge
 
 > Done. `connect()` now splits the unpaired case from the not-ready case:
@@ -347,8 +389,15 @@ restart.
 >   `Settings/NotificationsPage.qml`'s test button arguably should not, since
 >   exercising the real D-Bus round trip is its point.
 > - Verified live via the corruption route (see the commit): a critical toast
->   rendered with the right app name, summary and body. The **DND-on** case was
->   not exercised — it needs a T3 thread transition on demand.
+>   rendered with the right app name, summary and body.
+> - **DND-on verified 2026-08-07** (the check this note previously listed as
+>   outstanding). A throwaway `probe` IpcHandler calling `Notifs.send()`
+>   directly removed the need for a T3 thread transition on demand. With DND
+>   off: toast rendered, `toasts=1 entries=1`. With DND on: no toast,
+>   `toasts=0 entries=2`, and the notification center showed the entry with a
+>   coalesced count of 2 beside a lit Do Not Disturb switch. The gate is the
+>   single `!toastsSuppressed` test in `publish()`, so the D-Bus path and
+>   `send()` cannot diverge.
 
 **Files touched:** `Common/T3Code.qml`, `Common/Notifs.qml`, `Common/Settings.qml`
 **Depends on:** Phase 0; serialize with WP1.1 (same file)
@@ -447,8 +496,16 @@ show identical glyphs/charging state for the same player/battery.
 >   module (visible on the bar in the same frame, so `onModsChanged` provably
 >   fired) left the popover open. Note `bt` is useless for this test — its
 >   `autoRule` is `btConnected`, so it stays hidden with no device paired.
-> - Items 2–3 still need a second output to observe; a pinned `Settings.monitor`
->   cannot reproduce it on one screen.
+> - **Items 2–3 verified 2026-08-07** on a `hyprctl output create headless`
+>   second output, with `onActiveChanged`/`onDateChanged` instrumentation in the
+>   deployed copy and `precision` forced to `Seconds` so ticks are countable.
+>   With the bar on eDP-1: 8 clock ticks in 8s on eDP-1, **zero** on
+>   HEADLESS-1, and all 13 module slots there `active=false`. Pinning
+>   `barEnabled` to HEADLESS-1 swapped it cleanly — ticks moved entirely to
+>   HEADLESS-1, eDP-1 logged `clock enabled=false` and 13 slots to
+>   `active=false`, and `hyprctl layers -j` confirmed the single `qs-bar`
+>   surface migrated. The bar rendered correctly on the narrower output, in
+>   compact mode, so the fit machinery survives the move.
 
 **Files touched:** `Bar/Bar.qml`, `Bar/T3Chip.qml`
 **Depends on:** Phase 0; coordinates with WP1.3
@@ -472,7 +529,7 @@ bar's clock/pulse timers stop (verify via `journalctl` debug or by observing
 CPU with `top -p $(pgrep quickshell)` idle drop); tailscale popover survives a
 module-setting change.
 
-### [x] WP1.5 ∥ T3 popover sizes against its own screen + Escape contract stopgap
+### [x] WP1.5 ∥ T3 popover sizes against its own screen
 
 > Done. `T3CodePopover` takes `availableWidth`/`availableHeight` from the host
 > instead of reading `Screens.focused`, so it sizes against the output the bar
@@ -494,9 +551,9 @@ module-setting change.
 >   multi-monitor case needs a second output; `hyprctl output create headless`
 >   plus `hyprctl dispatch focusmonitor` reproduces it without hardware, since
 >   `Screens.focused` maps from `Hyprland.focusedMonitor`.
-> - The Escape contract stopgap named in this WP's title was **not** done — the
->   plan body only specifies the sizing fix, and `handleEscape()` belongs to
->   WP4.4. Retitle or fold into WP4.4.
+> - The title used to promise an "Escape contract stopgap" this WP's body never
+>   specified. Retitled 2026-08-07; `handleEscape()` was always WP4.4's, and
+>   WP4.4 item 1 already carries it. Nothing was dropped.
 
 **Files touched:** `Popovers/T3CodePopover.qml`, `Bar/IslandPopout.qml`
 **Depends on:** Phase 0
@@ -668,9 +725,19 @@ read path; value matches `brightnessctl -m`.
 >   `detailLoader.item` rather than `subPageActive`, because the sub-page is
 >   transparent — a frame early shows both, a frame late shows neither.
 > - **Verified live:** the Control Center renders correctly with the new meters
->   (volume 3%, brightness full, three stat strips). The latch timing and the
->   Modules cog focus handoff were **not** exercised interactively — the focus
->   check in particular is worth a manual pass.
+>   (volume 3%, brightness full, three stat strips).
+> - **The Modules cog focus handoff is verified 2026-08-07** and the change was
+>   necessary, not defensive. An offscreen `qs -p` harness hosting `ModulesPage`
+>   reports `activeFocusItem = SettingsAction text="All modules"` with
+>   `activeFocus=true` after `openSubPage()`, and focus returning to the
+>   originating `ModuleRow` after `closeSubPage()`. Reconstructing the
+>   pre-WP1.8 shape — `focusFirst()` driven from `openSubPage` via
+>   `Qt.callLater` — reproduces exactly the predicted failure:
+>   `TypeError: Cannot call method 'focusFirst' of null` and
+>   `activeFocusItem=null`. The `onLoaded` handoff is load-bearing under an
+>   async loader.
+> - Latch *timing* is still only reasoned about, not measured. It needs a
+>   frame-level capture rather than a screenshot; not attempted.
 
 
 
@@ -740,11 +807,20 @@ regressions in the meters (screenshot diff).
 >   needed no change; `detailSaving` is now more honest than before (it used to
 >   report a 5px saving for a module occupying zero width).
 > - Verified headlessly against the real files: offline weather, missing script,
->   missing binary, dead tailscaled, bogus device, stacked restarts. **The bar
->   chip's offline rendering is static-only** — a `PanelWindow` cannot load
->   modules without mapping a surface — and the live happy path was confirmed
->   after deploy. The two acceptance checks (`nmcli networking off`, moving
->   `usage-fetch.py` aside) were **not** run; they are quick and worth doing.
+>   missing binary, dead tailscaled, bogus device, stacked restarts, and the
+>   live happy path was confirmed after deploy.
+> - **Both acceptance checks run 2026-08-07, on the mapped bar.** Moving
+>   `usage-fetch.py` aside turns the usage chip into a red "Models unavailable"
+>   with a dimmed provider icon, and the popover footer carries
+>   `/usr/bin/python3: can't open file '/home/john/.config/…` beside the poll
+>   countdown. For weather, pointing the deployed copy's `curl` at
+>   `http://127.0.0.1:1/` was used instead of `nmcli networking off` — it
+>   isolates the connect failure without taking the user's network down, and
+>   the journal confirms the exit-7 classification ("could not connect to the
+>   host"). Both weather states render as designed: `N/A — unavailable` when
+>   nothing ever loaded, and — staged by serving a captured open-meteo response
+>   from a local port and then killing it — the last known forecast still drawn
+>   with the reason in red in the popover footer. `ready && offline` behaves.
 
 
 
@@ -811,9 +887,15 @@ usage script → chip shows error; popovers still correct in the happy path.
 >   caption fits unelided at that width precisely because it carries no suffix.
 > - Verified end to end in a windowless throwaway instance (dead port, upgrade
 >   500, upgrade 401, recovery clearing the error, and a forced `Loader.Error`).
->   **Not verified against the live shell** — doing so means swapping the real
->   pairing file aside; the procedure is safe (the shell only ever reads it,
->   never `writeAdapter()`s) but it was not run.
+> - **Verified against the live shell 2026-08-07.** Overriding `root.host` to
+>   `http://127.0.0.1:1` in the deployed copy avoids touching the real pairing
+>   file at all — `accessToken` still loads, so `paired` stays true and the
+>   ticket POST is what fails. The chip goes to `T3 off` and the popover header
+>   caption reads "Server did not respond — retrying" with `offline ·
+>   127.0.0.1:1` in the footer. That caption is the `ticketErrorText(0)` branch,
+>   confirming this WP's central deviation in production: the failure surfaces
+>   through the ticket XHR, not `T3Socket.errorString`. Restoring the file
+>   reconnects without a restart.
 
 
 
