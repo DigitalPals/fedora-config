@@ -1282,6 +1282,14 @@ dirs; qmllint resolves sibling types (`missing-property` count should drop).
 
 Strictly sequential (all touch `Bar/Bar.qml`).
 
+> **Phase complete.** `Bar.qml` 1187 → 615, the 13 modules are files under
+> `Bar/Modules/`, and the popout host talks to panels through a declared
+> contract. Two things to carry forward: WP4.3 shipped a registration
+> regression that WP4.4 caught (see its note — a pixel-identical bar is not
+> a working one), and `tests/run` now includes a duplicate-handler check
+> because qmllint has no opinion on that and the failure mode is a shell
+> silently running stale code.
+
 ### [x] WP4.1 `BarChip` primitive
 
 > Done — `Bar/BarChip.qml` carries the hover/held pill, tooltip and pointer
@@ -1465,7 +1473,70 @@ popouts; reordering modules in Settings still works.
 
 </details>
 
-### [ ] WP4.4 `PopoutPanel` contract type + anchor-rect caching
+### [x] WP4.4 `PopoutPanel` contract type + anchor-rect caching
+
+> Done, both items. **It also found and fixed a regression WP4.3 shipped —
+> read that first.**
+>
+> - **`panelAnchors` was empty on every bar since `0e395ef`.** The modules
+>   register in `Component.onCompleted`, but once they became files the slot
+>   assigns their `host` in `onLoaded`, which runs *after* the module tree is
+>   constructed — so `ownsPanel` was still false and registration silently never
+>   happened. Registration is now also driven by `onOwnsPanelChanged`, which is
+>   idempotent, so either order works.
+>
+>   Worth dwelling on **why WP4.3's verification missed it**: a pixel-diff and a
+>   `held` check both pass with an empty `panelAnchors`, because `held` reads
+>   `popoutOpen(panelName)` and never touches the map. What was broken is
+>   hover-switching between modules and the sweep that closes a popout when its
+>   module disappears — neither observable in a screenshot, and neither
+>   reachable without pointer injection. The lesson is that "renders identically"
+>   is not "behaves identically", and a subsystem with no visual signature needs
+>   its own probe.
+> - **qmllint does not catch a property or handler set twice on one object**, and
+>   the failure is total: QML refuses the whole configuration and Quickshell
+>   keeps running the last good copy, so the shell looks fine while every edit
+>   since is silently unapplied. It bit three times in one session — twice in
+>   throwaway probes, once in this WP's own `onWidthChanged`, which `tests/run`
+>   passed. `Common/tests/duplicate-handlers.test.cjs` now covers it, scoped to
+>   same-object declarations so sibling objects sharing a handler name are fine,
+>   and checked against the real bug.
+>
+> The WP itself:
+> - `Popovers/PopoutPanel.qml` declares `drawBackground`, `availableWidth/Height`
+>   and a virtual `handleEscape()`. It is a **FocusScope**, because
+>   `Settings/SettingsView.qml` is one and must stay one; `Popovers/Surface.qml`
+>   inherits it, so every popover is now a focus scope too. It deliberately does
+>   **not** set `focus: true` — the host keeps two content slots alive, and both
+>   claiming focus would include the one off screen.
+> - The three duck-typed sites in `IslandPopout` become `item as PopoutPanel`
+>   plus property access, and a test asserts the host no longer probes for the
+>   contract with `!== undefined` at all.
+> - `handleEscape` in `T3CodePopover` closes WP1.5's deferred item. **Verified
+>   with real key events** (`wtype`, which this machine does have even though it
+>   has no pointer injection): from the composer sub-page Escape returns to the
+>   inbox with the popout open; a second Escape dismisses it.
+> - **Anchor-rect caching: 3000 resolves go 59 ms → 7 ms.** Correctness was
+>   proved by sweeping every x across the bar and comparing the cached result
+>   against a freshly mapped one — `match=true` across all 8 registered panels.
+>   Auto-hide is deliberately not an invalidation source: `hidden` requires
+>   `!Popouts.open` and `hoverPanelAt` returns early unless a popout is open, so
+>   the slide can never overlap a read.
+> - **The first version of that correctness probe was vacuous** — both scans
+>   returned "no panel" everywhere, so `match=true` proved nothing. It only
+>   looked convincing until the panel list printed empty, which is what exposed
+>   the registration bug above. A comparison probe needs to show it hit
+>   something.
+> - `missing-property` is 11, unchanged: the contract work removed the host's
+>   three duck-typed reads, but those were never in the warning list (they were
+>   guarded by `!== undefined`). The 11 are `Loader.item` accesses in Settings,
+>   Launcher and the T3 popover's own page loader, plus the upstream
+>   `WifiSecurityType` gap. Still no flip.
+
+<details>
+<summary>Original WP4.4 specification</summary>
+
+### WP4.4 `PopoutPanel` contract type + anchor-rect caching
 
 1. `Popovers/PopoutPanel.qml` base type declaring `drawBackground`,
    `availableWidth/Height`, virtual `handleEscape()` (returns false).
@@ -1480,6 +1551,8 @@ popouts; reordering modules in Settings still works.
 **Accept:** Escape inside a T3 thread goes back one page; popout hover-switch
 still works across all modules; no per-motion JS spike (verify with
 `QSG_RENDER_TIMING` or profiler if in doubt).
+
+</details>
 
 ---
 

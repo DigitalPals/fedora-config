@@ -12,6 +12,7 @@ HDivider HDivider.qml
 HSlider HSlider.qml
 MediaPopover MediaPopover.qml
 NotifsPopover NotifsPopover.qml
+PopoutPanel PopoutPanel.qml
 SectionLabel SectionLabel.qml
 Surface Surface.qml
 T3CodePopover T3CodePopover.qml

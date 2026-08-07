@@ -155,12 +155,46 @@ PanelWindow {
 
     function registerPanel(name, item) {
         panelAnchors[name] = item;
+        invalidateAnchorRects();
     }
 
     function unregisterPanel(name, item) {
-        if (panelAnchors[name] === item)
+        if (panelAnchors[name] === item) {
             delete panelAnchors[name];
+            invalidateAnchorRects();
+        }
     }
+
+    // ---- anchor rect cache -------------------------------------------
+    // hoverPanelAt runs on every pointer motion while a popout is open, and
+    // mapped each registered module to window coordinates each time. The rects
+    // only move when the layout does, so they are computed once per layout and
+    // reused until something can have shifted them.
+    //
+    // Auto-hide is deliberately not an invalidation source: `hidden` requires
+    // !Popouts.open, and hoverPanelAt returns early unless a popout is open, so
+    // the slide can never be in progress while this cache is being read.
+    property var cachedAnchorRects: null
+
+    function invalidateAnchorRects() {
+        cachedAnchorRects = null;
+    }
+
+    function anchorRects() {
+        if (cachedAnchorRects !== null)
+            return cachedAnchorRects;
+        const out = [];
+        for (const name of Object.keys(panelAnchors)) {
+            const item = panelAnchors[name];
+            if (!item || !item.visible || item.width <= 0 || item.height <= 0)
+                continue;
+            out.push({ name: name, item: item, rect: anchorOf(item) });
+        }
+        cachedAnchorRects = out;
+        return out;
+    }
+
+    onCenterShiftChanged: invalidateAnchorRects()
 
     // The design's standing auto-rules: Media only while playing, Bluetooth
     // only when connected, Battery only on laptops (design v2 Modules page).
@@ -220,6 +254,7 @@ PanelWindow {
     }
 
     function recomputeFit() {
+        invalidateAnchorRects();
         const entries = measuredSlots(leftRepeater)
             .concat(measuredSlots(centerRepeater), measuredSlots(rightRepeater));
         const result = LayoutHelpers.fitBar({
@@ -238,7 +273,13 @@ PanelWindow {
         centerShift = result.centerOffset;
     }
 
-    onWidthChanged: fitTimer.restart()
+    onWidthChanged: {
+        // Ahead of the fit pass, which also invalidates: fitTimer has a zero
+        // interval but still lands a turn later, and a motion event in
+        // between would read rects from the old width.
+        invalidateAnchorRects();
+        fitTimer.restart();
+    }
 
     Timer {
         id: fitTimer
@@ -386,20 +427,17 @@ PanelWindow {
             }
         }
 
-        const names = Object.keys(panelAnchors);
-        for (const name of names) {
-            const item = panelAnchors[name];
-            if (!item || !item.visible || item.width <= 0 || item.height <= 0)
-                continue;
-            const rect = anchorOf(item);
+        for (const entry of anchorRects()) {
+            const rect = entry.rect;
             if (position.x < rect.x || position.x > rect.x + rect.width
                     || position.y < rect.y || position.y > rect.y + rect.height)
                 continue;
-            if (Popouts.currentName === name) {
+            if (Popouts.currentName === entry.name) {
                 if (pendingHoverName !== "")
                     cancelHover(pendingHoverName);
             } else {
-                hoverOpen(name, item.isle ?? Popouts.defaultIsland[name], item);
+                hoverOpen(entry.name,
+                    entry.item.isle ?? Popouts.defaultIsland[entry.name], entry.item);
             }
             return;
         }

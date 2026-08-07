@@ -2,16 +2,18 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as Controls
 import "../Common"
+import "../Popovers"
 
 // Connected center-island settings surface (design 1c, grouped rail):
 // search on top of the rail, nav grouped under SHELL / SYSTEM, and the
 // save state in the rail footer. The host supplies the usable output
 // envelope before measuring implicit size.
-FocusScope {
+PopoutPanel {
     id: root
 
-    property real availableWidth: 760
-    property real availableHeight: 560
+    // Defaults for an unhosted instance; the host assigns both.
+    availableWidth: 760
+    availableHeight: 560
     readonly property bool compactNav: availableWidth < 680
     readonly property int headerHeight: 44
     readonly property int gutter: 12

@@ -35,6 +35,15 @@ Rectangle {
 
     readonly property bool ownsPanel: panelName !== "" && host !== null
 
+    // The bar assigns `host` from its slot's onLoaded, which runs after this
+    // object is constructed — so registering only in Component.onCompleted
+    // would run against a null host and silently never happen. Registration
+    // is idempotent, so doing both is safe and covers either order.
+    onOwnsPanelChanged: {
+        if (ownsPanel)
+            host.registerPanel(panelName, anchorItem);
+    }
+
     Component.onCompleted: {
         if (ownsPanel)
             host.registerPanel(panelName, anchorItem);

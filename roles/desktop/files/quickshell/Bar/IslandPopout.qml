@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
 import "../Common"
+import "../Popovers"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 import "../Common/PanelRegistryData.js" as PanelRegistry
 
@@ -194,18 +195,18 @@ Item {
         };
     }
 
-    // Large surfaces may opt in to the output envelope. The shadow budget
-    // is removed before they calculate their implicit size.
+    // Every panel takes the output envelope, because every panel inherits
+    // PopoutPanel. The shadow budget is removed before they calculate
+    // their implicit size.
     function updateAvailableSize(item) {
-        if (!item)
+        const panel = item as PopoutPanel;
+        if (!panel)
             return;
         const shadowSpace = 48;
-        if (item.availableWidth !== undefined)
-            item.availableWidth = Math.max(320, host.width
-                - 2 * (Theme.barSideMargin + Theme.popRadius + shadowSpace));
-        if (item.availableHeight !== undefined)
-            item.availableHeight = Math.max(280, host.outputAvailableHeight
-                - host.barBottom - shadowSpace);
+        panel.availableWidth = Math.max(320, host.width
+            - 2 * (Theme.barSideMargin + Theme.popRadius + shadowSpace));
+        panel.availableHeight = Math.max(280, host.outputAvailableHeight
+            - host.barBottom - shadowSpace);
     }
 
     function rememberTargets(geometry) {
@@ -269,8 +270,9 @@ Item {
             const loader = loaderFor(slot);
             if (!loader.item)
                 return;
-            if (loader.item.drawBackground !== undefined)
-                loader.item.drawBackground = false;
+            const panel = loader.item as PopoutPanel;
+            if (panel)
+                panel.drawBackground = false;
 
             updateAvailableSize(loader.item);
 
@@ -588,9 +590,11 @@ Item {
             focus: host.presented && Popouts.open
 
             Keys.onEscapePressed: event => {
-                const item = host.frontSlot >= 0
-                    ? host.loaderFor(host.frontSlot).item : null;
-                if (!item || !item.handleEscape || !item.handleEscape())
+                // PopoutPanel.handleEscape() answers false by default, so a
+                // panel with nothing to go back to dismisses the popout.
+                const panel = host.frontSlot >= 0
+                    ? host.loaderFor(host.frontSlot).item as PopoutPanel : null;
+                if (!panel || !panel.handleEscape())
                     Popouts.close();
                 event.accepted = true;
             }

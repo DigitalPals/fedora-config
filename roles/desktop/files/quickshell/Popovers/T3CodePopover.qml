@@ -17,8 +17,8 @@ Surface {
     // Screens.focused instead would size against the wrong monitor whenever
     // the bar is pinned to one. The defaults stand in for a host that sets
     // neither, and reproduce the old 484x800 fallback.
-    property real availableWidth: 484 - Theme.barSideMargin * 2
-    property real availableHeight: 800 - Theme.barTopMargin - Theme.barHeight - 16
+    availableWidth: 484 - Theme.barSideMargin * 2
+    availableHeight: 800 - Theme.barTopMargin - Theme.barHeight - 16
 
     implicitWidth: Math.max(Theme.t3MinWidth,
         Math.min(Theme.t3MaxWidth, root.availableWidth))
@@ -57,6 +57,17 @@ Surface {
             page = "new";
             T3Code.closeDetail();
         }
+    }
+
+    // Escape goes back one page rather than dismissing the whole popout — the
+    // inbox is the root, so from there the host may close as usual. Drafts
+    // live in the T3Code singleton, so backing out of the composer never
+    // discards typing.
+    function handleEscape(): bool {
+        if (page === "inbox")
+            return false;
+        showInbox();
+        return true;
     }
 
     Component {

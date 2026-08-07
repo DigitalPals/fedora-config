@@ -69,12 +69,26 @@ test("settings exposes responsive output and keyboard contracts", () => {
     const modules = read("Settings/ModulesPage.qml");
     const picker = read("Settings/PickerRow.qml");
 
-    assert.match(view, /property real availableWidth/);
-    assert.match(view, /property real availableHeight/);
+    // The envelope is declared once, on the contract both the settings view
+    // and every popover surface inherit; the view only overrides defaults.
+    const contract = read("Popovers/PopoutPanel.qml");
+    assert.match(contract, /property real availableWidth/);
+    assert.match(contract, /property real availableHeight/);
+    assert.match(contract, /function handleEscape\(\): bool/);
+    assert.match(view, /^PopoutPanel \{/m,
+        "the settings view must inherit the popout contract");
+    assert.match(read("Popovers/Surface.qml"), /^PopoutPanel \{/m,
+        "every popover surface must inherit it too");
     assert.match(view, /availableWidth\s*<\s*680/);
     assert.match(view, /function handleEscape\(\): bool/);
-    assert.match(host, /item\.availableWidth !== undefined/);
-    assert.match(host, /item\.availableHeight !== undefined/);
+    // The host holds its loaded item as the contract type now, so these are
+    // plain property writes rather than existence checks.
+    assert.match(host, /item as PopoutPanel/,
+        "the host must hold its panel as the contract type");
+    assert.match(host, /panel\.availableWidth = /);
+    assert.match(host, /panel\.availableHeight = /);
+    assert.doesNotMatch(host, /!== undefined/,
+        "the panel contract must not be probed for at runtime any more");
     // Which panels fill the body is a registry flag now, not a name test.
     assert.match(host, /fillBody:\s*PanelRegistry\.fillsBody\(host\.slotAName\)/);
     // Settings lays out once at its target size and is revealed by the
@@ -123,7 +137,21 @@ test("an open Settings panel preserves menubar hover switching", () => {
         "Settings must not disarm the click-once, hover-between-modules interaction");
     assert.match(bar, /onPointChanged:[\s\S]*?barWindow\.hoverPanelAt\(scenePoint\)/,
         "the full-bar handler must route hover motion around stale MouseArea enter state");
-    assert.match(bar, /function hoverPanelAt\(position\)[\s\S]*Object\.keys\(panelAnchors\)/);
+    // The scan reads cached rects now; the mapping itself moved into
+    // anchorRects(), which is what Object.keys(panelAnchors) drives.
+    assert.match(bar, /function hoverPanelAt\(position\)[\s\S]*anchorRects\(\)/);
+    assert.match(bar, /function anchorRects\(\)[\s\S]*Object\.keys\(panelAnchors\)/);
+    // A stale rect sends hover to the wrong module, so every way the
+    // layout can move must drop the cache.
+    for (const site of [/function registerPanel[\s\S]{0,120}?invalidateAnchorRects\(\)/,
+                        /function unregisterPanel[\s\S]{0,160}?invalidateAnchorRects\(\)/,
+                        /function recomputeFit\(\) \{\s*invalidateAnchorRects\(\)/,
+                        // Folded into the handler that already restarts the fit
+                        // pass — a second onWidthChanged on the same object is a
+                        // load failure, which duplicate-handlers.test.cjs guards.
+                        /onWidthChanged: \{[\s\S]{0,300}?invalidateAnchorRects\(\)/,
+                        /onCenterShiftChanged: invalidateAnchorRects\(\)/])
+        assert.match(bar, site, `anchor cache invalidation missing: ${site}`);
     // Every type that owns a module hover surface. Bar.qml is not one of
     // them any more — the clock, media and weather chips it used to build
     // inline are BarChips now, and BarChip carries the recovery for all
