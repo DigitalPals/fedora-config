@@ -1593,8 +1593,35 @@ gradually. Strictly sequential; land each WP green before the next.
 > layer, `opened` triggers `subscribe()`, and `dropped` fires before a retry is
 > armed so the RPC layer can fail what is in flight. That is what keeps
 > `scheduleRetry()` from needing to know about `abortPendingRpcs`.
-### [ ] WP5.2 `T3Rpc.qml` — request ids, `rpcHandlers`, timeout sweeper,
-`actionStates` machine (~474–714, 716–1040). Port the WP1.6 timer gating.
+### [x] WP5.2 `T3Rpc.qml` — request ids, `rpcHandlers`, timeout sweeper, `actionStates` machine
+
+> Done. `Common/T3Rpc.qml` (497 lines) owns request ids, the in-flight handler
+> table, the deadline sweep with its WP1.6 gating, and the whole
+> commands/action-state section. `T3Code.qml` 2308 → 1894.
+> - Of the 41 members that moved, **only 9 are read by consumers**
+>   (`actionPending`, `actionError`, `respondApproval`, `respondUserInput`,
+>   `settle`, `unsettle`, `snooze`, `unsnooze`, `stopSession`), so the façade is
+>   small. 18 more were called from elsewhere *inside* T3Code — 60 call sites —
+>   and those became direct `T3Rpc.` calls rather than going through the façade.
+> - **The permission derivations moved down to `T3Connection`.** `scopeInfo`,
+>   `canRead`, `canOperate`, `readOnly` and `canDispatch` come from the pairing
+>   file's token scope and, for `canDispatch`, the live socket state — both the
+>   connection's business. Otherwise the RPC layer would have needed its own
+>   duplicate copy to guard dispatch with.
+> - `abortPendingRpcs()` used to clear `detailReqId`, which belongs to a
+>   subsystem still in T3Code, so it now raises `aborted()` and the detail code
+>   listens. Same shape as the connection's three signals.
+> - **The probe caught the moved-but-not-declared properties.** `actionStates`
+>   and `actionTimeoutMs` were removed from T3Code without being added to
+>   T3Rpc, and the shell came up looking normal — connected chip, popover
+>   header — while `configReady` stayed false. The journal named both.
+> - The snapshot is again byte-identical to the WP5.1 baseline. Beyond that,
+>   the action machine was driven through a full pending → fail → clear cycle
+>   over IPC, without sending anything to the server: `actionKey` composes,
+>   `putActionState` sets pending, `failAction` clears pending while keeping the
+>   error text, `clearAction` removes the entry, and `T3Code.actionStates ===
+>   T3Rpc.actionStates` — the re-export is the same object consumers bind to,
+>   which is what makes the façade transparent rather than a stale copy.
 ### [ ] WP5.3 `T3Threads.qml` — classification, `threadMap`/projections,
 counts, `notifyTransition` (~129–353 + `applyItem`). This is all
 `Bar/T3Chip.qml` and `T3InboxPage` actually need.

@@ -6,8 +6,8 @@ import "T3CodeHelpers.js" as Helpers
 // T3 Code session monitor and remote control: keeps a live WebSocket
 // subscription to the orchestration shell of the remote T3 Code server
 // (t3.codes) and exposes project/thread state for the bar chip and
-// popover, plus command dispatch (approvals, prompts, settle,
-// interrupt) and desktop notifications on session transitions.
+// popover, plus command T3Rpc.dispatch (approvals, prompts, settle,
+// T3Rpc.interrupt) and desktop notifications on session transitions.
 //
 // Auth model: `scripts/t3-pair.py <pairing-url>` exchanges a one-time
 // pairing code for a ~30-day bearer token stored in
@@ -35,11 +35,11 @@ Singleton {
         T3Connection.connect();
     }
 
-    readonly property var scopeInfo: Helpers.normalizeScopes(tokenScope, scopeMetadataKnown)
-    readonly property bool canRead: scopeInfo.canRead
-    readonly property bool canOperate: scopeInfo.canOperate
-    readonly property bool readOnly: scopeMetadataKnown && !canOperate
-    readonly property bool canDispatch: canOperate && state === "connected"
+    readonly property var scopeInfo: T3Connection.scopeInfo
+    readonly property bool canRead: T3Connection.canRead
+    readonly property bool canOperate: T3Connection.canOperate
+    readonly property bool readOnly: T3Connection.readOnly
+    readonly property bool canDispatch: T3Connection.canDispatch
 
     // Sanitized server.getConfig projection. Credentials, settings, paths,
     // scripts, and skills never enter this singleton.
@@ -103,10 +103,9 @@ Singleton {
         prUrl: "", error: "" })
 
     // Action state is keyed by kind/thread/request. Generic commands clear
-    // when dispatch succeeds; approvals and structured input wait for the
+    // when T3Rpc.dispatch succeeds; approvals and structured input wait for the
     // provider's matching resolution activity.
-    property var actionStates: ({})
-    readonly property var detailActionStates: actionStates
+    readonly property var detailActionStates: T3Rpc.actionStates
 
     // Structured-input drafts live in the singleton rather than the Loader
     // delegate. A rejected response therefore survives closing the popover,
@@ -131,6 +130,47 @@ Singleton {
     readonly property bool paired: T3Connection.paired
     readonly property string pairHint: "python3 ~/.config/quickshell/scripts/t3-pair.py '<pairing-url>'"
 
+    // ---- rpc / action re-exports -----------------------------------------
+    // Common/T3Rpc.qml owns request ids, the in-flight handler table and the
+    // per-command action states. These nine are the part consumers touch.
+    readonly property var actionStates: T3Rpc.actionStates
+
+    function actionPending(kind, threadId, requestId) {
+        return T3Rpc.actionPending(kind, threadId, requestId);
+    }
+
+    function actionError(kind, threadId, requestId) {
+        return T3Rpc.actionError(kind, threadId, requestId);
+    }
+
+    function respondApproval(threadId, requestId, decision) {
+        T3Rpc.respondApproval(threadId, requestId, decision);
+    }
+
+    function respondUserInput(threadId, requestId, answers) {
+        T3Rpc.respondUserInput(threadId, requestId, answers);
+    }
+
+    function settle(threadId) {
+        T3Rpc.settle(threadId);
+    }
+
+    function unsettle(threadId) {
+        T3Rpc.unsettle(threadId);
+    }
+
+    function snooze(threadId, snoozedUntil) {
+        T3Rpc.snooze(threadId, snoozedUntil);
+    }
+
+    function unsnooze(threadId) {
+        T3Rpc.unsnooze(threadId);
+    }
+
+    function stopSession(threadId) {
+        T3Rpc.stopSession(threadId);
+    }
+
     // ---- classification ------------------------------------------------
 
     // Days of quiet after which a thread settles itself. Mirrors the web
@@ -141,7 +181,6 @@ Singleton {
     // A turn.start is adopted by a session within seconds; past this the
     // message is a failed start, not pending work.
     readonly property int queuedTurnGraceMs: Helpers.QUEUED_TURN_GRACE_MS
-    readonly property int actionTimeoutMs: 15000
     // Stacked git actions stream progress while the server generates a
     // commit message and runs hooks; the deadline slides on each chunk.
     readonly property int gitActionTimeoutMs: 120000
@@ -370,120 +409,11 @@ Singleton {
 
     // ---- protocol --------------------------------------------------------
 
-    readonly property string shellReqId: "1"
-    property int nextReqId: 2
-    // requestId → { item(value), exit(msg) } for non-shell streams.
-    property var rpcHandlers: ({})
-    // rpcHandlers is mutated in place (added and deleted by request id), and
-    // an in-place mutation never re-evaluates a binding. This is the notifying
-    // mirror the deadline sweep below watches, so every add and delete goes
-    // through the three functions here. Only handlers that actually carry a
-    // deadline count: an open detail subscription has none and must not keep
-    // the sweep awake for as long as the popover shows a thread.
-    property int rpcDeadlineCount: 0
-
-    function putRpcHandler(id, handler) {
-        dropRpcHandler(id);
-        rpcHandlers[id] = handler;
-        if (typeof handler.deadline === "number")
-            rpcDeadlineCount++;
-    }
-
-    function dropRpcHandler(id) {
-        const handler = rpcHandlers[id];
-        if (handler === undefined)
-            return;
-        delete rpcHandlers[id];
-        if (typeof handler.deadline === "number")
-            rpcDeadlineCount--;
-    }
-
-    function clearRpcHandlers() {
-        rpcHandlers = {};
-        rpcDeadlineCount = 0;
-    }
-
-    function genId() {
-        let s = "";
-        for (let i = 0; i < 32; i++)
-            s += Math.floor(Math.random() * 16).toString(16);
-        return s;
-    }
-
-    function sendRequest(id, tag, payload) {
-        if (state !== "connected")
-            return false;
-        T3Connection.send(JSON.stringify({
-            _tag: "Request",
-            id: id,
-            tag: tag,
-            payload: payload,
-            headers: []
-        }));
-        return true;
-    }
-
-    // Effect RPC sends zero or more Chunk values followed by one Exit. This
-    // wrapper retains the final value, applies a hard timeout, and never
-    // retries implicitly after a transport loss.
-    function requestOnce(tag, payload, onSuccess, onFailure, options) {
-        if (state !== "connected") {
-            onFailure?.("Not connected");
-            return "";
-        }
-        const id = String(nextReqId++);
-        const opts = options ?? {};
-        const handler = {
-            value: undefined,
-            deadline: Date.now() + (opts.timeoutMs ?? actionTimeoutMs),
-            actionKey: opts.actionKey ?? "",
-            item: value => {
-                handler.value = value;
-                // Streams that report progress (git.runStackedAction) stay
-                // alive as long as chunks keep arriving.
-                if (opts.slidingDeadline === true)
-                    handler.deadline = Date.now() + (opts.timeoutMs ?? actionTimeoutMs);
-                opts.onItem?.(value);
-            },
-            exit: msg => {
-                if (msg.exit && msg.exit._tag === "Failure")
-                    onFailure?.(root.failureMessage(msg, opts.fallback ?? "Request failed"));
-                else {
-                    // Unary Effect RPCs (including server.getConfig and the
-                    // full-diff request) return their result on Success.value.
-                    // Streams exit with a null value and instead populate
-                    // `handler.value` through their final Chunk.
-                    const exitValue = msg.exit ? msg.exit.value : undefined;
-                    const value = exitValue !== undefined && exitValue !== null
-                        ? exitValue : handler.value;
-                    onSuccess?.(value);
-                }
-            },
-            timeout: () => onFailure?.("Request timed out"),
-            disconnect: () => onFailure?.("Disconnected before confirmation")
-        };
-        putRpcHandler(id, handler);
-        if (!sendRequest(id, tag, payload)) {
-            dropRpcHandler(id);
-            onFailure?.("Not connected");
-            return "";
-        }
-        return id;
-    }
-
-    function abortPendingRpcs() {
-        const handlers = rpcHandlers;
-        clearRpcHandlers();
-        for (const id in handlers)
-            handlers[id].disconnect?.();
-        detailReqId = "";
-    }
-
     function loadServerConfig() {
         configLoading = true;
         configReady = false;
         configError = "";
-        requestOnce("server.getConfig", {}, value => {
+        T3Rpc.requestOnce("server.getConfig", {}, value => {
             if (!value || typeof value !== "object") {
                 root.configLoading = false;
                 root.configError = "Malformed server configuration";
@@ -513,8 +443,8 @@ Singleton {
 
     function subscribe() {
         const selected = detailThreadId;
-        clearRpcHandlers();
-        nextReqId = 2;
+        T3Rpc.clearRpcHandlers();
+        T3Rpc.nextReqId = 2;
         threadMap = {};
         projectMap = {};
         shellReady = false;
@@ -525,7 +455,7 @@ Singleton {
         configReady = false;
         loadServerConfig();
         if (canRead)
-            sendRequest(shellReqId, "orchestration.subscribeShell", {});
+            T3Rpc.sendRequest(T3Rpc.shellReqId, "orchestration.subscribeShell", {});
         else
             shellReady = false;
         // A reconnect invalidates every stream request id. Keep the user's
@@ -550,53 +480,25 @@ Singleton {
             const reqId = msg.requestId !== undefined ? String(msg.requestId) : "";
             if (msg._tag === "Chunk") {
                 T3Connection.send(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
-                if (reqId === shellReqId) {
+                if (reqId === T3Rpc.shellReqId) {
                     for (const item of (Array.isArray(msg.values) ? msg.values : []))
                         dirty = applyItem(item) || dirty;
-                } else if (rpcHandlers[reqId]) {
+                } else if (T3Rpc.rpcHandlers[reqId]) {
                     for (const item of (Array.isArray(msg.values) ? msg.values : []))
-                        rpcHandlers[reqId].item?.(item);
+                        T3Rpc.rpcHandlers[reqId].item?.(item);
                 }
             } else if (msg._tag === "Exit") {
-                if (reqId === shellReqId) {
+                if (reqId === T3Rpc.shellReqId) {
                     // Stream ended server-side (shutdown/restart): reconnect.
                     scheduleRetry();
-                } else if (rpcHandlers[reqId]) {
-                    rpcHandlers[reqId].exit?.(msg);
-                    dropRpcHandler(reqId);
+                } else if (T3Rpc.rpcHandlers[reqId]) {
+                    T3Rpc.rpcHandlers[reqId].exit?.(msg);
+                    T3Rpc.dropRpcHandler(reqId);
                 }
             }
         }
         if (dirty)
             rebuild();
-    }
-
-    // Deadline sweep for in-flight RPCs and pending actions. Both are empty
-    // most of the time, so the tick is gated on there being something to
-    // expire: rpcDeadlineCount notifies where rpcHandlers cannot, and
-    // expireActionStates only ever touches pending entries — a finished
-    // action left in place to show its error must not keep this running.
-    Timer {
-        interval: 500
-        repeat: true
-        running: root.state === "connected"
-            && (root.rpcDeadlineCount > 0
-                || Object.values(root.actionStates).some(state => state && state.pending === true))
-        onTriggered: {
-            const now = Date.now();
-            for (const id in root.rpcHandlers) {
-                const handler = root.rpcHandlers[id];
-                if (handler.deadline === undefined || now < handler.deadline)
-                    continue;
-                T3Connection.send(JSON.stringify({ _tag: "Interrupt", requestId: id }));
-                root.dropRpcHandler(id);
-                handler.timeout?.();
-            }
-            const expired = Helpers.expireActionStates(root.actionStates, now,
-                root.actionTimeoutMs);
-            if (expired.expiredKeys.length > 0)
-                root.actionStates = expired.states;
-        }
     }
 
     function applyItem(item) {
@@ -646,332 +548,6 @@ Singleton {
         default:
             return false;
         }
-    }
-
-    // ---- commands and action state ---------------------------------------
-
-    function actionKey(kind, threadId, requestId) {
-        return kind + "|" + threadId + "|" + (requestId ?? "");
-    }
-
-    function actionState(kind, threadId, requestId) {
-        const states = actionStates;
-        return states[actionKey(kind, threadId, requestId)] ?? null;
-    }
-
-    function actionPending(kind, threadId, requestId) {
-        const current = actionState(kind, threadId, requestId);
-        return current !== null && current.pending === true;
-    }
-
-    function actionError(kind, threadId, requestId) {
-        const current = actionState(kind, threadId, requestId);
-        return current && typeof current.error === "string" ? current.error : "";
-    }
-
-    function putActionState(key, value) {
-        const next = Object.assign({}, actionStates);
-        if (value === null)
-            delete next[key];
-        else
-            next[key] = value;
-        actionStates = next;
-    }
-
-    function beginAction(key, commandId, awaitResolution, timeoutMs) {
-        const state = {
-            pending: true,
-            error: "",
-            commandId: commandId,
-            awaitResolution: awaitResolution === true,
-            startedAt: Date.now()
-        };
-        if (typeof timeoutMs === "number" && timeoutMs > 0)
-            state.timeoutMs = timeoutMs;
-        putActionState(key, state);
-    }
-
-    function failAllPendingActions(message) {
-        const next = Object.assign({}, actionStates);
-        let changed = false;
-        for (const key in next) {
-            if (!next[key] || next[key].pending !== true)
-                continue;
-            next[key] = Object.assign({}, next[key], {
-                pending: false,
-                error: message || "Disconnected before confirmation"
-            });
-            changed = true;
-        }
-        if (changed)
-            actionStates = next;
-    }
-
-    function failAction(key, message) {
-        const current = actionStates[key];
-        if (!current)
-            return;
-        putActionState(key, Object.assign({}, current, {
-            pending: false,
-            error: message || "Action failed"
-        }));
-    }
-
-    function clearAction(key) {
-        if (actionStates[key] !== undefined)
-            putActionState(key, null);
-    }
-
-    function cancelActionRequests(key) {
-        for (const id in rpcHandlers) {
-            const handler = rpcHandlers[id];
-            if (!handler || handler.actionKey !== key)
-                continue;
-            T3Connection.send(JSON.stringify({ _tag: "Interrupt", requestId: id }));
-            dropRpcHandler(id);
-        }
-        clearAction(key);
-    }
-
-    function failureMessage(msg, fallback) {
-        const found = Helpers.findErrorText(msg ? msg.exit : null, 0);
-        return found !== "" ? found.slice(0, 240) : fallback;
-    }
-
-    function rejectAction(key, message, awaitResolution) {
-        putActionState(key, {
-            pending: false,
-            error: message,
-            commandId: "",
-            awaitResolution: awaitResolution === true,
-            startedAt: Date.now()
-        });
-        return "";
-    }
-
-    // Dispatch commands one at a time. A later command is never attempted
-    // after an earlier rejection, and reconnecting never replays the batch.
-    function dispatchBatch(commands, key, options) {
-        const opts = options ?? {};
-        if (!Helpers.canBeginAction(actionStates, key))
-            return "";
-        if (!canOperate)
-            return rejectAction(key, "This pairing is read-only", opts.awaitResolution);
-        if (state !== "connected")
-            return rejectAction(key, "Not connected", opts.awaitResolution);
-        if (!Array.isArray(commands) || commands.length === 0)
-            return rejectAction(key, "Nothing to send", opts.awaitResolution);
-
-        const firstId = commands[0].commandId ?? genId();
-        commands[0].commandId = firstId;
-        beginAction(key, firstId, opts.awaitResolution);
-
-        function sendAt(index) {
-            if (!root.actionStates[key] || root.actionStates[key].pending !== true)
-                return;
-            if (index >= commands.length) {
-                if (opts.awaitResolution !== true && opts.holdAfterSuccess !== true)
-                    root.clearAction(key);
-                opts.onSuccess?.();
-                return;
-            }
-            const command = commands[index];
-            if (!command.commandId)
-                command.commandId = root.genId();
-            const current = root.actionStates[key];
-            root.putActionState(key, Object.assign({}, current, {
-                commandId: command.commandId,
-                startedAt: Date.now()
-            }));
-            requestOnce("orchestration.dispatchCommand", command, () => {
-                sendAt(index + 1);
-            }, error => {
-                root.failAction(key, error || "Command rejected");
-                opts.onFailure?.(error);
-                console.warn("t3code: command rejected:", error);
-            }, { actionKey: key, fallback: "Command rejected" });
-        }
-
-        sendAt(0);
-        return firstId;
-    }
-
-    // Approval/input actions remain pending after RPC acceptance until the
-    // provider's matching resolution activity arrives.
-    function dispatch(command, key, awaitResolution) {
-        return dispatchBatch([command], key, { awaitResolution: awaitResolution === true });
-    }
-
-    // decision: "accept" | "acceptForSession" | "decline"
-    function respondApproval(threadId, requestId, decision) {
-        const key = actionKey("approval", threadId, requestId);
-        return dispatch({
-            type: "thread.approval.respond",
-            commandId: genId(),
-            threadId: threadId,
-            requestId: requestId,
-            decision: decision,
-            createdAt: new Date().toISOString()
-        }, key, true);
-    }
-
-    // Answers are deliberately narrowed to the two provider contract shapes
-    // the dropdown can author: a string or an array of strings.
-    function respondUserInput(threadId, requestId, answers) {
-        const key = actionKey("input", threadId, requestId);
-        const normalized = {};
-        let answerCount = 0;
-        if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
-            putActionState(key, { pending: false, error: "Every question needs an answer",
-                commandId: "", awaitResolution: true, startedAt: Date.now() });
-            return "";
-        }
-        for (const questionId in answers) {
-            const value = answers[questionId];
-            if (typeof value === "string") {
-                const answer = value.trim();
-                if (answer === "")
-                    continue;
-                normalized[questionId] = answer;
-                answerCount++;
-            } else if (Array.isArray(value)) {
-                const labels = value.filter(label => typeof label === "string")
-                    .map(label => label.trim()).filter(label => label !== "");
-                if (labels.length === 0)
-                    continue;
-                normalized[questionId] = Array.from(new Set(labels));
-                answerCount++;
-            } else {
-                putActionState(key, { pending: false, error: "Unsupported answer format",
-                    commandId: "", awaitResolution: true, startedAt: Date.now() });
-                return "";
-            }
-        }
-        if (answerCount === 0) {
-            putActionState(key, { pending: false, error: "Every question needs an answer",
-                commandId: "", awaitResolution: true, startedAt: Date.now() });
-            return "";
-        }
-        return dispatch({
-            type: "thread.user-input.respond",
-            commandId: genId(),
-            threadId: threadId,
-            requestId: requestId,
-            answers: normalized,
-            createdAt: new Date().toISOString()
-        }, key, true);
-    }
-
-    function settle(threadId) {
-        const key = actionKey("settle", threadId, "");
-        const thread = threadMap[threadId];
-        if (!supportsSettlement)
-            return rejectAction(key, "Settlement is not supported by this server", false);
-        if (!Helpers.canOperateLifecycle(thread, Date.now()))
-            return rejectAction(key, "Wait for the thread to become idle", false);
-        return dispatch({
-            type: "thread.settle",
-            commandId: genId(),
-            threadId: threadId
-        }, key, false);
-    }
-
-    function unsettle(threadId) {
-        const key = actionKey("unsettle", threadId, "");
-        if (!supportsSettlement)
-            return rejectAction(key, "Settlement is not supported by this server", false);
-        return dispatch({
-            type: "thread.unsettle",
-            commandId: genId(),
-            threadId: threadId,
-            reason: "user"
-        }, key, false);
-    }
-
-    function settleMany(threadIds) {
-        const key = actionKey("bulk-settle", "", "");
-        if (!supportsSettlement)
-            return rejectAction(key, "Settlement is not supported by this server", false);
-        const ids = Array.isArray(threadIds) ? threadIds.filter(id =>
-            Helpers.canOperateLifecycle(threadMap[id], Date.now())) : [];
-        const commands = ids.map(id => ({
-            type: "thread.settle", commandId: genId(), threadId: id
-        }));
-        return dispatchBatch(commands, key, {});
-    }
-
-    function snooze(threadId, snoozedUntil) {
-        const key = actionKey("snooze", threadId, "");
-        const thread = threadMap[threadId];
-        if (!supportsSnooze)
-            return rejectAction(key, "Snooze is not supported by this server", false);
-        if (!Helpers.canOperateLifecycle(thread, Date.now()))
-            return rejectAction(key, "Wait for the thread to become idle", false);
-        if (isNaN(Date.parse(snoozedUntil)) || Date.parse(snoozedUntil) <= Date.now())
-            return rejectAction(key, "Choose a future wake time", false);
-        return dispatch({
-            type: "thread.snooze",
-            commandId: genId(),
-            threadId: threadId,
-            snoozedUntil: snoozedUntil
-        }, key, false);
-    }
-
-    function unsnooze(threadId) {
-        const key = actionKey("unsnooze", threadId, "");
-        if (!supportsSnooze)
-            return rejectAction(key, "Snooze is not supported by this server", false);
-        return dispatch({
-            type: "thread.unsnooze",
-            commandId: genId(),
-            threadId: threadId,
-            reason: "user"
-        }, key, false);
-    }
-
-    function interrupt(threadId) {
-        return dispatch({
-            type: "thread.turn.interrupt",
-            commandId: genId(),
-            threadId: threadId,
-            createdAt: new Date().toISOString()
-        }, actionKey("interrupt", threadId, ""), false);
-    }
-
-    function stopSession(threadId) {
-        return dispatch({
-            type: "thread.session.stop",
-            commandId: genId(),
-            threadId: threadId,
-            createdAt: new Date().toISOString()
-        }, actionKey("session-stop", threadId, ""), false);
-    }
-
-    function renameThread(threadId, title) {
-        const key = actionKey("rename", threadId, "");
-        const normalized = typeof title === "string" ? title.trim() : "";
-        if (normalized === "")
-            return rejectAction(key, "Title cannot be empty", false);
-        return dispatch({
-            type: "thread.meta.update",
-            commandId: genId(),
-            threadId: threadId,
-            title: normalized
-        }, key, false);
-    }
-
-    function regenerateTitle(threadId) {
-        const key = actionKey("regenerate-title", threadId, "");
-        if (!supportsTitleRegeneration)
-            return rejectAction(key, "Title regeneration is not supported", false);
-        if (threadMap[threadId]?.titleRegeneration)
-            return rejectAction(key, "Title regeneration is already running", false);
-        return dispatch({
-            type: "thread.meta.update",
-            commandId: genId(),
-            threadId: threadId,
-            regenerateTitle: true
-        }, key, false);
     }
 
     // ---- composer drafts and provider selection --------------------------
@@ -1364,26 +940,26 @@ Singleton {
             clearDraft) {
         const thread = threadMap[threadId];
         const draft = threadDraft(threadId);
-        const key = actionKey("prompt", threadId, "");
+        const key = T3Rpc.actionKey("prompt", threadId, "");
         const text = typeof overrideText === "string" ? overrideText : draft.prompt;
         if (!thread || text.trim() === "")
-            return rejectAction(key, "Write a message first", false);
+            return T3Rpc.rejectAction(key, "Write a message first", false);
         if (text.length > maxPromptChars)
-            return rejectAction(key, "Prompt exceeds T3 Code's 120,000 character limit", false);
+            return T3Rpc.rejectAction(key, "Prompt exceeds T3 Code's 120,000 character limit", false);
         if (!Helpers.canOperateLifecycle(thread, Date.now()))
-            return rejectAction(key, "Wait for the thread to become idle", false);
+            return T3Rpc.rejectAction(key, "Wait for the thread to become idle", false);
         const interactionMode = interactionOverride ?? draft.interactionMode;
         if (!sourceProposedPlan && thread.hasActionableProposedPlan === true
                 && interactionMode !== "plan")
-            return rejectAction(key, "Choose a plan action before continuing", false);
+            return T3Rpc.rejectAction(key, "Choose a plan action before continuing", false);
         const selection = selectionFromDraft(draft);
         if (!selection)
-            return rejectAction(key, "Choose a ready provider and model", false);
+            return T3Rpc.rejectAction(key, "Choose a ready provider and model", false);
         if (!Helpers.modelChangeAllowed(thread, selection, providerConfigurations,
                 detailThreadId === threadId ? detailMessages.length : 0))
-            return rejectAction(key, "Start a new thread to change this model", false);
+            return T3Rpc.rejectAction(key, "Start a new thread to change this model", false);
         const createdAt = new Date().toISOString();
-        const messageId = genId();
+        const messageId = T3Rpc.genId();
         const commands = Helpers.buildExistingTurnCommands({
             currentThread: thread,
             modelSelection: selection,
@@ -1393,11 +969,11 @@ Singleton {
             messageId: messageId,
             sourceProposedPlan: sourceProposedPlan ?? null,
             createdAt: createdAt,
-            nextId: () => root.genId()
+            nextId: () => T3Rpc.genId()
         });
         putPendingDraftMessage(threadId, { messageId: messageId, prompt: text,
             clearDraft: clearDraft !== false });
-        return dispatchBatch(commands, key, {
+        return T3Rpc.dispatchBatch(commands, key, {
             // RPC acceptance is not the same as seeing the persisted message.
             // Keep the draft until the detail event (or a reconnect snapshot)
             // confirms this exact message id.
@@ -1425,21 +1001,21 @@ Singleton {
 
     function submitNewThread() {
         const draft = newThreadDraft;
-        const key = actionKey("new", "", "");
+        const key = T3Rpc.actionKey("new", "", "");
         const text = draft && typeof draft.prompt === "string" ? draft.prompt : "";
         if (!hasReadyProvider)
-            return rejectAction(key, configReady ? "No provider with an advertised model is ready"
+            return T3Rpc.rejectAction(key, configReady ? "No provider with an advertised model is ready"
                 : "Provider configuration is not ready", false);
         if (!draft || !projectMap[draft.projectId])
-            return rejectAction(key, "Choose a project", false);
+            return T3Rpc.rejectAction(key, "Choose a project", false);
         if (text.trim() === "")
-            return rejectAction(key, "Write the first prompt", false);
+            return T3Rpc.rejectAction(key, "Write the first prompt", false);
         if (text.length > maxPromptChars)
-            return rejectAction(key, "Prompt exceeds T3 Code's 120,000 character limit", false);
+            return T3Rpc.rejectAction(key, "Prompt exceeds T3 Code's 120,000 character limit", false);
         const selection = selectionFromDraft(draft);
         if (!selection)
-            return rejectAction(key, "Choose a ready provider and model", false);
-        const threadId = genId();
+            return T3Rpc.rejectAction(key, "Choose a ready provider and model", false);
+        const threadId = T3Rpc.genId();
         const createdAt = new Date().toISOString();
         const command = Helpers.buildNewThreadCommand({
             threadId: threadId,
@@ -1449,18 +1025,18 @@ Singleton {
             runtimeMode: draft.runtimeMode,
             interactionMode: draft.modeFixed === true ? "default" : draft.interactionMode,
             sourceProposedPlan: draft.sourceProposedPlan,
-            messageId: genId(),
+            messageId: T3Rpc.genId(),
             createdAt: createdAt,
-            nextId: () => root.genId()
+            nextId: () => T3Rpc.genId()
         });
         pendingNewThreadId = threadId;
         pendingNewThreadActionKey = key;
-        const dispatched = dispatchBatch([command], key, {
+        const dispatched = T3Rpc.dispatchBatch([command], key, {
             holdAfterSuccess: true,
             onSuccess: () => {
-                const current = root.actionStates[key];
+                const current = T3Rpc.actionStates[key];
                 if (current)
-                    root.putActionState(key, Object.assign({}, current, {
+                    T3Rpc.putActionState(key, Object.assign({}, current, {
                         pending: true, startedAt: Date.now(), phase: "awaiting-shell"
                     }));
             }
@@ -1481,7 +1057,7 @@ Singleton {
             return;
         const confirmed = pendingNewThreadId;
         if (pendingNewThreadActionKey !== "")
-            clearAction(pendingNewThreadActionKey);
+            T3Rpc.clearAction(pendingNewThreadActionKey);
         pendingNewThreadId = "";
         pendingNewThreadActionKey = "";
         newThreadDraft = ({});
@@ -1749,15 +1325,15 @@ Singleton {
         if (requestId === "")
             return;
         if (activity.kind === "approval.resolved") {
-            clearAction(actionKey("approval", threadId, requestId));
+            T3Rpc.clearAction(T3Rpc.actionKey("approval", threadId, requestId));
         } else if (activity.kind === "user-input.resolved") {
-            clearAction(actionKey("input", threadId, requestId));
+            T3Rpc.clearAction(T3Rpc.actionKey("input", threadId, requestId));
             clearUserInputDraft(threadId, requestId);
         } else if (activity.kind === "provider.approval.respond.failed") {
-            failAction(actionKey("approval", threadId, requestId),
+            T3Rpc.failAction(T3Rpc.actionKey("approval", threadId, requestId),
                 typeof payload.detail === "string" ? payload.detail : activity.summary);
         } else if (activity.kind === "provider.user-input.respond.failed") {
-            failAction(actionKey("input", threadId, requestId),
+            T3Rpc.failAction(T3Rpc.actionKey("input", threadId, requestId),
                 typeof payload.detail === "string" ? payload.detail : activity.summary);
         }
     }
@@ -1883,7 +1459,7 @@ Singleton {
         if (ready.length === 0) {
             detailCheckpointSummary = null;
             if (detailDiff.checkpointRef !== "") {
-                cancelActionRequests(actionKey("diff", detailThreadId, ""));
+                T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
                 detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
                     fullText: "", truncated: false, totalChars: 0, totalLines: 0 });
             }
@@ -1910,7 +1486,7 @@ Singleton {
             });
             if (detailDiff.checkpointRef !== ""
                     && detailDiff.checkpointRef !== checkpoint.checkpointRef) {
-                cancelActionRequests(actionKey("diff", detailThreadId, ""));
+                T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
                 detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
                     fullText: "", truncated: false, totalChars: 0, totalLines: 0 });
             }
@@ -1923,19 +1499,19 @@ Singleton {
     }
 
     function loadFullThreadDiff(threadId, checkpoint) {
-        const key = actionKey("diff", threadId, "");
+        const key = T3Rpc.actionKey("diff", threadId, "");
         if (!canRead)
-            return rejectAction(key, "This pairing cannot read thread data", false);
+            return T3Rpc.rejectAction(key, "This pairing cannot read thread data", false);
         if (!checkpoint || checkpoint.status !== "ready"
                 || typeof checkpoint.checkpointTurnCount !== "number")
-            return rejectAction(key, "No ready checkpoint is available", false);
-        if (!Helpers.canBeginAction(actionStates, key))
+            return T3Rpc.rejectAction(key, "No ready checkpoint is available", false);
+        if (!Helpers.canBeginAction(T3Rpc.actionStates, key))
             return "";
-        beginAction(key, "", false);
+        T3Rpc.beginAction(key, "", false);
         detailDiff = ({ checkpointRef: checkpoint.checkpointRef ?? "", loading: true,
             error: "", text: "", fullText: "", truncated: false,
             totalChars: 0, totalLines: 0 });
-        return requestOnce("orchestration.getFullThreadDiff", {
+        return T3Rpc.requestOnce("orchestration.getFullThreadDiff", {
             threadId: threadId,
             toTurnCount: checkpoint.checkpointTurnCount,
             ignoreWhitespace: false
@@ -1943,11 +1519,11 @@ Singleton {
             if (root.detailThreadId !== threadId
                     || root.detailDiff.checkpointRef !== (checkpoint.checkpointRef ?? "")
                     || root.detailCheckpointSummary?.checkpointRef !== checkpoint.checkpointRef) {
-                root.clearAction(key);
+                T3Rpc.clearAction(key);
                 return;
             }
             if (!value || typeof value.diff !== "string") {
-                root.failAction(key, "Malformed diff response");
+                T3Rpc.failAction(key, "Malformed diff response");
                 root.detailDiff = Object.assign({}, root.detailDiff, {
                     loading: false, error: "Malformed diff response"
                 });
@@ -1958,14 +1534,14 @@ Singleton {
                 checkpointRef: checkpoint.checkpointRef ?? "", loading: false, error: "",
                 fullText: value.diff
             }, rendered);
-            root.clearAction(key);
+            T3Rpc.clearAction(key);
         }, error => {
             if (root.detailThreadId !== threadId
                     || root.detailDiff.checkpointRef !== (checkpoint.checkpointRef ?? "")) {
-                root.clearAction(key);
+                T3Rpc.clearAction(key);
                 return;
             }
-            root.failAction(key, error);
+            T3Rpc.failAction(key, error);
             root.detailDiff = Object.assign({}, root.detailDiff, {
                 loading: false, error: error
             });
@@ -1998,7 +1574,7 @@ Singleton {
             return;
         }
         detailVcs = Object.assign({}, detailVcs, { cwd: cwd, loading: true, error: "" });
-        requestOnce("vcs.refreshStatus", { cwd: cwd }, value => {
+        T3Rpc.requestOnce("vcs.refreshStatus", { cwd: cwd }, value => {
             if (root.detailThreadId !== threadId)
                 return;
             root.detailVcs = ({ cwd: cwd, loading: false, error: "",
@@ -2015,23 +1591,23 @@ Singleton {
     // action: "commit_push" (commit on the current branch + push — the
     // default flow) or "push". The commit message is generated server-side.
     function runGitAction(threadId, action) {
-        const key = actionKey("git", threadId, "");
-        if (!Helpers.canBeginAction(actionStates, key))
+        const key = T3Rpc.actionKey("git", threadId, "");
+        if (!Helpers.canBeginAction(T3Rpc.actionStates, key))
             return "";
         if (!canOperate)
-            return rejectAction(key, "This pairing is read-only", false);
+            return T3Rpc.rejectAction(key, "This pairing is read-only", false);
         if (state !== "connected")
-            return rejectAction(key, "Not connected", false);
+            return T3Rpc.rejectAction(key, "Not connected", false);
         const payload = Helpers.buildGitActionPayload({
-            actionId: genId(), cwd: threadCwd(threadId), action: action });
+            actionId: T3Rpc.genId(), cwd: threadCwd(threadId), action: action });
         if (!payload)
-            return rejectAction(key, "No repository folder for this thread", false);
-        beginAction(key, "", false, gitActionTimeoutMs);
+            return T3Rpc.rejectAction(key, "No repository folder for this thread", false);
+        T3Rpc.beginAction(key, "", false, gitActionTimeoutMs);
         detailGit = ({ actionId: payload.actionId, action: action,
             label: action === "push" ? "Pushing…" : "Committing…",
             summary: "", prUrl: "", error: "" });
         // The terminal chunk (action_finished/action_failed) is what
-        // requestOnce retains; a Failure exit prefers the streamed message.
+        // T3Rpc.requestOnce retains; a Failure exit prefers the streamed message.
         let streamedFailure = "";
         const finish = fields => {
             if (root.detailThreadId === threadId
@@ -2040,8 +1616,8 @@ Singleton {
                     summary: "", prUrl: "", error: "" }, fields);
             root.refreshVcsStatus(threadId, true);
         };
-        return requestOnce("git.runStackedAction", payload, value => {
-            root.clearAction(key);
+        return T3Rpc.requestOnce("git.runStackedAction", payload, value => {
+            T3Rpc.clearAction(key);
             const failure = streamedFailure !== "" ? streamedFailure
                 : value && value.kind === "action_finished" ? "" : "Git action failed";
             if (failure !== "") {
@@ -2052,7 +1628,7 @@ Singleton {
             finish({ summary: summary.text, prUrl: summary.prUrl });
         }, error => {
             const message = streamedFailure !== "" ? streamedFailure : error;
-            root.failAction(key, message);
+            T3Rpc.failAction(key, message);
             finish({ error: message });
         }, {
             actionKey: key,
@@ -2064,9 +1640,9 @@ Singleton {
                 if (failure !== "")
                     streamedFailure = failure;
                 // Keep the expiry sweep fed while progress is flowing.
-                const current = root.actionStates[key];
+                const current = T3Rpc.actionStates[key];
                 if (current && current.pending === true)
-                    root.putActionState(key, Object.assign({}, current,
+                    T3Rpc.putActionState(key, Object.assign({}, current,
                         { startedAt: Date.now() }));
                 if (root.detailThreadId !== threadId
                         || root.detailGit.actionId !== payload.actionId)
@@ -2084,8 +1660,8 @@ Singleton {
     function reconcileCommandEvent(event) {
         if (!event || typeof event.commandId !== "string" || event.commandId === "")
             return;
-        for (const key in actionStates) {
-            const current = actionStates[key];
+        for (const key in T3Rpc.actionStates) {
+            const current = T3Rpc.actionStates[key];
             if (!current || current.commandId !== event.commandId)
                 continue;
             // A subscription event may race ahead of dispatchCommand's RPC
@@ -2097,7 +1673,7 @@ Singleton {
                     && (event.type === "thread.approval-response-requested"
                         || event.type === "thread.user-input-response-requested"))
                 return;
-            clearAction(key);
+            T3Rpc.clearAction(key);
             return;
         }
     }
@@ -2206,7 +1782,7 @@ Singleton {
         if (detailReqId === "")
             return;
         T3Connection.send(JSON.stringify({ _tag: "Interrupt", requestId: detailReqId }));
-        dropRpcHandler(detailReqId);
+        T3Rpc.dropRpcHandler(detailReqId);
         detailReqId = "";
     }
 
@@ -2214,7 +1790,7 @@ Singleton {
         detailResubscribeTimer.stop();
         pendingDetailResubscribeId = "";
         stopDetailRequest();
-        cancelActionRequests(actionKey("diff", threadId, ""));
+        T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", threadId, ""));
         resetDetailData();
         if (state !== "connected" || threadId === "")
             return;
@@ -2225,9 +1801,9 @@ Singleton {
             detailSession = shell.session ?? null;
             detailLatestTurn = shell.latestTurn ?? null;
         }
-        const id = String(nextReqId++);
+        const id = String(T3Rpc.nextReqId++);
         detailReqId = id;
-        putRpcHandler(id, {
+        T3Rpc.putRpcHandler(id, {
             item: item => {
                 if (root.detailReqId !== id || root.detailThreadId !== threadId)
                     return;
@@ -2242,10 +1818,10 @@ Singleton {
                 root.detailReqId = "";
                 root.detailLoading = false;
                 if (msg.exit && msg.exit._tag === "Failure")
-                    root.detailError = root.failureMessage(msg, "Thread details unavailable");
+                    root.detailError = T3Rpc.failureMessage(msg, "Thread details unavailable");
             }
         });
-        sendRequest(id, "orchestration.subscribeThread", { threadId: threadId });
+        T3Rpc.sendRequest(id, "orchestration.subscribeThread", { threadId: threadId });
         refreshVcsStatus(threadId, true);
     }
 
@@ -2257,14 +1833,14 @@ Singleton {
         if (detailThreadId === threadId && detailReqId !== "")
             return;
         if (detailThreadId !== "" && detailThreadId !== threadId)
-            cancelActionRequests(actionKey("diff", detailThreadId, ""));
+            T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
         detailThreadId = threadId;
         startDetailSubscription(threadId);
     }
 
     function closeDetail() {
         if (detailThreadId !== "")
-            cancelActionRequests(actionKey("diff", detailThreadId, ""));
+            T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
         detailResubscribeTimer.stop();
         pendingDetailResubscribeId = "";
         stopDetailRequest();
@@ -2287,6 +1863,16 @@ Singleton {
     // The transport's half of the conversation. T3Connection owns the socket;
     // this is where its frames become protocol.
     Connections {
+        target: T3Rpc
+
+        // The RPC layer dropped everything in flight; the detail subscription
+        // id it was holding is meaningless now.
+        function onAborted() {
+            root.detailReqId = "";
+        }
+    }
+
+    Connections {
         target: T3Connection
 
         function onMessage(text) {
@@ -2299,8 +1885,8 @@ Singleton {
 
         // Fired before a retry is armed: nothing in flight can still land.
         function onDropped() {
-            root.abortPendingRpcs();
-            root.failAllPendingActions("Disconnected before confirmation");
+            T3Rpc.abortPendingRpcs();
+            T3Rpc.failAllPendingActions("Disconnected before confirmation");
             root.configLoading = false;
             root.configReady = false;
         }

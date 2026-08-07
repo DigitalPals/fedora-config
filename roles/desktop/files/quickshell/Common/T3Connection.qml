@@ -44,6 +44,15 @@ Singleton {
     property bool scopeMetadataKnown: false
     property var tokenScope: ""
 
+    // What this token is allowed to do. Derived here because the scope comes
+    // off the pairing file, and because "can dispatch" also needs the live
+    // socket state — both of which are this file's business.
+    readonly property var scopeInfo: Helpers.normalizeScopes(tokenScope, scopeMetadataKnown)
+    readonly property bool canRead: scopeInfo.canRead
+    readonly property bool canOperate: scopeInfo.canOperate
+    readonly property bool readOnly: scopeMetadataKnown && !canOperate
+    readonly property bool canDispatch: canOperate && state === "connected"
+
     // Every frame the server sends, verbatim. T3Code parses it.
     signal message(string text)
     // The socket just opened: the protocol layer resubscribes here.
