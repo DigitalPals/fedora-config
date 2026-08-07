@@ -232,11 +232,11 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const picker = read("Settings/PickerRow.qml");
     const system = read("Settings/SystemPage.qml");
 
-    assert.match(view, /preferredHeight:\s*640/);
+    assert.match(view, /preferredHeight:\s*660/);
     assert.match(page, /scrollGutter:\s*scrollbarVisible \? 8 : 0/);
     assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
     for (const row of [slider, picker])
-        assert.match(row, /Settings\.font === "mono" \? 104 : 90/);
+        assert.match(row, /Settings\.font === "mono" \? 122 : 90/);
     assert.doesNotMatch(system, /resetArmed|Confirm reset/);
     assert.match(system, /onTriggered:\s*Settings\.resetAll\(\)/);
 });
@@ -254,6 +254,47 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
     assert.match(input, /persisted_scroll_factor\(\)/);
     assert.match(input, /"scrollFactor"%s\*:%s\*\(\[%d%\.\]\+\)/);
     assert.doesNotMatch(input, /scroll_factor\s*=\s*0\.4/);
+});
+
+test("the grouped rail adds search, sections, and the rail save state (design 1c)", () => {
+    const view = read("Settings/SettingsView.qml");
+    const settings = read("Common/Settings.qml");
+
+    assert.match(view, /group:\s*"SHELL"/);
+    assert.match(view, /group:\s*"SYSTEM"/);
+    assert.match(view, /property string navQuery/);
+    assert.match(view, /Search settings/);
+    assert.match(view, /id:\s*railFooter/);
+    assert.match(view, /Saved · applies live/);
+    assert.doesNotMatch(view, /shell-settings\.json/,
+        "the config path chip lives on the System page, not a bottom footer");
+    assert.match(view, /case "notifications": return notificationsPage;/);
+    assert.match(settings, /"notifications", "system"\]/);
+});
+
+test("notification settings drive the toasts and the notification center", () => {
+    const toasts = read("NotificationToasts.qml");
+    const notifs = read("Common/Notifs.qml");
+    const page = read("Settings/NotificationsPage.qml");
+
+    assert.match(toasts, /Settings\.notifPosition/);
+    assert.match(toasts, /Settings\.notifDensity/);
+    assert.match(toasts, /Settings\.notifIcons/);
+    assert.match(toasts, /Settings\.notifBodyLines/);
+    assert.match(toasts, /showProgress:\s*Settings\.notifProgress && !critical/);
+    // A plain array model recreates every delegate when one toast expires,
+    // resetting the survivors' countdowns; ScriptModel diffs by identity.
+    assert.match(toasts, /model:\s*ScriptModel\s*\{\s*values:\s*Notifs\.toasts\s*\}/);
+    assert.doesNotMatch(toasts, /model:\s*Notifs\.toasts/);
+    assert.match(notifs, /readonly property bool dnd:\s*Settings\.notifDnd/);
+    assert.match(notifs, /toastsSuppressed:\s*dnd \|\| quietActive/);
+    assert.match(notifs, /Settings\.notifDuration \* 1000/);
+    assert.match(page, /Send test notification/);
+    assert.match(page, /Critical alerts ignore the timer/);
+    // DND writers must go through the persisted setting, never the singleton.
+    for (const name of ["Popovers/NotifsPopover.qml", "Popovers/ControlCenterPopover.qml"])
+        assert.doesNotMatch(read(name), /Notifs\.dnd\s*=/,
+            `${name} must use Notifs.setDnd`);
 });
 
 test("the settings store keeps its fixed literal state path", () => {

@@ -45,6 +45,16 @@ Singleton {
     property string osd: defaults.osd
     property int pollMax: defaults.pollMax
     property real scrollFactor: defaults.scrollFactor
+    property bool notifDnd: defaults.notifDnd
+    property string notifQuiet: defaults.notifQuiet
+    property int notifQuietStart: defaults.notifQuietStart
+    property int notifQuietEnd: defaults.notifQuietEnd
+    property int notifDuration: defaults.notifDuration
+    property string notifPosition: defaults.notifPosition
+    property string notifDensity: defaults.notifDensity
+    property bool notifIcons: defaults.notifIcons
+    property bool notifProgress: defaults.notifProgress
+    property int notifBodyLines: defaults.notifBodyLines
     property var mods: defaults.mods
     // Wallpaper-accent extraction cache: the derived color and the wallpaper
     // it was derived from, persisted so magick never re-runs across restarts.
@@ -73,7 +83,19 @@ Singleton {
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
-    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "system"]
+    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "notifications", "system"]
+
+    // One dirty/reset key list per settings page (grouped-rail design 1c).
+    readonly property var sectionKeys: ({
+        wallpaper: ["wall", "wallDir", "shuffle"],
+        appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
+        bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
+        modules: ["mods"],
+        notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
+            "notifDuration", "notifPosition", "notifDensity", "notifIcons",
+            "notifProgress", "notifBodyLines"],
+        system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor"]
+    })
 
     // ---- Connected-popout lifecycle -------------------------------------
     function showPanel(targetPage) {
@@ -98,14 +120,7 @@ Singleton {
     }
 
     function sectionDirty(section) {
-        const map = {
-            wallpaper: ["wall", "wallDir", "shuffle"],
-            appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
-            bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
-            modules: ["mods"],
-            system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor"]
-        };
-        return (map[section] || []).some(key =>
+        return (sectionKeys[section] || []).some(key =>
             JSON.stringify(root[key]) !== JSON.stringify(defaults[key]));
     }
 
@@ -166,18 +181,11 @@ Singleton {
     }
 
     function resetSection(section) {
-        const map = {
-            wallpaper: ["wall", "wallDir", "shuffle"],
-            appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
-            bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
-            modules: ["mods"],
-            system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor"]
-        };
         const labels = {
             wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar layout",
-            modules: "Modules", system: "System"
+            modules: "Modules", notifications: "Notifications", system: "System"
         };
-        resetKeys(map[section] || [], labels[section] || "Settings");
+        resetKeys(sectionKeys[section] || [], labels[section] || "Settings");
     }
 
     function resetAll() {
@@ -211,8 +219,13 @@ Singleton {
             font: font, accent: accent, accentWall: accentWall, position: position,
             floating: floating, gap: gap, autoHide: autoHide, exclusive: exclusive,
             monitor: monitor, clock24: clock24, unit: unit, warmth: warmth,
-            osd: osd, pollMax: pollMax, scrollFactor: scrollFactor, mods: mods,
-            wallAccent: wallAccent, wallAccentFor: wallAccentFor
+            osd: osd, pollMax: pollMax, scrollFactor: scrollFactor,
+            notifDnd: notifDnd, notifQuiet: notifQuiet,
+            notifQuietStart: notifQuietStart, notifQuietEnd: notifQuietEnd,
+            notifDuration: notifDuration, notifPosition: notifPosition,
+            notifDensity: notifDensity, notifIcons: notifIcons,
+            notifProgress: notifProgress, notifBodyLines: notifBodyLines,
+            mods: mods, wallAccent: wallAccent, wallAccentFor: wallAccentFor
         };
     }
 
@@ -247,6 +260,16 @@ Singleton {
         osd = merged.osd;
         pollMax = merged.pollMax;
         scrollFactor = merged.scrollFactor;
+        notifDnd = merged.notifDnd;
+        notifQuiet = merged.notifQuiet;
+        notifQuietStart = merged.notifQuietStart;
+        notifQuietEnd = merged.notifQuietEnd;
+        notifDuration = merged.notifDuration;
+        notifPosition = merged.notifPosition;
+        notifDensity = merged.notifDensity;
+        notifIcons = merged.notifIcons;
+        notifProgress = merged.notifProgress;
+        notifBodyLines = merged.notifBodyLines;
         mods = merged.mods;
         wallAccent = merged.wallAccent;
         wallAccentFor = merged.wallAccentFor;
@@ -306,6 +329,16 @@ Singleton {
         scheduleSave();
         applyScrollFactor();
     }
+    onNotifDndChanged: scheduleSave()
+    onNotifQuietChanged: scheduleSave()
+    onNotifQuietStartChanged: scheduleSave()
+    onNotifQuietEndChanged: scheduleSave()
+    onNotifDurationChanged: scheduleSave()
+    onNotifPositionChanged: scheduleSave()
+    onNotifDensityChanged: scheduleSave()
+    onNotifIconsChanged: scheduleSave()
+    onNotifProgressChanged: scheduleSave()
+    onNotifBodyLinesChanged: scheduleSave()
     onModsChanged: scheduleSave()
     onWallAccentChanged: scheduleSave()
     onWallAccentForChanged: scheduleSave()

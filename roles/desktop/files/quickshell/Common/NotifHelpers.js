@@ -174,16 +174,21 @@ function visibleCharacterCount(entry) {
         + singleLine(entry.displayBody || entry.body).length;
 }
 
-function timeoutMs(visibleCharacters, requestedSeconds) {
+// baseMs is the user's configured toast duration; the adaptive extension for
+// long text and the sender-requested clamp both stay relative to it so the
+// setting shifts the whole window rather than being overridden.
+function timeoutMs(visibleCharacters, requestedSeconds, baseMs) {
+    var base = typeof baseMs === "number" && isFinite(baseMs) && baseMs > 0
+        ? Math.round(baseMs) : MIN_TIMEOUT_MS;
+    var cap = base + (MAX_TIMEOUT_MS - MIN_TIMEOUT_MS);
     if (typeof requestedSeconds === "number" && isFinite(requestedSeconds)
             && requestedSeconds > 0) {
-        return Math.max(MIN_TIMEOUT_MS,
-            Math.min(MAX_TIMEOUT_MS, Math.round(requestedSeconds * 1000)));
+        return Math.max(base, Math.min(cap, Math.round(requestedSeconds * 1000)));
     }
     var count = typeof visibleCharacters === "number" && isFinite(visibleCharacters)
         ? Math.max(0, Math.floor(visibleCharacters)) : 0;
     var extraSeconds = count <= 80 ? 0 : Math.ceil((count - 80) / 40);
-    return Math.min(MAX_TIMEOUT_MS, MIN_TIMEOUT_MS + extraSeconds * 1000);
+    return Math.min(cap, base + extraSeconds * 1000);
 }
 
 // This describes precedence without doing any Qt theme lookups. Web sources

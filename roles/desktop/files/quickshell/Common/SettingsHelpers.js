@@ -54,6 +54,16 @@ function defaults() {
         osd: "top",
         pollMax: 300,
         scrollFactor: 1.0,
+        notifDnd: false,
+        notifQuiet: "off",
+        notifQuietStart: 1320,
+        notifQuietEnd: 420,
+        notifDuration: 8,
+        notifPosition: "top-right",
+        notifDensity: "default",
+        notifIcons: true,
+        notifProgress: true,
+        notifBodyLines: 2,
         mods: defaultMods(),
         wallAccent: "",
         wallAccentFor: ""
@@ -215,10 +225,49 @@ function merge(parsed) {
         osd: enumIn(parsed.osd, ["top", "bottom"], d.osd),
         pollMax: enumIn(parsed.pollMax, [60, 300, 600], d.pollMax),
         scrollFactor: realIn(parsed.scrollFactor, 0.2, 2.0, 0.1, d.scrollFactor),
+        notifDnd: boolIn(parsed.notifDnd, d.notifDnd),
+        notifQuiet: enumIn(parsed.notifQuiet, ["off", "nights", "custom"], d.notifQuiet),
+        notifQuietStart: intIn(parsed.notifQuietStart, 0, 1425, 15, d.notifQuietStart),
+        notifQuietEnd: intIn(parsed.notifQuietEnd, 0, 1425, 15, d.notifQuietEnd),
+        notifDuration: intIn(parsed.notifDuration, 4, 20, 1, d.notifDuration),
+        notifPosition: enumIn(parsed.notifPosition,
+            ["top-left", "top-right", "bottom-left", "bottom-right"], d.notifPosition),
+        notifDensity: enumIn(parsed.notifDensity,
+            ["compact", "default", "roomy"], d.notifDensity),
+        notifIcons: boolIn(parsed.notifIcons, d.notifIcons),
+        notifProgress: boolIn(parsed.notifProgress, d.notifProgress),
+        notifBodyLines: intIn(parsed.notifBodyLines, 0, 3, 1, d.notifBodyLines),
         mods: migrateMods(parsed.mods, parsed.v),
         wallAccent: hexIn(parsed.wallAccent, ""),
         wallAccentFor: typeof parsed.wallAccentFor === "string" ? parsed.wallAccentFor : ""
     };
+}
+
+// Quiet hours. "nights" is a fixed preset; "custom" uses the stored
+// minutes-since-midnight bounds. A range crossing midnight wraps.
+var QUIET_NIGHTS = { start: 1320, end: 420 };
+
+function quietRange(quiet, start, end) {
+    if (quiet === "nights")
+        return { start: QUIET_NIGHTS.start, end: QUIET_NIGHTS.end };
+    if (quiet === "custom")
+        return { start: start, end: end };
+    return null;
+}
+
+function quietActive(quiet, start, end, minutesNow) {
+    var range = quietRange(quiet, start, end);
+    if (!range || range.start === range.end)
+        return false;
+    if (range.start < range.end)
+        return minutesNow >= range.start && minutesNow < range.end;
+    return minutesNow >= range.start || minutesNow < range.end;
+}
+
+function formatMinutes(total) {
+    var h = Math.floor(total / 60) % 24;
+    var m = total % 60;
+    return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
 }
 
 function hueToHex(degrees) {
@@ -299,6 +348,9 @@ var exported = {
     migrateMods: migrateMods,
     pathIn: pathIn,
     detailIn: detailIn,
+    quietRange: quietRange,
+    quietActive: quietActive,
+    formatMinutes: formatMinutes,
     hueToHex: hueToHex,
     hexHue: hexHue,
     clone: clone,

@@ -13,7 +13,7 @@ Item {
     property bool captionMono: true
     property bool dirty: false
     readonly property bool narrow: width < 440
-    readonly property int labelWidth: Settings.font === "mono" ? 104 : 90
+    readonly property int labelWidth: Settings.font === "mono" ? 122 : 90
     readonly property real captionWidth: caption === "" ? 0
         : Math.min(180, captionText.implicitWidth)
     signal picked(var value)

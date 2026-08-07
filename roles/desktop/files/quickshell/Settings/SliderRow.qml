@@ -16,9 +16,13 @@ Item {
     property alias hueTrack: slider.hueTrack
     property string unit: "px"
     property int decimals: 0
+    // Overrides the numeric readout when the value formats as something
+    // richer than number + unit (times, line counts).
+    property string valueLabel: ""
+    property int valueWidth: 44
     property bool dirty: false
     readonly property bool narrow: width < 440
-    readonly property int labelWidth: Settings.font === "mono" ? 104 : 90
+    readonly property int labelWidth: Settings.font === "mono" ? 122 : 90
     signal moved(real value)
     signal resetRequested()
 
@@ -48,9 +52,10 @@ Item {
         id: valueText
         anchors.right: undoSlot.left
         y: root.narrow ? 0 : (parent.height - height) / 2
-        width: 44
+        width: root.valueWidth
         horizontalAlignment: Text.AlignRight
-        text: slider.value.toFixed(root.decimals) + " " + root.unit
+        text: root.valueLabel !== "" ? root.valueLabel
+            : slider.value.toFixed(root.decimals) + " " + root.unit
         font.family: Theme.fontMono
         font.pixelSize: Theme.fontCaption
         color: Theme.textMid

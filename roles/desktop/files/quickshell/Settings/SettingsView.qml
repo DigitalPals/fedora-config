@@ -2,20 +2,21 @@ import QtQuick
 import QtQuick.Controls as Controls
 import "../Common"
 
-// Connected center-island settings surface. The host supplies the usable
-// output envelope before measuring implicit size.
+// Connected center-island settings surface (design 1c, grouped rail):
+// search on top of the rail, nav grouped under SHELL / SYSTEM, and the
+// save state in the rail footer. The host supplies the usable output
+// envelope before measuring implicit size.
 FocusScope {
     id: root
 
-    property real availableWidth: 720
+    property real availableWidth: 760
     property real availableHeight: 560
     readonly property bool compactNav: availableWidth < 680
     readonly property int headerHeight: 44
-    readonly property int footerHeight: 36
     readonly property int gutter: 12
-    readonly property int navWidth: compactNav ? 52 : 156
-    readonly property int preferredWidth: 720
-    readonly property int preferredHeight: 640
+    readonly property int navWidth: compactNav ? 52 : 168
+    readonly property int preferredWidth: 760
+    readonly property int preferredHeight: 660
     readonly property int pageIndex: Math.max(0,
         navItems.findIndex(item => item.id === Settings.page))
     readonly property bool dragActive: pageLoader.item
@@ -26,22 +27,67 @@ FocusScope {
     focus: true
 
     readonly property var navItems: [
-        { id: "appearance", label: "Appearance", glyph: "",
-            title: "Appearance", description: "Shape, typography, and shell accent" },
-        { id: "wallpaper", label: "Wallpaper", glyph: "",
-            title: "Wallpaper", description: "Desktop image and automatic rotation" },
-        { id: "bar", label: "Bar layout", glyph: "",
-            title: "Bar layout", description: "Position, spacing, and monitor behavior" },
-        { id: "modules", label: "Modules", glyph: "",
-            title: "Modules", description: "Choose and arrange the bar’s contents" },
-        { id: "system", label: "System", glyph: "",
-            title: "System", description: "Formats, night light, OSD, and storage" }
+        { id: "appearance", group: "SHELL", label: "Appearance", glyph: "",
+            title: "Appearance", description: "Shape, typography, and shell accent",
+            keywords: "bar height corner radius menu font accent color hue wallpaper theme" },
+        { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "",
+            title: "Wallpaper", description: "Desktop image and automatic rotation",
+            keywords: "desktop image background picture folder shuffle rotation" },
+        { id: "bar", group: "SHELL", label: "Bar layout", glyph: "",
+            title: "Bar layout", description: "Position, spacing, and monitor behavior",
+            keywords: "position top bottom floating gap auto hide exclusive monitor" },
+        { id: "modules", group: "SHELL", label: "Modules", glyph: "",
+            title: "Modules", description: "Choose and arrange the bar’s contents",
+            keywords: "clock weather media workspaces volume wifi battery bluetooth arrange order" },
+        { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "",
+            title: "Notifications", description: "Toasts, quiet hours, and the notification center",
+            keywords: "toast do not disturb dnd quiet hours duration position density icons timeout progress body preview test" },
+        { id: "system", group: "SYSTEM", label: "System", glyph: "",
+            title: "System", description: "Formats, night light, OSD, and storage",
+            keywords: "clock format temperature unit scroll speed night light warmth osd poll usage config reset" }
     ]
 
-    function selectIndex(index) {
-        const clamped = Math.max(0, Math.min(navItems.length - 1, index));
-        Settings.page = navItems[clamped].id;
-        navRepeater.itemAt(clamped).forceActiveFocus();
+    // ---- rail search -----------------------------------------------------
+    property string navQuery: ""
+
+    function matchesQuery(item) {
+        const query = navQuery.trim().toLowerCase();
+        if (query === "")
+            return true;
+        return (item.label + " " + item.keywords).toLowerCase().indexOf(query) !== -1;
+    }
+
+    readonly property var visibleNav: navItems.filter(item => matchesQuery(item))
+
+    function navDelegate(id) {
+        for (const repeater of [shellRepeater, systemRepeater]) {
+            for (let i = 0; i < repeater.count; i++) {
+                const item = repeater.itemAt(i);
+                if (item && item.modelData.id === id)
+                    return item;
+            }
+        }
+        return null;
+    }
+
+    function selectVisible(position) {
+        if (visibleNav.length === 0)
+            return;
+        const clamped = Math.max(0, Math.min(visibleNav.length - 1, position));
+        Settings.page = visibleNav[clamped].id;
+        const item = navDelegate(visibleNav[clamped].id);
+        if (item)
+            item.forceActiveFocus();
+    }
+
+    function selectOffset(delta) {
+        const current = visibleNav.findIndex(item => item.id === Settings.page);
+        selectVisible(current === -1 ? 0 : current + delta);
+    }
+
+    function clearSearch() {
+        searchInput.text = "";
+        navQuery = "";
     }
 
     function cancelDrag() {
@@ -49,12 +95,18 @@ FocusScope {
             pageLoader.item.cancelDrag();
     }
 
-    // Called by IslandPopout. A module drag consumes the first Escape.
+    // Called by IslandPopout. A module drag consumes the first Escape, an
+    // active rail search the next.
     function handleEscape(): bool {
-        if (!dragActive)
-            return false;
-        cancelDrag();
-        return true;
+        if (dragActive) {
+            cancelDrag();
+            return true;
+        }
+        if (navQuery !== "") {
+            clearSearch();
+            return true;
+        }
+        return false;
     }
 
     Behavior on implicitWidth {
@@ -71,7 +123,8 @@ FocusScope {
         readonly property bool current: Settings.page === modelData.id
 
         width: navColumn.width
-        height: 38
+        height: visible ? 34 : 0
+        visible: root.matchesQuery(modelData)
         radius: Theme.rowRadius
         color: current ? Theme.accentBg
             : navMouse.pressed ? Theme.hoverFillStrong
@@ -88,13 +141,13 @@ FocusScope {
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
-                root.selectIndex(index - 1); event.accepted = true;
+                root.selectOffset(-1); event.accepted = true;
             } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) {
-                root.selectIndex(index + 1); event.accepted = true;
+                root.selectOffset(1); event.accepted = true;
             } else if (event.key === Qt.Key_Home) {
-                root.selectIndex(0); event.accepted = true;
+                root.selectVisible(0); event.accepted = true;
             } else if (event.key === Qt.Key_End) {
-                root.selectIndex(root.navItems.length - 1); event.accepted = true;
+                root.selectVisible(root.visibleNav.length - 1); event.accepted = true;
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                     || event.key === Qt.Key_Space) {
                 Settings.page = modelData.id; event.accepted = true;
@@ -106,7 +159,7 @@ FocusScope {
             anchors.left: parent.left
             anchors.leftMargin: root.compactNav ? 0 : 11
             anchors.verticalCenter: parent.verticalCenter
-            width: root.compactNav ? parent.width : 24
+            width: root.compactNav ? parent.width : 20
             horizontalAlignment: Text.AlignHCenter
             text: navItem.modelData.glyph
             font.family: Theme.fontIcon
@@ -135,6 +188,26 @@ FocusScope {
                 Settings.page = navItem.modelData.id;
                 navItem.forceActiveFocus();
             }
+        }
+    }
+
+    component GroupLabel: Item {
+        property alias text: labelText.text
+        property int topPad: 6
+        width: navColumn.width
+        height: visible ? 18 + topPad : 0
+
+        Text {
+            id: labelText
+            anchors.left: parent.left
+            anchors.leftMargin: 11
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 2
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemibold
+            font.letterSpacing: 0.8
+            color: Theme.textFaint
         }
     }
 
@@ -199,7 +272,7 @@ FocusScope {
         id: body
         y: root.headerHeight + 1
         width: parent.width
-        height: parent.height - root.headerHeight - root.footerHeight - 2
+        height: parent.height - root.headerHeight - 1
 
         Column {
             id: navColumn
@@ -208,10 +281,188 @@ FocusScope {
             width: root.navWidth - root.gutter
             spacing: 3
 
+            Rectangle {
+                id: searchBox
+                visible: !root.compactNav
+                width: parent.width
+                height: 28
+                radius: 7
+                color: searchInput.activeFocus ? Theme.hoverFillStrong : Theme.cardFill
+                border.width: searchInput.activeFocus ? 1 : 0
+                border.color: Theme.accent
+
+                Text {
+                    id: searchGlyph
+                    anchors.left: parent.left
+                    anchors.leftMargin: 9
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: ""
+                    font.family: Theme.fontIcon
+                    font.pixelSize: Theme.iconSmall
+                    color: Theme.textFaint
+                }
+
+                TextInput {
+                    id: searchInput
+                    anchors.left: searchGlyph.right
+                    anchors.leftMargin: 6
+                    anchors.right: searchClear.visible ? searchClear.left : parent.right
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.textHi
+                    selectionColor: Theme.accentBg
+                    selectedTextColor: Theme.textHi
+                    clip: true
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.EditableText
+                    Accessible.name: "Search settings"
+                    onTextChanged: root.navQuery = text
+
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Escape && text !== "") {
+                            root.clearSearch(); event.accepted = true;
+                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Down) {
+                            root.selectVisible(0); event.accepted = true;
+                        }
+                    }
+
+                    Text {
+                        visible: searchInput.text === ""
+                        anchors.fill: parent
+                        verticalAlignment: Text.AlignVCenter
+                        text: "Search settings"
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        color: Theme.textFaint
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Text {
+                    id: searchClear
+                    visible: searchInput.text !== ""
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "×"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    color: clearMouse.containsMouse ? Theme.textHi : Theme.textDim
+
+                    MouseArea {
+                        id: clearMouse
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.clearSearch()
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    visible: !searchInput.activeFocus
+                    cursorShape: Qt.IBeamCursor
+                    onClicked: searchInput.forceActiveFocus()
+                }
+            }
+
+            GroupLabel {
+                text: "SHELL"
+                topPad: 3
+                visible: !root.compactNav
+                    && root.visibleNav.some(item => item.group === "SHELL")
+            }
+
             Repeater {
-                id: navRepeater
-                model: root.navItems
+                id: shellRepeater
+                model: root.navItems.filter(item => item.group === "SHELL")
                 delegate: NavItem {}
+            }
+
+            GroupLabel {
+                text: "SYSTEM"
+                visible: !root.compactNav
+                    && root.visibleNav.some(item => item.group === "SYSTEM")
+            }
+
+            Repeater {
+                id: systemRepeater
+                model: root.navItems.filter(item => item.group === "SYSTEM")
+                delegate: NavItem {}
+            }
+
+            Text {
+                visible: !root.compactNav && root.visibleNav.length === 0
+                width: parent.width
+                leftPadding: 11
+                topPadding: 6
+                text: "No matches"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: Theme.textFaint
+            }
+        }
+
+        // Save state lives in the rail footer (design 1c).
+        Column {
+            id: railFooter
+            anchors.left: parent.left
+            anchors.leftMargin: root.gutter / 2
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.gutter - 2
+            width: root.navWidth - root.gutter
+            spacing: 5
+
+            SettingsAction {
+                visible: Settings.undoAvailable
+                height: 26
+                text: "Undo"
+                glyph: "↺"
+                Accessible.name: "Undo " + Settings.resetLabel + " reset"
+                onTriggered: Settings.undoReset()
+            }
+
+            SettingsAction {
+                visible: Settings.saveError && !Settings.undoAvailable
+                height: 26
+                text: "Retry"
+                glyph: "↻"
+                onTriggered: Settings.retrySave()
+            }
+
+            Row {
+                spacing: 7
+                leftPadding: root.compactNav ? 0 : 11
+                width: parent.width
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 6; height: 6; radius: 3
+                    color: Settings.undoAvailable ? Theme.accent
+                        : Settings.saveError ? Theme.red
+                        : Settings.savePending ? Theme.amber : Theme.connected
+                }
+
+                Text {
+                    visible: !root.compactNav
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 6 - 7 - parent.leftPadding
+                    text: Settings.undoAvailable ? Settings.resetLabel + " reset"
+                        : Settings.saveError ? "Could not save"
+                        : Settings.savePending ? "Saving changes…"
+                        : Settings.font === "mono" ? "Saved · live" : "Saved · applies live"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Settings.saveError ? Theme.redText : Theme.textFaint
+                    elide: Text.ElideRight
+                    Accessible.role: Settings.saveError
+                        ? Accessible.AlertMessage : Accessible.StaticText
+                    Accessible.name: text
+                }
             }
         }
 
@@ -234,6 +485,7 @@ FocusScope {
                 case "wallpaper": return wallpaperPage;
                 case "bar": return barPage;
                 case "modules": return modulesPage;
+                case "notifications": return notificationsPage;
                 case "system": return systemPage;
                 default: return appearancePage;
                 }
@@ -244,74 +496,8 @@ FocusScope {
         Component { id: wallpaperPage; WallpaperPage {} }
         Component { id: barPage; BarLayoutPage {} }
         Component { id: modulesPage; ModulesPage {} }
+        Component { id: notificationsPage; NotificationsPage {} }
         Component { id: systemPage; SystemPage {} }
-    }
-
-    Rectangle {
-        y: parent.height - root.footerHeight - 1
-        width: parent.width
-        height: 1
-        color: Theme.hairlineSoft
-    }
-
-    Item {
-        y: parent.height - root.footerHeight
-        width: parent.width
-        height: root.footerHeight
-
-        Row {
-            anchors.left: parent.left
-            anchors.leftMargin: root.gutter
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 7
-
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 6; height: 6; radius: 3
-                color: Settings.undoAvailable ? Theme.accent
-                    : Settings.saveError ? Theme.red
-                    : Settings.savePending ? Theme.amber : Theme.connected
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: Settings.undoAvailable ? Settings.resetLabel + " reset ·"
-                    : Settings.saveError ? "Could not save"
-                    : Settings.savePending ? "Saving changes…" : "Saved · changes apply live"
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                color: Settings.saveError ? Theme.redText : Theme.textFaint
-                Accessible.role: Settings.saveError
-                    ? Accessible.AlertMessage : Accessible.StaticText
-                Accessible.name: text
-            }
-
-            SettingsAction {
-                visible: Settings.undoAvailable
-                height: 26
-                text: "Undo"
-                Accessible.name: "Undo " + Settings.resetLabel + " reset"
-                onTriggered: Settings.undoReset()
-            }
-
-            SettingsAction {
-                visible: Settings.saveError && !Settings.undoAvailable
-                height: 26
-                text: "Retry"
-                glyph: "↻"
-                onTriggered: Settings.retrySave()
-            }
-        }
-
-        Text {
-            anchors.right: parent.right
-            anchors.rightMargin: root.gutter
-            anchors.verticalCenter: parent.verticalCenter
-            visible: root.width >= 560 && !Settings.undoAvailable && !Settings.saveError
-            text: "shell-settings.json"
-            font.family: Theme.fontMono
-            font.pixelSize: Theme.fontCaption
-            color: Theme.textFaint
-        }
     }
 
     Item {

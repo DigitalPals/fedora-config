@@ -6,19 +6,35 @@ import Quickshell.Wayland
 import "Common"
 
 // Readable fixed-width notification cards. Newest of at most three is on top;
-// normal cards use an adaptive 8–12 second timer, paused while hovered, and
-// critical cards persist until explicitly dismissed.
+// normal cards use an adaptive timer based on the configured duration, paused
+// while hovered, and critical cards persist until explicitly dismissed.
+// Corner, density, icons, body lines, and the timeout progress bar follow the
+// Notifications settings page.
 PanelWindow {
     id: root
+
+    readonly property bool onTop: Settings.notifPosition.indexOf("top") === 0
+    readonly property bool onLeft: Settings.notifPosition.indexOf("left") !== -1
+    readonly property bool barSameEdge: Screens.hasBar(root.screen)
+        && (Settings.position === "top") === onTop
+    // Density scales the card's inner padding and content gap.
+    readonly property int padV: Settings.notifDensity === "compact" ? 8
+        : Settings.notifDensity === "roomy" ? 17 : 12
+    readonly property int padH: Settings.notifDensity === "compact" ? 10
+        : Settings.notifDensity === "roomy" ? 19 : 14
 
     visible: Notifs.toasts.length > 0
     screen: Screens.focused
     anchors {
-        top: true
-        right: true
+        top: root.onTop
+        bottom: !root.onTop
+        left: root.onLeft
+        right: !root.onLeft
     }
-    margins.top: Settings.position === "top" && Screens.hasBar(root.screen)
-        ? Theme.barTopMargin + Theme.barHeight : 8
+    margins.top: root.onTop
+        ? (root.barSameEdge ? Theme.barTopMargin + Theme.barHeight : 8) : 0
+    margins.bottom: !root.onTop
+        ? (root.barSameEdge ? Theme.barTopMargin + Theme.barHeight : 8) : 0
 
     readonly property int shadowPad: 36
     readonly property int cardWidth: 420
@@ -46,9 +62,13 @@ PanelWindow {
 
     Column {
         id: toastColumn
-        anchors.top: parent.top
+        anchors.top: root.onTop ? parent.top : undefined
         anchors.topMargin: 12
-        anchors.right: parent.right
+        anchors.bottom: root.onTop ? undefined : parent.bottom
+        anchors.bottomMargin: 12
+        anchors.left: root.onLeft ? parent.left : undefined
+        anchors.leftMargin: Theme.barSideMargin
+        anchors.right: root.onLeft ? undefined : parent.right
         anchors.rightMargin: Theme.barSideMargin
         width: root.cardWidth
         spacing: 8
@@ -63,7 +83,13 @@ PanelWindow {
         }
 
         Repeater {
-            model: Notifs.toasts
+            // ScriptModel diffs by entry identity, so removing one toast
+            // reuses the surviving delegates instead of recreating them —
+            // a plain array model would reset every card's countdown (and
+            // hover state) whenever a sibling expired.
+            model: ScriptModel {
+                values: Notifs.toasts
+            }
 
             delegate: Item {
                 id: slot
@@ -89,10 +115,13 @@ PanelWindow {
                     readonly property bool hovered: cardHover.hovered
                     readonly property var actions: Notifs.secondaryActions(slot.modelData)
                     readonly property bool actionable: Notifs.canActivate(slot.modelData)
+                    readonly property int total: Notifs.timeoutFor(slot.modelData)
+                    readonly property bool showProgress: Settings.notifProgress && !critical
                     property int remaining: Notifs.timeoutFor(slot.modelData)
 
                     width: parent.width
-                    height: cardContent.implicitHeight + 24
+                    height: cardContent.implicitHeight + root.padV * 2
+                        + (showProgress ? 4 : 0)
                     radius: 12
                     clip: true
                     color: critical ? Theme.redBgSoft
@@ -127,13 +156,14 @@ PanelWindow {
 
                     Row {
                         id: cardContent
-                        x: 14
-                        y: 12
-                        width: parent.width - 28
+                        x: root.padH
+                        y: root.padV
+                        width: parent.width - root.padH * 2
                         spacing: 12
 
                         Item {
                             id: iconSlot
+                            visible: Settings.notifIcons
                             width: 28
                             height: 28
 
@@ -160,7 +190,8 @@ PanelWindow {
 
                         Column {
                             id: copy
-                            width: cardContent.width - iconSlot.width - cardContent.spacing
+                            width: cardContent.width - (iconSlot.visible
+                                ? iconSlot.width + cardContent.spacing : 0)
                             spacing: 5
 
                             Item {
@@ -220,14 +251,14 @@ PanelWindow {
                             }
 
                             Text {
-                                visible: text !== ""
+                                visible: text !== "" && Settings.notifBodyLines > 0
                                 width: parent.width
                                 text: slot.modelData.displayBody || ""
                                 font.family: Theme.fontSans
                                 font.pixelSize: 12
                                 color: card.critical ? Theme.textHi : Theme.icon
                                 wrapMode: Text.Wrap
-                                maximumLineCount: 2
+                                maximumLineCount: Math.max(1, Settings.notifBodyLines)
                                 elide: Text.ElideRight
                                 lineHeight: 1.15
                             }
@@ -278,6 +309,31 @@ PanelWindow {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    // Timeout progress (design 1c): a thin bar counting down
+                    // the toast's remaining time. Freezes with the timer
+                    // while hovered.
+                    Rectangle {
+                        visible: card.showProgress
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 1
+                        height: 2
+                        color: Qt.rgba(1, 1, 1, 0.07)
+
+                        Rectangle {
+                            height: parent.height
+                            width: card.total > 0
+                                ? parent.width * Math.max(0, Math.min(1, card.remaining / card.total))
+                                : 0
+                            color: Theme.accent
+
+                            Behavior on width {
+                                NumberAnimation { duration: 100 }
                             }
                         }
                     }

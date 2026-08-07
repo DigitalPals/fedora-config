@@ -3,11 +3,19 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Notifications
 import "NotifHelpers.js" as Helpers
+import "SettingsHelpers.js" as SettingsHelpers
 
 Singleton {
     id: root
 
-    property bool dnd: false
+    // Do Not Disturb persists with the shell settings; quiet hours silence
+    // toasts on a schedule the same way. Both only gate the popup — every
+    // notification still lands in the center.
+    readonly property bool dnd: Settings.notifDnd
+    readonly property bool quietActive: SettingsHelpers.quietActive(Settings.notifQuiet,
+        Settings.notifQuietStart, Settings.notifQuietEnd,
+        quietClock.date.getHours() * 60 + quietClock.date.getMinutes())
+    readonly property bool toastsSuppressed: dnd || quietActive
     // Bounded session history, newest first. Fields are copied so history
     // remains readable after the remote notification object expires.
     property var entries: []
@@ -15,8 +23,17 @@ Singleton {
     readonly property int count: entries.length
     readonly property bool hasUrgent: entries.some(e => e.urgency === NotificationUrgency.Critical)
 
-    onDndChanged: {
-        if (!dnd)
+    function setDnd(value) {
+        Settings.set("notifDnd", value);
+    }
+
+    SystemClock {
+        id: quietClock
+        precision: SystemClock.Minutes
+    }
+
+    onToastsSuppressedChanged: {
+        if (!toastsSuppressed)
             return;
         const visible = toasts.slice();
         toasts = [];
@@ -76,7 +93,8 @@ Singleton {
     // Critical toasts never reach this: they persist until dismissed
     // (design t4), so only normal urgencies deplete.
     function timeoutFor(entry) {
-        return Helpers.timeoutMs(Helpers.visibleCharacterCount(entry), entry.expireTimeout);
+        return Helpers.timeoutMs(Helpers.visibleCharacterCount(entry),
+            entry.expireTimeout, Settings.notifDuration * 1000);
     }
 
     readonly property NotificationServer server: NotificationServer {
@@ -129,7 +147,7 @@ Singleton {
                 if (old.live && old.notif)
                     old.notif.expire();
             }
-            if (!root.dnd && !notif.lastGeneration) {
+            if (!root.toastsSuppressed && !notif.lastGeneration) {
                 const dropped = root.toasts.slice(2);
                 root.toasts = [entry].concat(root.toasts.slice(0, 2));
                 for (const old of dropped) {

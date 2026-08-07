@@ -94,7 +94,7 @@ SettingsPage {
 
         Text {
             width: parent.width
-            leftPadding: page.width < 440 ? 0 : Settings.font === "mono" ? 114 : 100
+            leftPadding: page.width < 440 ? 0 : Settings.font === "mono" ? 132 : 100
             text: "Tint applies while Night light is on in Control Center — "
                 + (SysInfo.nightLight ? "currently on" : "currently off")
             font.family: Theme.fontMenu

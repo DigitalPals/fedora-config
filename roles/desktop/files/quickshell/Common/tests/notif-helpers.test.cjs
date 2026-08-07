@@ -118,3 +118,15 @@ test("requested application timeouts are clamped into the same range", () => {
     assert.equal(H.timeoutMs(20, 9.4), 9400);
     assert.equal(H.timeoutMs(20, 30), 12000);
 });
+
+test("the configured duration shifts the adaptive window and the clamp", () => {
+    assert.equal(H.timeoutMs(0, -1, 4000), 4000);
+    assert.equal(H.timeoutMs(81, 0, 4000), 5000);
+    assert.equal(H.timeoutMs(1000, 0, 4000), 8000);
+    assert.equal(H.timeoutMs(20, 2, 4000), 4000);
+    assert.equal(H.timeoutMs(20, 30, 20000), 24000);
+    assert.equal(H.timeoutMs(0, -1, 20000), 20000);
+    // Invalid bases fall back to the historical 8–12 second window.
+    assert.equal(H.timeoutMs(0, -1, NaN), 8000);
+    assert.equal(H.timeoutMs(240, 0, undefined), 12000);
+});

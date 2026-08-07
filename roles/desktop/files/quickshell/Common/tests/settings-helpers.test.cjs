@@ -23,6 +23,16 @@ test("defaults carry the design values", () => {
     assert.equal(d.scrollFactor, 1.0);
     assert.equal(d.shuffle, "Off");
     assert.equal(d.wallDir, "~/Pictures/Wallpapers");
+    assert.equal(d.notifDnd, false);
+    assert.equal(d.notifQuiet, "off");
+    assert.equal(d.notifQuietStart, 1320);
+    assert.equal(d.notifQuietEnd, 420);
+    assert.equal(d.notifDuration, 8);
+    assert.equal(d.notifPosition, "top-right");
+    assert.equal(d.notifDensity, "default");
+    assert.equal(d.notifIcons, true);
+    assert.equal(d.notifProgress, true);
+    assert.equal(d.notifBodyLines, 2);
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id), ["clock", "weather"]);
     assert.deepEqual(d.mods.right.map(m => m.id),
@@ -219,6 +229,45 @@ test("wallpaper paths and module detail policies are validated", () => {
     ]});
     assert.equal(mods.left[0].detail, "prefer");
     assert.equal(mods.left[1].detail, "auto");
+});
+
+test("notification settings are validated, clamped, and snapped", () => {
+    assert.equal(H.merge({ notifDnd: "yes" }).notifDnd, false);
+    assert.equal(H.merge({ notifQuiet: "sometimes" }).notifQuiet, "off");
+    assert.equal(H.merge({ notifQuiet: "nights" }).notifQuiet, "nights");
+    assert.equal(H.merge({ notifQuietStart: 1322 }).notifQuietStart, 1320);
+    assert.equal(H.merge({ notifQuietStart: -10 }).notifQuietStart, 0);
+    assert.equal(H.merge({ notifQuietEnd: 9999 }).notifQuietEnd, 1425);
+    assert.equal(H.merge({ notifDuration: 1 }).notifDuration, 4);
+    assert.equal(H.merge({ notifDuration: 99 }).notifDuration, 20);
+    assert.equal(H.merge({ notifPosition: "middle" }).notifPosition, "top-right");
+    assert.equal(H.merge({ notifPosition: "bottom-left" }).notifPosition, "bottom-left");
+    assert.equal(H.merge({ notifDensity: "cozy" }).notifDensity, "default");
+    assert.equal(H.merge({ notifBodyLines: 7 }).notifBodyLines, 3);
+    assert.equal(H.merge({ notifBodyLines: -1 }).notifBodyLines, 0);
+});
+
+test("quiet hours resolve presets, wrap midnight, and format as HH:MM", () => {
+    assert.equal(H.quietRange("off", 0, 0), null);
+    assert.deepEqual(H.quietRange("nights", 600, 700), { start: 1320, end: 420 });
+    assert.deepEqual(H.quietRange("custom", 600, 700), { start: 600, end: 700 });
+
+    // Nights: 22:00 – 07:00 wraps midnight.
+    assert.equal(H.quietActive("nights", 0, 0, 1320), true);
+    assert.equal(H.quietActive("nights", 0, 0, 30), true);
+    assert.equal(H.quietActive("nights", 0, 0, 419), true);
+    assert.equal(H.quietActive("nights", 0, 0, 420), false);
+    assert.equal(H.quietActive("nights", 0, 0, 720), false);
+    assert.equal(H.quietActive("off", 0, 1439, 720), false);
+
+    // Custom same-day range, and a degenerate empty range.
+    assert.equal(H.quietActive("custom", 540, 1020, 720), true);
+    assert.equal(H.quietActive("custom", 540, 1020, 1020), false);
+    assert.equal(H.quietActive("custom", 600, 600, 600), false);
+
+    assert.equal(H.formatMinutes(0), "00:00");
+    assert.equal(H.formatMinutes(1320), "22:00");
+    assert.equal(H.formatMinutes(425), "07:05");
 });
 
 test("hue conversion stays pastel and contrasts with accent text", () => {

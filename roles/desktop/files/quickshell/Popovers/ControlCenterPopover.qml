@@ -299,7 +299,7 @@ Surface {
             glyph: ""
             title: "Do not disturb"
             on: Notifs.dnd
-            onToggled: Notifs.dnd = !Notifs.dnd
+            onToggled: Notifs.setDnd(!Notifs.dnd)
         }
 
         Tile {

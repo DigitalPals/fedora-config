@@ -10,7 +10,7 @@ Item {
     property bool checked: false
     property bool dirty: false
     readonly property bool narrow: width < 440
-    readonly property int labelWidth: Settings.font === "mono" ? 104 : 90
+    readonly property int labelWidth: Settings.font === "mono" ? 122 : 90
     signal toggled(bool value)
     signal resetRequested()
 

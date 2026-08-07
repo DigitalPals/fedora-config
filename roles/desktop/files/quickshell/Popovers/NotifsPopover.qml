@@ -611,7 +611,7 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             checked: Notifs.dnd
-            onToggled: value => Notifs.dnd = value
+            onToggled: value => Notifs.setDnd(value)
         }
     }
 }
