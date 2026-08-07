@@ -93,7 +93,24 @@ and `tests/qml-lint` that nothing invokes.
 **Accept:** `tests/run` exits 0 today; `update --help`/dry path shows the gate;
 breaking a `.test.cjs` assertion makes both `verify` and `update` fail.
 
-### [ ] WP0.2 qml-lint: batch mode, portable paths, qmllint.ini, promoted categories
+### [x] WP0.2 qml-lint: batch mode, portable paths, qmllint.ini, promoted categories
+
+> Done — 9.9s → 2.4s, 468 → 439 warnings, one line of output on success
+> (`--verbose` for the full report). Deviations:
+> - `.qmllint.ini` lists only the deviations from qmllint's own defaults
+>   instead of the 79-line `--write-defaults` dump, so a Qt upgrade can still
+>   introduce new checks and the file states what this repo actually decided.
+> - The pass/fail decision is qmllint's exit status (categories at `error`
+>   level in the ini), not `--json` parsing. Category counts are still grepped
+>   from the text output, but only for the summary line.
+> - **`signal-handler-parameters` cannot be fixed here.** All 7 are
+>   `Process.exited(int, QProcess::ExitStatus)`; the enum is not registered
+>   with QML, so every `onExited` binding is flagged no matter how it is
+>   written. Disabled in the ini with that reason recorded. Watch out for the
+>   apparent fix: `function onExited(exitCode) {}` silences qmllint because it
+>   is no longer recognized as a signal handler — and Quickshell stops calling
+>   it too (verified at runtime against a live instance, alongside `Timer`).
+>   WP0.4's promotion list drops this category.
 
 **Files touched:** `tests/qml-lint`, `roles/desktop/files/quickshell/.qmllint.ini` (new)
 **Depends on:** WP0.1
@@ -147,9 +164,11 @@ a live deploy copy.
 **Files touched:** `tests/qml-lint`, `.qmllint.ini`
 **Depends on:** WP0.3
 
-Promote `unqualified`, `unused-imports`, `signal-handler-parameters`, `comma`
-to errors in `.qmllint.ini`. Leave `missing-property` as warning (18 remaining
-are `Loader.item` duck-typing — addressed structurally in WP4.2/WP6).
+Promote `unqualified`, `unused-imports`, `comma` to errors in `.qmllint.ini`.
+Leave `missing-property` as warning (18 remaining are `Loader.item`
+duck-typing — addressed structurally in WP4.2/WP6). `signal-handler-parameters`
+is not in this list: WP0.2 established it is an upstream type-exposure gap and
+disabled it.
 
 **Accept:** an introduced unqualified access fails `tests/run`.
 

@@ -33,7 +33,12 @@ Surface {
         return device.networks.values
             .filter(n => !n.connected && n.name && n.name !== "")
             .sort((a, b) => b.signalStrength - a.signalStrength)
-            .filter(n => seen.has(n.name) ? false : (seen.add(n.name), true))
+            .filter(n => {
+                if (seen.has(n.name))
+                    return false;
+                seen.add(n.name);
+                return true;
+            })
             .slice(0, 7);
     }
 

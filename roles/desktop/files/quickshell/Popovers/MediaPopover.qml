@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell.Services.Mpris
-import Quickshell.Widgets
 import "../Common"
 
 // Media view (design t5): header with source switcher, full-bleed

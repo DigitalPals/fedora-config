@@ -2,13 +2,11 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
 import Quickshell.Services.Mpris
 import Quickshell.Services.UPower
 import Quickshell.Networking
 import Quickshell.Bluetooth
-import Quickshell.Widgets
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 

@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import "../Common"
 
 // Text-only composer with a local disclosure for provider/model/runtime/mode

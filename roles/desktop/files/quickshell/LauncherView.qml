@@ -2,7 +2,6 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
-import Quickshell.Widgets
 import "Common"
 import "Popovers"
 

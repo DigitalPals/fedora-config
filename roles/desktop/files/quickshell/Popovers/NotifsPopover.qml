@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Services.Notifications
-import Quickshell.Widgets
 import "../Common"
 
 // Notification center built from the same anatomy as the popup card: source
