@@ -2,14 +2,18 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Services.UPower
 import "../Common"
+import "../Common/StatusHelpers.js" as StatusHelpers
 
 Surface {
     id: root
 
     readonly property var battery: UPower.displayDevice
-    readonly property real pct: battery ? (battery.percentage <= 1 ? battery.percentage * 100 : battery.percentage) : 0
-    readonly property bool charging: battery && (battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.PendingCharge)
-    readonly property bool full: battery && battery.state === UPowerDeviceState.FullyCharged
+    readonly property real pct: StatusHelpers.batteryPercent(battery)
+    // Shared with the bar chip, which draws "charging" and "full" the same
+    // way while this view names them apart.
+    readonly property string chargeState: StatusHelpers.chargeState(battery)
+    readonly property bool charging: chargeState === "charging"
+    readonly property bool full: chargeState === "full"
 
     function fmtDuration(secs) {
         if (!secs || secs <= 0)

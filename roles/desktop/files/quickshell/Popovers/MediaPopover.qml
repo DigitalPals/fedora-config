@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Services.Mpris
 import "../Common"
+import "../Common/StatusHelpers.js" as StatusHelpers
 
 // Media view (design t5): header with source switcher, full-bleed
 // artwork, centered track info, seek bar, transport row. Volume lives in
@@ -16,10 +17,12 @@ Surface {
     readonly property var players: Mpris.players.values
     property int sourceIdx: -1
 
+    // The source switcher's manual pick wins; without one this falls back to
+    // the same choice the bar chip makes.
     readonly property var player: {
         if (sourceIdx >= 0 && sourceIdx < players.length)
             return players[sourceIdx];
-        return players.find(p => p.isPlaying) ?? players.find(p => p.playbackState === MprisPlaybackState.Paused) ?? (players.length > 0 ? players[0] : null);
+        return StatusHelpers.activePlayer(players);
     }
 
     property real pos: 0
@@ -73,27 +76,10 @@ Surface {
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: barGlyph()
+                    text: StatusHelpers.playerGlyph(root.player)
                     font.family: Theme.fontIcon
                     font.pixelSize: Theme.fontBody
                     color: srcMouse.containsMouse ? Theme.textHi : Theme.textLow
-
-                    function barGlyph() {
-                        if (!root.player)
-                            return "";
-                        const id = (root.player.identity + " " + root.player.desktopEntry).toLowerCase();
-                        if (id.includes("spotify"))
-                            return "";
-                        if (id.includes("firefox") || id.includes("zen"))
-                            return "";
-                        if (id.includes("chromium") || id.includes("chrome") || id.includes("brave"))
-                            return "";
-                        if (id.includes("edge"))
-                            return "";
-                        if (id.includes("mpv") || id.includes("vlc") || id.includes("video"))
-                            return "";
-                        return "";
-                    }
                 }
 
                 Text {

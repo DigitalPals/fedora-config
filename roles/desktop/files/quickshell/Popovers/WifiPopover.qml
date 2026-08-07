@@ -4,19 +4,13 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Networking
 import "../Common"
+import "../Common/StatusHelpers.js" as StatusHelpers
 
 Surface {
     id: root
 
     readonly property var device: Networking.devices.values.find(d => d.networks !== undefined) ?? null
     property string ipAddress: ""
-
-    // signalStrength arrives 0..1 in this backend; keep 0..100 inputs working.
-    function pct(strength) {
-        if (strength === undefined || strength === null)
-            return -1;
-        return Math.round(strength <= 1 ? strength * 100 : strength);
-    }
 
     Process {
         id: ipProc
@@ -120,7 +114,7 @@ Surface {
                         if (!root.active)
                             return "";
                         let parts = ["Connected"];
-                        const s = root.pct(root.active.signalStrength);
+                        const s = StatusHelpers.signalPercent(root.active.signalStrength);
                         if (s >= 0)
                             parts.push(s + "%");
                         if (root.ipAddress !== "")
@@ -198,7 +192,7 @@ Surface {
                     font.family: Theme.fontIcon
                     font.pixelSize: Theme.fontBody
                     color: Theme.textMid
-                    opacity: 0.35 + 0.65 * Math.min(1, Math.max(0, root.pct(net.modelData.signalStrength)) / 100)
+                    opacity: 0.35 + 0.65 * Math.min(1, Math.max(0, StatusHelpers.signalPercent(net.modelData.signalStrength)) / 100)
                 }
 
                 Text {

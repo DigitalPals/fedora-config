@@ -362,7 +362,38 @@ other future senders will need it.
 **Accept:** with DND enabled in settings, a T3 thread transition produces no
 desktop notification; with DND off it still does.
 
-### [ ] WP1.3 ∥ Deduplicate drifted logic: media glyphs, battery, percent normalization
+### [x] WP1.3 ∥ Deduplicate drifted logic: media glyphs, battery, percent normalization
+
+> Done — `Common/StatusHelpers.js` now holds the media glyph table and player
+> selection, the battery charge semantics, and the percent normalization the
+> three call sites had drifted copies of; the popovers consume it and
+> `Common/tests/status-helpers.test.cjs` covers it (suite 109 → 120 tests). The
+> Bar side lands with WP1.4. Notes:
+> - Named `StatusHelpers.js` rather than the plan's `MediaHelpers.js`: it
+>   carries battery and Wi-Fi logic too, and the shared percent normalization
+>   belongs to neither media nor battery alone.
+> - `Common/qmldir` is deliberately untouched — `.js` helpers are imported by
+>   path and none of the four existing ones is listed there, so the plan's
+>   instruction to add an entry would have been wrong, not just redundant.
+> - **Battery semantics: the popover was right and the bar was wrong.** "full"
+>   stays distinct from "charging"; the bar draws both the same through
+>   `isPluggedIn()`, but its tooltip no longer claims "charging" for a full
+>   battery. `alert`, `glyph` and `idleColor` are unchanged in behaviour.
+> - The helpers take the service object (or null) rather than pre-read values,
+>   so the null guards are shared too. Verified against a live-but-windowless
+>   Quickshell that QML binding capture reaches property reads made inside an
+>   imported `.js` module, and that the shipped module runs unchanged under
+>   Quickshell's JS engine.
+> - The two enum tables are mirrored numerically to keep the module Qt-free; a
+>   test pins them against the installed `.qmltypes` and skips when Qt is absent.
+> - All seven glyph codepoints were diffed against the originals, including the
+>   easily-missed U+F001 the old code returned for a null player (it was the
+>   generic music mark, not an empty string).
+> - Reactive state stayed with each consumer as a thin `readonly property`
+>   wrapper — nothing went into `SysInfo.qml`. Phase 2 absorbs exactly those
+>   wrappers: `battery`/`batteryPct`/`batteryState`/`batteryPlugged` and
+>   `player`/`mediaVisible` in `Bar.qml`, `battery`/`pct`/`chargeState`/
+>   `charging`/`full` in `BatteryPopover`, `players`/`player` in `MediaPopover`.
 
 **Files touched:** `Common/MediaHelpers.js` (new) or extend an existing helper,
 `Common/qmldir`, `Popovers/MediaPopover.qml`, `Popovers/BatteryPopover.qml`,
