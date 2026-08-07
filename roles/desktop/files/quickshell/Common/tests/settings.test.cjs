@@ -9,20 +9,6 @@ function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
 }
 
-test("every Settings/*.qml type is listed in Settings/qmldir", () => {
-    // Sibling-type resolution in Settings/ depends on the explicit qmldir
-    // index; a file missing from it fails at runtime as "X is not a type".
-    const qmldir = read("Settings/qmldir");
-    const files = fs.readdirSync(path.join(shellDir, "Settings"))
-        .filter(name => name.endsWith(".qml"));
-    assert.ok(files.length > 0);
-    for (const file of files) {
-        const type = file.replace(/\.qml$/, "");
-        assert.match(qmldir, new RegExp(`^${type} ${file}$`, "m"),
-            `Settings/qmldir must list ${file}`);
-    }
-});
-
 test("the settings IPC target is declared exactly once shell-wide", () => {
     const qmlFiles = [];
     const walk = dir => {

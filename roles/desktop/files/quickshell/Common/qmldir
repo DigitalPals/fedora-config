@@ -1,3 +1,14 @@
+# Sibling-type resolution inside Common/ relies on this explicit index; a
+# directory carrying a qmldir is no longer implicitly scanned, so every
+# Common/*.qml type must be listed. qmldir.test.cjs enforces that.
+#
+# T3Socket.qml is deliberately absent, and must stay absent. It is the
+# only file here that imports QtWebSockets, which is an optional package
+# (qt6-qtwebsockets-devel). T3Code.qml pulls it in through a Loader by
+# URL instead, so a machine without the package gets Loader.Error on that
+# one object — a T3 chip that says why it is off — rather than a failure
+# to resolve a registered type. qmldir.test.cjs carries the exemption.
+
 singleton Theme Theme.qml
 singleton Popouts Popouts.qml
 singleton Screens Screens.qml

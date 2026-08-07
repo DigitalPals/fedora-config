@@ -1,0 +1,28 @@
+# Sibling-type resolution inside Popovers/ relies on this explicit index —
+# the engine's implicit directory scan proved unreliable for Settings/,
+# and a directory with a qmldir stops being scanned at all, so every
+# Popovers/*.qml type must be listed. qmldir.test.cjs enforces that.
+AudioPopover AudioPopover.qml
+BatteryPopover BatteryPopover.qml
+BlockMeter BlockMeter.qml
+BluetoothPopover BluetoothPopover.qml
+CalendarPopover CalendarPopover.qml
+ControlCenterPopover ControlCenterPopover.qml
+HDivider HDivider.qml
+HSlider HSlider.qml
+MediaPopover MediaPopover.qml
+NotifsPopover NotifsPopover.qml
+SectionLabel SectionLabel.qml
+Surface Surface.qml
+T3CodePopover T3CodePopover.qml
+T3Composer T3Composer.qml
+T3InboxPage T3InboxPage.qml
+T3NewThreadPage T3NewThreadPage.qml
+T3Picker T3Picker.qml
+T3RequestCard T3RequestCard.qml
+T3ThreadPage T3ThreadPage.qml
+TailscalePopover TailscalePopover.qml
+Toggle Toggle.qml
+UsagePopover UsagePopover.qml
+WeatherPopover WeatherPopover.qml
+WifiPopover WifiPopover.qml

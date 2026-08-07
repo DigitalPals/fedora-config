@@ -1136,6 +1136,12 @@ from the WP1.3 helper (today `Bar.qml:145–168`, `MediaPopover.qml:17–24`).
 
 ## Phase 3 — Panel registry and module resolution
 
+> **Phase complete** (`5a641dd`, `8a1801d`). Two corrections worth carrying
+> forward: `missing-property` cannot drop until WP4.2/WP4.4 — all 14 are
+> dynamic-type accesses, not sibling-resolution failures — and Quickshell
+> does not watch `qmldir` files, so a qmldir edit needs a `.qml` touch to
+> reload.
+
 ### [x] WP3.1 `PanelRegistry` as single source of truth
 
 > Done. `Common/PanelRegistryData.js` describes all 13 panels; `Popouts`'
@@ -1210,7 +1216,49 @@ still open via `qs ipc call popouts toggle <name>`.
 
 </details>
 
-### [ ] WP3.2 qmldir everywhere + generalized sync test
+### [x] WP3.2 qmldir everywhere + generalized sync test
+
+> Done — `Bar/`, `Popovers/` and the root gained qmldirs, and
+> `Common/tests/qmldir.test.cjs` covers all five directories (the plan said
+> four; `Common/` was already indexed but nothing enforced it). The
+> Settings-only check in `settings.test.cjs` is removed as superseded. Suite
+> 148 → 153. Notes:
+> - **The accept criterion "`missing-property` count should drop" was wrong.**
+>   It is unchanged at 14, and cannot move here: all 14 are dynamic-type
+>   accesses — `Loader.item` and `Window` attached properties resolving as
+>   `QObject`/`QQuickItem`/`QQuickWindow` — which no amount of sibling
+>   indexing can type. That is exactly what WP0.4's note predicted, so the
+>   expectation contradicted an earlier finding in this same document. It needs
+>   WP4.2 (declaring the duck-typed bar contract as real properties) and WP4.4
+>   (the `PopoutPanel` base type). One of the 14 is neither: WifiPopover's
+>   `WifiSecurityType.None` is an upstream enum-exposure gap, like the
+>   `signal-handler-parameters` case WP0.2 found.
+> - **The qmldirs are load-bearing, and that was proved rather than assumed.**
+>   Removing `Surface` from the deployed `Popovers/qmldir` makes
+>   `BatteryPopover` fail with "Surface is not a type" — confirming a directory
+>   carrying a qmldir really does stop being implicitly scanned, which is also
+>   what makes the completeness test necessary rather than decorative.
+> - **Quickshell watches `*.qml` but not `qmldir`.** Editing a qmldir alone
+>   does not trigger a reload — the first attempt at the check above silently
+>   "passed" for that reason. Touch any `.qml` to force it. Low risk in
+>   practice, since adding a type changes a `.qml` in the same deploy, but it
+>   will mislead anyone testing a rename or removal by hand.
+> - Two structural exemptions, both enforced rather than assumed:
+>   `shell.qml` (the entry point, and a lowercase basename can never be a QML
+>   type name — the test derives this from the filename rather than listing it),
+>   and `Common/T3Socket.qml`, whose reason is now recorded in `Common/qmldir`
+>   itself. The test fails if an exemption's file disappears, if its reason is
+>   missing, or if T3Socket stops being loaded by URL — so the exemption cannot
+>   quietly outlive its justification.
+> - **Verified live**: clean load, then every lazily-resolved type exercised —
+>   all 12 popouts, all six settings pages, the launcher, and the OSD — with no
+>   type-resolution failures. The eager root types (`LauncherWindow`,
+>   `NotificationToasts`, `OsdWindow`) are proved by the shell loading at all.
+
+<details>
+<summary>Original WP3.2 specification</summary>
+
+### WP3.2 qmldir everywhere + generalized sync test
 
 **Files touched:** `Bar/qmldir` (new), `Popovers/qmldir` (new), root `qmldir`
 (new), `Common/tests/qmldir.test.cjs` (generalize existing settings check)
@@ -1225,6 +1273,8 @@ QtWebSockets is absent) with a comment in `Common/qmldir`.
 
 **Accept:** shell loads cleanly from a deploy copy; qmldir test covers all
 dirs; qmllint resolves sibling types (`missing-property` count should drop).
+
+</details>
 
 ---
 
