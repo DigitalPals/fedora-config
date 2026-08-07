@@ -31,6 +31,19 @@ Item {
         }
     }
 
+    // Mapping the separate popout surface can prevent the bar MouseArea
+    // from receiving its final exit event. Do not carry an armed tooltip
+    // across either edge of that surface's lifetime: otherwise it reappears
+    // at its old module as soon as the popout closes.
+    Connections {
+        target: Popouts
+
+        function onOpenChanged() {
+            delay.stop();
+            root.ready = false;
+        }
+    }
+
     Timer {
         id: delay
         interval: 550

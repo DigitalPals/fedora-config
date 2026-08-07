@@ -81,6 +81,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
     const wallpaper = read("Common/Wallpaper.qml");
     const sysInfo = read("Common/SysInfo.qml");
     const bar = read("Bar/Bar.qml");
+    const tooltip = read("Bar/BarTooltip.qml");
     const packages = fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8");
 
     assert.match(wallpaper, /property string activeAccentFor/);
@@ -92,6 +93,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
     assert.match(sysInfo, /property string nightLightLifecycle/);
     assert.doesNotMatch(sysInfo, /running:\s*root\.nightLight/);
     assert.match(bar, /Component\.onCompleted:[\s\S]*Settings\.autoHide[\s\S]*hideTimer\.restart/);
+    assert.match(tooltip,
+        /target:\s*Popouts[\s\S]*function onOpenChanged\(\)[\s\S]*delay\.stop\(\)[\s\S]*root\.ready = false/,
+        "tooltips must be disarmed when a popout surface maps or unmaps");
 });
 
 test("schema and committed defaults remain version one", () => {
