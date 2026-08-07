@@ -386,8 +386,19 @@ Singleton {
     property int retrySecs: 5
 
     function connect() {
-        if (!paired || socketLoader.status !== Loader.Ready) {
-            state = paired ? "offline" : "unpaired";
+        if (!paired) {
+            state = "unpaired";
+            return;
+        }
+        // The state file routinely loads before the socket component does.
+        // Without a retry the shell would sit offline until a restart; the
+        // loader's onStatusChanged connects the moment it wins that race and
+        // cancels the pending retry so the two never race each other. A load
+        // *error* is permanent (QtWebSockets missing) and not worth retrying.
+        if (socketLoader.status !== Loader.Ready) {
+            state = "offline";
+            if (socketLoader.status !== Loader.Error)
+                scheduleRetry();
             return;
         }
         state = "connecting";
@@ -2353,8 +2364,19 @@ Singleton {
         id: socketLoader
         source: "T3Socket.qml"
         onStatusChanged: {
-            if (status === Loader.Error)
+            if (status === Loader.Error) {
                 console.warn("t3code: QtWebSockets unavailable — install qt6-qtwebsockets-devel");
+                return;
+            }
+            // Pick up a connect() that arrived before this component finished
+            // loading. retryTimer is stopped first: connect() armed it on the
+            // not-ready path, and letting it fire afterwards would tear down
+            // the socket this call is about to open.
+            if (status === Loader.Ready && root.paired
+                    && root.state !== "connected" && root.state !== "connecting") {
+                retryTimer.stop();
+                root.connect();
+            }
         }
     }
 

@@ -275,7 +275,26 @@ All WPs here are small. ∥ = parallelizable. **Serialize anything touching
 `Bar/Bar.qml` (WP1.4, WP1.6) and anything touching `Common/T3Code.qml`
 (WP1.1, WP1.2, WP1.5, WP1.6).**
 
-### [ ] WP1.1 T3 socket reconnect wedge
+### [x] WP1.1 T3 socket reconnect wedge
+
+> Done. `connect()` now splits the unpaired case from the not-ready case:
+> unpaired returns with `state = "unpaired"` and no retry, paired-but-not-ready
+> sets `"offline"` and calls `scheduleRetry()`. `socketLoader.onStatusChanged`
+> connects on the transition to `Ready` while `paired` and not already
+> connected/connecting. Notes:
+> - `Loader.Error` deliberately does **not** schedule a retry: the component can
+>   never load (QtWebSockets missing), so retrying would only leave a no-op
+>   timer firing every 120 s. The existing warning still fires.
+> - `onStatusChanged` calls `retryTimer.stop()` before `connect()`. The only
+>   retry that can be armed at that point is the one `connect()` itself armed on
+>   the not-ready path, and letting it fire afterwards would tear down the
+>   socket that call just opened.
+> - The extra `state !== "connecting"` guard is unreachable today (you cannot
+>   reach `"connecting"` without a Ready loader) but states the "one connect
+>   attempt at a time" invariant instead of relying on it.
+> - Verified only on the normal path (the chip reconnects across config
+>   reloads). The plan's delayed-loader simulation was **not** run — worth doing
+>   if this area is touched again.
 
 **Files touched:** `Common/T3Code.qml`
 **Depends on:** Phase 0
