@@ -297,8 +297,7 @@ PanelWindow {
     // module switches straight to its popout — no click needed until the
     // popout is dismissed again.
     function hoverOpen(name, isle, item) {
-        if (!Popouts.open || Popouts.currentName === name
-                || Popouts.currentName === "settings")
+        if (!Popouts.open || Popouts.currentName === name)
             return;
         pendingHoverName = name;
         pendingHoverIsland = isle;

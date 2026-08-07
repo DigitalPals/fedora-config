@@ -91,6 +91,15 @@ test("Idle inhibit and Control Center use the reorderable module pipeline", () =
     assert.doesNotMatch(bar, /togglePopout\("control", "right"/);
 });
 
+test("an open Settings panel preserves menubar hover switching", () => {
+    const bar = read("Bar/Bar.qml");
+    const hoverOpen = bar.match(/function hoverOpen\([\s\S]*?\n    \}/)?.[0] ?? "";
+
+    assert.match(hoverOpen, /!Popouts\.open \|\| Popouts\.currentName === name/);
+    assert.doesNotMatch(hoverOpen, /currentName === "settings"/,
+        "Settings must not disarm the click-once, hover-between-modules interaction");
+});
+
 test("regression fixes keep asynchronous state identity-safe", () => {
     const wallpaper = read("Common/Wallpaper.qml");
     const sysInfo = read("Common/SysInfo.qml");

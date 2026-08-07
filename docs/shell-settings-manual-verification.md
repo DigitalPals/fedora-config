@@ -94,7 +94,8 @@ is manual.
 
 ## Regression sweep
 
-- [ ] All popouts open/close/hover-switch as before at default settings.
+- [ ] All popouts open/close/hover-switch as before at default settings;
+      with Settings open, hovering a module switches directly to its popout.
 - [ ] `journalctl --user -u quickshell.service` free of QML errors and
       binding loops after exercising every page.
 - [ ] `tests/verify-xps` passes.
