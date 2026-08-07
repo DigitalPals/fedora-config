@@ -108,6 +108,7 @@ test("Idle inhibit and Control Center use the reorderable module pipeline", () =
 test("an open Settings panel preserves menubar hover switching", () => {
     const bar = read("Bar/Bar.qml");
     const icon = read("Bar/BarIcon.qml");
+    const chip = read("Bar/BarChip.qml");
     const t3 = read("Bar/T3Chip.qml");
     const usage = read("Bar/UsageChips.qml");
     const hoverOpen = bar.match(/function hoverOpen\([\s\S]*?\n    \}/)?.[0] ?? "";
@@ -120,9 +121,15 @@ test("an open Settings panel preserves menubar hover switching", () => {
     assert.match(bar, /onPointChanged:[\s\S]*?barWindow\.hoverPanelAt\(scenePoint\)/,
         "the full-bar handler must route hover motion around stale MouseArea enter state");
     assert.match(bar, /function hoverPanelAt\(position\)[\s\S]*Object\.keys\(panelAnchors\)/);
-    for (const source of [bar, icon, t3, usage])
-        assert.match(source, /onPositionChanged:[^\n]*(hoverOpen|entered|chipEntered)/,
+    // Every type that owns a module hover surface. Bar.qml is not one of
+    // them any more — the clock, media and weather chips it used to build
+    // inline are BarChips now, and BarChip carries the recovery for all
+    // three. Bar.qml's own full-bar fallback is asserted above.
+    for (const source of [icon, chip, t3, usage])
+        assert.match(source, /onPositionChanged:[^\n]*(hoverOpen|entered|chipEntered|root\.entered)/,
             "module hover must recover when a mapped popout costs Qt an enter event");
+    assert.doesNotMatch(bar, /MouseArea\s*\{[^}]*hoverEnabled[^}]*onEntered:\s*barWindow\.hoverOpen/,
+        "bar modules should hover through BarIcon/BarChip, not their own MouseArea");
 });
 
 test("T3 Code and grouped model usage are separate reorderable modules", () => {

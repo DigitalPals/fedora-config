@@ -1282,7 +1282,45 @@ dirs; qmllint resolves sibling types (`missing-property` count should drop).
 
 Strictly sequential (all touch `Bar/Bar.qml`).
 
-### [ ] WP4.1 `BarChip` primitive
+### [x] WP4.1 `BarChip` primitive
+
+> Done — `Bar/BarChip.qml` carries the hover/held pill, tooltip and pointer
+> plumbing for the clock, media and weather chips. Like `BarIcon` it knows
+> nothing about the bar: it reports `entered`/`exited`/`clicked` as signals and
+> takes `held` as a property, so the wiring to `barWindow.hoverOpen` /
+> `togglePopout` stays at the use site. Content binds its colours off the
+> chip's `held` and `hovered` instead of reaching for a sibling MouseArea's id.
+> Notes:
+> - **The line-count target was wrong.** The plan expected ~240 → ~90; the real
+>   result is `Bar.qml` 1187 → 1111 and a 69-line primitive, so **net −7**.
+>   Those 240 lines were three *components*, and most of that is content that
+>   was never duplicated — the elided media title, the clock's two date
+>   formats, weather's three-part readout. What actually repeated was the
+>   ~25-line wrapper (Rectangle + colour + Behavior + MouseArea + BarTooltip)
+>   ×3. That duplication is gone; judge this WP on there being one hover
+>   contract rather than three, not on the diff size.
+> - `hPadding` defaults to 7 (media and clock's `+14`); weather sets 6 and
+>   `spacing: 5`, which is what it always used.
+> - **Equivalence is measured, not eyeballed.** Clock and weather were captured
+>   from the live bar on HEAD and on this change: **exactly 0 differing
+>   pixels** across the whole centre cluster. Media is switched off in this
+>   config and its only MPRIS player reports no track, so it was rendered in a
+>   second instance under a fake `HOME` against a stub MPRIS service — max
+>   per-channel deviation **1/255**, zero at 0.4% fuzz, i.e. render noise
+>   between two processes rather than a rendering change.
+> - `held` re-checked live: opening the calendar popout gives the clock chip
+>   the strong pill and brightens its date text; closing removes both.
+> - Two tests had to follow the refactor, both correctly: `Bar/qmldir` (WP3.2's
+>   completeness check caught the new file immediately), and the hover-recovery
+>   assertion in `settings.test.cjs`, whose file list still named `Bar.qml` —
+>   which no longer owns a module hover surface at all. It now checks
+>   `BarChip` and additionally asserts that bar modules do *not* grow their own
+>   hover MouseArea again.
+
+<details>
+<summary>Original WP4.1 specification</summary>
+
+### WP4.1 `BarChip` primitive
 
 `cmpMedia` (607–701), `cmpClock` (719–790), `cmpWeather` (792–881) are three
 ~80-line near-copies of hover-rect + row + tooltip. Extract
@@ -1291,6 +1329,8 @@ Strictly sequential (all touch `Bar/Bar.qml`).
 glyph modules — keep the two consistent.
 **Accept:** ~240 lines → ~90; screenshots of media/clock/weather chips
 identical; hover/tooltip behavior unchanged.
+
+</details>
 
 ### [ ] WP4.2 `BarModule` base type + panel wiring collapse
 

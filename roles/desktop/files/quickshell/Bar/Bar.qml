@@ -584,78 +584,51 @@ PanelWindow {
                         visible: mediaModule.dividerBefore
                     }
 
-            Rectangle {
+            BarChip {
                 id: mediaChip
                 visible: Media.hasTrack
-                anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: mediaRow.implicitWidth + 14
-                implicitHeight: Theme.chipHeight
-                radius: Theme.chipRadius
-                color: barWindow.popoutOpen("media") ? Theme.hoverFillStrong : mediaMouse.containsMouse ? Theme.hoverFill : "transparent"
+                held: barWindow.popoutOpen("media")
+                tooltip: Media.player ? Media.player.trackTitle : "Media"
+                onEntered: barWindow.hoverOpen("media", mediaModule.isle, mediaChip)
+                onExited: barWindow.cancelHover("media")
+                onClicked: barWindow.togglePopout("media", mediaModule.isle, mediaChip)
 
-                Behavior on color {
-                    ColorAnimation { duration: Theme.chipFadeDuration }
-                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Media.glyph
+                    font.family: Theme.fontIcon
+                    font.pixelSize: Theme.barIconSize
+                    color: mediaChip.held || mediaChip.hovered ? Theme.textHi : Theme.icon
 
-                Row {
-                    id: mediaRow
-                    anchors.centerIn: parent
-                    spacing: 6
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Media.glyph
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.barIconSize
-                        color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.icon
-
-                        Behavior on color {
-                            ColorAnimation { duration: Theme.chipFadeDuration }
-                        }
-                    }
-
-                    Text {
-                        id: mediaTitle
-                        visible: !barWindow.moduleCompact("media")
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: {
-                            if (!Media.player)
-                                return "";
-                            const format = Settings.modOpts.media.titleFormat;
-                            const artist = Media.player.trackArtist;
-                            const title = Media.player.trackTitle;
-                            if (format === "title" || !artist)
-                                return title;
-                            return format === "artist-title"
-                                ? artist + " — " + title : title + " — " + artist;
-                        }
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.barTextSize
-                        color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.textMid
-                        elide: Text.ElideRight
-                        width: Math.min(implicitWidth, Settings.modOpts.media.maxWidth)
-
-                        Behavior on color {
-                            ColorAnimation { duration: Theme.chipFadeDuration }
-                        }
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
                     }
                 }
 
-                MouseArea {
-                    id: mediaMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("media", mediaModule.isle, mediaChip)
-                    onPositionChanged: barWindow.hoverOpen("media", mediaModule.isle, mediaChip)
-                    onExited: barWindow.cancelHover("media")
-                    onClicked: barWindow.togglePopout("media", mediaModule.isle, mediaChip)
-                }
+                Text {
+                    id: mediaTitle
+                    visible: !barWindow.moduleCompact("media")
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: {
+                        if (!Media.player)
+                            return "";
+                        const format = Settings.modOpts.media.titleFormat;
+                        const artist = Media.player.trackArtist;
+                        const title = Media.player.trackTitle;
+                        if (format === "title" || !artist)
+                            return title;
+                        return format === "artist-title"
+                            ? artist + " — " + title : title + " — " + artist;
+                    }
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
+                    color: mediaChip.held || mediaChip.hovered ? Theme.textHi : Theme.textMid
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, Settings.modOpts.media.maxWidth)
 
-                BarTooltip {
-                    hovered: mediaMouse.containsMouse
-                    text: Media.player ? Media.player.trackTitle : "Media"
-                    y: parent.height + 6
-                    x: (parent.width - width) / 2
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
+                    }
                 }
             }
                 }
@@ -680,7 +653,7 @@ PanelWindow {
             Component {
                 id: cmpClock
 
-            Rectangle {
+            BarChip {
                 id: clockChip
                 property string isle: "center"
                 readonly property real detailSaving: Settings.modOpts.clock.showDate
@@ -688,64 +661,38 @@ PanelWindow {
 
                 Component.onCompleted: barWindow.registerPanel("calendar", clockChip)
                 Component.onDestruction: barWindow.unregisterPanel("calendar", clockChip)
-                anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: clockRow.implicitWidth + 14
-                implicitHeight: Theme.chipHeight
-                radius: Theme.chipRadius
-                color: barWindow.popoutOpen("calendar") ? Theme.hoverFillStrong : clockMouse.containsMouse ? Theme.hoverFill : "transparent"
 
-                Behavior on color {
-                    ColorAnimation { duration: Theme.chipFadeDuration }
+                held: barWindow.popoutOpen("calendar")
+                tooltip: Qt.formatDateTime(clock.date, "dddd, MMMM d")
+                onEntered: barWindow.hoverOpen("calendar", clockChip.isle, clockChip)
+                onExited: barWindow.cancelHover("calendar")
+                onClicked: barWindow.togglePopout("calendar", clockChip.isle, clockChip)
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Qt.formatDateTime(clock.date, Settings.clock24
+                        ? (Settings.modOpts.clock.seconds ? "HH:mm:ss" : "HH:mm")
+                        : (Settings.modOpts.clock.seconds ? "h:mm:ss AP" : "h:mm AP"))
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
+                    font.weight: Theme.weightSemibold
+                    font.features: Theme.tabularNumberFeatures
+                    color: Theme.textHi
                 }
 
-                Row {
-                    id: clockRow
-                    anchors.centerIn: parent
-                    spacing: 6
+                Text {
+                    id: clockDate
+                    visible: Settings.modOpts.clock.showDate && !barWindow.moduleCompact("clock")
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Qt.formatDateTime(clock.date, Settings.modOpts.clock.dateFormat)
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
+                    font.features: Theme.tabularNumberFeatures
+                    color: clockChip.held || clockChip.hovered ? Theme.textMid : Theme.textLow
 
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Qt.formatDateTime(clock.date, Settings.clock24
-                            ? (Settings.modOpts.clock.seconds ? "HH:mm:ss" : "HH:mm")
-                            : (Settings.modOpts.clock.seconds ? "h:mm:ss AP" : "h:mm AP"))
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.barTextSize
-                        font.weight: Theme.weightSemibold
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.textHi
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
                     }
-
-                    Text {
-                        id: clockDate
-                        visible: Settings.modOpts.clock.showDate && !barWindow.moduleCompact("clock")
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Qt.formatDateTime(clock.date, Settings.modOpts.clock.dateFormat)
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.barTextSize
-                        font.features: Theme.tabularNumberFeatures
-                        color: barWindow.popoutOpen("calendar") || clockMouse.containsMouse ? Theme.textMid : Theme.textLow
-
-                        Behavior on color {
-                            ColorAnimation { duration: Theme.chipFadeDuration }
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: clockMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("calendar", clockChip.isle, clockChip)
-                    onPositionChanged: barWindow.hoverOpen("calendar", clockChip.isle, clockChip)
-                    onExited: barWindow.cancelHover("calendar")
-                    onClicked: barWindow.togglePopout("calendar", clockChip.isle, clockChip)
-                }
-
-                BarTooltip {
-                    hovered: clockMouse.containsMouse
-                    text: Qt.formatDateTime(clock.date, "dddd, MMMM d")
-                    y: parent.height + 6
-                    x: (parent.width - width) / 2
                 }
             }
             }
@@ -774,82 +721,59 @@ PanelWindow {
                     }
 
             // Quiet weather chip next to the clock (design 1g).
-            Rectangle {
+            BarChip {
                 id: weatherChip
                 visible: weatherModule.shown
-                anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: weatherRow.implicitWidth + 12
-                implicitHeight: Theme.chipHeight
-                radius: Theme.chipRadius
-                color: barWindow.popoutOpen("weather") ? Theme.hoverFillStrong : weatherMouse.containsMouse ? Theme.hoverFill : "transparent"
+                // One tighter than the default: the leading weather glyph
+                // already carries its own side bearing.
+                hPadding: 6
+                spacing: 5
+                held: barWindow.popoutOpen("weather")
+                // Offline is the one state the chip cannot spell out in the
+                // width it has, so the reason goes here.
+                tooltip: Weather.place + " · "
+                    + (Weather.offline ? Weather.fetchError : Weather.condition)
+                onEntered: barWindow.hoverOpen("weather", weatherModule.isle, weatherChip)
+                onExited: barWindow.cancelHover("weather")
+                onClicked: barWindow.togglePopout("weather", weatherModule.isle, weatherChip)
 
-                Behavior on color {
-                    ColorAnimation { duration: Theme.chipFadeDuration }
+                // Weather.code is -1 until a forecast lands, and both glyph()
+                // and glyphColor() already answer that with the na mark in
+                // Theme.textDim — no fallback needed here.
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Weather.glyph(Weather.code, Weather.isDay)
+                    font.family: Theme.fontIcon
+                    font.pixelSize: Theme.barIconSize
+                    color: Weather.glyphColor(Weather.code, Weather.isDay)
                 }
 
-                Row {
-                    id: weatherRow
-                    anchors.centerIn: parent
-                    spacing: 5
-
-                    // Weather.code is -1 until a forecast lands, and both
-                    // glyph() and glyphColor() already answer that with the
-                    // na mark in Theme.textDim — no fallback needed here.
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Weather.glyph(Weather.code, Weather.isDay)
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.barIconSize
-                        color: Weather.glyphColor(Weather.code, Weather.isDay)
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        // Weather.temp is 0 with nothing loaded, and "0°" is a
-                        // reading. A dash is not.
-                        text: Weather.ready ? Weather.temp + "°" : "—"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.barTextSize
-                        font.weight: Theme.weightSemibold
-                        font.features: Theme.tabularNumberFeatures
-                        // Dimmed while offline, so a forecast that has stopped
-                        // being refreshed does not read as current.
-                        color: Weather.offline ? Theme.textFaint : Theme.textMid
-                    }
-
-                    Text {
-                        id: weatherCondition
-                        visible: !barWindow.moduleCompact("weather")
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Weather.ready ? Weather.condition : "unavailable"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.barTextSize
-                        color: barWindow.popoutOpen("weather") || weatherMouse.containsMouse ? Theme.textMid : Theme.textLow
-
-                        Behavior on color {
-                            ColorAnimation { duration: Theme.chipFadeDuration }
-                        }
-                    }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    // Weather.temp is 0 with nothing loaded, and "0°" is a
+                    // reading. A dash is not.
+                    text: Weather.ready ? Weather.temp + "°" : "—"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
+                    font.weight: Theme.weightSemibold
+                    font.features: Theme.tabularNumberFeatures
+                    // Dimmed while offline, so a forecast that has stopped
+                    // being refreshed does not read as current.
+                    color: Weather.offline ? Theme.textFaint : Theme.textMid
                 }
 
-                MouseArea {
-                    id: weatherMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onEntered: barWindow.hoverOpen("weather", weatherModule.isle, weatherChip)
-                    onPositionChanged: barWindow.hoverOpen("weather", weatherModule.isle, weatherChip)
-                    onExited: barWindow.cancelHover("weather")
-                    onClicked: barWindow.togglePopout("weather", weatherModule.isle, weatherChip)
-                }
+                Text {
+                    id: weatherCondition
+                    visible: !barWindow.moduleCompact("weather")
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Weather.ready ? Weather.condition : "unavailable"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
+                    color: weatherChip.held || weatherChip.hovered ? Theme.textMid : Theme.textLow
 
-                BarTooltip {
-                    hovered: weatherMouse.containsMouse
-                    // Offline is the one state the chip cannot spell out in
-                    // the width it has, so the reason goes here.
-                    text: Weather.place + " · "
-                        + (Weather.offline ? Weather.fetchError : Weather.condition)
-                    y: parent.height + 6
-                    x: (parent.width - width) / 2
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
+                    }
                 }
             }
                 }
