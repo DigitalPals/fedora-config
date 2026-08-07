@@ -628,7 +628,51 @@ systemd-logind).
 **Accept:** OSD brightness percentage updates on key press with no fork on the
 read path; value matches `brightnessctl -m`.
 
-### [ ] WP1.8 ∥ Popover open latency: BlockMeter, slot latching, async page loaders
+### [x] WP1.8 ∥ Popover open latency: BlockMeter, slot latching, async page loaders
+
+> Done — ~395 → ~195 objects per Control Center open, and Control Center
+> reopens without incubating at all. Deviations:
+> - **BlockMeter is one Repeater of N rects plus one partial rect, not a tiled
+>   `Image` or `ShaderEffect`.** `blockWidth`/`gap` really are overridden (3/2 in
+>   Weather and the stat cards), `trackColor` is `"transparent"` at one site, and
+>   both colours are dynamic — so a tile needs one asset per geometry plus a
+>   `MultiEffect` mask, i.e. an offscreen render target per meter, which breaks
+>   the batching that makes solid rects cheap in the first place. `ShaderEffect`
+>   needs a checked-in `.qsb` and a build step the repo does not have.
+>   Equivalence is proved, not eyeballed: a 16.7M-sample pixel model shows 0
+>   mismatches, and an offscreen Qt Quick render of old vs new over a 14-case
+>   matrix produces byte-identical PNGs (an intentionally broken variant differs
+>   in 3.9M px, so the check has teeth).
+> - **Latching is restricted to `control`** via a `warmNames` list on the host.
+>   Blanket latching regresses idle CPU and correctness: `wifi` leaves the
+>   scanner enabled, `usage` and the settings `SystemPage` hold unconditional
+>   1 Hz timers, `media`'s tick is gated on `visible` which stays true,
+>   `tailscale` runs its status `Process` once at construction and would reopen
+>   stale, and `t3code` must reopen on the Inbox and call `closeDetail()`.
+> - `sync()` now re-seats a reused slot on its own tab (`snapCollapsed` when
+>   `openProgress < 0.01`) before animating. Without it a warm Control Center
+>   reopened after another panel sweeps across the bar as it grows — a bug that
+>   already exists at HEAD inside the 260 ms close window.
+> - `beginClose()` zeroes both loader opacities, so a latched panel still runs
+>   the normal 45 ms + 150 ms fade on reopen: the latch skips construction only,
+>   not the choreography.
+> - **`T3CodePopover`'s page loader stays synchronous**, as does
+>   `ModuleDetailView`'s. T3's implicit height *is* its page height and drives
+>   the host geometry and layer-surface size, so an incubating page opens the
+>   body in two stages and collapses it on every navigation — the per-frame
+>   resize `3f9c1d2` removed. Both slot Loaders in `IslandPopout` are already
+>   async, so neither loader was ever on the click frame.
+> - Async `detailLoader` needed two supporting changes: `focusFirst()` moved
+>   from a `Qt.callLater` (which now always sees `item === null`, silently
+>   losing keyboard focus) to `onLoaded`, and the list hides on
+>   `detailLoader.item` rather than `subPageActive`, because the sub-page is
+>   transparent — a frame early shows both, a frame late shows neither.
+> - **Verified live:** the Control Center renders correctly with the new meters
+>   (volume 3%, brightness full, three stat strips). The latch timing and the
+>   Modules cog focus handoff were **not** exercised interactively — the focus
+>   check in particular is worth a manual pass.
+
+
 
 **Files touched:** `Popovers/BlockMeter.qml`, `Bar/IslandPopout.qml`,
 `Settings/SettingsView.qml`, `Popovers/T3CodePopover.qml`,

@@ -268,6 +268,13 @@ Surface {
         }
     }
 
+    // Deliberately synchronous: this popover's implicit height is the page's
+    // height, and the host animates its geometry (and resizes the layer
+    // surface) from it. An incubating page measures as zero, which opens the
+    // body in two stages and collapses it on every navigation — the exact
+    // per-frame resize commit 3f9c1d2 removed. The page is built inside the
+    // host's own asynchronous incubation either way, so nothing here lands on
+    // the click frame.
     Loader {
         id: pageLoader
         width: parent.width

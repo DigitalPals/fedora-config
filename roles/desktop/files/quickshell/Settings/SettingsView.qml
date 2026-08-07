@@ -473,6 +473,12 @@ FocusScope {
 
         Loader {
             id: pageLoader
+            // Incubated off the frame that opens the panel: the pages are the
+            // bulk of this view and building one inline stalls the popout's
+            // open animation. The loader is explicitly sized, so a page that
+            // is one frame late changes nothing but its own content area, and
+            // every reader below already tolerates a null item.
+            asynchronous: true
             x: root.navWidth + root.gutter
             y: root.gutter
             width: parent.width - root.navWidth - root.gutter * 2

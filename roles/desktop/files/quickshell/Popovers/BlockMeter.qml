@@ -18,38 +18,42 @@ Item {
 
     implicitHeight: 10
 
-    Row {
-        spacing: root.gap
+    // One rectangle per block, coloured by the side of the fill boundary it
+    // sits on, plus a single rectangle for the block the boundary bisects.
+    // The strip used to be built twice — a track row under a clipped fill row
+    // — which cost 2N items for the same pixels; the Control Center alone
+    // instantiated ~380 of them on every open.
+    readonly property int pitch: Math.max(1, root.blockWidth + root.gap)
+    readonly property int blocks: Math.max(0, Math.ceil(root.width / root.pitch))
+    readonly property int fillWidth: Math.round(
+        Math.max(0, Math.min(1, root.value)) * root.width)
+    // Filled width of the bisected block; 0 when the boundary falls in a gap
+    // or exactly on a block edge, in which case no partial block is drawn.
+    readonly property int partialWidth: {
+        const into = root.fillWidth - Math.floor(root.fillWidth / root.pitch) * root.pitch;
+        return into > 0 && into < root.blockWidth ? into : 0;
+    }
 
-        Repeater {
-            model: Math.max(0, Math.ceil(root.width / (root.blockWidth + root.gap)))
+    Repeater {
+        model: root.blocks
 
-            Rectangle {
-                width: root.blockWidth
-                height: root.height
-                color: root.trackColor
-            }
+        Rectangle {
+            id: block
+            required property int index
+
+            x: block.index * root.pitch
+            width: root.blockWidth
+            height: root.height
+            color: block.x + block.width <= root.fillWidth ? root.fillColor : root.trackColor
         }
     }
 
-    Item {
-        width: Math.round(Math.max(0, Math.min(1, root.value)) * root.width)
+    Rectangle {
+        visible: root.partialWidth > 0
+        x: root.fillWidth - root.partialWidth
+        width: root.partialWidth
         height: root.height
-        clip: true
-
-        Row {
-            spacing: root.gap
-
-            Repeater {
-                model: Math.max(0, Math.ceil(root.width / (root.blockWidth + root.gap)))
-
-                Rectangle {
-                    width: root.blockWidth
-                    height: root.height
-                    color: root.fillColor
-                }
-            }
-        }
+        color: root.fillColor
     }
 
     MouseArea {

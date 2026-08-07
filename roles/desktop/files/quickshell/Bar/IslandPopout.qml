@@ -33,6 +33,17 @@ Item {
             settings: "../Settings/SettingsView.qml"
         })
 
+    // Panels whose instance may outlive a close, so reopening them skips
+    // incubation entirely. Entry criteria: every piece of state the view
+    // holds is derived from a singleton, and nothing in it keeps working
+    // while it is hidden. That rules the rest out today — WifiPopover drives
+    // the scanner from Component.onCompleted/onDestruction, TailscalePopover
+    // runs its status Process once at construction, UsagePopover and the
+    // settings System page hold unconditional 1 Hz timers, and T3CodePopover
+    // must reopen on the inbox (and close its detail subscription) rather
+    // than resume where it left off.
+    readonly property var warmNames: ["control"]
+
     property bool presented: false
     property bool closing: false
     property bool geometryAnimations: false
@@ -126,6 +137,19 @@ Item {
             slotAName = name;
         else
             slotBName = name;
+    }
+
+    // At most one slot survives a close: the most recently fronted panel that
+    // is safe to keep warm. Everything else is released, so the retained tree
+    // stays bounded to a single view no matter how many panels get opened.
+    function latchSlot() {
+        for (const slot of [frontSlot, 1 - frontSlot]) {
+            if (slot < 0 || slot > 1)
+                continue;
+            if (warmNames.indexOf(nameFor(slot)) !== -1 && loaderFor(slot).item)
+                return slot;
+        }
+        return -1;
     }
 
     function serialFor(slot) {
@@ -333,9 +357,18 @@ Item {
         closeTimer.stop();
         if (frontSlot >= 0 && nameFor(frontSlot) === Popouts.currentName
                 && loaderFor(frontSlot).item) {
+            const loader = loaderFor(frontSlot);
             presented = true;
+            // A reused slot starts from wherever the surface last collapsed,
+            // which for a latched panel may be a different module's tab. Seat
+            // it on its own tab first — as a cold open does — or the body
+            // sweeps across the bar while it grows.
+            if (openProgress < 0.01) {
+                updateAvailableSize(loader.item);
+                snapCollapsed(geometryFor(loader.item));
+            }
             retargetFront();
-            if (loaderFor(frontSlot).opacity < 0.99) {
+            if (loader.opacity < 0.99) {
                 revealTimer.slot = frontSlot;
                 revealTimer.restart();
             }
@@ -397,10 +430,17 @@ Item {
             host.closing = false;
             host.geometryAnimations = false;
             host.contentAnimations = false;
-            host.slotAName = "";
-            host.slotBName = "";
-            host.frontSlot = -1;
-            host.requestedName = "";
+            // Keeping the latched slot in front is what makes the latch pay:
+            // sync() reuses frontSlot when its name matches, and prepareName
+            // always incubates into the *other* slot, so a different panel
+            // still gets a fresh instance.
+            const keep = host.latchSlot();
+            if (keep !== 0)
+                host.slotAName = "";
+            if (keep !== 1)
+                host.slotBName = "";
+            host.frontSlot = keep;
+            host.requestedName = keep >= 0 ? host.nameFor(keep) : "";
             host.envelopeBodyH = 0;
             host.contentAnimations = true;
         }

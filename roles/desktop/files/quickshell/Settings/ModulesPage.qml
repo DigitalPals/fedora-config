@@ -44,10 +44,6 @@ Item {
             return;
         subPage = id;
         announcement = moduleMeta[id].name + " settings.";
-        Qt.callLater(() => {
-            if (detailLoader.item)
-                detailLoader.item.focusFirst();
-        });
     }
 
     function closeSubPage() {
@@ -519,7 +515,7 @@ Item {
     // ---- layout -----------------------------------------------------------
     SectionHeader {
         id: previewHeader
-        visible: !page.subPageActive
+        visible: !detailLoader.item
         label: "LIVE PREVIEW"
         dirty: Settings.modsModified
         onResetRequested: Settings.resetKeys(["mods"], "Modules")
@@ -527,7 +523,7 @@ Item {
 
     Rectangle {
         id: miniBar
-        visible: !page.subPageActive
+        visible: !detailLoader.item
         anchors.top: previewHeader.bottom
         anchors.topMargin: 10
         width: parent.width
@@ -582,7 +578,7 @@ Item {
 
     Flickable {
         id: columnsViewport
-        visible: !page.subPageActive
+        visible: !detailLoader.item
         anchors.top: miniBar.bottom
         anchors.topMargin: 10
         anchors.left: parent.left
@@ -660,7 +656,7 @@ Item {
 
     Text {
         id: footnote
-        visible: !page.subPageActive
+        visible: !detailLoader.item
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -710,11 +706,22 @@ Item {
     }
 
     // Per-module settings sub-page: replaces the list content while open;
-    // the list keeps its instance (and scroll position) underneath.
+    // the list keeps its instance (and scroll position) underneath. Built
+    // asynchronously so the cog click is not spent constructing it, which is
+    // why the list hides on `detailLoader.item` rather than on subPageActive
+    // — the sub-page is transparent, so swapping a frame early would show
+    // both, and a frame late would show neither.
     Loader {
         id: detailLoader
         anchors.fill: parent
         active: page.subPageActive
+        asynchronous: true
+        // Incubation finishes after openSubPage has returned, so the sub-page
+        // claims focus here; a callLater would still find item null.
+        onLoaded: {
+            if (page.subPageActive)
+                item.focusFirst();
+        }
         sourceComponent: ModuleDetailView {
             moduleId: page.subPage
             moduleName: (page.moduleMeta[page.subPage] ?? ({ name: "" })).name
