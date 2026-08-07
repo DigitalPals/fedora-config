@@ -2,7 +2,6 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import Quickshell.Networking
 
 Singleton {
     id: root
@@ -11,8 +10,6 @@ Singleton {
     property real cpuUsage: 0 // percent
     property real memUsage: 0 // percent
     property int brightness: -1 // percent, -1 while unknown
-    property string uptime: ""
-    property string kernel: ""
     readonly property string user: Quickshell.env("USER") || "user"
     property string host: "linux"
 
@@ -100,23 +97,11 @@ Singleton {
     property string tsIp: ""
     property bool tsExitNode: false
 
-    // Wi-Fi link speed, e.g. "1152 Mb/s"
-    property string wifiBitrate: ""
-    readonly property var wifiDevice: Networking.devices.values.find(device => device.networks !== undefined) ?? null
-
     Process {
         command: ["cat", "/etc/hostname"]
         running: true
         stdout: StdioCollector {
             onStreamFinished: root.host = text.trim()
-        }
-    }
-
-    Process {
-        command: ["uname", "-r"]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: root.kernel = text.trim()
         }
     }
 
@@ -135,12 +120,6 @@ Singleton {
         path: root.tempPath
         printErrors: false
         onLoaded: root.readTemperature()
-    }
-
-    FileView {
-        id: uptimeView
-        path: "/proc/uptime"
-        onLoaded: root.readUptime()
     }
 
     FileView {
@@ -191,16 +170,6 @@ Singleton {
         Quickshell.execDetached(["brightnessctl", "set", pct + "%"]);
     }
 
-    function readUptime() {
-        const secs = parseFloat(uptimeView.text().split(" ")[0]);
-        if (isNaN(secs))
-            return;
-        const d = Math.floor(secs / 86400);
-        const h = Math.floor((secs % 86400) / 3600);
-        const m = Math.floor((secs % 3600) / 60);
-        uptime = d > 0 ? `${d} d ${h} h` : (h > 0 ? `${h} h ${m} m` : `${m} m`);
-    }
-
     onTempPathChanged: {
         if (tempPath !== "") {
             tempView.reload();
@@ -223,18 +192,6 @@ Singleton {
                 } catch (e) {
                     root.tsRunning = false;
                 }
-            }
-        }
-    }
-
-    Process {
-        id: bitrateProc
-        command: root.wifiDevice ? ["iw", "dev", root.wifiDevice.name, "link"] : []
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const match = text.match(/tx bitrate:\s*([0-9.]+)/);
-                const v = match ? parseFloat(match[1]) : NaN;
-                root.wifiBitrate = isNaN(v) ? "" : Math.round(v) + " Mb/s";
             }
         }
     }
@@ -291,30 +248,19 @@ Singleton {
         }
     }
 
-    Timer {
-        interval: 60000
-        running: true
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: {
-            uptimeView.reload();
-            root.readUptime();
-        }
-    }
-
-    // The tailscale/brightness/bitrate consumers are all popout content,
-    // and their popovers refresh on open as well; no need to poll while
-    // nothing is shown.
+    // Tailscale state is read by the control centre and the Tailscale panel;
+    // brightness by the control centre and the OSD, and the OSD asks for a
+    // fresh read itself after every key press. Polling for every popout meant
+    // a `tailscale status --json` fork each time any panel opened.
+    // triggeredOnStart keeps the refresh-on-open behaviour.
     Timer {
         interval: 30000
-        running: Popouts.open
+        running: Popouts.open && ["control", "tailscale"].includes(Popouts.currentName)
         repeat: true
         triggeredOnStart: true
         onTriggered: {
             tsProc.running = true;
-            brightnessProc.running = true;
-            if (root.wifiDevice)
-                bitrateProc.running = true;
+            root.refreshBrightness();
         }
     }
 }

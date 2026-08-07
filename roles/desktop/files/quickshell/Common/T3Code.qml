@@ -329,10 +329,17 @@ Singleton {
         }
     }
 
+    // workingNowMs is read only by workingDurationLabel/workingTimerLabel, and
+    // those are read only by the T3 popover's inbox and thread pages — the bar
+    // chip shows counts, never a duration. Ticking while the popover is shut
+    // would move labels nobody can see. triggeredOnStart refreshes them the
+    // moment it opens rather than up to a second later.
     Timer {
         interval: 1000
         repeat: true
+        triggeredOnStart: true
         running: root.state === "connected" && root.runningCount > 0
+            && Popouts.open && Popouts.currentName === "t3code"
         onTriggered: root.workingNowMs = Date.now()
     }
 
@@ -492,6 +499,34 @@ Singleton {
     property int nextReqId: 2
     // requestId → { item(value), exit(msg) } for non-shell streams.
     property var rpcHandlers: ({})
+    // rpcHandlers is mutated in place (added and deleted by request id), and
+    // an in-place mutation never re-evaluates a binding. This is the notifying
+    // mirror the deadline sweep below watches, so every add and delete goes
+    // through the three functions here. Only handlers that actually carry a
+    // deadline count: an open detail subscription has none and must not keep
+    // the sweep awake for as long as the popover shows a thread.
+    property int rpcDeadlineCount: 0
+
+    function putRpcHandler(id, handler) {
+        dropRpcHandler(id);
+        rpcHandlers[id] = handler;
+        if (typeof handler.deadline === "number")
+            rpcDeadlineCount++;
+    }
+
+    function dropRpcHandler(id) {
+        const handler = rpcHandlers[id];
+        if (handler === undefined)
+            return;
+        delete rpcHandlers[id];
+        if (typeof handler.deadline === "number")
+            rpcDeadlineCount--;
+    }
+
+    function clearRpcHandlers() {
+        rpcHandlers = {};
+        rpcDeadlineCount = 0;
+    }
 
     function genId() {
         let s = "";
@@ -552,9 +587,9 @@ Singleton {
             timeout: () => onFailure?.("Request timed out"),
             disconnect: () => onFailure?.("Disconnected before confirmation")
         };
-        rpcHandlers[id] = handler;
+        putRpcHandler(id, handler);
         if (!sendRequest(id, tag, payload)) {
-            delete rpcHandlers[id];
+            dropRpcHandler(id);
             onFailure?.("Not connected");
             return "";
         }
@@ -563,7 +598,7 @@ Singleton {
 
     function abortPendingRpcs() {
         const handlers = rpcHandlers;
-        rpcHandlers = {};
+        clearRpcHandlers();
         for (const id in handlers)
             handlers[id].disconnect?.();
         detailReqId = "";
@@ -600,7 +635,7 @@ Singleton {
 
     function subscribe() {
         const selected = detailThreadId;
-        rpcHandlers = {};
+        clearRpcHandlers();
         nextReqId = 2;
         threadMap = {};
         projectMap = {};
@@ -650,7 +685,7 @@ Singleton {
                     scheduleRetry();
                 } else if (rpcHandlers[reqId]) {
                     rpcHandlers[reqId].exit?.(msg);
-                    delete rpcHandlers[reqId];
+                    dropRpcHandler(reqId);
                 }
             }
         }
@@ -658,10 +693,17 @@ Singleton {
             rebuild();
     }
 
+    // Deadline sweep for in-flight RPCs and pending actions. Both are empty
+    // most of the time, so the tick is gated on there being something to
+    // expire: rpcDeadlineCount notifies where rpcHandlers cannot, and
+    // expireActionStates only ever touches pending entries — a finished
+    // action left in place to show its error must not keep this running.
     Timer {
         interval: 500
         repeat: true
         running: root.state === "connected"
+            && (root.rpcDeadlineCount > 0
+                || Object.values(root.actionStates).some(state => state && state.pending === true))
         onTriggered: {
             const now = Date.now();
             for (const id in root.rpcHandlers) {
@@ -669,7 +711,7 @@ Singleton {
                 if (handler.deadline === undefined || now < handler.deadline)
                     continue;
                 socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: id }));
-                delete root.rpcHandlers[id];
+                root.dropRpcHandler(id);
                 handler.timeout?.();
             }
             const expired = Helpers.expireActionStates(root.actionStates, now,
@@ -808,7 +850,7 @@ Singleton {
             if (!handler || handler.actionKey !== key)
                 continue;
             socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: id }));
-            delete rpcHandlers[id];
+            dropRpcHandler(id);
         }
         clearAction(key);
     }
@@ -2286,7 +2328,7 @@ Singleton {
         if (detailReqId === "")
             return;
         socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: detailReqId }));
-        delete rpcHandlers[detailReqId];
+        dropRpcHandler(detailReqId);
         detailReqId = "";
     }
 
@@ -2307,7 +2349,7 @@ Singleton {
         }
         const id = String(nextReqId++);
         detailReqId = id;
-        rpcHandlers[id] = {
+        putRpcHandler(id, {
             item: item => {
                 if (root.detailReqId !== id || root.detailThreadId !== threadId)
                     return;
@@ -2324,7 +2366,7 @@ Singleton {
                 if (msg.exit && msg.exit._tag === "Failure")
                     root.detailError = root.failureMessage(msg, "Thread details unavailable");
             }
-        };
+        });
         sendRequest(id, "orchestration.subscribeThread", { threadId: threadId });
         refreshVcsStatus(threadId, true);
     }

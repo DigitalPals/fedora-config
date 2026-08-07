@@ -511,7 +511,51 @@ WP4.4; this fixes the live bug.)
 **Accept:** on a pinned-bar multi-monitor layout, the T3 popover fits the
 hosting screen. Single-screen behavior unchanged.
 
-### [ ] WP1.6 Idle-CPU sweep
+### [x] WP1.6 Idle-CPU sweep
+
+> Done, all five items, in one commit but split across two agents by file
+> (T3Code vs SysInfo/Usage). Notes:
+> - **`rpcHandlers` does not notify.** It is mutated in place at seven sites,
+>   and an in-place mutation never re-evaluates a binding, so the plan's
+>   `Object.keys(rpcHandlers).length > 0` would have silently stopped RPC
+>   timeouts from ever firing. All seven now go through `putRpcHandler` /
+>   `dropRpcHandler` / `clearRpcHandlers`, maintaining `rpcDeadlineCount` (an
+>   `int`, so it notifies). In-place `delete` is kept inside those helpers
+>   because `abortPendingRpcs` captures the old object by identity, and the
+>   sweep and `cancelActionRequests` delete while iterating with `for…in`.
+> - **Deviation:** the count tracks only handlers carrying a `deadline`.
+>   `startDetailSubscription`'s has none, so the plan's predicate would have
+>   pinned the 500 ms timer on for as long as the popover showed a thread.
+> - **Deviation:** the action half is
+>   `Object.values(actionStates).some(s => s && s.pending === true)`, not a key
+>   count. `failAction` deliberately leaves finished entries in place to show
+>   their error, so a key count would have kept the timer running forever after
+>   the first failed action. `actionStates` itself needed no change.
+> - Item 2's gate needed no widening: `workingNowMs` reaches only
+>   `T3InboxPage`/`T3ThreadPage` via `T3CodePopover`. `Bar/T3Chip.qml` reads
+>   counts and `state`, never a duration. Added `triggeredOnStart: true` so the
+>   labels refresh on open instead of showing the previous close's value.
+> - `SysInfo.wifiDevice` was deleted too (beyond the plan's list): `bitrateProc`
+>   was its only reader, and `Bar.qml`/`ControlCenterPopover.qml` each carry
+>   their own copy for WP2.2 to absorb.
+> - **Deviation:** item 4's list is `["control","tailscale"]`, not
+>   `[…,"battery"]` — `BatteryPopover` reads no `ts*` or `brightness` property.
+>   The only brightness consumer outside the control centre is `OsdWindow.qml`,
+>   which is not a popout and refreshes over IPC.
+> - **Deviation:** item 5 gates on the `usage` module only. Nothing on the T3
+>   side reads the `Usage` singleton, and since both modules default to `on`,
+>   including `t3` would have made the gate a no-op for the default config.
+>   `refresh()`'s `pollTimer.restart()` is guarded on the same predicate, and
+>   `warmUp()` clears `loading` when the module is off.
+> - **The plan's accept criterion (`top` before/after) is not measurable on a
+>   machine in use.** Sampling the live shell gave 0.12%–6.44% CPU and
+>   3.9–213 wakeups/s across windows of *identical* code; the variance is
+>   compositor traffic from the user's desktop and dwarfs anything Phase 1 does.
+>   Instrumenting both trees and counting firings in the journal is the metric
+>   that works: sweep 109 → 1, working clock 54 → 1, with an unrelated control
+>   timer unchanged at 1664 vs 1670. Use that method for later perf WPs.
+
+
 
 **Files touched:** `Common/SysInfo.qml`, `Common/T3Code.qml`, `Common/Usage.qml`
 **Depends on:** Phase 0; serialize with WP1.1/1.2 (T3Code.qml)

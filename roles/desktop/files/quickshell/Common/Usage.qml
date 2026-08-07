@@ -16,6 +16,20 @@ Singleton {
 
     readonly property int pollIntervalSecs: Settings.pollMax
 
+    // The Model usage chip is the only thing that needs fresh figures without
+    // being asked; with it off the bar, polling `usage-fetch.py` every few
+    // minutes is pure idle churn. Settings.mods is replaced wholesale on every
+    // edit, so this re-evaluates whenever the module list changes.
+    readonly property bool pollEnabled: {
+        const mods = Settings.mods;
+        for (const col of ["left", "center", "right"]) {
+            const hit = mods[col].find(m => m.id === "usage");
+            if (hit)
+                return hit.on;
+        }
+        return false;
+    }
+
     Connections {
         target: Settings
 
@@ -71,7 +85,10 @@ Singleton {
         fetchProc.running = false;
         fetchProc.running = true;
         nextPollSecs = pollIntervalSecs;
-        pollTimer.restart();
+        // A manual refresh from the popover still works with the module off;
+        // it just must not leave the poll timer running behind its binding.
+        if (pollEnabled)
+            pollTimer.restart();
     }
 
     function formatReset(resetsAt) {
@@ -204,7 +221,7 @@ Singleton {
     Timer {
         id: pollTimer
         interval: root.pollIntervalSecs * 1000
-        running: true
+        running: root.pollEnabled
         repeat: true
         onTriggered: {
             root.loading = true;
@@ -214,5 +231,22 @@ Singleton {
         }
     }
 
-    Component.onCompleted: fetchProc.running = true
+    // Warm-up: shell.qml touches this singleton at session start so the chip
+    // has figures before the first interval elapses, and the same fetch primes
+    // it when the module is switched back on from the settings panel. With the
+    // module off there is nothing to load and nothing left loading.
+    function warmUp() {
+        if (!pollEnabled) {
+            loading = false;
+            return;
+        }
+        if (fetchProc.running)
+            return;
+        loading = true;
+        fetchProc.running = true;
+    }
+
+    onPollEnabledChanged: warmUp()
+
+    Component.onCompleted: warmUp()
 }
