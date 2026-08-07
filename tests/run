@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Repo checks: everything verifiable from the source tree alone, without
+# touching the running machine (that is tests/verify-xps). Fast enough to gate
+# a deploy — `verify` runs it ahead of the machine checks and `update --full`
+# runs it before ansible-playbook. Every stage runs even if an earlier one
+# fails; the exit status is nonzero when any of them did.
+set -uo pipefail
+
+cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+shell_dir=roles/desktop/files/quickshell
+failed_stages=()
+
+if [[ -t 1 ]]; then
+  C_GREEN=$'\033[32m' C_RED=$'\033[31m' C_YELLOW=$'\033[33m' C_OFF=$'\033[0m'
+else
+  C_GREEN='' C_RED='' C_YELLOW='' C_OFF=''
+fi
+
+pass() { printf '%sPASS%s  %-11s %s\n' "$C_GREEN" "$C_OFF" "$1" "${2:-}"; }
+skip() { printf '%sSKIP%s  %-11s %s\n' "$C_YELLOW" "$C_OFF" "$1" "${2:-}"; }
+fail() {
+  printf '%sFAIL%s  %-11s %s\n' "$C_RED" "$C_OFF" "$1" "${2:-}"
+  failed_stages+=("$1")
+}
+
+# Milliseconds since the epoch. EPOCHREALTIME renders its decimal separator
+# per locale, so strip everything that is not a digit rather than splitting.
+now_ms() { local t=${EPOCHREALTIME:-}; t=${t//[^0-9]/}; printf '%s' "$(( ${t:-0} / 1000 ))"; }
+took() { printf '(%d.%02ds)' "$(( $1 / 1000 ))" "$(( $1 % 1000 / 10 ))"; }
+
+# Indented failure excerpt, bounded so one broken file cannot bury the summary.
+excerpt() {
+  local text=$1 max=${2:-60} n
+  n=$(printf '%s\n' "$text" | wc -l)
+  printf '%s\n' "$text" | head -n "$max" | sed 's/^/      /'
+  ((n > max)) && printf '      … %d more lines\n' "$((n - max))"
+  return 0
+}
+
+# ── Quickshell pure-logic unit tests ────────────────────────────────────────
+# `node --test <dir>` does not discover these (the runner tries to load the
+# directory as a module), so the files are expanded here instead.
+stage_unit_tests() {
+  local files=() out rc=0 t0 elapsed passed failed
+  shopt -s nullglob
+  files=("$shell_dir"/Common/tests/*.test.cjs)
+  shopt -u nullglob
+
+  if ((${#files[@]} == 0)); then
+    fail 'unit tests' "no *.test.cjs under $shell_dir/Common/tests"
+    return
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    skip 'unit tests' 'node not installed (dnf install nodejs24)'
+    return
+  fi
+
+  t0=$(now_ms)
+  out=$(node --test "${files[@]}" 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+
+  passed=$(awk '$2 == "pass" { n = $3 } END { print n + 0 }' <<<"$out")
+  failed=$(awk '$2 == "fail" { n = $3 } END { print n + 0 }' <<<"$out")
+
+  if ((rc == 0)); then
+    pass 'unit tests' "$passed passing in ${#files[@]} files $(took "$elapsed")"
+    return
+  fi
+
+  fail 'unit tests' "$failed of $((passed + failed)) failing"
+  # The trailing "failing tests:" block holds the assertion diagnostics; fall
+  # back to everything when the runner died before printing it.
+  if grep -q 'failing tests:' <<<"$out"; then
+    excerpt "$(sed -n '/failing tests:/,$p' <<<"$out")"
+  else
+    excerpt "$out"
+  fi
+}
+
+# ── QML static analysis ─────────────────────────────────────────────────────
+stage_qml_lint() {
+  local out rc=0 t0 elapsed
+
+  t0=$(now_ms)
+  out=$(tests/qml-lint 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+
+  if [[ $out == SKIP* ]]; then
+    skip 'qml lint' "$(sed 's/^SKIP  *//' <<<"$out" | tail -n1)"
+  elif ((rc == 0)); then
+    # qml-lint's own success line already carries the file count; reuse it so
+    # both stages read the same way.
+    pass 'qml lint' "$(sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^PASS  *//' <<<"$out" | tail -n1) $(took "$elapsed")"
+  else
+    fail 'qml lint' 'qmllint reported errors'
+    excerpt "$(sed 's/\x1b\[[0-9;]*m//g' <<<"$out")"
+  fi
+}
+
+stage_unit_tests
+stage_qml_lint
+
+# Keep the verdict on the last line: `update` tails this output into its own
+# failure report, so the actionable summary has to survive the truncation.
+if ((${#failed_stages[@]} > 0)); then
+  printf '\n%d of 2 repo check stages failed: %s\n' \
+    "${#failed_stages[@]}" "$(IFS=, ; printf '%s' "${failed_stages[*]}")"
+  exit 1
+fi
+exit 0

@@ -14,25 +14,34 @@ Update Fedora packages and system Flatpaks. By default, the Ansible
 configuration is not applied.
 
 Options:
-  -f, --full  Also run site.yml with --skip-tags boot,finalize
-  -h, --help  Show this help message and exit
+  -f, --full        Also run site.yml with --skip-tags boot,finalize
+      --skip-tests  Skip the repo checks that gate the configuration run
+  -h, --help        Show this help message and exit
 
 ANSIBLE_ARGS are accepted only with --full and are passed to ansible-playbook.
+
+With --full, ./tests/run (Quickshell unit tests + QML lint) must pass before
+the playbook is allowed to touch the machine.
 
 Examples:
   ./update
   ./update --full
   ./update --full --check --diff
   ./update --full --tags desktop,dotfiles
+  ./update --full --skip-tests
 EOF
 }
 
 full=false
+skip_tests=false
 ansible_args=()
 while (( $# )); do
   case $1 in
     -f|--full)
       full=true
+      ;;
+    --skip-tests)
+      skip_tests=true
       ;;
     -h|--help)
       usage
@@ -251,6 +260,18 @@ if [[ $full != true ]]; then
 fi
 
 printf '\n  %sCONFIGURATION%s\n' "$UI_BOLD" "$UI_RESET"
+
+# Gate the deploy on the repo checks: broken QML or a failing helper test would
+# otherwise be copied onto the machine and only surface at the next reload.
+if [[ $skip_tests == true ]]; then
+  ui_warn 'Repo checks' 'skipped (--skip-tests)'
+elif ! run_step 'Repo checks' "$log_root/tests.log" ./tests/run; then
+  printf '\n%sFull log: %s/tests.log%s\n' "$UI_GREY" "$log_root" "$UI_RESET"
+  ui_box "$UI_RED" '✗' "Update failed after $(ui_duration $((SECONDS - start)))" \
+    'repo checks failed — deploy skipped (--skip-tests to force)'
+  exit 1
+fi
+
 ansible_rc=0
 ansible-playbook site.yml --skip-tags boot,finalize "${ansible_args[@]}" || ansible_rc=$?
 

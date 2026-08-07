@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Repo checks first (source tree only), then the machine checks against this
+# running system. Both always run; the exit status reflects either failing.
 set -uo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
-exec ./tests/verify-xps "$@"
+rc=0
+./tests/run || rc=1
+printf '\n'
+./tests/verify-xps "$@" || rc=1
+exit "$rc"
