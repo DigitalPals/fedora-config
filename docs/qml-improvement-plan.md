@@ -472,7 +472,31 @@ bar's clock/pulse timers stop (verify via `journalctl` debug or by observing
 CPU with `top -p $(pgrep quickshell)` idle drop); tailscale popover survives a
 module-setting change.
 
-### [ ] WP1.5 ∥ T3 popover sizes against its own screen + Escape contract stopgap
+### [x] WP1.5 ∥ T3 popover sizes against its own screen + Escape contract stopgap
+
+> Done. `T3CodePopover` takes `availableWidth`/`availableHeight` from the host
+> instead of reading `Screens.focused`, so it sizes against the output the bar
+> is actually on. The host already fed both to any panel that declares them, so
+> `Bar/IslandPopout.qml` needed **no change at all**. Units were audited against
+> `updateAvailableSize` so nothing is subtracted twice — the host removes the
+> side margins, the bar and a 48px shadow budget, and the popover now removes
+> only its own padding, header, footer, spacing and no-read banner. Notes:
+> - The 484/800 fallbacks are preserved as the property defaults, so an unhosted
+>   instance measures exactly as before.
+> - `screenBottomMargin` (16) is gone rather than kept alongside the host's
+>   shadow budget, which would have double-counted. Net effect on a single
+>   screen is a 32px smaller max page height, which only bites when the inbox is
+>   tall enough to hit the cap.
+> - `Screens.barScreen` (already in `Common/Screens.qml`) would have been a
+>   smaller fix, but the host-supplied envelope is what WP4.4 formalises and it
+>   also accounts for the bar and shadow.
+> - Verified the popover still renders correctly on the single output. The
+>   multi-monitor case needs a second output; `hyprctl output create headless`
+>   plus `hyprctl dispatch focusmonitor` reproduces it without hardware, since
+>   `Screens.focused` maps from `Hyprland.focusedMonitor`.
+> - The Escape contract stopgap named in this WP's title was **not** done — the
+>   plan body only specifies the sizing fix, and `handleEscape()` belongs to
+>   WP4.4. Retitle or fold into WP4.4.
 
 **Files touched:** `Popovers/T3CodePopover.qml`, `Bar/IslandPopout.qml`
 **Depends on:** Phase 0

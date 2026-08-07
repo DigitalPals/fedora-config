@@ -10,15 +10,22 @@ Surface {
     id: root
 
     spacing: 6
-    implicitWidth: Math.max(Theme.t3MinWidth, Math.min(Theme.t3MaxWidth,
-        (Screens.focused ? Screens.focused.width : 484) - Theme.barSideMargin * 2))
 
-    readonly property int screenHeight: Screens.focused ? Screens.focused.height : 800
+    // The host (Bar/IslandPopout) hands us the usable envelope of the output
+    // it is drawn on — it has already taken off the side margins, the bar and
+    // a shadow budget, so nothing here subtracts them a second time. Reading
+    // Screens.focused instead would size against the wrong monitor whenever
+    // the bar is pinned to one. The defaults stand in for a host that sets
+    // neither, and reproduce the old 484x800 fallback.
+    property real availableWidth: 484 - Theme.barSideMargin * 2
+    property real availableHeight: 800 - Theme.barTopMargin - Theme.barHeight - 16
+
+    implicitWidth: Math.max(Theme.t3MinWidth,
+        Math.min(Theme.t3MaxWidth, root.availableWidth))
+
     readonly property int headerHeight: Theme.rowHeight
     readonly property int footerHeight: Theme.controlHeight
-    readonly property int screenBottomMargin: 16
-    readonly property int maxPageHeight: Math.max(300, screenHeight
-        - Theme.barTopMargin - Theme.barHeight - screenBottomMargin
+    readonly property int maxPageHeight: Math.max(300, root.availableHeight
         - root.padding * 2 - headerHeight - footerHeight - root.spacing * 2
         - (noReadBanner.visible ? noReadBanner.height + root.spacing : 0))
 
