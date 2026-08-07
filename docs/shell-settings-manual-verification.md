@@ -77,7 +77,10 @@ is manual.
       columns, including end-of-column; Esc during a drag cancels it (a
       second Esc closes the window).
 - [ ] Disabling a module whose popout is open closes that popout.
-- [ ] The T3 chips + usage percentages move as one module.
+- [ ] T3 Code and Model usage can each be toggled, reordered, and moved across
+      columns; Claude, Codex, and Kimi remain grouped under Model usage.
+- [ ] Disabling T3 Code or Model usage while its popout is open closes only
+      that popout; the other module still opens normally.
 - [ ] Idle inhibit and Control Center can be reordered within or across
       columns; moving Control Center keeps its popout attached to its module.
 
@@ -97,6 +100,10 @@ is manual.
 - [ ] All popouts open/close/hover-switch as before at default settings;
       Calendar → Weather and other adjacent-module switches work without a
       second click; with Settings open, hovering a module also switches.
+- [ ] Click Claude once, then hover Codex and Kimi; the open Usage view changes
+      immediately while its panel stays anchored. From another open popout,
+      hovering a provider opens Usage after the normal hover delay and selects
+      the provider under the pointer.
 - [ ] `journalctl --user -u quickshell.service` free of QML errors and
       binding loops after exercising every page.
 - [ ] `tests/verify-xps` passes.

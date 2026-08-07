@@ -39,6 +39,25 @@ Item {
     }
     readonly property bool empty: visibleKeys.length === 0
 
+    // The bar-level HoverHandler reports scene coordinates even when mapping
+    // the popout window prevents one of the chip MouseAreas from receiving a
+    // fresh enter event. Resolve that point to the provider delegate here so
+    // the grouped module can still switch between provider views reliably.
+    function providerAtScenePoint(scenePoint) {
+        const children = row.children;
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (!("providerKey" in child) || !child.visible
+                    || child.width <= 0 || child.height <= 0)
+                continue;
+            const local = child.mapFromItem(null, scenePoint.x, scenePoint.y);
+            if (local.x >= 0 && local.x <= child.width
+                    && local.y >= 0 && local.y <= child.height)
+                return child.providerKey;
+        }
+        return "";
+    }
+
     implicitHeight: Theme.chipHeight
     implicitWidth: row.implicitWidth
     anchors.verticalCenter: parent.verticalCenter
@@ -50,6 +69,8 @@ Item {
 
         // Offline / loading state
         Rectangle {
+            property string providerKey: "claude"
+
             visible: root.empty
             height: Theme.chipHeight
             width: emptyRow.implicitWidth + 12
@@ -98,6 +119,7 @@ Item {
                 id: chip
 
                 required property string modelData
+                readonly property string providerKey: modelData
                 readonly property string status: Usage.chipStatus(modelData)
                 readonly property int remaining: Usage.minRemaining(modelData)
                 readonly property bool stressed: status === "warn" || status === "crit"

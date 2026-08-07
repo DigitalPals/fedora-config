@@ -103,12 +103,49 @@ test("an open Settings panel preserves menubar hover switching", () => {
         "pointer motion must not keep restarting the hover-switch delay");
     assert.doesNotMatch(hoverOpen, /currentName === "settings"/,
         "Settings must not disarm the click-once, hover-between-modules interaction");
-    assert.match(bar, /onPointChanged:\s*barWindow\.hoverPanelAt\(point\.position\)/,
+    assert.match(bar, /onPointChanged:[\s\S]*?barWindow\.hoverPanelAt\(scenePoint\)/,
         "the full-bar handler must route hover motion around stale MouseArea enter state");
     assert.match(bar, /function hoverPanelAt\(position\)[\s\S]*Object\.keys\(panelAnchors\)/);
     for (const source of [bar, icon, t3, usage])
         assert.match(source, /onPositionChanged:[^\n]*(hoverOpen|entered|chipEntered)/,
             "module hover must recover when a mapped popout costs Qt an enter event");
+});
+
+test("T3 Code and grouped model usage are separate reorderable modules", () => {
+    const helpers = read("Common/SettingsHelpers.js");
+    const modules = read("Settings/ModulesPage.qml");
+    const bar = read("Bar/Bar.qml");
+
+    assert.match(helpers, /"t3", "usage", "vol"/,
+        "fresh layouts should keep the two modules adjacent");
+    assert.match(modules, /t3:\s*\{ name: "T3 Code"/);
+    assert.match(modules, /usage:\s*\{ name: "Model usage"/);
+    assert.match(bar, /t3:\s*cmpT3, usage:\s*cmpUsage/);
+    assert.match(bar, /id:\s*cmpT3[\s\S]*?registerPanel\("t3code", t3Chip\)/);
+    assert.match(bar, /id:\s*cmpUsage[\s\S]*?registerPanel\("usage", usageChips\)/);
+    assert.doesNotMatch(bar,
+        /id:\s*cmpT3[\s\S]*?registerPanel\("usage", usageChips\)[\s\S]*?id:\s*cmpUsage/,
+        "the T3 module must not own the grouped usage popout");
+});
+
+test("the full-bar hover fallback resolves the provider before active Usage", () => {
+    const bar = read("Bar/Bar.qml");
+    const usage = read("Bar/UsageChips.qml");
+    const hoverAt = bar.match(/function hoverPanelAt\(position\)[\s\S]*?\n    \}/)?.[0] ?? "";
+
+    assert.match(usage, /function providerAtScenePoint\(scenePoint\)/);
+    assert.match(usage, /mapFromItem\(null, scenePoint\.x, scenePoint\.y\)/,
+        "provider hit-testing must use the same scene coordinates as bar anchors");
+    assert.match(hoverAt, /providerAtScenePoint\(position\)/);
+    assert.ok(hoverAt.indexOf("providerAtScenePoint(position)")
+            < hoverAt.indexOf('Popouts.currentName === "usage"'),
+        "provider selection must happen before treating Usage as the active panel");
+    assert.match(hoverAt, /Usage\.selected = provider/);
+    assert.match(bar, /interval:\s*120/,
+        "switching from a different popout should retain the standard delay");
+    assert.match(bar,
+        /Popouts\.openPanel\("usage", usageModule\.isle,[\s\S]*?anchorOf\(usageChips\)\)/,
+        "all providers should retain the grouped UsageChips anchor");
 });
 
 test("regression fixes keep asynchronous state identity-safe", () => {
@@ -132,9 +169,10 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "tooltips must be disarmed when a popout surface maps or unmaps");
 });
 
-test("schema and committed defaults remain version one", () => {
+test("schema two splits T3 Code from grouped model usage", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 1/);
+    assert.match(helpers, /var VERSION = 2/);
+    assert.match(helpers, /"t3", "usage", "vol"/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"top"/);
     assert.match(helpers, /media", on: false/);

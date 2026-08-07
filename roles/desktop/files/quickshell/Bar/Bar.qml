@@ -251,8 +251,8 @@ PanelWindow {
 
     readonly property var moduleComponents: ({
         ws: cmpWs, media: cmpMedia, clock: cmpClock, weather: cmpWeather,
-        t3: cmpT3, vol: cmpVol, wifi: cmpWifi, batt: cmpBatt, bell: cmpBell, bt: cmpBt,
-        idle: cmpIdle, control: cmpControl
+        t3: cmpT3, usage: cmpUsage, vol: cmpVol, wifi: cmpWifi, batt: cmpBatt,
+        bell: cmpBell, bt: cmpBt, idle: cmpIdle, control: cmpControl
     })
 
     // One slot per configured module: loads the module's component when the
@@ -323,6 +323,28 @@ PanelWindow {
     function hoverPanelAt(position) {
         if (!Popouts.open)
             return;
+
+        // Usage is registered as one stable popout anchor, but its providers
+        // remain separate hover targets. Recover the provider before the
+        // generic active-panel check so moving across an already-open Usage
+        // module updates its content without moving the popout.
+        const usageItem = panelAnchors.usage;
+        if (usageItem && usageItem.visible
+                && usageItem.providerAtScenePoint !== undefined) {
+            const provider = usageItem.providerAtScenePoint(position);
+            if (provider !== "") {
+                Usage.selected = provider;
+                if (Popouts.currentName === "usage") {
+                    if (pendingHoverName !== "")
+                        cancelHover(pendingHoverName);
+                } else {
+                    hoverOpen("usage", usageItem.isle ?? Popouts.defaultIsland.usage,
+                        usageItem);
+                }
+                return;
+            }
+        }
+
         const names = Object.keys(panelAnchors);
         for (const name of names) {
             const item = panelAnchors[name];
@@ -412,6 +434,7 @@ PanelWindow {
 
     // Tracks the pointer over whatever the window's input mask admits.
     Item {
+        id: hoverLayer
         anchors.fill: parent
         z: 100
 
@@ -419,7 +442,11 @@ PanelWindow {
             id: barHover
             blocking: false
 
-            onPointChanged: barWindow.hoverPanelAt(point.position)
+            onPointChanged: {
+                const scenePoint = hoverLayer.mapToItem(null,
+                    point.position.x, point.position.y);
+                barWindow.hoverPanelAt(scenePoint);
+            }
 
             onHoveredChanged: {
                 if (hovered) {
@@ -747,70 +774,78 @@ PanelWindow {
                 delegate: ModuleSlot { col: "right"; colList: Settings.mods.right }
             }
 
-            // T3 + model usage travel as one module: the chips share the AI
-            // corner and their internal divider (design v2 "T3 usage chips").
             Component {
                 id: cmpT3
 
                 Row {
-                    id: t3Row
+                    id: t3Module
+
+                    property string isle: "right"
+                    property bool dividerBefore: false
+                    spacing: 1
+
+                    Component.onCompleted: barWindow.registerPanel("t3code", t3Chip)
+                    Component.onDestruction: barWindow.unregisterPanel("t3code", t3Chip)
+
+                    Divider {
+                        visible: t3Module.dividerBefore
+                    }
+
+                    T3Chip {
+                        id: t3Chip
+                        displayMode: barWindow.layoutMode
+                        held: barWindow.popoutOpen("t3code")
+                        onClicked: barWindow.togglePopout("t3code", t3Module.isle, t3Chip)
+                        onEntered: barWindow.hoverOpen("t3code", t3Module.isle, t3Chip)
+                        onExited: barWindow.cancelHover("t3code")
+                    }
+                }
+            }
+
+            Component {
+                id: cmpUsage
+
+                Row {
+                    id: usageModule
 
                     property string isle: "right"
                     property bool dividerBefore: false
                     property bool dividerAfter: false
                     spacing: 1
 
-                    Component.onCompleted: {
-                        barWindow.registerPanel("t3code", t3Chip);
-                        barWindow.registerPanel("usage", usageChips);
+                    Component.onCompleted: barWindow.registerPanel("usage", usageChips)
+                    Component.onDestruction: barWindow.unregisterPanel("usage", usageChips)
+
+                    Divider {
+                        visible: usageModule.dividerBefore
                     }
-                    Component.onDestruction: {
-                        barWindow.unregisterPanel("t3code", t3Chip);
-                        barWindow.unregisterPanel("usage", usageChips);
+
+                    // Keep one anchor for the grouped provider module: changing
+                    // Claude/Codex/Kimi content must not slide the panel.
+                    UsageChips {
+                        id: usageChips
+                        property string isle: usageModule.isle
+                        displayMode: barWindow.layoutMode
+                        held: barWindow.popoutOpen("usage")
+                        onChipClicked: key => {
+                            if (barWindow.popoutOpen("usage") && Usage.selected === key) {
+                                Popouts.close();
+                            } else {
+                                Usage.selected = key;
+                                Popouts.openPanel("usage", usageModule.isle,
+                                    barWindow.anchorOf(usageChips));
+                            }
+                        }
+                        onChipEntered: key => {
+                            if (Popouts.open)
+                                Usage.selected = key;
+                            barWindow.hoverOpen("usage", usageModule.isle, usageChips);
+                        }
+                        onChipExited: barWindow.cancelHover("usage")
                     }
 
                     Divider {
-                        visible: t3Row.dividerBefore
-                    }
-
-            T3Chip {
-                id: t3Chip
-                displayMode: barWindow.layoutMode
-                held: barWindow.popoutOpen("t3code")
-                onClicked: barWindow.togglePopout("t3code", t3Row.isle, t3Chip)
-                onEntered: barWindow.hoverOpen("t3code", t3Row.isle, t3Chip)
-                onExited: barWindow.cancelHover("t3code")
-            }
-
-            Divider {}
-
-            // Anchored as one module rather than per provider chip: the
-            // panel should not slide sideways as hover-through switches
-            // between providers.
-            UsageChips {
-                id: usageChips
-                displayMode: barWindow.layoutMode
-                held: barWindow.popoutOpen("usage")
-                onChipClicked: key => {
-                    if (barWindow.popoutOpen("usage") && Usage.selected === key) {
-                        Popouts.close();
-                    } else {
-                        Usage.selected = key;
-                        Popouts.openPanel("usage", t3Row.isle, barWindow.anchorOf(usageChips));
-                    }
-                }
-                onChipEntered: key => {
-                    // Hover-through: with any popout open, hovering a chip
-                    // shows that provider's usage view (design 1d).
-                    if (Popouts.open)
-                        Usage.selected = key;
-                    barWindow.hoverOpen("usage", t3Row.isle, usageChips);
-                }
-                onChipExited: barWindow.cancelHover("usage")
-            }
-
-                    Divider {
-                        visible: t3Row.dividerAfter
+                        visible: usageModule.dividerAfter
                     }
                 }
             }

@@ -1,11 +1,11 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 1;
+var VERSION = 2;
 
 var MODULE_IDS = [
-    "ws", "media", "clock", "weather", "t3", "vol", "wifi", "batt", "bell", "bt",
-    "idle", "control"
+    "ws", "media", "clock", "weather", "t3", "usage", "vol", "wifi", "batt", "bell",
+    "bt", "idle", "control"
 ];
 
 var FONT_CHOICES = [
@@ -19,9 +19,9 @@ function defaultMods() {
         left: [{ id: "ws", on: true }, { id: "media", on: false }],
         center: [{ id: "clock", on: true }, { id: "weather", on: true }],
         right: [
-            { id: "t3", on: true }, { id: "vol", on: true }, { id: "wifi", on: true },
-            { id: "batt", on: true }, { id: "bell", on: true }, { id: "bt", on: false },
-            { id: "idle", on: true }, { id: "control", on: true }
+            { id: "t3", on: true }, { id: "usage", on: true }, { id: "vol", on: true },
+            { id: "wifi", on: true }, { id: "batt", on: true }, { id: "bell", on: true },
+            { id: "bt", on: false }, { id: "idle", on: true }, { id: "control", on: true }
         ]
     };
 }
@@ -110,6 +110,47 @@ function normalizeMods(raw) {
     return next;
 }
 
+// Schema 1 exposed T3 Code and model usage as one `t3` module. Preserve that
+// composite module's placement and visibility when loading an older layout by
+// inserting the new `usage` entry directly after it. Current-schema layouts
+// continue through normal normalization, where missing ids use their defaults.
+function migrateMods(raw, sourceVersion) {
+    if ((sourceVersion !== undefined && sourceVersion !== 1)
+            || !raw || typeof raw !== "object")
+        return normalizeMods(raw);
+
+    var migrated = { left: [], center: [], right: [] };
+    var usagePresent = false;
+    ["left", "center", "right"].forEach(function(col) {
+        var list = Array.isArray(raw[col]) ? raw[col] : [];
+        migrated[col] = list.map(function(entry) {
+            return entry && typeof entry === "object"
+                ? { id: entry.id, on: entry.on }
+                : entry;
+        });
+        if (list.some(function(entry) { return entry && entry.id === "usage"; }))
+            usagePresent = true;
+    });
+
+    if (!usagePresent) {
+        for (var i = 0; i < 3; i++) {
+            var col = ["left", "center", "right"][i];
+            var t3Index = migrated[col].findIndex(function(entry) {
+                return entry && entry.id === "t3";
+            });
+            if (t3Index === -1)
+                continue;
+            var t3 = migrated[col][t3Index];
+            migrated[col].splice(t3Index + 1, 0, {
+                id: "usage",
+                on: typeof t3.on === "boolean" ? t3.on : true
+            });
+            break;
+        }
+    }
+    return normalizeMods(migrated);
+}
+
 function merge(parsed) {
     var d = defaults();
     if (!parsed || typeof parsed !== "object")
@@ -133,7 +174,7 @@ function merge(parsed) {
         warmth: intIn(parsed.warmth, 1900, 4500, 50, d.warmth),
         osd: enumIn(parsed.osd, ["top", "bottom"], d.osd),
         pollMax: enumIn(parsed.pollMax, [60, 300, 600], d.pollMax),
-        mods: normalizeMods(parsed.mods),
+        mods: migrateMods(parsed.mods, parsed.v),
         wallAccent: hexIn(parsed.wallAccent, ""),
         wallAccentFor: typeof parsed.wallAccentFor === "string" ? parsed.wallAccentFor : ""
     };
@@ -164,6 +205,7 @@ var exported = {
     defaults: defaults,
     defaultMods: defaultMods,
     normalizeMods: normalizeMods,
+    migrateMods: migrateMods,
     merge: merge,
     serialize: serialize,
     parse: parse

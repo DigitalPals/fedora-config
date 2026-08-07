@@ -24,11 +24,11 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id), ["clock", "weather"]);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["t3", "vol", "wifi", "batt", "bell", "bt", "idle", "control"]);
+        ["t3", "usage", "vol", "wifi", "batt", "bell", "bt", "idle", "control"]);
     assert.equal(d.mods.left[1].on, false);
-    assert.equal(d.mods.right[5].on, false);
-    assert.equal(d.mods.right[6].on, true);
+    assert.equal(d.mods.right[6].on, false);
     assert.equal(d.mods.right[7].on, true);
+    assert.equal(d.mods.right[8].on, true);
 });
 
 test("merge over a partial object fills the rest from defaults", () => {
@@ -92,7 +92,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.equal(next.left[0].on, false);
     assert.deepEqual(next.center.map(m => m.id), ["clock", "weather"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["t3", "wifi", "batt", "bell", "bt", "idle", "control"]);
+        ["t3", "usage", "wifi", "batt", "bell", "bt", "idle", "control"]);
     assert.ok(next.left.some(m => m.id === "media" && m.on === false),
         "appended module keeps its default enable flag");
 });
@@ -114,10 +114,70 @@ test("Idle inhibit and Control Center persist in any module column", () => {
     assert.ok(!next.right.some(m => m.id === "idle" || m.id === "control"));
 });
 
+test("version one layouts insert usage after t3 with its column and enabled state", () => {
+    const enabled = H.merge({
+        v: 1,
+        mods: {
+            left: [{ id: "ws", on: true }],
+            center: [{ id: "t3", on: true }, { id: "clock", on: true }],
+            right: [{ id: "vol", on: true }]
+        }
+    }).mods;
+    assert.deepEqual(enabled.center.slice(0, 3), [
+        { id: "t3", on: true },
+        { id: "usage", on: true },
+        { id: "clock", on: true }
+    ]);
+
+    const disabled = H.merge({
+        v: 1,
+        mods: {
+            left: [],
+            center: [],
+            right: [{ id: "vol", on: true }, { id: "t3", on: false }]
+        }
+    }).mods;
+    assert.deepEqual(disabled.right.slice(0, 3), [
+        { id: "vol", on: true },
+        { id: "t3", on: false },
+        { id: "usage", on: false }
+    ]);
+});
+
+test("unversioned layouts receive the same composite t3 migration", () => {
+    const mods = H.merge({
+        mods: {
+            left: [{ id: "t3", on: false }, { id: "media", on: true }],
+            center: [],
+            right: []
+        }
+    }).mods;
+    assert.deepEqual(mods.left.slice(0, 3), [
+        { id: "t3", on: false },
+        { id: "usage", on: false },
+        { id: "media", on: true }
+    ]);
+});
+
+test("version two normalization preserves usage independently and uniquely", () => {
+    const mods = H.merge({
+        v: 2,
+        mods: {
+            left: [{ id: "usage", on: false }, { id: "usage", on: true }],
+            center: [{ id: "t3", on: true }],
+            right: []
+        }
+    }).mods;
+    assert.deepEqual(mods.left.slice(0, 1), [{ id: "usage", on: false }]);
+    assert.deepEqual(mods.center.slice(0, 1), [{ id: "t3", on: true }]);
+    assert.equal([...mods.left, ...mods.center, ...mods.right]
+        .filter(m => m.id === "usage").length, 1);
+});
+
 test("serialize is stable, versioned, and round-trips through merge", () => {
     const d = H.defaults();
     const text = H.serialize(d);
-    assert.match(text, /^\{\n  "v": 1,\n  "wall":/);
+    assert.match(text, /^\{\n  "v": 2,\n  "wall":/);
     assert.ok(text.endsWith("\n"));
     const reparsed = H.merge(H.parse(text));
     assert.equal(H.serialize(reparsed), text);
