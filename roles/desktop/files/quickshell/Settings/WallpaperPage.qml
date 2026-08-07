@@ -52,6 +52,8 @@ Item {
             required property int index
             readonly property bool shuffle: index === Wallpaper.files.length
             readonly property string imagePath: shuffle ? "" : Wallpaper.files[index]
+            readonly property string thumbnailSource: shuffle ? ""
+                : Wallpaper.thumbnailFor(imagePath)
             readonly property bool current: !shuffle
                 && page.basename(Wallpaper.current) === page.basename(imagePath)
 
@@ -63,6 +65,16 @@ Item {
                 : "Use wallpaper " + page.basename(imagePath)
             Accessible.selected: current
             Accessible.onPressAction: cell.activate()
+
+            Component.onCompleted: {
+                if (!shuffle)
+                    Wallpaper.requestThumbnail(imagePath);
+            }
+
+            onImagePathChanged: {
+                if (!shuffle)
+                    Wallpaper.requestThumbnail(imagePath);
+            }
 
             function activate() {
                 wallGrid.currentIndex = index;
@@ -123,9 +135,10 @@ Item {
                     id: wallImage
                     anchors.fill: parent
                     visible: !cell.shuffle
-                    source: cell.imagePath
+                    source: cell.thumbnailSource
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
+                    cache: true
                     sourceSize.width: 330
                 }
 

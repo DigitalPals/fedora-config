@@ -27,6 +27,10 @@ Singleton {
     property string pendingDir: ""
     property bool candidateLoadingSeen: false
     property string directoryError: ""
+    property var thumbnailPaths: ({})
+    property var thumbnailPending: ({})
+    property var thumbnailQueue: []
+    property string activeThumbnailSource: ""
     readonly property string currentIdentity: dir + "/" + Settings.wall
 
     readonly property string current:
@@ -64,6 +68,36 @@ Singleton {
                 next.push(url.toString());
         }
         files = next;
+    }
+
+    // The settings grid asks only for its visible delegates. The helper keeps
+    // 640x384 JPEG previews on disk and returns a source-revision query so a
+    // changed wallpaper bypasses Qt's in-memory pixmap cache. Cached paths stay
+    // in this singleton when the Settings page is closed and reopened.
+    function thumbnailFor(path) {
+        return thumbnailPaths[path] || "";
+    }
+
+    function requestThumbnail(path) {
+        if (path === "" || thumbnailPending[path])
+            return;
+        const pending = Object.assign({}, thumbnailPending);
+        pending[path] = true;
+        thumbnailPending = pending;
+        thumbnailQueue = thumbnailQueue.concat([path]);
+        startNextThumbnail();
+    }
+
+    function startNextThumbnail() {
+        if (thumbnailProc.running || activeThumbnailSource !== ""
+                || thumbnailQueue.length === 0)
+            return;
+        activeThumbnailSource = thumbnailQueue[0];
+        thumbnailQueue = thumbnailQueue.slice(1);
+        thumbnailProc.command = ["python3",
+            Quickshell.shellDir + "/scripts/wallpaper-thumbnail.py",
+            activeThumbnailSource];
+        thumbnailProc.running = true;
     }
 
     function requestDirectory(path) {
@@ -250,6 +284,34 @@ Singleton {
             root.accentBusy = false;
             if (root.queuedAccentFor !== "")
                 Qt.callLater(root.startQueuedAccent);
+        }
+    }
+
+    Process {
+        id: thumbnailProc
+
+        stdout: StdioCollector {
+            id: thumbnailOut
+        }
+
+        onExited: exitCode => {
+            const completed = root.activeThumbnailSource;
+            root.activeThumbnailSource = "";
+            const pending = Object.assign({}, root.thumbnailPending);
+            delete pending[completed];
+            root.thumbnailPending = pending;
+
+            const cached = thumbnailOut.text.trim();
+            const paths = Object.assign({}, root.thumbnailPaths);
+            if (exitCode === 0 && cached.indexOf("file:") === 0)
+                paths[completed] = cached;
+            else {
+                // Preserve the old behavior if thumbnail generation fails.
+                paths[completed] = completed;
+                console.warn("wallpaper thumbnail generation failed for", completed);
+            }
+            root.thumbnailPaths = paths;
+            Qt.callLater(root.startNextThumbnail);
         }
     }
 
