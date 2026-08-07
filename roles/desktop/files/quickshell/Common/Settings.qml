@@ -26,6 +26,7 @@ Singleton {
 
     // ---- Persisted settings ----------------------------------------------
     property string wall: defaults.wall
+    property string wallDir: defaults.wallDir
     property string shuffle: defaults.shuffle
     property int barHeight: defaults.barHeight
     property int barRadius: defaults.barRadius
@@ -57,6 +58,11 @@ Singleton {
     property bool savePending: false
     property bool saveError: false
     property double lastSavedAt: 0
+    property var resetSnapshot: null
+    property string resetLabel: ""
+    property string announcement: ""
+    property bool migrationPending: false
+    readonly property bool undoAvailable: resetSnapshot !== null
 
     // Guards saves while loaded values are being applied.
     property bool ready: false
@@ -92,7 +98,7 @@ Singleton {
 
     function sectionDirty(section) {
         const map = {
-            wallpaper: ["wall", "shuffle"],
+            wallpaper: ["wall", "wallDir", "shuffle"],
             appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
             bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
             modules: ["mods"],
@@ -103,45 +109,104 @@ Singleton {
     }
 
     // ---- Writers ---------------------------------------------------------
+    function clearUndo() {
+        resetTimer.stop();
+        resetSnapshot = null;
+        resetLabel = "";
+    }
+
     function set(key, value) {
+        clearUndo();
+        migrationPending = false;
+        root[key] = value;
+    }
+
+    function setInternal(key, value) {
         root[key] = value;
     }
 
     function setModuleEnabled(id, on) {
+        clearUndo();
+        migrationPending = false;
         const next = { left: [], center: [], right: [] };
         for (const col of ["left", "center", "right"])
-            next[col] = mods[col].map(m => m.id === id ? ({ id: m.id, on: on }) : m);
+            next[col] = mods[col].map(m => m.id === id
+                ? ({ id: m.id, on: on, detail: m.detail }) : m);
+        mods = next;
+    }
+
+    function setModuleDetail(id, detail) {
+        clearUndo();
+        migrationPending = false;
+        const next = { left: [], center: [], right: [] };
+        for (const col of ["left", "center", "right"])
+            next[col] = mods[col].map(m => m.id === id
+                ? ({ id: m.id, on: m.on, detail: SettingsHelpers.detailIn(detail) }) : m);
         mods = next;
     }
 
     function setModuleOrder(left, center, right) {
+        clearUndo();
+        migrationPending = false;
         mods = SettingsHelpers.normalizeMods({ left: left, center: center, right: right });
     }
 
-    function resetKeys(keys) {
+    function resetKeys(keys, label) {
+        migrationPending = false;
+        const previous = {};
+        for (const key of keys)
+            previous[key] = SettingsHelpers.clone(root[key]);
+        resetSnapshot = previous;
+        resetLabel = label || (keys.length === 1 ? "Setting" : "Settings");
         for (const key of keys)
             root[key] = key === "mods" ? SettingsHelpers.defaultMods() : defaults[key];
+        announcement = resetLabel + " reset. Undo available for eight seconds.";
+        resetTimer.restart();
     }
 
     function resetSection(section) {
         const map = {
-            wallpaper: ["wall", "shuffle"],
+            wallpaper: ["wall", "wallDir", "shuffle"],
             appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
             bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
             modules: ["mods"],
             system: ["clock24", "unit", "warmth", "osd", "pollMax"]
         };
-        resetKeys(map[section] || []);
+        const labels = {
+            wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar layout",
+            modules: "Modules", system: "System"
+        };
+        resetKeys(map[section] || [], labels[section] || "Settings");
     }
 
     function resetAll() {
-        resetKeys(Object.keys(defaults).filter(key => key !== "wallAccent" && key !== "wallAccentFor"));
+        resetKeys(Object.keys(defaults).filter(key => key !== "wallAccent" && key !== "wallAccentFor"),
+            "All settings");
+    }
+
+    function undoReset() {
+        if (!resetSnapshot)
+            return;
+        const previous = resetSnapshot;
+        resetTimer.stop();
+        for (const key of Object.keys(previous))
+            root[key] = SettingsHelpers.clone(previous[key]);
+        resetSnapshot = null;
+        const label = resetLabel;
+        resetLabel = "";
+        announcement = label + " restored.";
+    }
+
+    function retrySave() {
+        savePending = true;
+        saveNow();
     }
 
     // ---- Persistence -----------------------------------------------------
     function snapshot() {
         return {
-            wall: wall, shuffle: shuffle, barHeight: barHeight, barRadius: barRadius,
+            wall: wall, wallDir: wallDir, shuffle: shuffle,
+            barHeight: barHeight, barRadius: barRadius,
             font: font, accent: accent, accentWall: accentWall, position: position,
             floating: floating, gap: gap, autoHide: autoHide, exclusive: exclusive,
             monitor: monitor, clock24: clock24, unit: unit, warmth: warmth,
@@ -158,7 +223,11 @@ Singleton {
         if (loaded && SettingsHelpers.serialize(merged) === SettingsHelpers.serialize(snapshot()))
             return;
         ready = false;
+        saveTimer.stop();
+        savePending = false;
+        clearUndo();
         wall = merged.wall;
+        wallDir = merged.wallDir;
         shuffle = merged.shuffle;
         barHeight = merged.barHeight;
         barRadius = merged.barRadius;
@@ -180,6 +249,7 @@ Singleton {
         wallAccent = merged.wallAccent;
         wallAccentFor = merged.wallAccentFor;
         ready = true;
+        migrationPending = parsed !== null && parsed.v !== 3;
         firstRun = parsed === null;
         loaded = true;
     }
@@ -187,26 +257,31 @@ Singleton {
     function saveNow() {
         if (!ready)
             return;
+        const retrying = saveError;
         saveError = false;
         try {
             store.setText(SettingsHelpers.serialize(snapshot()));
             savePending = false;
             lastSavedAt = Date.now();
+            if (retrying)
+                announcement = "Settings saved.";
         } catch (error) {
             savePending = false;
             saveError = true;
+            announcement = "Could not save settings. Retry is available.";
             console.warn("settings save failed:", error);
         }
     }
 
     function scheduleSave() {
-        if (!ready)
+        if (!ready || migrationPending)
             return;
         savePending = true;
         saveTimer.restart();
     }
 
     onWallChanged: scheduleSave()
+    onWallDirChanged: scheduleSave()
     onShuffleChanged: scheduleSave()
     onBarHeightChanged: scheduleSave()
     onBarRadiusChanged: scheduleSave()
@@ -232,6 +307,12 @@ Singleton {
         id: saveTimer
         interval: 400
         onTriggered: root.saveNow()
+    }
+
+    Timer {
+        id: resetTimer
+        interval: 8000
+        onTriggered: root.clearUndo()
     }
 
     FileView {

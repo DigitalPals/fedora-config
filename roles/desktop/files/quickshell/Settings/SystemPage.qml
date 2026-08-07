@@ -10,30 +10,11 @@ SettingsPage {
     // One 1s tick drives both the live clock caption and the poll
     // countdown, derived from Usage state without mutating it.
     property double nowSecs: Date.now() / 1000
-    property bool resetArmed: false
-
     Timer {
         interval: 1000
         running: true
         repeat: true
         onTriggered: page.nowSecs = Date.now() / 1000
-    }
-
-    Timer {
-        id: resetConfirmTimer
-        interval: 4000
-        onTriggered: page.resetArmed = false
-    }
-
-    function requestResetAll() {
-        if (!resetArmed) {
-            resetArmed = true;
-            resetConfirmTimer.restart();
-            return;
-        }
-        resetConfirmTimer.stop();
-        resetArmed = false;
-        Settings.resetAll();
     }
 
     function openConfig() {
@@ -99,7 +80,7 @@ SettingsPage {
 
         Text {
             width: parent.width
-            leftPadding: page.width < 440 ? 0 : 100
+            leftPadding: page.width < 440 ? 0 : Settings.font === "mono" ? 114 : 100
             text: "Tint applies while Night light is on in Control Center — "
                 + (SysInfo.nightLight ? "currently on" : "currently off")
             font.family: Theme.fontMenu
@@ -178,10 +159,10 @@ SettingsPage {
                 }
 
                 SettingsAction {
-                    text: page.resetArmed ? "Confirm reset" : "Reset all"
-                    glyph: page.resetArmed ? "" : "↺"
+                    text: "Reset all"
+                    glyph: "↺"
                     danger: true
-                    onTriggered: page.requestResetAll()
+                    onTriggered: Settings.resetAll()
                 }
             }
         }

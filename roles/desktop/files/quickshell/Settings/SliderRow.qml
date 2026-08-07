@@ -13,9 +13,11 @@ Item {
     property alias step: slider.step
     property alias dimmed: slider.dimmed
     property alias gradientTrack: slider.gradientTrack
+    property alias hueTrack: slider.hueTrack
     property string unit: "px"
     property bool dirty: false
     readonly property bool narrow: width < 440
+    readonly property int labelWidth: Settings.font === "mono" ? 104 : 90
     signal moved(real value)
     signal resetRequested()
 
@@ -25,7 +27,7 @@ Item {
         id: labelText
         anchors.left: parent.left
         y: root.narrow ? 0 : (parent.height - height) / 2
-        width: root.narrow ? parent.width - 100 : 90
+        width: root.narrow ? parent.width - 100 : root.labelWidth
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
@@ -34,9 +36,10 @@ Item {
 
     SettingsSlider {
         id: slider
-        x: root.narrow ? 0 : 90
+        x: root.narrow ? 0 : root.labelWidth
         y: root.narrow ? 23 : (parent.height - height) / 2
         width: root.narrow ? parent.width : valueText.x - x - 10
+        accessibleName: root.label
         onMoved: value => root.moved(value)
     }
 

@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Controls as Controls
 import "../Common"
+import "../Common/LayoutHelpers.js" as LayoutHelpers
 
 // Modules page (design v2): live mini-bar preview and three drag-and-drop
 // columns. Rows never shift during a drag — an overlay caret marks the
@@ -11,14 +13,14 @@ Item {
 
     readonly property var moduleMeta: ({
         ws: { name: "Workspaces", short: "Workspaces" },
-        media: { name: "Media", short: "Media", tag: "while playing" },
-        clock: { name: "Clock", short: "Clock" },
-        weather: { name: "Weather", short: "Weather" },
-        t3: { name: "T3 Code", short: "T3" },
-        usage: { name: "Model usage", short: "Usage" },
-        vol: { name: "Volume", short: "Vol" },
+        media: { name: "Media", short: "Media", tag: "while playing", detail: true },
+        clock: { name: "Clock", short: "Clock", detail: true },
+        weather: { name: "Weather", short: "Weather", detail: true },
+        t3: { name: "T3 Code", short: "T3", detail: true },
+        usage: { name: "Model usage", short: "Usage", detail: true },
+        vol: { name: "Volume", short: "Vol", detail: true },
         wifi: { name: "Wi-Fi", short: "Wi-Fi" },
-        batt: { name: "Battery", short: "Batt", tag: "on laptops" },
+        batt: { name: "Battery", short: "Batt", tag: "on laptops", detail: true },
         bell: { name: "Notifications", short: "Bell" },
         bt: { name: "Bluetooth", short: "BT", tag: "when connected" },
         idle: { name: "Idle inhibit", short: "Idle" },
@@ -29,6 +31,7 @@ Item {
     property var dragMod: null     // { id, name, fromCol }
     property var dropAt: null      // { col, idx }, idx ∈ [0, len]
     property point dragPos: Qt.point(0, 0)
+    property string announcement: ""
     readonly property bool dragActive: dragMod !== null
 
     readonly property int pitch: 31          // 28px row + 3px gap
@@ -37,8 +40,12 @@ Item {
     readonly property var columnOrder: ["left", "center", "right"]
 
     function cancelDrag() {
+        const focusId = dragMod ? dragMod.id : "";
         dragMod = null;
         dropAt = null;
+        edgeScroll.stop();
+        if (focusId !== "")
+            Qt.callLater(() => focusModule(focusId));
     }
 
     function columnIdAt(x, y) {
@@ -62,18 +69,32 @@ Item {
             dropAt = null;
             return;
         }
-        const col = columnIdAt(pos.x, pos.y);
-        const list = Settings.mods[col];
-        const local = pos.y - rowsStartY;
-        const idx = Math.max(0, Math.min(list.length, Math.floor((local + pitch / 2) / pitch)));
-        if (!dropAt || dropAt.col !== col || dropAt.idx !== idx)
-            dropAt = { col: col, idx: idx };
+        let next;
+        if (stacked) {
+            next = LayoutHelpers.stackedDropIndex([
+                { id: "left", y: colL.y, height: colL.height, rowsStart: rowsStartY,
+                    pitch: pitch, length: Settings.mods.left.length },
+                { id: "center", y: colC.y, height: colC.height, rowsStart: rowsStartY,
+                    pitch: pitch, length: Settings.mods.center.length },
+                { id: "right", y: colR.y, height: colR.height, rowsStart: rowsStartY,
+                    pitch: pitch, length: Settings.mods.right.length }
+            ], pos.y);
+        } else {
+            const col = columnIdAt(pos.x, pos.y);
+            const list = Settings.mods[col];
+            const local = pos.y - rowsStartY;
+            next = { col: col, idx: Math.max(0, Math.min(list.length,
+                Math.floor((local + pitch / 2) / pitch))) };
+        }
+        if (!dropAt || dropAt.col !== next.col || dropAt.idx !== next.idx)
+            dropAt = next;
     }
 
     function keyboardToggle(row) {
         if (!dragActive) {
             dragMod = { id: row.modelData.id, name: row.meta.name, fromCol: row.colId };
             dropAt = { col: row.colId, idx: row.index };
+            announcement = row.meta.name + " picked up. Use arrow keys to move.";
         } else {
             commitDrag();
         }
@@ -97,6 +118,7 @@ Item {
             idx++;
         idx = Math.max(0, Math.min(Settings.mods[col].length, idx));
         dropAt = { col: col, idx: idx };
+        revealDrop();
         return true;
     }
 
@@ -106,9 +128,9 @@ Item {
             return;
         }
         const mods = {
-            left: Settings.mods.left.map(m => ({ id: m.id, on: m.on })),
-            center: Settings.mods.center.map(m => ({ id: m.id, on: m.on })),
-            right: Settings.mods.right.map(m => ({ id: m.id, on: m.on }))
+            left: Settings.mods.left.map(m => ({ id: m.id, on: m.on, detail: m.detail })),
+            center: Settings.mods.center.map(m => ({ id: m.id, on: m.on, detail: m.detail })),
+            right: Settings.mods.right.map(m => ({ id: m.id, on: m.on, detail: m.detail }))
         };
         const srcList = mods[dragMod.fromCol];
         const srcIdx = srcList.findIndex(m => m.id === dragMod.id);
@@ -122,8 +144,83 @@ Item {
         if (dropAt.col === dragMod.fromCol && srcIdx < idx)
             idx--;
         mods[dropAt.col].splice(idx, 0, item);
+        const focusId = item.id;
+        announcement = (moduleMeta[item.id] ? moduleMeta[item.id].name : item.id)
+            + " dropped in " + dropAt.col + " position " + (idx + 1) + ".";
         Settings.setModuleOrder(mods.left, mods.center, mods.right);
-        cancelDrag();
+        dragMod = null;
+        dropAt = null;
+        edgeScroll.stop();
+        Qt.callLater(() => focusModule(focusId));
+    }
+
+    function focusModule(id) {
+        const columns = [colL, colC, colR];
+        for (const column of columns) {
+            const row = column.rowForId(id);
+            if (row) {
+                row.forceActiveFocus();
+                revealRow(row);
+                return;
+            }
+        }
+    }
+
+    function focusAdjacent(row, key) {
+        let colIndex = columnOrder.indexOf(row.colId);
+        let rowIndex = row.index;
+        if (key === Qt.Key_Up)
+            rowIndex--;
+        else if (key === Qt.Key_Down)
+            rowIndex++;
+        else if (key === Qt.Key_Left)
+            colIndex--;
+        else if (key === Qt.Key_Right)
+            colIndex++;
+        else
+            return false;
+        colIndex = Math.max(0, Math.min(columnOrder.length - 1, colIndex));
+        const column = colIndex === 0 ? colL : colIndex === 1 ? colC : colR;
+        rowIndex = Math.max(0, Math.min(column.list.length - 1, rowIndex));
+        const target = column.rowAt(rowIndex);
+        if (target) {
+            target.forceActiveFocus();
+            revealRow(target);
+        }
+        return true;
+    }
+
+    function revealRow(row) {
+        const point = row.mapToItem(columnsRow, 0, 0);
+        if (point.y < columnsViewport.contentY)
+            columnsViewport.contentY = Math.max(0, point.y - 4);
+        else if (point.y + row.height > columnsViewport.contentY + columnsViewport.height)
+            columnsViewport.contentY = Math.min(columnsViewport.contentHeight - columnsViewport.height,
+                point.y + row.height - columnsViewport.height + 4);
+    }
+
+    function revealDrop() {
+        if (!dropAt)
+            return;
+        const column = dropAt.col === "left" ? colL : dropAt.col === "center" ? colC : colR;
+        const y = column.y + rowsStartY + dropAt.idx * pitch;
+        if (y < columnsViewport.contentY + 12)
+            columnsViewport.contentY = Math.max(0, y - 12);
+        else if (y > columnsViewport.contentY + columnsViewport.height - 12)
+            columnsViewport.contentY = Math.min(columnsViewport.contentHeight - columnsViewport.height,
+                y - columnsViewport.height + 12);
+    }
+
+    function policyLabel(policy) {
+        return policy === "prefer" ? "Prefer detail"
+            : policy === "compact" ? "Always compact" : "Auto";
+    }
+
+    function cyclePolicy(entry) {
+        const choices = ["auto", "prefer", "compact"];
+        const next = choices[(choices.indexOf(entry.detail) + 1) % choices.length];
+        Settings.setModuleDetail(entry.id, next);
+        announcement = moduleMeta[entry.id].name + " detail policy: " + policyLabel(next) + ".";
     }
 
     // ---- components -------------------------------------------------------
@@ -167,7 +264,19 @@ Item {
         border.width: activeFocus ? 1 : 0
         border.color: activeFocus ? Theme.accent : Qt.rgba(1, 1, 1, 0.14)
         opacity: row.dragged ? 0.35 : modelData.on ? 1 : 0.55
-        activeFocusOnTab: true
+        activeFocusOnTab: index === 0 && (colId === "left"
+            || (Settings.mods.left.length === 0 && colId === "center")
+            || (Settings.mods.left.length === 0 && Settings.mods.center.length === 0
+                && colId === "right"))
+        Accessible.role: Accessible.ListItem
+        Accessible.name: row.meta.name
+        Accessible.description: page.dragActive ? "Drag in progress" : "Press Space to pick up"
+        Accessible.selected: row.dragged
+        Accessible.onPressAction: page.keyboardToggle(row)
+        onActiveFocusChanged: {
+            if (activeFocus)
+                page.revealRow(row);
+        }
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Space) {
@@ -175,6 +284,8 @@ Item {
             } else if (event.key === Qt.Key_Escape && page.dragActive) {
                 page.cancelDrag(); event.accepted = true;
             } else if (page.keyboardMove(event.key)) {
+                event.accepted = true;
+            } else if (!page.dragActive && page.focusAdjacent(row, event.key)) {
                 event.accepted = true;
             }
         }
@@ -193,9 +304,12 @@ Item {
                     if (Math.abs(mouse.x - pressPos.x) + Math.abs(mouse.y - pressPos.y) < 4)
                         return;
                     page.dragMod = { id: row.modelData.id, name: row.meta.name, fromCol: row.colId };
+                    page.announcement = row.meta.name + " picked up.";
+                    edgeScroll.start();
                 }
-                page.dragPos = dragArea.mapToItem(columnsRow, mouse.x, mouse.y);
-                page.updateDrop(page.dragPos);
+                page.dragPos = dragArea.mapToItem(columnsViewport, mouse.x, mouse.y);
+                page.updateDrop(Qt.point(page.dragPos.x,
+                    page.dragPos.y + columnsViewport.contentY));
             }
             onReleased: {
                 if (page.dragActive)
@@ -208,7 +322,7 @@ Item {
         Item {
             anchors.left: parent.left
             anchors.leftMargin: 8
-            anchors.right: rowSwitch.left
+            anchors.right: policyButton.visible ? policyButton.left : rowSwitch.left
             anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             height: parent.height
@@ -250,6 +364,58 @@ Item {
             }
         }
 
+        Rectangle {
+            id: policyButton
+            visible: row.meta.detail === true
+            anchors.right: rowSwitch.left
+            anchors.rightMargin: 1
+            anchors.verticalCenter: parent.verticalCenter
+            width: 22
+            height: 22
+            radius: 5
+            color: policyMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accent
+            activeFocusOnTab: visible
+            onActiveFocusChanged: {
+                if (activeFocus)
+                    page.revealRow(row);
+            }
+            Accessible.role: Accessible.Button
+            Accessible.name: row.meta.name + " detail policy, " + page.policyLabel(row.modelData.detail)
+            Accessible.onPressAction: page.cyclePolicy(row.modelData)
+            Controls.ToolTip.visible: policyMouse.containsMouse
+            Controls.ToolTip.text: page.policyLabel(row.modelData.detail)
+
+            Text {
+                anchors.centerIn: parent
+                text: row.modelData.detail === "compact" ? "C"
+                    : row.modelData.detail === "prefer" ? "D" : "A"
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontCaption
+                color: row.modelData.detail === "auto" ? Theme.textDim : Theme.accent
+            }
+
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    page.cyclePolicy(row.modelData);
+                    event.accepted = true;
+                }
+            }
+
+            MouseArea {
+                id: policyMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    policyButton.forceActiveFocus();
+                    page.cyclePolicy(row.modelData);
+                }
+            }
+        }
+
         SettingsSwitch {
             id: rowSwitch
             anchors.right: parent.right
@@ -258,6 +424,11 @@ Item {
             trackWidth: 22
             trackHeight: 12
             checked: row.modelData.on
+            Accessible.name: "Show " + row.meta.name
+            onActiveFocusChanged: {
+                if (activeFocus)
+                    page.revealRow(row);
+            }
             onToggled: value => Settings.setModuleEnabled(row.modelData.id, value)
         }
     }
@@ -271,6 +442,20 @@ Item {
         readonly property var list: Settings.mods[colId]
         readonly property int naturalHeight: page.rowsStartY
             + list.length * page.pitch
+
+        function rowForId(id) {
+            for (let i = 0; i < rowRepeater.count; i++) {
+                const candidate = rowRepeater.itemAt(i);
+                if (candidate && candidate.modelData.id === id)
+                    return candidate;
+            }
+            return null;
+        }
+
+
+        function rowAt(index) {
+            return rowRepeater.itemAt(index);
+        }
 
         Text {
             text: column.title
@@ -287,6 +472,7 @@ Item {
             spacing: 3
 
             Repeater {
+                id: rowRepeater
                 model: column.list
                 delegate: ModuleRow { colId: column.colId }
             }
@@ -320,7 +506,7 @@ Item {
         id: previewHeader
         label: "LIVE PREVIEW"
         dirty: Settings.modsModified
-        onResetRequested: Settings.resetKeys(["mods"])
+        onResetRequested: Settings.resetKeys(["mods"], "Modules")
     }
 
     Rectangle {
@@ -395,7 +581,8 @@ Item {
         width: columnsViewport.width
         height: page.stacked
             ? colL.naturalHeight + colC.naturalHeight + colR.naturalHeight + 16
-            : columnsViewport.height
+            : Math.max(columnsViewport.height,
+                Math.max(colL.naturalHeight, colC.naturalHeight, colR.naturalHeight))
 
         readonly property real unit: (width - 16) / 3.15
 
@@ -431,12 +618,34 @@ Item {
         }
     }
 
+    Timer {
+        id: edgeScroll
+        interval: 16
+        repeat: true
+        onTriggered: {
+            if (!page.dragActive)
+                return;
+            const edge = 28;
+            let delta = 0;
+            if (page.dragPos.y < edge)
+                delta = -Math.max(2, (edge - page.dragPos.y) / 4);
+            else if (page.dragPos.y > columnsViewport.height - edge)
+                delta = Math.max(2, (page.dragPos.y - columnsViewport.height + edge) / 4);
+            const next = Math.max(0, Math.min(columnsViewport.contentHeight - columnsViewport.height,
+                columnsViewport.contentY + delta));
+            if (next !== columnsViewport.contentY) {
+                columnsViewport.contentY = next;
+                page.updateDrop(Qt.point(page.dragPos.x, page.dragPos.y + next));
+            }
+        }
+    }
+
     Text {
         id: footnote
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        text: "Drag, or press Space to pick up; arrows move; Space drops; Escape cancels. Auto rules: Media while playing · Bluetooth connected · Battery on laptops."
+        text: "Drag, or Space to pick up; arrows move; Space drops; Escape cancels. A = Auto · D = Prefer detail · C = Always compact."
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
         color: Theme.textFaint
@@ -448,7 +657,7 @@ Item {
     Rectangle {
         visible: page.dragActive
         x: columnsViewport.x + page.dragPos.x + 8
-        y: columnsViewport.y + page.dragPos.y - columnsViewport.contentY - 14
+        y: columnsViewport.y + page.dragPos.y - 14
         width: proxyRow.implicitWidth + 16
         height: 28
         radius: 7
@@ -479,5 +688,13 @@ Item {
                 color: Theme.textHi
             }
         }
+    }
+
+    Item {
+        width: 1
+        height: 1
+        opacity: 0
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: page.announcement
     }
 }

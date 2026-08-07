@@ -1,5 +1,6 @@
 import QtQuick
 import "../Common"
+import "../Common/LayoutHelpers.js" as LayoutHelpers
 
 // A glyph button in a bar cluster: nerd-font icon, optional compact label,
 // optional accent (active) or red (alert) pill state.
@@ -13,6 +14,7 @@ Rectangle {
     // width for icons that differ between states. 0 sizes to the glyph.
     property real glyphWidth: 0
     property string label: ""
+    property bool compact: false
     property real labelSize: Theme.barTextSize
     property bool active: false
     // Subtle open-state: the module's popout is expanded below it (t5).
@@ -28,6 +30,9 @@ Rectangle {
     signal wheeled(int steps)
     signal entered
     signal exited
+
+    property real wheelAccumulator: 0
+    readonly property real detailSaving: label === "" ? 0 : labelText.implicitWidth + 4
 
     readonly property color fg: active ? Theme.accentFg : alert ? Theme.redText : held || mouse.hovered ? hoverColor : idleColor
 
@@ -62,7 +67,8 @@ Rectangle {
         }
 
         Text {
-            visible: root.label !== ""
+            id: labelText
+            visible: root.label !== "" && !root.compact
             anchors.verticalCenter: parent.verticalCenter
             text: root.label
             font.family: Theme.fontMenu
@@ -97,7 +103,12 @@ Rectangle {
                 root.clicked(mouse.x);
         }
         onWheel: wheel => {
-            root.wheeled(wheel.angleDelta.y > 0 ? 1 : -1);
+            const delta = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y
+                : wheel.pixelDelta.y * 8;
+            const result = LayoutHelpers.accumulateWheel(root.wheelAccumulator, delta, 120);
+            root.wheelAccumulator = result.accumulator;
+            if (result.steps !== 0)
+                root.wheeled(result.steps);
             wheel.accepted = true;
         }
     }

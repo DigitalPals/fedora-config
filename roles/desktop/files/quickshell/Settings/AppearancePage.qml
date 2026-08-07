@@ -1,7 +1,9 @@
 import QtQuick
 import Quickshell
 import Quickshell.Widgets
+import QtQuick.Controls as Controls
 import "../Common"
+import "../Common/SettingsHelpers.js" as SettingsHelpers
 
 // Appearance page (design v2): live bar miniature, height/radius sliders
 // with presets, menu font picker, accent swatches + from-wallpaper accent.
@@ -10,6 +12,7 @@ SettingsPage {
 
     readonly property var accentChoices: ["#9ecbeb", "#a992e0", "#79b88b", "#d3b47e", "#e8837a"]
     readonly property string tempPreview: Settings.unit === "f" ? "70°" : "21°"
+    readonly property int accentHue: SettingsHelpers.hexHue(Settings.accent, 204)
 
     function pickAccent(value) {
         Settings.set("accent", value);
@@ -159,7 +162,11 @@ SettingsPage {
                         : fontMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
                     border.width: activeFocus ? 1 : 0
                     border.color: Theme.accent
-                    activeFocusOnTab: true
+                    activeFocusOnTab: fontRow.selected
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: fontRow.modelData.label + " menu font"
+                    Accessible.checked: fontRow.selected
+                    Accessible.onPressAction: Settings.set("font", fontRow.modelData.id)
 
                     Keys.onPressed: event => {
                         let next = -1;
@@ -243,6 +250,20 @@ SettingsPage {
             onResetRequested: Settings.resetKeys(["accent", "accentWall"])
         }
 
+        SliderRow {
+            width: parent.width
+            label: "Accent hue"
+            min: 0
+            max: 359
+            step: 1
+            value: page.accentHue
+            unit: "°"
+            hueTrack: true
+            dirty: Settings.accent !== Settings.defaults.accent || Settings.accentWall
+            onMoved: value => page.pickAccent(SettingsHelpers.hueToHex(value))
+            onResetRequested: Settings.resetKeys(["accent", "accentWall"], "Accent")
+        }
+
         Row {
             spacing: 9
 
@@ -260,7 +281,15 @@ SettingsPage {
 
                     width: 26
                     height: 26
-                    activeFocusOnTab: true
+                    activeFocusOnTab: swatch.selected || (index === 0
+                        && (Settings.accentWall
+                            || page.accentChoices.indexOf(Settings.accent) === -1))
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: "Accent preset " + swatch.modelData
+                    Accessible.checked: swatch.selected
+                    Accessible.onPressAction: page.pickAccent(swatch.modelData)
+                    Controls.ToolTip.visible: swatchMouse.containsMouse
+                    Controls.ToolTip.text: "Use accent " + swatch.modelData
 
                     Keys.onPressed: event => {
                         let next = -1;
@@ -297,6 +326,7 @@ SettingsPage {
                     }
 
                     MouseArea {
+                        id: swatchMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
@@ -309,7 +339,7 @@ SettingsPage {
             }
 
             Rectangle {
-                id: wallpaperAccent
+                id: wallpaperAccentDivider
                 anchors.verticalCenter: parent.verticalCenter
                 width: 1
                 height: 16
@@ -317,6 +347,7 @@ SettingsPage {
             }
 
             Rectangle {
+                id: wallpaperAccentButton
                 anchors.verticalCenter: parent.verticalCenter
                 width: fwRow.implicitWidth + 16
                 height: 24
@@ -325,6 +356,10 @@ SettingsPage {
                 activeFocusOnTab: true
                 border.width: activeFocus ? 1 : 0
                 border.color: Wallpaper.accentError !== "" ? Theme.red : Theme.accent
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: "Derive accent from wallpaper"
+                Accessible.checked: Settings.accentWall
+                Accessible.onToggleAction: Settings.set("accentWall", !Settings.accentWall)
 
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -371,7 +406,7 @@ SettingsPage {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        wallpaperAccent.forceActiveFocus();
+                        wallpaperAccentButton.forceActiveFocus();
                         Settings.set("accentWall", !Settings.accentWall);
                     }
                 }

@@ -3,6 +3,7 @@
 # Every Settings/*.qml type must be listed (settings.test.cjs enforces it).
 AppearancePage AppearancePage.qml
 BarLayoutPage BarLayoutPage.qml
+FolderDialog FolderDialog.qml
 ModulesPage ModulesPage.qml
 PickerRow PickerRow.qml
 PillRow PillRow.qml

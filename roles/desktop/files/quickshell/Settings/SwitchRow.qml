@@ -10,6 +10,7 @@ Item {
     property bool checked: false
     property bool dirty: false
     readonly property bool narrow: width < 440
+    readonly property int labelWidth: Settings.font === "mono" ? 104 : 90
     signal toggled(bool value)
     signal resetRequested()
 
@@ -19,7 +20,7 @@ Item {
         id: labelText
         anchors.left: parent.left
         y: root.narrow ? 2 : (parent.height - height) / 2
-        width: root.narrow ? parent.width - 82 : 90
+        width: root.narrow ? parent.width - 82 : root.labelWidth
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
@@ -27,7 +28,7 @@ Item {
     }
 
     Text {
-        x: root.narrow ? 0 : 90
+        x: root.narrow ? 0 : root.labelWidth
         y: root.narrow ? 24 : (parent.height - height) / 2
         width: root.narrow ? parent.width - 4 : control.x - x - 10
         text: root.description
@@ -45,6 +46,7 @@ Item {
         anchors.rightMargin: 2
         y: root.narrow ? 0 : (parent.height - height) / 2
         checked: root.checked
+        Accessible.name: root.label
         onToggled: value => root.toggled(value)
     }
 

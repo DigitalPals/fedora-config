@@ -21,6 +21,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.osd, "top");
     assert.equal(d.pollMax, 300);
     assert.equal(d.shuffle, "Off");
+    assert.equal(d.wallDir, "~/Pictures/Wallpapers");
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id), ["clock", "weather"]);
     assert.deepEqual(d.mods.right.map(m => m.id),
@@ -29,6 +30,8 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.right[6].on, false);
     assert.equal(d.mods.right[7].on, true);
     assert.equal(d.mods.right[8].on, true);
+    assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
+        .every(module => module.detail === "auto"));
 });
 
 test("merge over a partial object fills the rest from defaults", () => {
@@ -124,9 +127,9 @@ test("version one layouts insert usage after t3 with its column and enabled stat
         }
     }).mods;
     assert.deepEqual(enabled.center.slice(0, 3), [
-        { id: "t3", on: true },
-        { id: "usage", on: true },
-        { id: "clock", on: true }
+        { id: "t3", on: true, detail: "auto" },
+        { id: "usage", on: true, detail: "auto" },
+        { id: "clock", on: true, detail: "auto" }
     ]);
 
     const disabled = H.merge({
@@ -138,9 +141,9 @@ test("version one layouts insert usage after t3 with its column and enabled stat
         }
     }).mods;
     assert.deepEqual(disabled.right.slice(0, 3), [
-        { id: "vol", on: true },
-        { id: "t3", on: false },
-        { id: "usage", on: false }
+        { id: "vol", on: true, detail: "auto" },
+        { id: "t3", on: false, detail: "auto" },
+        { id: "usage", on: false, detail: "auto" }
     ]);
 });
 
@@ -153,9 +156,9 @@ test("unversioned layouts receive the same composite t3 migration", () => {
         }
     }).mods;
     assert.deepEqual(mods.left.slice(0, 3), [
-        { id: "t3", on: false },
-        { id: "usage", on: false },
-        { id: "media", on: true }
+        { id: "t3", on: false, detail: "auto" },
+        { id: "usage", on: false, detail: "auto" },
+        { id: "media", on: true, detail: "auto" }
     ]);
 });
 
@@ -168,8 +171,8 @@ test("version two normalization preserves usage independently and uniquely", () 
             right: []
         }
     }).mods;
-    assert.deepEqual(mods.left.slice(0, 1), [{ id: "usage", on: false }]);
-    assert.deepEqual(mods.center.slice(0, 1), [{ id: "t3", on: true }]);
+    assert.deepEqual(mods.left.slice(0, 1), [{ id: "usage", on: false, detail: "auto" }]);
+    assert.deepEqual(mods.center.slice(0, 1), [{ id: "t3", on: true, detail: "auto" }]);
     assert.equal([...mods.left, ...mods.center, ...mods.right]
         .filter(m => m.id === "usage").length, 1);
 });
@@ -177,8 +180,61 @@ test("version two normalization preserves usage independently and uniquely", () 
 test("serialize is stable, versioned, and round-trips through merge", () => {
     const d = H.defaults();
     const text = H.serialize(d);
-    assert.match(text, /^\{\n  "v": 2,\n  "wall":/);
+    assert.match(text, /^\{\n  "v": 3,\n  "wall":/);
     assert.ok(text.endsWith("\n"));
     const reparsed = H.merge(H.parse(text));
     assert.equal(H.serialize(reparsed), text);
+});
+
+test("v1 and v2 layouts migrate to v3 detail policies without losing placement", () => {
+    for (const v of [1, 2]) {
+        const merged = H.merge({
+            v,
+            mods: {
+                left: [{ id: "weather", on: false }],
+                center: [{ id: "clock", on: true }],
+                right: [{ id: "t3", on: true }, ...(v === 2 ? [{ id: "usage", on: false }] : [])]
+            }
+        });
+        assert.equal(merged.mods.left[0].id, "weather");
+        assert.equal(merged.mods.left[0].on, false);
+        assert.ok([...merged.mods.left, ...merged.mods.center, ...merged.mods.right]
+            .every(module => module.detail === "auto"));
+    }
+});
+
+test("wallpaper paths and module detail policies are validated", () => {
+    assert.equal(H.merge({ wallDir: "/mnt/Wall papers" }).wallDir, "/mnt/Wall papers");
+    assert.equal(H.merge({ wallDir: "~/Pictures/Other" }).wallDir, "~/Pictures/Other");
+    assert.equal(H.merge({ wallDir: "relative/path" }).wallDir, H.defaults().wallDir);
+    assert.equal(H.merge({ wallDir: "~/Pictures/../Secrets" }).wallDir, H.defaults().wallDir);
+    const mods = H.normalizeMods({ left: [
+        { id: "media", on: true, detail: "prefer" },
+        { id: "clock", on: true, detail: "invalid" }
+    ]});
+    assert.equal(mods.left[0].detail, "prefer");
+    assert.equal(mods.left[1].detail, "auto");
+});
+
+test("hue conversion stays pastel and contrasts with accent text", () => {
+    function luminance(hex) {
+        const channels = [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16) / 255)
+            .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    }
+    const foreground = luminance("#0e0f13");
+    for (let hue = 0; hue < 360; hue += 15) {
+        const color = H.hueToHex(hue);
+        assert.match(color, /^#[0-9a-f]{6}$/);
+        assert.ok((luminance(color) + 0.05) / (foreground + 0.05) >= 4.5);
+    }
+});
+
+test("reset snapshots restore only the covered values", () => {
+    const current = { accent: "#ffffff", font: "mono", gap: 20 };
+    const snapshot = { accent: "#9ecbeb", font: "oppo" };
+    assert.deepEqual(H.restoreSnapshot(current, snapshot), {
+        accent: "#9ecbeb", font: "oppo", gap: 20
+    });
+    assert.deepEqual(snapshot, { accent: "#9ecbeb", font: "oppo" });
 });

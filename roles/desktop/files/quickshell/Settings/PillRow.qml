@@ -11,6 +11,7 @@ Flow {
     property int pillHeight: 24
     property int padH: 11
     signal picked(var value)
+    readonly property bool anySelected: model.some(item => item.value === current)
 
     spacing: 6
     Repeater {
@@ -32,7 +33,11 @@ Flow {
                 : pillMouse.containsMouse || activeFocus ? Theme.hoverFill : Theme.cardFill
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accent
-            activeFocusOnTab: true
+            activeFocusOnTab: pill.selected || (!root.anySelected && index === 0)
+            Accessible.role: Accessible.RadioButton
+            Accessible.name: pill.modelData.label
+            Accessible.checked: pill.selected
+            Accessible.onPressAction: root.picked(pill.modelData.value)
 
             Keys.onPressed: event => {
                 let next = -1;

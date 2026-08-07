@@ -3,7 +3,7 @@
 The Shell settings window (design v2) makes bar geometry, appearance,
 modules, wallpaper, and system behavior live-configurable, persisted to
 `~/.local/state/quickshell/shell-settings.json`. Automated coverage:
-`node --test roles/desktop/files/quickshell/Common/tests/` (store merge/clamp
+`node --test roles/desktop/files/quickshell/Common/tests/*.test.cjs` (store merge/clamp
 rules, qmldir completeness, IPC single-declaration, typography lint) and
 `tests/verify-xps` (settings IPC liveness). Everything pointer-driven below
 is manual.
@@ -15,6 +15,7 @@ is manual.
 - [ ] Gear in the Control Center footer opens it (and closes the popout).
 - [ ] Right-click anywhere on the bar slab opens it; left-clicks on modules
       still open their popouts.
+- [ ] `Super+,` opens Settings directly without making the menubar focusable.
 - [ ] Esc closes; clicking the scrim closes; opening the launcher closes it
       (focus grab handover).
 - [ ] Opening settings while a popout is open closes the popout first.
@@ -26,17 +27,21 @@ is manual.
 - [ ] Editing the JSON externally applies live (no restart); junk values are
       clamped or reverted to defaults on the next save.
 - [ ] Deleting the file live restores defaults; restart keeps them.
-- [ ] Undo chips appear only when a section differs from defaults; each chip
-      resets exactly its group. "Reset section" resets the current page;
-      System → "Reset all" resets everything.
+- [ ] Reset controls reset exactly their group and show an eight-second
+      `… reset · Undo` footer. Undo restores the snapshot; a new reset replaces
+      it; any manual edit clears it. A forced save failure exposes Retry.
 
 ## Wallpaper page
 
-- [ ] Grid lists `~/Pictures/Wallpapers`; clicking a thumb swaps the
+- [ ] Grid lists the configured wallpaper folder; clicking a thumb swaps the
       wallpaper live and moves the accent ring + ✓.
 - [ ] "Shuffle now" picks a different wallpaper each press.
 - [ ] Rotate 15 min / 1 hour / Daily arms the timer ("Off" disarms).
-- [ ] "Open folder" opens the directory in the file manager.
+- [ ] "Choose folder" stays inside the settings surface. Valid folders,
+      including paths with spaces, preserve the current basename or choose the
+      first alphabetic supported image. Empty/unreadable folders change nothing.
+- [ ] "Open" opens the selected directory in the file manager. Large folders
+      scroll smoothly without constructing every thumbnail at once.
 
 ## Appearance page
 
@@ -49,6 +54,8 @@ is manual.
       settings chrome). "From wallpaper" derives a pastel from the current
       wallpaper (cached in the JSON as `wallAccent`); switching wallpaper
       while enabled re-derives it.
+- [ ] Accent hue sweeps continuously through fixed HSL S=.50/L=.75 colors and
+      turns off wallpaper-derived accent mode.
 
 ## Bar layout page
 
@@ -69,6 +76,8 @@ is manual.
 
 - [ ] Mini preview mirrors order and enablement (disabled = dashed chip),
       including Idle inhibit and Control Center.
+- [ ] Each detail-capable module cycles Auto, Prefer detail, and Always compact;
+      Prefer detail compacts only after Auto modules.
 - [ ] Toggles apply to the bar instantly; auto-rules keep working (Media
       only while playing, Bluetooth only when connected, Battery on
       laptops).
@@ -83,6 +92,9 @@ is manual.
       that popout; the other module still opens normally.
 - [ ] Idle inhibit and Control Center can be reordered within or across
       columns; moving Control Center keeps its popout attached to its module.
+- [ ] In a narrow/stacked settings panel, pointer and keyboard drops use the
+      correct column-relative index, edge dragging scrolls, and focus returns
+      to the dropped row.
 
 ## System page
 
@@ -104,6 +116,15 @@ is manual.
       immediately while its panel stays anchored. From another open popout,
       hovering a provider opens Usage after the normal hover delay and selects
       the provider under the pointer.
+- [ ] Resize/hotplug from a wide output down to 800 logical px: detail compacts
+      Media → Weather → Clock date → T3 → Volume → Battery → Usage, every
+      enabled module remains, clusters retain an 8px gutter, and the center
+      shifts only after all eligible detail is compact.
+- [ ] Fine-grained touchpad scrolling over Volume changes it once per
+      accumulated wheel step, not once per raw event.
+- [ ] Tab/arrow traversal, automatic focus scrolling, roles/states/actions,
+      and Orca announcements work for navigation, custom controls, resets,
+      drag/drop, policy buttons, and save errors.
 - [ ] `journalctl --user -u quickshell.service` free of QML errors and
       binding loops after exercising every page.
 - [ ] `tests/verify-xps` passes.

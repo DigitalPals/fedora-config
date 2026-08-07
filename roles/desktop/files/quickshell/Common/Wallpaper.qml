@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Qt.labs.folderlistmodel
+import "SettingsHelpers.js" as SettingsHelpers
 
 // Wallpaper management: quickshell draws the image on the background layer;
 // this singleton tracks the directory and delegates the current selection to
@@ -13,13 +14,20 @@ import Qt.labs.folderlistmodel
 Singleton {
     id: root
 
-    readonly property string dir: Quickshell.env("HOME") + "/Pictures/Wallpapers"
+    readonly property string dir: Settings.wallDir === "~"
+        ? Quickshell.env("HOME")
+        : Settings.wallDir.indexOf("~/") === 0
+        ? Quickshell.env("HOME") + Settings.wallDir.slice(1) : Settings.wallDir
     property var files: []
     readonly property bool loading: folderModel.status === FolderListModel.Loading
     property bool accentBusy: false
     property string accentError: ""
     property string queuedAccentFor: ""
     property string activeAccentFor: ""
+    property string pendingDir: ""
+    property bool candidateLoadingSeen: false
+    property string directoryError: ""
+    readonly property string currentIdentity: dir + "/" + Settings.wall
 
     readonly property string current:
         Settings.wall !== "" ? url(dir + "/" + Settings.wall) : ""
@@ -28,14 +36,23 @@ Singleton {
         return path.startsWith("file:") ? path : "file://" + path;
     }
 
+    function basename(path) {
+        const raw = path.split("/").pop();
+        try {
+            return decodeURIComponent(raw);
+        } catch (error) {
+            return raw;
+        }
+    }
+
     function set(path) {
-        Settings.set("wall", path.split("/").pop());
+        Settings.set("wall", basename(path));
     }
 
     function shuffle() {
         if (files.length < 2)
             return;
-        const others = files.filter(f => f !== current);
+        const others = files.filter(f => basename(f) !== Settings.wall);
         set(others[Math.floor(Math.random() * others.length)]);
     }
 
@@ -49,6 +66,53 @@ Singleton {
         files = next;
     }
 
+    function requestDirectory(path) {
+        const normalized = SettingsHelpers.pathIn(path, "");
+        if (normalized === "") {
+            directoryError = "Choose an absolute folder or a path under ~/";
+            return;
+        }
+        if (normalized === Settings.wallDir) {
+            directoryError = "";
+            return;
+        }
+        pendingDir = normalized;
+        candidateLoadingSeen = false;
+        directoryError = "";
+        const expanded = normalized === "~" ? Quickshell.env("HOME")
+            : normalized.indexOf("~/") === 0
+            ? Quickshell.env("HOME") + normalized.slice(1) : normalized;
+        candidateModel.folder = url(expanded);
+        candidateTimeout.restart();
+        Qt.callLater(validateCandidate);
+    }
+
+    function validateCandidate() {
+        if (pendingDir === "" || !candidateLoadingSeen
+                || candidateModel.status === FolderListModel.Loading)
+            return;
+        candidateTimeout.stop();
+        if (candidateModel.count < 1) {
+            directoryError = "Folder is unreadable or has no supported images";
+            pendingDir = "";
+            return;
+        }
+        let selected = "";
+        for (let i = 0; i < candidateModel.count; i++) {
+            const candidate = candidateModel.get(i, "fileName");
+            if (candidate === Settings.wall) {
+                selected = candidate;
+                break;
+            }
+        }
+        if (selected === "")
+            selected = candidateModel.get(0, "fileName");
+        const committed = pendingDir;
+        pendingDir = "";
+        Settings.set("wallDir", committed);
+        Settings.set("wall", selected);
+    }
+
     FolderListModel {
         id: folderModel
         folder: "file://" + root.dir
@@ -58,6 +122,29 @@ Singleton {
         sortField: FolderListModel.Name
         onCountChanged: root.refreshFiles()
         onStatusChanged: root.refreshFiles()
+    }
+
+    FolderListModel {
+        id: candidateModel
+        nameFilters: folderModel.nameFilters
+        showDirs: false
+        showFiles: true
+        sortField: FolderListModel.Name
+        onCountChanged: Qt.callLater(root.validateCandidate)
+        onStatusChanged: {
+            if (status === FolderListModel.Loading)
+                root.candidateLoadingSeen = true;
+            Qt.callLater(root.validateCandidate);
+        }
+    }
+
+    Timer {
+        id: candidateTimeout
+        interval: 2500
+        onTriggered: {
+            root.directoryError = "Folder could not be read";
+            root.pendingDir = "";
+        }
     }
 
     // Pre-settings state file, now read-only: migrated into Settings.wall on
@@ -90,11 +177,11 @@ Singleton {
             queuedAccentFor = "";
             return;
         }
-        if (Settings.wall === "" || Settings.wallAccentFor === Settings.wall)
+        if (Settings.wall === "" || Settings.wallAccentFor === currentIdentity)
             return;
         // Queue by immutable wallpaper identity. A late ImageMagick result
         // must never be attributed to whichever image is current at exit.
-        queuedAccentFor = Settings.wall;
+        queuedAccentFor = currentIdentity;
         startQueuedAccent();
     }
 
@@ -105,7 +192,7 @@ Singleton {
         queuedAccentFor = "";
         accentError = "";
         accentBusy = true;
-        accentProc.command = ["magick", dir + "/" + activeAccentFor,
+        accentProc.command = ["magick", activeAccentFor,
             "-resize", "1x1!", "-format", "%[hex:u.p{0,0}]", "info:"];
         accentProc.running = true;
     }
@@ -151,9 +238,9 @@ Singleton {
             } else {
                 const pastel = root.pastelize(accentOut.text);
                 if (pastel !== "" && Settings.accentWall
-                        && Settings.wall === completedFor) {
-                    Settings.set("wallAccent", pastel);
-                    Settings.set("wallAccentFor", completedFor);
+                        && root.currentIdentity === completedFor) {
+                    Settings.setInternal("wallAccent", pastel);
+                    Settings.setInternal("wallAccentFor", completedFor);
                 } else if (pastel === "") {
                     root.accentError = "No usable color found";
                 }
@@ -170,6 +257,10 @@ Singleton {
         target: Settings
 
         function onWallChanged() {
+            root.extractAccent();
+        }
+
+        function onWallDirChanged() {
             root.extractAccent();
         }
 

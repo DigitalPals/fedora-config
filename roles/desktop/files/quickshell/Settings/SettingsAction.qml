@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as Controls
 import "../Common"
 
 Rectangle {
@@ -18,6 +19,11 @@ Rectangle {
     border.width: activeFocus ? 1 : 0
     border.color: danger ? Theme.red : Theme.accent
     activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: root.text
+    Accessible.onPressAction: root.triggered()
+    Controls.ToolTip.visible: mouse.containsMouse && (root.compact || root.text.indexOf("Reset") === 0)
+    Controls.ToolTip.text: root.text
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter

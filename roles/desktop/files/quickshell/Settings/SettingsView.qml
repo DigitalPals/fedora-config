@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as Controls
 import "../Common"
 
 // Connected center-island settings surface. The host supplies the usable
@@ -14,7 +15,7 @@ FocusScope {
     readonly property int gutter: 12
     readonly property int navWidth: compactNav ? 52 : 156
     readonly property int preferredWidth: 720
-    readonly property int preferredHeight: 560
+    readonly property int preferredHeight: 620
     readonly property int pageIndex: Math.max(0,
         navItems.findIndex(item => item.id === Settings.page))
     readonly property bool dragActive: pageLoader.item
@@ -77,7 +78,13 @@ FocusScope {
             : navMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
         border.width: activeFocus ? 1 : 0
         border.color: Theme.accent
-        activeFocusOnTab: true
+        activeFocusOnTab: navItem.current
+        Accessible.role: Accessible.PageTab
+        Accessible.name: navItem.modelData.label
+        Accessible.selected: navItem.current
+        Accessible.onPressAction: Settings.page = navItem.modelData.id
+        Controls.ToolTip.visible: root.compactNav && navMouse.containsMouse
+        Controls.ToolTip.text: navItem.modelData.label
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
@@ -261,16 +268,37 @@ FocusScope {
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 6; height: 6; radius: 3
-                color: Settings.saveError ? Theme.red
+                color: Settings.undoAvailable ? Theme.accent
+                    : Settings.saveError ? Theme.red
                     : Settings.savePending ? Theme.amber : Theme.connected
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: Settings.saveError ? "Could not save"
+                text: Settings.undoAvailable ? Settings.resetLabel + " reset ·"
+                    : Settings.saveError ? "Could not save"
                     : Settings.savePending ? "Saving changes…" : "Saved · changes apply live"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
                 color: Settings.saveError ? Theme.redText : Theme.textFaint
+                Accessible.role: Settings.saveError
+                    ? Accessible.AlertMessage : Accessible.StaticText
+                Accessible.name: text
+            }
+
+            SettingsAction {
+                visible: Settings.undoAvailable
+                height: 26
+                text: "Undo"
+                Accessible.name: "Undo " + Settings.resetLabel + " reset"
+                onTriggered: Settings.undoReset()
+            }
+
+            SettingsAction {
+                visible: Settings.saveError && !Settings.undoAvailable
+                height: 26
+                text: "Retry"
+                glyph: "↻"
+                onTriggered: Settings.retrySave()
             }
         }
 
@@ -278,11 +306,19 @@ FocusScope {
             anchors.right: parent.right
             anchors.rightMargin: root.gutter
             anchors.verticalCenter: parent.verticalCenter
-            visible: root.width >= 560
+            visible: root.width >= 560 && !Settings.undoAvailable && !Settings.saveError
             text: "shell-settings.json"
             font.family: Theme.fontMono
             font.pixelSize: Theme.fontCaption
             color: Theme.textFaint
         }
+    }
+
+    Item {
+        width: 1
+        height: 1
+        opacity: 0
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: Settings.announcement
     }
 }

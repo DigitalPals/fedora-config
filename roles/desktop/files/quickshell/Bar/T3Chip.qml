@@ -30,6 +30,7 @@ Item {
             return T3Code.doneCount + " done";
         return "idle";
     }
+    readonly property real detailSaving: labelText.implicitWidth + 5
 
     implicitHeight: Theme.chipHeight
     implicitWidth: chip.width
@@ -93,6 +94,7 @@ Item {
             }
 
             Text {
+                id: labelText
                 visible: root.displayMode > 0
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.label

@@ -25,19 +25,20 @@ Item {
         return p.status === "ok" || p.kind !== "nocreds";
     })
     readonly property var visibleKeys: {
-        // Medium and wide bars have room for every authenticated provider.
-        // Only the narrow icon-only layout collapses to the most constrained
-        // provider.
-        if (displayMode >= 1 || availableKeys.length <= 1)
-            return availableKeys;
-        const ranked = availableKeys.slice().sort((a, b) => {
-            const ar = Usage.minRemaining(a);
-            const br = Usage.minRemaining(b);
-            return (ar < 0 ? 101 : ar) - (br < 0 ? 101 : br);
-        });
-        return ranked.slice(0, 1);
+        return availableKeys;
     }
     readonly property bool empty: visibleKeys.length === 0
+    readonly property real detailSaving: {
+        if (empty)
+            return emptyText.implicitWidth + 6;
+        let total = 0;
+        for (let i = 0; i < providerRepeater.count; i++) {
+            const item = providerRepeater.itemAt(i);
+            if (item)
+                total += item.detailSaving;
+        }
+        return total;
+    }
 
     // The bar-level HoverHandler reports scene coordinates even when mapping
     // the popout window prevents one of the chip MouseAreas from receiving a
@@ -92,6 +93,7 @@ Item {
                 }
 
                 Text {
+                    id: emptyText
                     visible: root.displayMode > 0
                     anchors.verticalCenter: parent.verticalCenter
                     text: Usage.loading && !Usage.anyOk ? "Models…" : "Models offline"
@@ -113,6 +115,7 @@ Item {
         }
 
         Repeater {
+            id: providerRepeater
             model: root.visibleKeys
 
             delegate: Rectangle {
@@ -125,6 +128,7 @@ Item {
                 readonly property bool stressed: status === "warn" || status === "crit"
                 // This provider's view is expanded below the bar.
                 readonly property bool current: root.held && Usage.selected === modelData
+                readonly property real detailSaving: usageText.implicitWidth + 5
 
                 height: Theme.chipHeight
                 width: chipRow.implicitWidth + 12
@@ -150,6 +154,7 @@ Item {
                     }
 
                     Text {
+                        id: usageText
                         visible: root.displayMode > 0
                         anchors.verticalCenter: parent.verticalCenter
                         text: chip.status === "error" || chip.remaining < 0 ? "--%" : chip.remaining + "%"
@@ -176,7 +181,9 @@ Item {
 
                 BarTooltip {
                     hovered: chipMouse.containsMouse
-                    text: Usage.meta[chip.modelData].title + " usage"
+                    text: Usage.meta[chip.modelData].title + " usage · "
+                        + (chip.status === "error" || chip.remaining < 0
+                            ? "unavailable" : chip.remaining + "% remaining")
                     align: 1
                     y: chip.height + 6
                     x: chip.width - width

@@ -12,10 +12,17 @@ Item {
     property real step: 1
     property bool dimmed: false
     property bool gradientTrack: false
+    property bool hueTrack: false
+    property string accessibleName: "Slider"
     signal moved(real value)
 
     height: 28
     activeFocusOnTab: !dimmed
+    Accessible.role: Accessible.Slider
+    Accessible.name: accessibleName
+    Accessible.description: String(value)
+    Accessible.onIncreaseAction: applyValue(value + step)
+    Accessible.onDecreaseAction: applyValue(value - step)
 
     readonly property real ratio: Math.max(0, Math.min(1, (value - min) / (max - min)))
 
@@ -57,9 +64,9 @@ Item {
         width: parent.width
         height: 4
         radius: 2
-        color: root.gradientTrack ? "transparent" : Qt.rgba(1, 1, 1, 0.08)
+        color: root.gradientTrack || root.hueTrack ? "transparent" : Qt.rgba(1, 1, 1, 0.08)
         opacity: root.dimmed ? 0.45 : 1
-        gradient: root.gradientTrack ? warmGradient : null
+        gradient: root.hueTrack ? hueGradient : root.gradientTrack ? warmGradient : null
 
         Gradient {
             id: warmGradient
@@ -68,8 +75,20 @@ Item {
             GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0.08) }
         }
 
+        Gradient {
+            id: hueGradient
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: "#df9f9f" }
+            GradientStop { position: 0.167; color: "#dfdf9f" }
+            GradientStop { position: 0.333; color: "#9fdf9f" }
+            GradientStop { position: 0.5; color: "#9fdfdf" }
+            GradientStop { position: 0.667; color: "#9f9fdf" }
+            GradientStop { position: 0.833; color: "#df9fdf" }
+            GradientStop { position: 1.0; color: "#df9f9f" }
+        }
+
         Rectangle {
-            visible: !root.gradientTrack
+            visible: !root.gradientTrack && !root.hueTrack
             width: root.ratio * parent.width
             height: parent.height
             radius: 2

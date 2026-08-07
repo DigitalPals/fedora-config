@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as Controls
 import "../Common"
 
 // Small undo affordance beside a section header or row; the caller shows it
@@ -11,6 +12,11 @@ Item {
     width: 28
     height: 28
     activeFocusOnTab: visible
+    Accessible.role: Accessible.Button
+    Accessible.name: "Reset to default"
+    Accessible.onPressAction: root.clicked()
+    Controls.ToolTip.visible: mouse.containsMouse
+    Controls.ToolTip.text: "Reset to default"
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter

@@ -26,6 +26,11 @@ Row {
             width: showNumber ? (focused ? 28 : Theme.chipHeight) : 20
             height: Theme.chipHeight
             anchors.verticalCenter: parent.verticalCenter
+            Accessible.role: Accessible.Button
+            Accessible.name: "Workspace " + wsId
+                + (focused ? ", current" : urgent ? ", urgent" : exists ? "" : ", empty")
+            Accessible.onPressAction: Hyprland.dispatch(
+                "hl.dsp.focus({ workspace = " + wsId + " })")
 
             Rectangle {
                 visible: parent.showNumber
@@ -60,6 +65,14 @@ Row {
                 // This Hyprland build speaks the Lua IPC dialect: raw
                 // dispatch text is evaluated as `hl.dispatch(<text>)`.
                 onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + parent.wsId + " })")
+            }
+
+            BarTooltip {
+                hovered: wsMouse.containsMouse
+                text: "Workspace " + wsId
+                    + (focused ? " · current" : urgent ? " · urgent" : exists ? "" : " · empty")
+                y: parent.height + 6
+                x: (parent.width - width) / 2
             }
         }
     }

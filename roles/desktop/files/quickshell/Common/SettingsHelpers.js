@@ -1,12 +1,15 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 2;
+var VERSION = 3;
 
 var MODULE_IDS = [
     "ws", "media", "clock", "weather", "t3", "usage", "vol", "wifi", "batt", "bell",
     "bt", "idle", "control"
 ];
+
+var DETAIL_IDS = ["media", "weather", "clock", "t3", "vol", "batt", "usage"];
+var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
 var FONT_CHOICES = [
     { id: "oppo", label: "OPPO Sans 4.0", family: "OPPO Sans 4.0" },
@@ -15,13 +18,16 @@ var FONT_CHOICES = [
 ];
 
 function defaultMods() {
+    function mod(id, on) {
+        return { id: id, on: on, detail: "auto" };
+    }
     return {
-        left: [{ id: "ws", on: true }, { id: "media", on: false }],
-        center: [{ id: "clock", on: true }, { id: "weather", on: true }],
+        left: [mod("ws", true), mod("media", false)],
+        center: [mod("clock", true), mod("weather", true)],
         right: [
-            { id: "t3", on: true }, { id: "usage", on: true }, { id: "vol", on: true },
-            { id: "wifi", on: true }, { id: "batt", on: true }, { id: "bell", on: true },
-            { id: "bt", on: false }, { id: "idle", on: true }, { id: "control", on: true }
+            mod("t3", true), mod("usage", true), mod("vol", true),
+            mod("wifi", true), mod("batt", true), mod("bell", true),
+            mod("bt", false), mod("idle", true), mod("control", true)
         ]
     };
 }
@@ -29,6 +35,7 @@ function defaultMods() {
 function defaults() {
     return {
         wall: "snow-capped-mountains-with-full-moon-lo.jpg",
+        wallDir: "~/Pictures/Wallpapers",
         shuffle: "Off",
         barHeight: 30,
         barRadius: 9,
@@ -76,6 +83,25 @@ function nameIn(value, fallback) {
         ? value : fallback;
 }
 
+function pathIn(value, fallback) {
+    if (typeof value !== "string" || value === "" || value.indexOf("\0") !== -1
+            || value.indexOf("\n") !== -1 || value.indexOf("\r") !== -1)
+        return fallback;
+    if (value[0] === "/")
+        return value.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+    if (value === "~" || value.indexOf("~/") === 0) {
+        var tail = value === "~" ? "" : value.slice(2);
+        if (tail.split("/").some(function(part) { return part === ".."; }))
+            return fallback;
+        return tail === "" ? "~" : "~/" + tail.replace(/\/{2,}/g, "/").replace(/\/$/, "");
+    }
+    return fallback;
+}
+
+function detailIn(value) {
+    return enumIn(value, DETAIL_POLICIES, "auto");
+}
+
 // Sanitize a persisted module layout: known ids only, first occurrence wins,
 // ids a newer schema knows about but the file does not are appended at their
 // default column's end so shipping a new module never requires migration.
@@ -100,12 +126,16 @@ function normalizeMods(raw) {
             if (MODULE_IDS.indexOf(id) === -1 || seen[id])
                 return;
             seen[id] = true;
-            next[col].push({ id: id, on: typeof entry.on === "boolean" ? entry.on : defaultOn[id] });
+            next[col].push({
+                id: id,
+                on: typeof entry.on === "boolean" ? entry.on : defaultOn[id],
+                detail: detailIn(entry.detail)
+            });
         });
     });
     MODULE_IDS.forEach(function(id) {
         if (!seen[id])
-            next[defaultCol[id]].push({ id: id, on: defaultOn[id] });
+            next[defaultCol[id]].push({ id: id, on: defaultOn[id], detail: "auto" });
     });
     return next;
 }
@@ -125,7 +155,7 @@ function migrateMods(raw, sourceVersion) {
         var list = Array.isArray(raw[col]) ? raw[col] : [];
         migrated[col] = list.map(function(entry) {
             return entry && typeof entry === "object"
-                ? { id: entry.id, on: entry.on }
+                ? { id: entry.id, on: entry.on, detail: entry.detail }
                 : entry;
         });
         if (list.some(function(entry) { return entry && entry.id === "usage"; }))
@@ -143,7 +173,8 @@ function migrateMods(raw, sourceVersion) {
             var t3 = migrated[col][t3Index];
             migrated[col].splice(t3Index + 1, 0, {
                 id: "usage",
-                on: typeof t3.on === "boolean" ? t3.on : true
+                on: typeof t3.on === "boolean" ? t3.on : true,
+                detail: "auto"
             });
             break;
         }
@@ -157,6 +188,7 @@ function merge(parsed) {
         return d;
     return {
         wall: nameIn(parsed.wall, d.wall),
+        wallDir: pathIn(parsed.wallDir, d.wallDir),
         shuffle: enumIn(parsed.shuffle, ["Off", "15m", "1h", "1d"], d.shuffle),
         barHeight: intIn(parsed.barHeight, 24, 44, 1, d.barHeight),
         barRadius: intIn(parsed.barRadius, 0, 16, 1, d.barRadius),
@@ -180,6 +212,54 @@ function merge(parsed) {
     };
 }
 
+function hueToHex(degrees) {
+    var h = ((Number(degrees) % 360) + 360) % 360 / 360;
+    var s = 0.50;
+    var l = 0.75;
+    function hueChannel(p, q, t) {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    }
+    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    var p = 2 * l - q;
+    var channels = [hueChannel(p, q, h + 1 / 3), hueChannel(p, q, h), hueChannel(p, q, h - 1 / 3)];
+    return "#" + channels.map(function(channel) {
+        return Math.round(channel * 255).toString(16).padStart(2, "0");
+    }).join("");
+}
+
+function hexHue(value, fallback) {
+    if (typeof value !== "string" || !/^#[0-9a-fA-F]{6}$/.test(value))
+        return fallback === undefined ? 0 : fallback;
+    var r = parseInt(value.slice(1, 3), 16) / 255;
+    var g = parseInt(value.slice(3, 5), 16) / 255;
+    var b = parseInt(value.slice(5, 7), 16) / 255;
+    var max = Math.max(r, g, b);
+    var min = Math.min(r, g, b);
+    if (max === min)
+        return fallback === undefined ? 0 : fallback;
+    var d = max - min;
+    var h = max === r ? ((g - b) / d + (g < b ? 6 : 0))
+        : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return Math.round(h * 60) % 360;
+}
+
+function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function restoreSnapshot(current, snapshot) {
+    var restored = clone(current);
+    Object.keys(snapshot || {}).forEach(function(key) {
+        restored[key] = clone(snapshot[key]);
+    });
+    return restored;
+}
+
 // Deterministic serialization: fixed key order so snapshot equality can be
 // compared as strings (self-write echo detection) and diffs stay readable.
 function serialize(settings) {
@@ -201,11 +281,19 @@ function parse(text) {
 
 var exported = {
     MODULE_IDS: MODULE_IDS,
+    DETAIL_IDS: DETAIL_IDS,
+    DETAIL_POLICIES: DETAIL_POLICIES,
     FONT_CHOICES: FONT_CHOICES,
     defaults: defaults,
     defaultMods: defaultMods,
     normalizeMods: normalizeMods,
     migrateMods: migrateMods,
+    pathIn: pathIn,
+    detailIn: detailIn,
+    hueToHex: hueToHex,
+    hexHue: hexHue,
+    clone: clone,
+    restoreSnapshot: restoreSnapshot,
     merge: merge,
     serialize: serialize,
     parse: parse

@@ -14,6 +14,10 @@ Item {
     width: Math.max(34, trackWidth)
     height: Math.max(28, trackHeight)
     activeFocusOnTab: true
+    Accessible.role: Accessible.CheckBox
+    Accessible.checked: checked
+    Accessible.name: "Toggle"
+    Accessible.onToggleAction: root.toggled(!root.checked)
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter

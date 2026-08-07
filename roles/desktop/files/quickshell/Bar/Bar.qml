@@ -10,6 +10,7 @@ import Quickshell.Networking
 import Quickshell.Bluetooth
 import Quickshell.Widgets
 import "../Common"
+import "../Common/LayoutHelpers.js" as LayoutHelpers
 
 PanelWindow {
     id: barWindow
@@ -20,8 +21,9 @@ PanelWindow {
         left: true
         right: true
     }
-    readonly property int layoutMode: width >= Theme.breakpointWide ? 2
-        : width >= Theme.breakpointMedium ? 1 : 0
+    property var compactIds: []
+    property real centerShift: 0
+    readonly property int safetyGutter: 8
     readonly property int closedHeight: Theme.barTopMargin + Theme.barHeight + 34
     implicitHeight: closedHeight
     // The bar edge's y inside this window: hugging the anchored screen edge
@@ -229,6 +231,63 @@ PanelWindow {
         return false;
     }
 
+    function moduleCompact(id) {
+        return compactIds.indexOf(id) !== -1;
+    }
+
+    function measuredSlots(repeater) {
+        const entries = [];
+        for (let i = 0; i < repeater.count; i++) {
+            const slot = repeater.itemAt(i);
+            if (!slot || !slot.active || slot.detailSaving <= 0)
+                continue;
+            entries.push({
+                id: slot.modelData.id,
+                col: slot.col,
+                saving: slot.detailSaving,
+                policy: slot.modelData.detail ?? "auto"
+            });
+        }
+        return entries;
+    }
+
+    function reconstructedWidth(cluster, repeater) {
+        let result = cluster.width;
+        const slots = measuredSlots(repeater);
+        for (const entry of slots) {
+            if (moduleCompact(entry.id))
+                result += entry.saving;
+        }
+        return result;
+    }
+
+    function recomputeFit() {
+        const entries = measuredSlots(leftRepeater)
+            .concat(measuredSlots(centerRepeater), measuredSlots(rightRepeater));
+        const result = LayoutHelpers.fitBar({
+            width: width,
+            sideMargin: Theme.barSideMargin,
+            gutter: safetyGutter,
+            widths: {
+                left: reconstructedWidth(leftCluster, leftRepeater),
+                center: reconstructedWidth(centerCluster, centerRepeater),
+                right: reconstructedWidth(rightCluster, rightRepeater)
+            },
+            entries: entries
+        });
+        if (JSON.stringify(compactIds) !== JSON.stringify(result.compact))
+            compactIds = result.compact;
+        centerShift = result.centerOffset;
+    }
+
+    onWidthChanged: fitTimer.restart()
+
+    Timer {
+        id: fitTimer
+        interval: 0
+        onTriggered: barWindow.recomputeFit()
+    }
+
     function moduleForPanel(name) {
         const item = panelAnchors[name];
         return item && item.visible ? item : null;
@@ -240,6 +299,7 @@ PanelWindow {
         target: Settings
 
         function onModsChanged() {
+            fitTimer.restart();
             if (!Popouts.open || Popouts.currentName === "settings")
                 return;
             Qt.callLater(() => {
@@ -265,6 +325,8 @@ PanelWindow {
         required property int index
         property string col: "left"
         property var colList: []
+        readonly property real detailSaving: item && "detailSaving" in item
+            ? item.detailSaving : 0
 
         anchors.verticalCenter: parent.verticalCenter
         active: modelData.on && barWindow.autoRule(modelData.id)
@@ -279,7 +341,10 @@ PanelWindow {
             if ("dividerAfter" in item)
                 item.dividerAfter = Qt.binding(() =>
                     barWindow.anyVisibleAfter(slot.colList, slot.index));
+            fitTimer.restart();
         }
+        onWidthChanged: fitTimer.restart()
+        onDetailSavingChanged: fitTimer.restart()
     }
 
     function sameAnchor(a, b) {
@@ -517,8 +582,10 @@ PanelWindow {
             anchors.left: parent.left
             padding: 5
             spacing: 2
+            onWidthChanged: fitTimer.restart()
 
             Repeater {
+                id: leftRepeater
                 model: Settings.mods.left
                 delegate: ModuleSlot { col: "left"; colList: Settings.mods.left }
             }
@@ -540,6 +607,8 @@ PanelWindow {
                     property string isle: "left"
                     property bool dividerBefore: false
                     spacing: 2
+                    readonly property real detailSaving: mediaTitle.implicitWidth > 0
+                        ? Math.min(mediaTitle.implicitWidth, Theme.mediaTitleWideWidth) + 6 : 0
 
                     Component.onCompleted: barWindow.registerPanel("media", mediaChip)
                     Component.onDestruction: barWindow.unregisterPanel("media", mediaChip)
@@ -571,7 +640,8 @@ PanelWindow {
                     }
 
                     Text {
-                        visible: barWindow.layoutMode > 0
+                        id: mediaTitle
+                        visible: !barWindow.moduleCompact("media")
                         anchors.verticalCenter: parent.verticalCenter
                         text: {
                             if (!barWindow.player)
@@ -583,8 +653,7 @@ PanelWindow {
                         font.pixelSize: Theme.barTextSize
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
-                        width: Math.min(implicitWidth, barWindow.layoutMode >= 2
-                            ? Theme.mediaTitleWideWidth : Theme.mediaTitleMediumWidth)
+                        width: Math.min(implicitWidth, Theme.mediaTitleWideWidth)
                     }
                 }
 
@@ -613,10 +682,13 @@ PanelWindow {
         Cluster {
             id: centerCluster
             anchors.horizontalCenter: parent.horizontalCenter
+            anchors.horizontalCenterOffset: barWindow.centerShift
             padding: 5
             spacing: 3
+            onWidthChanged: fitTimer.restart()
 
             Repeater {
+                id: centerRepeater
                 model: Settings.mods.center
                 delegate: ModuleSlot { col: "center"; colList: Settings.mods.center }
             }
@@ -627,6 +699,7 @@ PanelWindow {
             Rectangle {
                 id: clockChip
                 property string isle: "center"
+                readonly property real detailSaving: clockDate.implicitWidth + 6
 
                 Component.onCompleted: barWindow.registerPanel("calendar", clockChip)
                 Component.onDestruction: barWindow.unregisterPanel("calendar", clockChip)
@@ -652,6 +725,8 @@ PanelWindow {
                     }
 
                     Text {
+                        id: clockDate
+                        visible: !barWindow.moduleCompact("clock")
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDateTime(clock.date, "ddd dd")
                         font.family: Theme.fontMenu
@@ -690,6 +765,7 @@ PanelWindow {
                     property bool dividerBefore: false
                     spacing: 3
                     visible: Weather.ready
+                    readonly property real detailSaving: weatherCondition.implicitWidth + 5
 
                     Component.onCompleted: barWindow.registerPanel("weather", weatherChip)
                     Component.onDestruction: barWindow.unregisterPanel("weather", weatherChip)
@@ -732,7 +808,8 @@ PanelWindow {
                     }
 
                     Text {
-                        visible: barWindow.layoutMode >= 1
+                        id: weatherCondition
+                        visible: !barWindow.moduleCompact("weather")
                         anchors.verticalCenter: parent.verticalCenter
                         text: Weather.condition
                         font.family: Theme.fontMenu
@@ -768,8 +845,10 @@ PanelWindow {
             anchors.right: parent.right
             padding: 6
             spacing: 1
+            onWidthChanged: fitTimer.restart()
 
             Repeater {
+                id: rightRepeater
                 model: Settings.mods.right
                 delegate: ModuleSlot { col: "right"; colList: Settings.mods.right }
             }
@@ -783,6 +862,7 @@ PanelWindow {
                     property string isle: "right"
                     property bool dividerBefore: false
                     spacing: 1
+                    readonly property real detailSaving: t3Chip.detailSaving
 
                     Component.onCompleted: barWindow.registerPanel("t3code", t3Chip)
                     Component.onDestruction: barWindow.unregisterPanel("t3code", t3Chip)
@@ -793,7 +873,7 @@ PanelWindow {
 
                     T3Chip {
                         id: t3Chip
-                        displayMode: barWindow.layoutMode
+                        displayMode: barWindow.moduleCompact("t3") ? 0 : 2
                         held: barWindow.popoutOpen("t3code")
                         onClicked: barWindow.togglePopout("t3code", t3Module.isle, t3Chip)
                         onEntered: barWindow.hoverOpen("t3code", t3Module.isle, t3Chip)
@@ -812,6 +892,7 @@ PanelWindow {
                     property bool dividerBefore: false
                     property bool dividerAfter: false
                     spacing: 1
+                    readonly property real detailSaving: usageChips.detailSaving
 
                     Component.onCompleted: barWindow.registerPanel("usage", usageChips)
                     Component.onDestruction: barWindow.unregisterPanel("usage", usageChips)
@@ -825,7 +906,7 @@ PanelWindow {
                     UsageChips {
                         id: usageChips
                         property string isle: usageModule.isle
-                        displayMode: barWindow.layoutMode
+                        displayMode: barWindow.moduleCompact("usage") ? 0 : 2
                         held: barWindow.popoutOpen("usage")
                         onChipClicked: key => {
                             if (barWindow.popoutOpen("usage") && Usage.selected === key) {
@@ -887,10 +968,13 @@ PanelWindow {
                 Component.onCompleted: barWindow.registerPanel("audio", audioIcon)
                 Component.onDestruction: barWindow.unregisterPanel("audio", audioIcon)
                 glyph: barWindow.sinkMuted || barWindow.volume === 0 ? "" : barWindow.volume < 50 ? "" : ""
-                label: barWindow.layoutMode === 0 ? "" : barWindow.volume + "%"
+                label: barWindow.volume + "%"
+                compact: barWindow.moduleCompact("vol")
                 held: barWindow.popoutOpen("audio")
                 alert: barWindow.sinkMuted
-                tooltip: "Audio · wheel volume · middle mute"
+                tooltip: "Audio " + barWindow.volume + "%"
+                    + (barWindow.sinkMuted ? " · muted" : "")
+                    + " · wheel volume · middle mute"
                 tooltipAlign: 1
                 onClicked: barWindow.togglePopout("audio", audioIcon.isle, audioIcon)
                 onMiddleClicked: {
@@ -966,7 +1050,8 @@ PanelWindow {
                 // of the cluster keeps its position.
                 glyph: barWindow.charging ? "󱊦" : "󱊣"
                 glyphWidth: 13.5
-                label: barWindow.layoutMode === 0 ? "" : Math.round(barWindow.batteryPct) + "%"
+                label: Math.round(barWindow.batteryPct) + "%"
+                compact: barWindow.moduleCompact("batt")
                 alert: !barWindow.charging && barWindow.batteryPct <= 10
                 held: barWindow.popoutOpen("battery")
                 idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= 20 && !barWindow.charging ? Theme.amber : Theme.icon

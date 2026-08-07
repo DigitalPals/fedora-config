@@ -27,6 +27,7 @@ bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/
 bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-arch-shell"))
 bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-debian-shell"))
 bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("qs ipc call launcher toggle"))
+bind(mainMod .. " + comma", hl.dsp.exec_cmd("qs ipc call settings toggle"))
 bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus --new-window"))
 bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
 bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(browser .. " --incognito"))

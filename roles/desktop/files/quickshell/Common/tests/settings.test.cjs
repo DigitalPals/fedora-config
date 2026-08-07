@@ -156,8 +156,8 @@ test("regression fixes keep asynchronous state identity-safe", () => {
     const packages = fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8");
 
     assert.match(wallpaper, /property string activeAccentFor/);
-    assert.match(wallpaper, /Settings\.wall === completedFor/);
-    assert.match(wallpaper, /Settings\.set\("wallAccentFor", completedFor\)/);
+    assert.match(wallpaper, /root\.currentIdentity === completedFor/);
+    assert.match(wallpaper, /Settings\.setInternal\("wallAccentFor", completedFor\)/);
     assert.match(wallpaper, /property bool accentBusy/);
     assert.match(wallpaper, /property string accentError/);
     assert.match(packages, /- ImageMagick/);
@@ -169,14 +169,54 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "tooltips must be disarmed when a popout surface maps or unmaps");
 });
 
-test("schema two splits T3 Code from grouped model usage", () => {
+test("schema three adds detail policies and a configurable wallpaper folder", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 2/);
+    assert.match(helpers, /var VERSION = 3/);
     assert.match(helpers, /"t3", "usage", "vol"/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"top"/);
-    assert.match(helpers, /media", on: false/);
-    assert.match(helpers, /bt", on: false/);
+    assert.match(helpers, /mod\("media", false\)/);
+    assert.match(helpers, /mod\("bt", false\)/);
+    assert.match(helpers, /wallDir:\s*"~\/Pictures\/Wallpapers"/);
+    assert.match(helpers, /DETAIL_POLICIES/);
+});
+
+test("settings improvements expose fitting, embedded folders, undo, and shortcut", () => {
+    const bar = read("Bar/Bar.qml");
+    const modules = read("Settings/ModulesPage.qml");
+    const wallpaper = read("Settings/WallpaperPage.qml");
+    const folder = read("Settings/FolderDialog.qml");
+    const settings = read("Common/Settings.qml");
+    const bindings = fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8");
+
+    assert.match(bar, /LayoutHelpers\.fitBar/);
+    assert.doesNotMatch(bar, /width\s*>=\s*Theme\.breakpoint/);
+    assert.match(modules, /LayoutHelpers\.stackedDropIndex/);
+    assert.match(modules, /id:\s*edgeScroll/);
+    assert.match(wallpaper, /GridView\s*\{/);
+    assert.match(folder, /popupType:\s*Controls\.Popup\.Item/);
+    assert.match(settings, /interval:\s*8000/);
+    assert.match(settings, /function retrySave/);
+    assert.match(settings, /migrationPending = parsed !== null && parsed\.v !== 3/);
+    assert.match(settings, /if \(!ready \|\| migrationPending\)/,
+        "v1/v2 files must wait for the next user mutation before a v3 write");
+    assert.match(bindings, /mainMod \..*" \+ comma".*settings toggle/);
+});
+
+test("settings geometry accommodates wide menu fonts and focused rows", () => {
+    const view = read("Settings/SettingsView.qml");
+    const page = read("Settings/SettingsPage.qml");
+    const slider = read("Settings/SliderRow.qml");
+    const picker = read("Settings/PickerRow.qml");
+    const system = read("Settings/SystemPage.qml");
+
+    assert.match(view, /preferredHeight:\s*620/);
+    assert.match(page, /scrollGutter:\s*scrollbarVisible \? 8 : 0/);
+    assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
+    for (const row of [slider, picker])
+        assert.match(row, /Settings\.font === "mono" \? 104 : 90/);
+    assert.doesNotMatch(system, /resetArmed|Confirm reset/);
+    assert.match(system, /onTriggered:\s*Settings\.resetAll\(\)/);
 });
 
 test("the settings store keeps its fixed literal state path", () => {
