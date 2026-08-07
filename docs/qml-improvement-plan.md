@@ -922,51 +922,91 @@ multiplication of trackers and the divergent selection logic.
 **Pattern for each:** new singleton in `Common/`, registered in
 `Common/qmldir`; owns the Quickshell service objects (`PwObjectTracker`,
 device find, etc.) and exposes `readonly` derived properties. Consumers switch
-from local derivation to the singleton. Keep each consumer migration in the
-same WP as its singleton.
+from local derivation to the singleton.
 
-∥ All five singletons are parallelizable **except the shared consumer files**:
-`Bar/Bar.qml`, `Popovers/ControlCenterPopover.qml`, and `Common/Osd.qml`
-appear in several WPs. Either serialize the phase's Bar/ControlCenter edits
-through one agent, or land singletons first and do one combined consumer-
-migration WP (**recommended: WP2.6 does all consumer edits**).
+> **Rescoped 2026-08-07, before WP2A landed.** The phase was written as five
+> parallel singleton WPs plus a six-WP join, on the premise that each singleton
+> also resolves a drift bug. WP1.3 already did that half: the *pure* logic moved
+> to `StatusHelpers.js` and battery/media/percent stopped disagreeing. What is
+> left for Battery, Media and BluetoothState is a 3–5 line reactive wrapper
+> fixing no bug, which does not justify a WP and a commit each.
+>
+> The payoff moved to Phase 4. `Bar.qml` carried **27** `barWindow.<service>`
+> references, concentrated in exactly the inline module components WP4.3 wants
+> to extract into `Bar/Modules/*.qml`; without singletons every one becomes a
+> property threaded into the extracted file. That — not drift — is why the thin
+> singletons still earn their place, and why Bar is the consumer that had to
+> migrate first.
+>
+> So the phase is two WPs, not six:
+> - **WP2A** — all five singletons + `Bar.qml`. **Done.**
+> - **WP2B** — the remaining consumers, plus the parts of the old WP2.6 that
+>   were never about singletons at all (tailscale spawn unification, the two
+>   debounce timers, the `SysInfo` refcount, the `Usage` countdown). Those are
+>   the phase's real remaining behavioural content.
+>
+> WP2.1–2.5 below are kept only as the record of what each singleton absorbs.
 
-### [ ] WP2.1 ∥ `Common/Audio.qml`
-Default sink, volume, mute, `PwObjectTracker` (today in `Bar.qml:122–130`,
-`ControlCenterPopover.qml:22–28`, `AudioPopover.qml:14,25`, `Osd.qml:16–18`).
+### [x] WP2A Five service singletons + Bar.qml migration
 
-### [ ] WP2.2 ∥ `Common/Network.qml`
-Wifi device (`find(d => d.networks !== undefined)`), active network, signal
-(today in `Bar.qml:136–140`, `ControlCenterPopover.qml:18–19`,
-`WifiPopover.qml:10,28`, `SysInfo.qml:105`). Fold `SysInfo`'s wifi bits here.
+> Done. Notes:
+> - **`Common/Network.qml` had to be renamed `Common/WifiState.qml`.**
+>   `Quickshell.Networking` exports a type named `Network`, so a consumer
+>   importing both resolves the name by import order — and the Quickshell one
+>   is a value type, so `Network.enabled` would not even have meant anything.
+>   The plan's own name was the bug; `BluetoothState` already had the right
+>   shape for the same reason. Audio/Battery/Media/BluetoothState were checked
+>   against every Quickshell module a consumer imports and are clear.
+> - **qmllint caught a load-time break the tests would otherwise have shipped**:
+>   four of the five singletons were missing `import Quickshell`, so `Singleton`
+>   itself did not resolve. It surfaced as 487 `[import]` warnings
+>   ("incomplete composite type"), not as an error — worth watching, because the
+>   file would have failed to load at runtime.
+> - `Audio` exposes `volume` as rounded percent *and* `setVolume`/`stepVolume`/
+>   `toggleMuted` on Pipewire's 0..1 scale, because every call site was
+>   converting and clamping identically. Bar's wheel handler is now one line.
+> - `BluetoothState.connected` deliberately does **not** derive from its own
+>   `devices` list: that list is gated on the adapter being enabled, while the
+>   bar module's auto-rule should turn on as soon as any device is connected.
+> - The `PwObjectTracker` that moved out of `Bar.qml` was instantiated **once
+>   per output**. This is the only part of the phase that is a real saving
+>   rather than a tidy-up.
+> - Bar shed five imports (Pipewire, Mpris, UPower, Bluetooth, Networking) and
+>   the `StatusHelpers.js` import; qmllint named the first five itself, and
+>   `Networking` only became detectably dead after the `WifiState` rename.
+> - **Verified live**: all five singletons' values cross-checked against
+>   `wpctl`, `nmcli`, `upower`, `bluetoothctl` and `playerctl` through a
+>   throwaway `probe` IpcHandler — all match. Because this config has `vol`,
+>   `bt` and `media` switched **off**, the bar itself cannot exercise three of
+>   them; a second Quickshell instance under a fake `HOME` with those modules
+>   enabled rendered the volume module at 3% with the low-volume glyph, and left
+>   `bt`/`media` correctly hidden by their auto-rules.
+> - **Not done here:** `AudioPopover`'s enumerated `sinks` list stays local to
+>   that popover. It is popover-scoped state whose tracker should not be alive
+>   shell-wide; WP2B decides whether it moves.
 
-### [ ] WP2.3 ∥ `Common/BluetoothState.qml`
-Default adapter, powered, connected devices (today in `Bar.qml:142`,
-`ControlCenterPopover.qml:20`, `BluetoothPopover.qml:8`).
+**Files touched:** `Common/Audio.qml`, `Common/WifiState.qml`,
+`Common/BluetoothState.qml`, `Common/Battery.qml`, `Common/Media.qml` (all
+new), `Common/qmldir`, `Bar/Bar.qml`
 
-### [ ] WP2.4 ∥ `Common/Battery.qml`
-UPower display device, normalized pct, charging/full semantics — the *single*
-definition resolving the WP1.3 drift (today `Bar.qml:132–134`,
-`BatteryPopover.qml:8–19`).
+### [ ] WP2B Remaining consumers + Tailscale unification
 
-### [ ] WP2.5 ∥ `Common/Media.qml`
-Active-player selection (playing → paused → first), `playerGlyph` re-export
-from the WP1.3 helper (today `Bar.qml:145–168`, `MediaPopover.qml:17–24`).
-
-### [ ] WP2.6 Consumer migration + Tailscale unification
-
-**Files touched:** `Bar/Bar.qml`, `Popovers/ControlCenterPopover.qml`,
-`Common/Osd.qml`, `Popovers/AudioPopover.qml`, `Popovers/WifiPopover.qml`,
+**Files touched:** `Popovers/ControlCenterPopover.qml`, `Common/Osd.qml`,
+`Popovers/AudioPopover.qml`, `Popovers/WifiPopover.qml`,
 `Popovers/BluetoothPopover.qml`, `Popovers/BatteryPopover.qml`,
-`Popovers/MediaPopover.qml`, `Popovers/TailscalePopover.qml`, `Common/SysInfo.qml`
-**Depends on:** WP2.1–2.5 all merged
+`Popovers/MediaPopover.qml`, `Popovers/TailscalePopover.qml`,
+`Popovers/UsagePopover.qml`, `Common/SysInfo.qml`, `Common/Usage.qml`
+**Depends on:** WP2A
 
-1. Switch every consumer to the singletons; delete the local derivations.
+1. Switch the remaining consumers to the singletons; delete the local
+   derivations. `MediaPopover` keeps its manual source pick and falls back to
+   `Media.player`; `BatteryPopover` keeps `fmtDuration` and reads
+   `Battery.device` for the time estimates.
 2. Unify the duplicate `tailscale status --json` spawn: extend `SysInfo` (or a
    new `Common/Tailscale.qml`) to keep the peer list; `TailscalePopover` reads
    it and calls a shared `refresh()`. Also unify the two toggle-debounce
    timers (1400ms vs 1200ms → one).
-3. While here, fix the responsibility inversions that touch these files:
+3. Fix the responsibility inversions in these files:
    - `SysInfo` stats polling gated on `Popouts.open` (~270, ~310) → replace
      with a refcount API (`SysInfo.acquire()/release()` from popover
      `Component.onCompleted/onDestruction`).
@@ -974,9 +1014,39 @@ from the WP1.3 helper (today `Bar.qml:145–168`, `MediaPopover.qml:17–24`).
      inside the popover → move the 1s countdown into `Common/Usage.qml`.
 
 **Accept:** `grep -rn 'defaultAudioSink\|PwObjectTracker'` shows only
-`Common/Audio.qml`; same for the other services. All popovers + OSD + bar
-behave identically (screenshot pass over each popout via
-`qs ipc call popouts toggle <name>`).
+`Common/Audio.qml` (plus `AudioPopover`'s device list if item 1 leaves it
+there); same for the other services. All popovers + OSD + bar behave
+identically (screenshot pass over each popout via
+`qs ipc call popouts toggle <name>`). Note this config has `vol`, `bt` and
+`media` off — use the fake-`HOME` second instance to see those.
+
+---
+
+### Record of what each singleton absorbs (folded into WP2A)
+
+### [x] WP2.1 ∥ `Common/Audio.qml`
+Default sink, volume, mute, `PwObjectTracker` (today in `Bar.qml:122–130`,
+`ControlCenterPopover.qml:22–28`, `AudioPopover.qml:14,25`, `Osd.qml:16–18`).
+
+### [x] WP2.2 ∥ `Common/WifiState.qml` (planned as `Network.qml`)
+Wifi device (`find(d => d.networks !== undefined)`), active network, signal
+(today in `Bar.qml:136–140`, `ControlCenterPopover.qml:18–19`,
+`WifiPopover.qml:10,28`, `SysInfo.qml:105`). Fold `SysInfo`'s wifi bits here.
+
+### [x] WP2.3 ∥ `Common/BluetoothState.qml`
+Default adapter, powered, connected devices (today in `Bar.qml:142`,
+`ControlCenterPopover.qml:20`, `BluetoothPopover.qml:8`).
+
+### [x] WP2.4 ∥ `Common/Battery.qml`
+UPower display device, normalized pct, charging/full semantics — the *single*
+definition resolving the WP1.3 drift (today `Bar.qml:132–134`,
+`BatteryPopover.qml:8–19`).
+
+### [x] WP2.5 ∥ `Common/Media.qml`
+Active-player selection (playing → paused → first), `playerGlyph` re-export
+from the WP1.3 helper (today `Bar.qml:145–168`, `MediaPopover.qml:17–24`).
+
+### WP2.6 — superseded by WP2B above.
 
 ---
 

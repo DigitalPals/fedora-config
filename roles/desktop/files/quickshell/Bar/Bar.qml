@@ -3,14 +3,8 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Services.Pipewire
-import Quickshell.Services.Mpris
-import Quickshell.Services.UPower
-import Quickshell.Networking
-import Quickshell.Bluetooth
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
-import "../Common/StatusHelpers.js" as StatusHelpers
 
 PanelWindow {
     id: barWindow
@@ -119,33 +113,10 @@ PanelWindow {
         enabled: SysInfo.idleInhibited && barWindow.visible
     }
 
-    PwObjectTracker {
-        objects: [Pipewire.defaultAudioSink, Pipewire.defaultAudioSource]
-    }
-
-    readonly property var sink: Pipewire.defaultAudioSink
-    readonly property int volume: sink && sink.audio ? Math.round(sink.audio.volume * 100) : 0
-    readonly property bool sinkMuted: sink && sink.audio ? sink.audio.muted : false
-
-    readonly property var battery: UPower.displayDevice
-    readonly property real batteryPct: StatusHelpers.batteryPercent(battery)
-    // One definition, shared with the battery popover: that view names
-    // "charging" and "full" apart, while the chip draws both as plugged in
-    // and only its tooltip says which of the two it is.
-    readonly property string batteryState: StatusHelpers.chargeState(battery)
-    readonly property bool batteryPlugged: StatusHelpers.isPluggedIn(battery)
-
-    readonly property var wifiDevice: {
-        const devs = Networking.devices.values;
-        return devs.find(d => d.networks !== undefined) ?? null;
-    }
-    readonly property var wifiActive: wifiDevice ? (wifiDevice.networks.values.find(n => n.connected) ?? null) : null
-
-    readonly property var btAdapter: Bluetooth.defaultAdapter
-    readonly property bool btConnected: btAdapter !== null && btAdapter.devices.values.some(d => d.connected)
-
-    readonly property var player: StatusHelpers.activePlayer(Mpris.players.values)
-    readonly property bool mediaVisible: player !== null && player.trackTitle !== ""
+    // Audio, WifiState, BluetoothState, Battery and Media own the service
+    // objects now; this window is a consumer like any popover. That matters
+    // most for audio: the tracker that used to live here was instantiated
+    // once per output.
 
     function popoutOpen(name) {
         return Popouts.open && Popouts.currentName === name;
@@ -193,9 +164,9 @@ PanelWindow {
     // only when connected, Battery only on laptops (design v2 Modules page).
     function autoRule(id) {
         switch (id) {
-        case "media": return mediaVisible;
-        case "bt": return btConnected;
-        case "batt": return battery !== null && battery.isLaptopBattery;
+        case "media": return Media.hasTrack;
+        case "bt": return BluetoothState.connected;
+        case "batt": return Battery.isLaptop;
         default: return true;
         }
     }
@@ -618,7 +589,7 @@ PanelWindow {
 
             Rectangle {
                 id: mediaChip
-                visible: barWindow.mediaVisible
+                visible: Media.hasTrack
                 anchors.verticalCenter: parent.verticalCenter
                 implicitWidth: mediaRow.implicitWidth + 14
                 implicitHeight: Theme.chipHeight
@@ -636,7 +607,7 @@ PanelWindow {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: StatusHelpers.playerGlyph(barWindow.player)
+                        text: Media.glyph
                         font.family: Theme.fontIcon
                         font.pixelSize: Theme.barIconSize
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.icon
@@ -651,11 +622,11 @@ PanelWindow {
                         visible: !barWindow.moduleCompact("media")
                         anchors.verticalCenter: parent.verticalCenter
                         text: {
-                            if (!barWindow.player)
+                            if (!Media.player)
                                 return "";
                             const format = Settings.modOpts.media.titleFormat;
-                            const artist = barWindow.player.trackArtist;
-                            const title = barWindow.player.trackTitle;
+                            const artist = Media.player.trackArtist;
+                            const title = Media.player.trackTitle;
                             if (format === "title" || !artist)
                                 return title;
                             return format === "artist-title"
@@ -685,7 +656,7 @@ PanelWindow {
 
                 BarTooltip {
                     hovered: mediaMouse.containsMouse
-                    text: barWindow.player ? barWindow.player.trackTitle : "Media"
+                    text: Media.player ? Media.player.trackTitle : "Media"
                     y: parent.height + 6
                     x: (parent.width - width) / 2
                 }
@@ -1019,27 +990,22 @@ PanelWindow {
 
                 Component.onCompleted: barWindow.registerPanel("audio", audioIcon)
                 Component.onDestruction: barWindow.unregisterPanel("audio", audioIcon)
-                glyph: barWindow.sinkMuted || barWindow.volume === 0 ? "" : barWindow.volume < 50 ? "" : ""
-                label: Settings.modOpts.vol.showPct ? barWindow.volume + "%" : ""
+                glyph: Audio.muted || Audio.volume === 0 ? "" : Audio.volume < 50 ? "" : ""
+                label: Settings.modOpts.vol.showPct ? Audio.volume + "%" : ""
                 compact: barWindow.moduleCompact("vol")
                 held: barWindow.popoutOpen("audio")
-                alert: barWindow.sinkMuted
-                tooltip: "Audio " + barWindow.volume + "%"
-                    + (barWindow.sinkMuted ? " · muted" : "")
+                alert: Audio.muted
+                tooltip: "Audio " + Audio.volume + "%"
+                    + (Audio.muted ? " · muted" : "")
                     + " · wheel volume"
                     + (Settings.modOpts.vol.middleClick === "mute" ? " · middle mute" : "")
                 tooltipAlign: 1
                 onClicked: barWindow.togglePopout("audio", audioIcon.isle, audioIcon)
                 onMiddleClicked: {
-                    if (Settings.modOpts.vol.middleClick === "mute"
-                            && barWindow.sink && barWindow.sink.audio)
-                        barWindow.sink.audio.muted = !barWindow.sink.audio.muted;
+                    if (Settings.modOpts.vol.middleClick === "mute")
+                        Audio.toggleMuted();
                 }
-                onWheeled: steps => {
-                    if (barWindow.sink && barWindow.sink.audio)
-                        barWindow.sink.audio.volume = Math.max(0, Math.min(1,
-                            barWindow.sink.audio.volume + steps * (Settings.modOpts.vol.step / 100)));
-                }
+                onWheeled: steps => Audio.stepVolume(steps * (Settings.modOpts.vol.step / 100))
                 onEntered: barWindow.hoverOpen("audio", audioIcon.isle, audioIcon)
                 onExited: barWindow.cancelHover("audio")
             }
@@ -1057,8 +1023,8 @@ PanelWindow {
                 Component.onDestruction: barWindow.unregisterPanel("wifi", wifiIcon)
                 glyph: ""
                 held: barWindow.popoutOpen("wifi")
-                idleColor: Networking.wifiEnabled ? (barWindow.wifiActive !== null ? Theme.icon : Theme.textLow) : Theme.textFaint
-                tooltip: barWindow.wifiActive ? "Wi-Fi · " + barWindow.wifiActive.name : "Wi-Fi"
+                idleColor: WifiState.enabled ? (WifiState.connected ? Theme.icon : Theme.textLow) : Theme.textFaint
+                tooltip: WifiState.connected ? "Wi-Fi · " + WifiState.name : "Wi-Fi"
                 tooltipAlign: 1
                 onClicked: barWindow.togglePopout("wifi", wifiIcon.isle, wifiIcon)
                 onEntered: barWindow.hoverOpen("wifi", wifiIcon.isle, wifiIcon)
@@ -1076,7 +1042,7 @@ PanelWindow {
 
                 Component.onCompleted: barWindow.registerPanel("bluetooth", btIcon)
                 Component.onDestruction: barWindow.unregisterPanel("bluetooth", btIcon)
-                visible: barWindow.btConnected
+                visible: BluetoothState.connected
                 glyph: ""
                 held: barWindow.popoutOpen("bluetooth")
                 tooltip: "Bluetooth connected"
@@ -1097,24 +1063,24 @@ PanelWindow {
 
                 Component.onCompleted: barWindow.registerPanel("battery", batteryIcon)
                 Component.onDestruction: barWindow.unregisterPanel("battery", batteryIcon)
-                visible: barWindow.battery !== null && barWindow.battery.isLaptopBattery
+                visible: Battery.isLaptop
                 // md-battery_high / md-battery_charging_high. The charging
                 // glyph carries its own bolt, so nothing is overlaid; it is
                 // also wider, hence the fixed column below — 13.5 is what
                 // the previous Font Awesome glyph laid out at, so the rest
                 // of the cluster keeps its position.
-                glyph: barWindow.batteryPlugged ? "󱊦" : "󱊣"
+                glyph: Battery.pluggedIn ? "󱊦" : "󱊣"
                 glyphWidth: 13.5
                 // An empty label also zeroes BarIcon's detailSaving, so
                 // fitBar never budgets for a percentage that is never shown.
-                label: Settings.modOpts.batt.showPct ? Math.round(barWindow.batteryPct) + "%" : ""
+                label: Settings.modOpts.batt.showPct ? Math.round(Battery.percent) + "%" : ""
                 compact: barWindow.moduleCompact("batt")
-                alert: !barWindow.batteryPlugged && barWindow.batteryPct <= Settings.modOpts.batt.critAt
+                alert: !Battery.pluggedIn && Battery.percent <= Settings.modOpts.batt.critAt
                 held: barWindow.popoutOpen("battery")
-                idleColor: barWindow.batteryPlugged ? Theme.accent : barWindow.batteryPct <= Settings.modOpts.batt.warnAt ? Theme.amber : Theme.icon
-                tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%"
-                    + (barWindow.batteryState === "charging" ? " · charging"
-                        : barWindow.batteryState === "full" ? " · fully charged" : "")
+                idleColor: Battery.pluggedIn ? Theme.accent : Battery.percent <= Settings.modOpts.batt.warnAt ? Theme.amber : Theme.icon
+                tooltip: "Battery " + Math.round(Battery.percent) + "%"
+                    + (Battery.state === "charging" ? " · charging"
+                        : Battery.state === "full" ? " · fully charged" : "")
                 tooltipAlign: 1
                 onClicked: barWindow.togglePopout("battery", batteryIcon.isle, batteryIcon)
                 onEntered: barWindow.hoverOpen("battery", batteryIcon.isle, batteryIcon)
