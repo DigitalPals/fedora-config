@@ -1332,7 +1332,59 @@ identical; hover/tooltip behavior unchanged.
 
 </details>
 
-### [ ] WP4.2 `BarModule` base type + panel wiring collapse
+### [x] WP4.2 `panelName` wiring collapse (planned as a `BarModule` base type)
+
+> Done, in the shape agreed before starting: `panelName` goes on the existing
+> primitives rather than into a new wrapper type. `BarIcon`, `BarChip`,
+> `T3Chip` and `UsageChips` each take `panelName` plus a **typed**
+> `property Bar host`, and turn that one name into registration, the `held`
+> state, hover-switching and click. The 11 call sites lose ~6 lines of
+> boilerplate each; `Bar.qml` 1111 → 1068. Notes:
+> - **Typing the host is what makes this checkable.** `host.registerPanelTypo(…)`
+>   is a lint error naming the member, with a "Did you mean" suggestion —
+>   verified by deliberately misspelling it. The alternatives both fail that
+>   test: `Window.window` types as a plain `QQuickWindow` (it is where two of
+>   the 14 `missing-property` warnings came from), and `property var host`
+>   would be unresolvable and so checked by nothing.
+> - The primitives drive the panel from inside their `MouseArea` and **still
+>   emit** `clicked`/`entered`/`exited`, because a use-site `onClicked` would
+>   otherwise override the type's handler and silently unwire the panel. That
+>   is what lets the idle module keep its own click while owning no panel.
+> - `anchorItem` exists for the bell alone: it registered its *wrapper*, whose
+>   height is the full bar row rather than the icon's, so registering the icon
+>   instead would have moved the popout's anchor rect.
+> - `UsageChips` takes registration and `held` but keeps its own handlers — its
+>   clicks select a provider or close, which the generic toggle cannot express.
+>   A test pins that as the only remaining hand-wiring.
+> - `Bar/Workspaces.qml` needed `pragma ComponentBehavior: Bound` after all
+>   (WP0.3 recorded it as not needing one) because threading `host` into its
+>   tooltip is an outer-id capture. Safe here: its delegate declares `index`
+>   as `required` and never touches `modelData`, which is the failure mode
+>   WP0.3 warned about.
+> - **The lint flip did not happen, and the second half of this WP belongs to
+>   WP4.3.** Typing `BarTooltip`'s host cleared 2 warnings (14 → 12), but the
+>   plan's other target — declaring `isle`/`dividerBefore`/`dividerAfter`/
+>   `detailSaving` as real properties — has nowhere to live yet: the modules
+>   are inline `Component`s whose roots are variously `Row`, `Item`, `BarIcon`
+>   and `BarChip`, so there is no common base to declare the contract on until
+>   WP4.3 extracts them to files. Of the 12 that remain, 10 are `Loader.item`
+>   duck-typing in Settings/Launcher/T3 (WP4.4 and WP6), one is `Bar.qml`'s
+>   `detailSaving` (WP4.3), and one is the upstream `WifiSecurityType` enum
+>   gap. No suppressions were added to force the flip.
+> - **Verified live**: clean load; a probe of `panelAnchors` reports exactly
+>   the panels whose modules are enabled *and* pass their auto-rule — 8 on this
+>   config, 9 with `vol` switched on in a second instance, with `media` and
+>   `bluetooth` correctly absent because nothing is playing and no device is
+>   paired. `held` renders on the owning module for wifi and for the bell.
+> - **Not verified: hover-switch and click by pointer.** This machine has
+>   `wtype` (keyboard only) and no pointer-injection tool, so the MouseArea
+>   paths were exercised only through their `held`/registration consequences.
+>   The handler bodies moved verbatim into the primitives.
+
+<details>
+<summary>Original WP4.2 specification</summary>
+
+### WP4.2 `BarModule` base type + panel wiring collapse
 
 The register/unregister/held/onClicked/onEntered/onExited boilerplate repeats
 11× (~lines 619, 728, 804, 910, 941, 1012, 1048, 1069, 1090, 1123, 1190) with
@@ -1343,6 +1395,8 @@ contract as real properties so qmllint checks it (removes the remaining
 `missing-property` warnings; flip that category to error in `.qmllint.ini`
 when clean).
 **Accept:** one name per module; a typo'd panelName now fails the WP3.1 test.
+
+</details>
 
 ### [ ] WP4.3 Extract modules to `Bar/Modules/*.qml`
 

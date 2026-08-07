@@ -7,6 +7,36 @@ import "../Common/LayoutHelpers.js" as LayoutHelpers
 Rectangle {
     id: root
 
+    // ---- panel wiring -----------------------------------------------------
+    // Setting panelName makes this the bar's anchor for that popout and drives
+    // registration, the held state, hover-switching and click from the one
+    // name. `host` is typed rather than duck-typed, so a typo in any of those
+    // calls is a lint error naming the member, not a silent no-op.
+    //
+    // `isle` is the column the module actually sits in — the user can move
+    // modules between columns, so it is assigned by the bar's ModuleSlot and
+    // is not the registry's default island.
+    property Bar host: null
+    property string panelName: ""
+    property string isle: ""
+
+    // The item whose rectangle the popout hangs under. Defaults to this one;
+    // the bell overrides it with its wrapper, whose height is the full bar
+    // row rather than the icon's, so the popout keeps its exact anchor.
+    property Item anchorItem: root
+
+    readonly property bool ownsPanel: panelName !== "" && host !== null
+
+    Component.onCompleted: {
+        if (ownsPanel)
+            host.registerPanel(panelName, anchorItem);
+    }
+
+    Component.onDestruction: {
+        if (ownsPanel)
+            host.unregisterPanel(panelName, anchorItem);
+    }
+
     property string glyph
     property real glyphSize: Theme.barIconSize
     // Fixed column for the glyph. The right cluster is right-anchored, so
@@ -18,7 +48,7 @@ Rectangle {
     property real labelSize: Theme.barTextSize
     property bool active: false
     // Subtle open-state: the module's popout is expanded below it (t5).
-    property bool held: false
+    property bool held: ownsPanel && host.popoutOpen(panelName)
     property bool alert: false
     property color idleColor: Theme.icon
     property color hoverColor: Theme.textHi
@@ -99,20 +129,31 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         onEntered: {
             hovered = true;
+            if (root.ownsPanel)
+                root.host.hoverOpen(root.panelName, root.isle, root.anchorItem);
             root.entered();
         }
         // A newly mapped layer surface can cost Qt the next enter event;
         // motion over the icon still re-arms the bar's hover switch.
-        onPositionChanged: root.entered()
+        onPositionChanged: {
+            if (root.ownsPanel)
+                root.host.hoverOpen(root.panelName, root.isle, root.anchorItem);
+            root.entered();
+        }
         onExited: {
             hovered = false;
+            if (root.ownsPanel)
+                root.host.cancelHover(root.panelName);
             root.exited();
         }
         onClicked: mouse => {
-            if (mouse.button === Qt.MiddleButton)
+            if (mouse.button === Qt.MiddleButton) {
                 root.middleClicked();
-            else
-                root.clicked(mouse.x);
+                return;
+            }
+            if (root.ownsPanel)
+                root.host.togglePopout(root.panelName, root.isle, root.anchorItem);
+            root.clicked(mouse.x);
         }
         onWheel: wheel => {
             const delta = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y
@@ -126,6 +167,7 @@ Rectangle {
     }
 
     BarTooltip {
+        host: root.host
         hovered: mouse.hovered
         text: root.tooltip
         align: root.tooltipAlign

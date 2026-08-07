@@ -61,10 +61,13 @@ test("the module id space and the panel space account for each other", () => {
         assert.ok(known.has(id), `PANEL_LESS_MODULES names "${id}", which is not a bar module`);
 });
 
-test("every registerPanel() name in the bar is a registry panel", () => {
+test("every panel the bar claims is a registry panel", () => {
+    // Modules declare ownership as `panelName: "x"` on a BarIcon/BarChip/
+    // T3Chip/UsageChips; the primitive turns that into the registerPanel
+    // call, the held state and the hover/click wiring.
     const bar = read("Bar/Bar.qml");
-    const registered = [...bar.matchAll(/registerPanel\("([a-z0-9]+)"/g)].map(m => m[1]);
-    assert.ok(registered.length > 0, "no registerPanel calls found — did Bar.qml move?");
+    const registered = [...bar.matchAll(/panelName:\s*"([a-z0-9]+)"/g)].map(m => m[1]);
+    assert.ok(registered.length > 0, "no panelName declarations found — did Bar.qml move?");
     const names = new Set(R.names());
     for (const name of registered)
         assert.ok(names.has(name), `Bar.qml registers "${name}", which is not in the registry`);
@@ -75,12 +78,12 @@ test("a bar module that owns a panel registers it under the registry's name", ()
     // "clock". A moduleId pointing at the wrong panel is invisible otherwise.
     const bar = read("Bar/Bar.qml");
     const registered = new Set(
-        [...bar.matchAll(/registerPanel\("([a-z0-9]+)"/g)].map(m => m[1]));
+        [...bar.matchAll(/panelName:\s*"([a-z0-9]+)"/g)].map(m => m[1]));
     for (const panel of R.PANELS) {
         if (panel.moduleId === "")
             continue;
         assert.ok(registered.has(panel.name),
-            `${panel.name} is owned by module "${panel.moduleId}" but Bar.qml never registers it`);
+            `${panel.name} is owned by module "${panel.moduleId}" but no bar module claims it`);
     }
 });
 
@@ -137,4 +140,31 @@ test("the derived maps cover every panel", () => {
     assert.equal(Object.keys(islands).length, R.PANELS.length);
     assert.equal(Object.keys(sources).length, R.PANELS.length);
     assert.equal(R.sourceMap().control, "Popovers/ControlCenterPopover.qml");
+});
+
+test("panelName is what actually drives the panel wiring", () => {
+    // Otherwise the assertions above would pass against a dead property.
+    for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/T3Chip.qml",
+                        "Bar/UsageChips.qml"]) {
+        const src = read(file);
+        assert.match(src, /property string panelName/, `${file} must accept panelName`);
+        assert.match(src, /host\.registerPanel\(panelName/, `${file} must register it`);
+        assert.match(src, /host\.unregisterPanel\(panelName/, `${file} must unregister it`);
+        assert.match(src, /host\.popoutOpen\(panelName\)/, `${file} must derive held from it`);
+        // Typed, so a misspelt call is a lint error rather than a silent no-op.
+        assert.match(src, /property Bar host/, `${file} must type its host as Bar`);
+    }
+});
+
+test("no bar module hand-wires a panel the primitive already owns", () => {
+    // One exception, commented as such: the usage module's per-provider clicks
+    // select a provider or close, which the generic toggle cannot express.
+    const bar = read("Bar/Bar.qml");
+    for (const call of ["registerPanel", "unregisterPanel", "togglePopout"]) {
+        assert.doesNotMatch(bar, new RegExp(`barWindow\\.${call}\\(`),
+            `Bar.qml still hand-wires ${call}; panelName should drive it`);
+    }
+    const hoverSites = [...bar.matchAll(/barWindow\.(hoverOpen|cancelHover)\(/g)];
+    assert.equal(hoverSites.length, 2,
+        "only the usage module's bespoke per-provider hover should remain");
 });

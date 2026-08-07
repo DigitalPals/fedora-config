@@ -15,17 +15,53 @@ Rectangle {
 
     default property alias content: inner.data
 
+    // ---- panel wiring -----------------------------------------------------
+    // Setting panelName makes this the bar's anchor for that popout and drives
+    // registration, the held state, hover-switching and click from the one
+    // name. `host` is typed rather than duck-typed, so a typo in any of those
+    // calls is a lint error naming the member, not a silent no-op.
+    //
+    // `isle` is the column the module actually sits in — the user can move
+    // modules between columns, so it is assigned by the bar's ModuleSlot and
+    // is not the registry's default island.
+    property Bar host: null
+    property string panelName: ""
+    property string isle: ""
+
+    // The item whose rectangle the popout hangs under. Defaults to this one;
+    // the bell overrides it with its wrapper, whose height is the full bar
+    // row rather than the icon's, so the popout keeps its exact anchor.
+    property Item anchorItem: root
+
+    readonly property bool ownsPanel: panelName !== "" && host !== null
+
+    Component.onCompleted: {
+        if (ownsPanel)
+            host.registerPanel(panelName, anchorItem);
+    }
+
+    Component.onDestruction: {
+        if (ownsPanel)
+            host.unregisterPanel(panelName, anchorItem);
+    }
+
     // Padding either side of the content. 7 matches BarIcon's optical inset
     // for text-led chips; the weather chip runs one tighter because its
     // leading glyph already carries side bearing.
     property real hPadding: 7
     property real spacing: 6
     // The module's popout is expanded below it (design t5).
-    property bool held: false
+    property bool held: ownsPanel && host.popoutOpen(panelName)
     property string tooltip: ""
     property int tooltipAlign: 0
 
     readonly property bool hovered: mouse.containsMouse
+
+    function hoverIn() {
+        if (ownsPanel)
+            host.hoverOpen(panelName, isle, anchorItem);
+        entered();
+    }
 
     signal clicked()
     signal entered()
@@ -51,15 +87,24 @@ Rectangle {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
-        onEntered: root.entered()
+        onEntered: root.hoverIn()
         // A newly mapped layer surface can cost Qt the next enter event;
         // motion over the chip still re-arms the bar's hover switch.
-        onPositionChanged: root.entered()
-        onExited: root.exited()
-        onClicked: root.clicked()
+        onPositionChanged: root.hoverIn()
+        onExited: {
+            if (root.ownsPanel)
+                root.host.cancelHover(root.panelName);
+            root.exited();
+        }
+        onClicked: {
+            if (root.ownsPanel)
+                root.host.togglePopout(root.panelName, root.isle, root.anchorItem);
+            root.clicked();
+        }
     }
 
     BarTooltip {
+        host: root.host
         hovered: mouse.containsMouse
         text: root.tooltip
         align: root.tooltipAlign

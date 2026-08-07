@@ -9,11 +9,30 @@ import "../Common"
 Item {
     id: root
 
+    // ---- panel wiring -----------------------------------------------------
+    // Same contract as BarIcon/BarChip: one panel name drives registration and
+    // the held state, against a typed host so a typo is a lint error.
+    property Bar host: null
+    property string panelName: ""
+    property string isle: ""
+
+    readonly property bool ownsPanel: panelName !== "" && host !== null
+
+    Component.onCompleted: {
+        if (ownsPanel)
+            host.registerPanel(panelName, root);
+    }
+
+    Component.onDestruction: {
+        if (ownsPanel)
+            host.unregisterPanel(panelName, root);
+    }
+
     signal clicked()
     signal entered()
     signal exited()
 
-    property bool held: false
+    property bool held: ownsPanel && host.popoutOpen(panelName)
     property int displayMode: 2
     // False while the hosting bar is another output's or slid away by
     // auto-hide: nothing of this chip is on screen, so its pulse must not
@@ -137,6 +156,7 @@ Item {
         }
 
         BarTooltip {
+            host: root.host
             hovered: chipMouse.containsMouse
             text: {
                 if (T3Code.state === "unpaired")

@@ -101,7 +101,7 @@ test("Idle inhibit and Control Center use the reorderable module pipeline", () =
     assert.match(modules, /control:\s*\{ name: "Control Center"/);
     assert.doesNotMatch(modules, /pinnedTail|text:\s*"pinned"/);
     assert.match(bar, /idle:\s*cmpIdle, control:\s*cmpControl/);
-    assert.match(bar, /registerPanel\("control", controlIcon\)/);
+    assert.match(bar, /id:\s*cmpControl[\s\S]*?panelName:\s*"control"/);
     assert.doesNotMatch(bar, /togglePopout\("control", "right"/);
 });
 
@@ -126,7 +126,8 @@ test("an open Settings panel preserves menubar hover switching", () => {
     // inline are BarChips now, and BarChip carries the recovery for all
     // three. Bar.qml's own full-bar fallback is asserted above.
     for (const source of [icon, chip, t3, usage])
-        assert.match(source, /onPositionChanged:[^\n]*(hoverOpen|entered|chipEntered|root\.entered)/,
+        assert.match(source,
+            /onPositionChanged:[\s\S]{0,200}?(hoverOpen|hoverIn|entered|chipEntered)/,
             "module hover must recover when a mapped popout costs Qt an enter event");
     assert.doesNotMatch(bar, /MouseArea\s*\{[^}]*hoverEnabled[^}]*onEntered:\s*barWindow\.hoverOpen/,
         "bar modules should hover through BarIcon/BarChip, not their own MouseArea");
@@ -142,10 +143,10 @@ test("T3 Code and grouped model usage are separate reorderable modules", () => {
     assert.match(modules, /t3:\s*\{ name: "T3 Code"/);
     assert.match(modules, /usage:\s*\{ name: "Model usage"/);
     assert.match(bar, /t3:\s*cmpT3, usage:\s*cmpUsage/);
-    assert.match(bar, /id:\s*cmpT3[\s\S]*?registerPanel\("t3code", t3Chip\)/);
-    assert.match(bar, /id:\s*cmpUsage[\s\S]*?registerPanel\("usage", usageChips\)/);
+    assert.match(bar, /id:\s*cmpT3[\s\S]*?panelName:\s*"t3code"/);
+    assert.match(bar, /id:\s*cmpUsage[\s\S]*?panelName:\s*"usage"/);
     assert.doesNotMatch(bar,
-        /id:\s*cmpT3[\s\S]*?registerPanel\("usage", usageChips\)[\s\S]*?id:\s*cmpUsage/,
+        /id:\s*cmpT3[\s\S]*?panelName:\s*"usage"[\s\S]*?id:\s*cmpUsage/,
         "the T3 module must not own the grouped usage popout");
 });
 
@@ -193,9 +194,19 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         /barWindow\.tooltipPointerPosition = scenePoint/,
         "the full-bar handler must publish pointer motion for tooltip validation");
     assert.match(tooltip, /readonly property bool activeHover:\s*hovered && pointerOverTarget/);
+    // The bar reaches the tooltip as a typed `host` now, not through
+    // Window.window — an attached window is a plain QQuickWindow to the
+    // type system, so that read could never be checked.
+    assert.match(tooltip, /property Bar host/,
+        "the tooltip must take the bar as a typed property");
     assert.match(tooltip,
-        /if \(!window\.tooltipPointerInside \|\| !root\.parent\)\s*return false/,
+        /if \(!root\.host\.tooltipPointerInside \|\| !root\.parent\)\s*return false/,
         "a stale local MouseArea must not keep a tooltip visible after leaving the bar");
+    // Match code, not prose: the file explains in a comment why it stopped
+    // using Window.window.
+    const tooltipCode = tooltip.split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
+    assert.doesNotMatch(tooltipCode, /Window\.window/,
+        "reading the bar off the attached window is what made this unverifiable");
 });
 
 test("schema three adds detail policies and a configurable wallpaper folder", () => {

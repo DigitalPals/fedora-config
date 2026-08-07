@@ -9,6 +9,11 @@ Item {
     // -1 left, 0 centered, 1 right.
     property int align: 0
     property bool ready: false
+    // The bar that owns this tooltip, threaded down from the module rather
+    // than reached through Window.window: an attached window is a plain
+    // QQuickWindow to the type system, so reading the bar's pointer state off
+    // it could not be checked. Null degrades to the local hover state.
+    property Bar host: null
     // Validate the local MouseArea state against the bar-wide pointer. This
     // clears stale containsMouse values after a missed surface-exit event and
     // also prevents a tooltip from lingering over a different module.
@@ -18,13 +23,11 @@ Item {
         // cost nothing on pointer moves elsewhere in the bar.
         if (!root.hovered)
             return false;
-        const window = root.Window.window;
-        if (!window || !("tooltipPointerInside" in window)
-                || !("tooltipPointerPosition" in window))
+        if (!root.host)
             return root.hovered;
-        if (!window.tooltipPointerInside || !root.parent)
+        if (!root.host.tooltipPointerInside || !root.parent)
             return false;
-        const scenePoint = window.tooltipPointerPosition;
+        const scenePoint = root.host.tooltipPointerPosition;
         const localPoint = root.parent.mapFromItem(null,
             scenePoint.x, scenePoint.y);
         return localPoint.x >= 0 && localPoint.x <= root.parent.width

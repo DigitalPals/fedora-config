@@ -1,9 +1,14 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Hyprland
 import "../Common"
 
 Row {
     id: root
+
+    // Only to hand the bar's pointer state to the tooltips below.
+    property Bar host: null
+
     spacing: 2
     anchors.verticalCenter: parent.verticalCenter
 
@@ -88,6 +93,7 @@ Row {
             }
 
             BarTooltip {
+                host: root.host
                 hovered: wsMouse.containsMouse
                 text: "Workspace " + slot.wsId
                     + (slot.focused ? " · current" : slot.urgent ? " · urgent" : slot.exists ? "" : " · empty")
