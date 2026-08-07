@@ -419,7 +419,36 @@ pure functions here).
 **Accept:** Node tests cover glyph mapping and normalization; bar and popover
 show identical glyphs/charging state for the same player/battery.
 
-### [ ] WP1.4 Bar.qml quick wins (single owner for all Bar.qml edits in this phase)
+### [x] WP1.4 Bar.qml quick wins (single owner for all Bar.qml edits in this phase)
+
+> Done — all six items. Notes:
+> - The tailscale stopgap is a `unanchoredPanels: ["settings", "tailscale"]`
+>   list on `barWindow` with a comment pointing at WP3.1; those two are exactly
+>   the `Popouts.defaultIsland` names no `registerPanel()` covers.
+> - **One extra fix the module gating forced:** `onModsChanged` now also returns
+>   early on a bar that is not `visible`. Every output runs that handler, and
+>   with modules no longer instantiated on hidden bars, a hidden bar's empty
+>   `panelAnchors` would have closed the mapped bar's popout on any module
+>   change — item 3 would have shipped a new multi-monitor bug without this.
+> - `SystemClock.enabled` verified headlessly: while disabled `date` freezes,
+>   and re-enabling resyncs it in the same turn, so a bar taking over an output
+>   never shows a stale time.
+> - `T3Chip` gained `property bool barVisible`, threaded from `Bar.qml` as
+>   `barWindow.visible && !barWindow.hidden`, rather than
+>   `Window.window.visible` — which is null exactly when the window is unmapped.
+>   Including auto-hide is a deliberate extension: it stops the 30 Hz pulse
+>   behind a slid-away bar and is the only part of items 2–4 observable on a
+>   single monitor.
+> - `micMuted` was dead and left `source` dead too, so both went; the
+>   `PwObjectTracker` still binds `Pipewire.defaultAudioSource` (WP2.1's call).
+> - `idleColor` lost its redundant `&& !barWindow.charging` inside the false
+>   branch of the same test.
+> - **Verified live:** with the Tailscale popover open, enabling the `vol`
+>   module (visible on the bar in the same frame, so `onModsChanged` provably
+>   fired) left the popover open. Note `bt` is useless for this test — its
+>   `autoRule` is `btConnected`, so it stays hidden with no device paired.
+> - Items 2–3 still need a second output to observe; a pinned `Settings.monitor`
+>   cannot reproduce it on one screen.
 
 **Files touched:** `Bar/Bar.qml`, `Bar/T3Chip.qml`
 **Depends on:** Phase 0; coordinates with WP1.3

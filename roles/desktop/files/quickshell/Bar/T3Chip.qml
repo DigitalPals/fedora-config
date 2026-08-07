@@ -15,6 +15,10 @@ Item {
 
     property bool held: false
     property int displayMode: 2
+    // False while the hosting bar is another output's or slid away by
+    // auto-hide: nothing of this chip is on screen, so its pulse must not
+    // drive the compositor.
+    property bool barVisible: true
 
     readonly property bool live: T3Code.state === "connected"
     readonly property bool stressed: live && T3Code.attentionCount > 0
@@ -85,7 +89,9 @@ Item {
                 Timer {
                     interval: 33
                     repeat: true
-                    running: runningDot.visible && Settings.modOpts.t3.pulse
+                    running: root.barVisible && runningDot.visible && Settings.modOpts.t3.pulse
+                    // Restarting resets the phase, so the pulse picks up
+                    // cleanly from full opacity whenever the bar returns.
                     onRunningChanged: {
                         runningDot.pulseStartedAt = Date.now();
                         runningDot.pulseOpacity = 1;

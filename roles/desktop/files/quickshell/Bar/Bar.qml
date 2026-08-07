@@ -10,6 +10,7 @@ import Quickshell.Networking
 import Quickshell.Bluetooth
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
+import "../Common/StatusHelpers.js" as StatusHelpers
 
 PanelWindow {
     id: barWindow
@@ -123,14 +124,16 @@ PanelWindow {
     }
 
     readonly property var sink: Pipewire.defaultAudioSink
-    readonly property var source: Pipewire.defaultAudioSource
     readonly property int volume: sink && sink.audio ? Math.round(sink.audio.volume * 100) : 0
     readonly property bool sinkMuted: sink && sink.audio ? sink.audio.muted : false
-    readonly property bool micMuted: source && source.audio ? source.audio.muted : false
 
     readonly property var battery: UPower.displayDevice
-    readonly property real batteryPct: battery ? (battery.percentage <= 1 ? battery.percentage * 100 : battery.percentage) : 0
-    readonly property bool charging: battery && (battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.PendingCharge || battery.state === UPowerDeviceState.FullyCharged)
+    readonly property real batteryPct: StatusHelpers.batteryPercent(battery)
+    // One definition, shared with the battery popover: that view names
+    // "charging" and "full" apart, while the chip draws both as plugged in
+    // and only its tooltip says which of the two it is.
+    readonly property string batteryState: StatusHelpers.chargeState(battery)
+    readonly property bool batteryPlugged: StatusHelpers.isPluggedIn(battery)
 
     readonly property var wifiDevice: {
         const devs = Networking.devices.values;
@@ -141,30 +144,8 @@ PanelWindow {
     readonly property var btAdapter: Bluetooth.defaultAdapter
     readonly property bool btConnected: btAdapter !== null && btAdapter.devices.values.some(d => d.connected)
 
-    readonly property var player: {
-        const ps = Mpris.players.values;
-        return ps.find(p => p.isPlaying) ?? ps.find(p => p.playbackState === MprisPlaybackState.Paused) ?? (ps.length > 0 ? ps[0] : null);
-    }
+    readonly property var player: StatusHelpers.activePlayer(Mpris.players.values)
     readonly property bool mediaVisible: player !== null && player.trackTitle !== ""
-
-    function playerGlyph(p) {
-        if (!p)
-            return "";
-        const id = (p.identity + " " + p.desktopEntry).toLowerCase();
-        if (id.includes("spotify"))
-            return "";
-        if (id.includes("firefox") || id.includes("zen"))
-            return "";
-        if (id.includes("chromium") || id.includes("chrome") || id.includes("brave"))
-            return "";
-        if (id.includes("edge"))
-            return "";
-        if (id.includes("youtube"))
-            return "";
-        if (id.includes("mpv") || id.includes("vlc") || id.includes("video"))
-            return "";
-        return "";
-    }
 
     function popoutOpen(name) {
         return Popouts.open && Popouts.currentName === name;
@@ -297,6 +278,12 @@ PanelWindow {
         return item && item.visible ? item : null;
     }
 
+    // Popouts that no bar module owns: settings opens from the settings
+    // window and tailscale from the Control Center, so moduleForPanel() is
+    // always null for them and the sweep below would close them on any
+    // module change. Stopgap — WP3.1's panel registry replaces this list.
+    readonly property var unanchoredPanels: ["settings", "tailscale"]
+
     // A module disabled from the settings window takes its open popout with
     // it; callLater lets the Repeater rebuild settle first.
     Connections {
@@ -304,7 +291,11 @@ PanelWindow {
 
         function onModsChanged() {
             fitTimer.restart();
-            if (!Popouts.open || Popouts.currentName === "settings")
+            // Every output runs this handler, but only the mapped bar holds
+            // the modules the open popout hangs under; the others would see
+            // an empty panelAnchors and close someone else's panel.
+            if (!barWindow.visible || !Popouts.open
+                || barWindow.unanchoredPanels.indexOf(Popouts.currentName) !== -1)
                 return;
             Qt.callLater(() => {
                 if (Popouts.open && !barWindow.moduleForPanel(Popouts.currentName))
@@ -333,7 +324,10 @@ PanelWindow {
             ? item.detailSaving : 0
 
         anchors.verticalCenter: parent.verticalCenter
-        active: modelData.on && barWindow.autoRule(modelData.id)
+        // Every output carries a bar, but only the mapped one is visible;
+        // the others must not instantiate a full set of modules (and their
+        // timers) behind an unmapped surface.
+        active: barWindow.visible && modelData.on && barWindow.autoRule(modelData.id)
         visible: active
         sourceComponent: barWindow.moduleComponents[slot.modelData.id]
         onLoaded: {
@@ -642,7 +636,7 @@ PanelWindow {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: barWindow.playerGlyph(barWindow.player)
+                        text: StatusHelpers.playerGlyph(barWindow.player)
                         font.family: Theme.fontIcon
                         font.pixelSize: Theme.barIconSize
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.icon
@@ -915,6 +909,7 @@ PanelWindow {
 
                     T3Chip {
                         id: t3Chip
+                        barVisible: barWindow.visible && !barWindow.hidden
                         displayMode: barWindow.moduleCompact("t3")
                             || !Settings.modOpts.t3.showLabel ? 0 : 2
                         held: barWindow.popoutOpen("t3code")
@@ -1094,16 +1089,18 @@ PanelWindow {
                 // also wider, hence the fixed column below — 13.5 is what
                 // the previous Font Awesome glyph laid out at, so the rest
                 // of the cluster keeps its position.
-                glyph: barWindow.charging ? "󱊦" : "󱊣"
+                glyph: barWindow.batteryPlugged ? "󱊦" : "󱊣"
                 glyphWidth: 13.5
                 // An empty label also zeroes BarIcon's detailSaving, so
                 // fitBar never budgets for a percentage that is never shown.
                 label: Settings.modOpts.batt.showPct ? Math.round(barWindow.batteryPct) + "%" : ""
                 compact: barWindow.moduleCompact("batt")
-                alert: !barWindow.charging && barWindow.batteryPct <= Settings.modOpts.batt.critAt
+                alert: !barWindow.batteryPlugged && barWindow.batteryPct <= Settings.modOpts.batt.critAt
                 held: barWindow.popoutOpen("battery")
-                idleColor: barWindow.charging ? Theme.accent : barWindow.batteryPct <= Settings.modOpts.batt.warnAt && !barWindow.charging ? Theme.amber : Theme.icon
-                tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%" + (barWindow.charging ? " · charging" : "")
+                idleColor: barWindow.batteryPlugged ? Theme.accent : barWindow.batteryPct <= Settings.modOpts.batt.warnAt ? Theme.amber : Theme.icon
+                tooltip: "Battery " + Math.round(barWindow.batteryPct) + "%"
+                    + (barWindow.batteryState === "charging" ? " · charging"
+                        : barWindow.batteryState === "full" ? " · fully charged" : "")
                 tooltipAlign: 1
                 onClicked: barWindow.togglePopout("battery", batteryIcon.isle, batteryIcon)
                 onEntered: barWindow.hoverOpen("battery", batteryIcon.isle, batteryIcon)
@@ -1201,8 +1198,13 @@ PanelWindow {
         }
     }
 
+    // Only the clock module reads this, and that module exists only while
+    // this bar is the mapped one. Re-enabling resyncs `date` in the same
+    // turn, so a bar taking over from another output never shows a stale
+    // time.
     SystemClock {
         id: clock
+        enabled: barWindow.visible
         precision: Settings.modOpts.clock.seconds ? SystemClock.Seconds : SystemClock.Minutes
     }
 }
