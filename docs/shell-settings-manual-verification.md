@@ -95,7 +95,8 @@ is manual.
 ## Regression sweep
 
 - [ ] All popouts open/close/hover-switch as before at default settings;
-      with Settings open, hovering a module switches directly to its popout.
+      Calendar → Weather and other adjacent-module switches work without a
+      second click; with Settings open, hovering a module also switches.
 - [ ] `journalctl --user -u quickshell.service` free of QML errors and
       binding loops after exercising every page.
 - [ ] `tests/verify-xps` passes.

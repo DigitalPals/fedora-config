@@ -83,6 +83,9 @@ Rectangle {
             hovered = true;
             root.entered();
         }
+        // A newly mapped layer surface can cost Qt the next enter event;
+        // motion over the icon still re-arms the bar's hover switch.
+        onPositionChanged: root.entered()
         onExited: {
             hovered = false;
             root.exited();

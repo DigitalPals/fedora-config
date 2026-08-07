@@ -93,11 +93,22 @@ test("Idle inhibit and Control Center use the reorderable module pipeline", () =
 
 test("an open Settings panel preserves menubar hover switching", () => {
     const bar = read("Bar/Bar.qml");
+    const icon = read("Bar/BarIcon.qml");
+    const t3 = read("Bar/T3Chip.qml");
+    const usage = read("Bar/UsageChips.qml");
     const hoverOpen = bar.match(/function hoverOpen\([\s\S]*?\n    \}/)?.[0] ?? "";
 
     assert.match(hoverOpen, /!Popouts\.open \|\| Popouts\.currentName === name/);
+    assert.match(hoverOpen, /pendingHoverName === name/,
+        "pointer motion must not keep restarting the hover-switch delay");
     assert.doesNotMatch(hoverOpen, /currentName === "settings"/,
         "Settings must not disarm the click-once, hover-between-modules interaction");
+    assert.match(bar, /onPointChanged:\s*barWindow\.hoverPanelAt\(point\.position\)/,
+        "the full-bar handler must route hover motion around stale MouseArea enter state");
+    assert.match(bar, /function hoverPanelAt\(position\)[\s\S]*Object\.keys\(panelAnchors\)/);
+    for (const source of [bar, icon, t3, usage])
+        assert.match(source, /onPositionChanged:[^\n]*(hoverOpen|entered|chipEntered)/,
+            "module hover must recover when a mapped popout costs Qt an enter event");
 });
 
 test("regression fixes keep asynchronous state identity-safe", () => {

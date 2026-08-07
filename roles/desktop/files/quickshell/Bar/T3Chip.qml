@@ -119,6 +119,7 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             onEntered: root.entered()
+            onPositionChanged: root.entered()
             onExited: root.exited()
             onClicked: root.clicked()
         }

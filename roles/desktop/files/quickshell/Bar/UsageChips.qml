@@ -85,6 +85,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 onEntered: root.chipEntered("claude")
+                onPositionChanged: root.chipEntered("claude")
                 onExited: root.chipExited("claude")
                 onClicked: root.chipClicked("claude")
             }
@@ -146,6 +147,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     onEntered: root.chipEntered(chip.modelData)
+                    onPositionChanged: root.chipEntered(chip.modelData)
                     onExited: root.chipExited(chip.modelData)
                     onClicked: root.chipClicked(chip.modelData)
                 }

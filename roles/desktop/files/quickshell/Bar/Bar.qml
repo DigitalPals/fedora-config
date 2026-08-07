@@ -299,6 +299,11 @@ PanelWindow {
     function hoverOpen(name, isle, item) {
         if (!Popouts.open || Popouts.currentName === name)
             return;
+        // Mapping the separate popout surface can make Qt miss the next
+        // MouseArea enter transition. Hover motion calls this too, so keep
+        // an existing candidate armed rather than restarting its delay.
+        if (pendingHoverName === name)
+            return;
         pendingHoverName = name;
         pendingHoverIsland = isle;
         pendingHoverAnchor = anchorOf(item);
@@ -310,6 +315,33 @@ PanelWindow {
             return;
         hoverSwitch.stop();
         pendingHoverName = "";
+    }
+
+    // The full-bar HoverHandler continues receiving pointer motion when a
+    // second layer surface maps. Resolve that position back to registered
+    // module anchors so switching does not depend on a MouseArea re-enter.
+    function hoverPanelAt(position) {
+        if (!Popouts.open)
+            return;
+        const names = Object.keys(panelAnchors);
+        for (const name of names) {
+            const item = panelAnchors[name];
+            if (!item || !item.visible || item.width <= 0 || item.height <= 0)
+                continue;
+            const rect = anchorOf(item);
+            if (position.x < rect.x || position.x > rect.x + rect.width
+                    || position.y < rect.y || position.y > rect.y + rect.height)
+                continue;
+            if (Popouts.currentName === name) {
+                if (pendingHoverName !== "")
+                    cancelHover(pendingHoverName);
+            } else {
+                hoverOpen(name, item.isle ?? Popouts.defaultIsland[name], item);
+            }
+            return;
+        }
+        if (pendingHoverName !== "")
+            cancelHover(pendingHoverName);
     }
 
     property string pendingHoverName: ""
@@ -385,6 +417,9 @@ PanelWindow {
 
         HoverHandler {
             id: barHover
+            blocking: false
+
+            onPointChanged: barWindow.hoverPanelAt(point.position)
 
             onHoveredChanged: {
                 if (hovered) {
@@ -531,6 +566,7 @@ PanelWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     onEntered: barWindow.hoverOpen("media", mediaModule.isle, mediaChip)
+                    onPositionChanged: barWindow.hoverOpen("media", mediaModule.isle, mediaChip)
                     onExited: barWindow.cancelHover("media")
                     onClicked: barWindow.togglePopout("media", mediaModule.isle, mediaChip)
                 }
@@ -603,6 +639,7 @@ PanelWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     onEntered: barWindow.hoverOpen("calendar", clockChip.isle, clockChip)
+                    onPositionChanged: barWindow.hoverOpen("calendar", clockChip.isle, clockChip)
                     onExited: barWindow.cancelHover("calendar")
                     onClicked: barWindow.togglePopout("calendar", clockChip.isle, clockChip)
                 }
@@ -682,6 +719,7 @@ PanelWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     onEntered: barWindow.hoverOpen("weather", weatherModule.isle, weatherChip)
+                    onPositionChanged: barWindow.hoverOpen("weather", weatherModule.isle, weatherChip)
                     onExited: barWindow.cancelHover("weather")
                     onClicked: barWindow.togglePopout("weather", weatherModule.isle, weatherChip)
                 }
