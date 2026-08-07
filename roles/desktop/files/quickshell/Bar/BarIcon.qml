@@ -42,6 +42,10 @@ Rectangle {
     color: active ? Theme.accent : alert ? Theme.redBg : held ? Theme.hoverFillStrong : mouse.hovered ? Theme.hoverFill : "transparent"
     anchors.verticalCenter: parent.verticalCenter
 
+    Behavior on color {
+        ColorAnimation { duration: Theme.chipFadeDuration }
+    }
+
     Row {
         id: inner
         anchors.centerIn: parent
@@ -63,6 +67,10 @@ Rectangle {
                 font.family: Theme.fontIcon
                 font.pixelSize: root.glyphSize
                 color: root.fg
+
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
             }
         }
 
@@ -76,6 +84,10 @@ Rectangle {
             font.weight: root.alert ? Theme.weightSemibold : Theme.weightMedium
             font.features: Theme.tabularNumberFeatures
             color: root.alert ? Theme.redText : root.fg
+
+            Behavior on color {
+                ColorAnimation { duration: Theme.chipFadeDuration }
+            }
         }
     }
 

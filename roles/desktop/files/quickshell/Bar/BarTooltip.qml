@@ -13,6 +13,11 @@ Item {
     // clears stale containsMouse values after a missed surface-exit event and
     // also prevents a tooltip from lingering over a different module.
     readonly property bool pointerOverTarget: {
+        // Skip the scene mapping while not hovered: this also drops the
+        // binding's dependency on tooltipPointerPosition, so idle tooltips
+        // cost nothing on pointer moves elsewhere in the bar.
+        if (!root.hovered)
+            return false;
         const window = root.Window.window;
         if (!window || !("tooltipPointerInside" in window)
                 || !("tooltipPointerPosition" in window))
@@ -30,7 +35,14 @@ Item {
     width: tip.implicitWidth
     height: tip.implicitHeight
     z: 1000
-    visible: ready && text !== "" && !Popouts.open
+    opacity: ready ? 1 : 0
+    // Popouts.open stays a hard cut (see the Connections note below); only
+    // hover-driven appearance eases.
+    visible: text !== "" && !Popouts.open && opacity > 0.01
+
+    Behavior on opacity {
+        NumberAnimation { duration: Theme.chipFadeDuration; easing.type: Easing.OutCubic }
+    }
 
     // Call sites place the tip 6px below their module (y: parent.height + 6);
     // with a bottom bar this shifts it to 6px above instead.

@@ -46,6 +46,10 @@ Item {
              : root.held || chipMouse.containsMouse ? Theme.hoverFillStrong
              : Theme.hoverFill
 
+        Behavior on color {
+            ColorAnimation { duration: Theme.chipFadeDuration }
+        }
+
         Row {
             id: chipRow
             anchors.centerIn: parent

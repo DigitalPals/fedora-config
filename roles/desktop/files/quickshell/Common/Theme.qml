@@ -147,4 +147,7 @@ Singleton {
     readonly property int popoutContentRevealDelay: 45
     readonly property var popoutEnterCurve: [0.38, 1.15, 0.22, 1.0, 1.0, 1.0]
     readonly property var popoutExitCurve: [0.4, 0.0, 0.2, 1.0, 1.0, 1.0]
+
+    // Hover/state feedback on bar chips and tooltips.
+    readonly property int chipFadeDuration: 120
 }

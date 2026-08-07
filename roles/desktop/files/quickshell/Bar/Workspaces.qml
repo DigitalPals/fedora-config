@@ -25,6 +25,10 @@ Row {
 
             width: showNumber ? (focused ? 28 : Theme.chipHeight) : 20
             height: Theme.chipHeight
+
+            Behavior on width {
+                NumberAnimation { duration: Theme.chipFadeDuration; easing.type: Easing.OutCubic }
+            }
             anchors.verticalCenter: parent.verticalCenter
             Accessible.role: Accessible.Button
             Accessible.name: "Workspace " + wsId
@@ -38,6 +42,10 @@ Row {
                 radius: Theme.chipRadius
                 color: parent.focused ? Theme.accent : parent.urgent ? Theme.redBg : wsMouse.containsMouse ? Theme.hoverFill : "transparent"
 
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
+
                 Text {
                     anchors.centerIn: parent
                     text: wsId
@@ -46,6 +54,10 @@ Row {
                     font.weight: parent.parent.focused || parent.parent.urgent ? Theme.weightSemibold : Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
                     color: parent.parent.focused ? Theme.accentFg : parent.parent.urgent ? Theme.redText : wsMouse.containsMouse ? Theme.textHi : Theme.textLow
+
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
+                    }
                 }
             }
 

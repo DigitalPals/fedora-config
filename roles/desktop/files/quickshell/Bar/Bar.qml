@@ -632,6 +632,10 @@ PanelWindow {
                 radius: Theme.chipRadius
                 color: barWindow.popoutOpen("media") ? Theme.hoverFillStrong : mediaMouse.containsMouse ? Theme.hoverFill : "transparent"
 
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
+
                 Row {
                     id: mediaRow
                     anchors.centerIn: parent
@@ -643,6 +647,10 @@ PanelWindow {
                         font.family: Theme.fontIcon
                         font.pixelSize: Theme.barIconSize
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.icon
+
+                        Behavior on color {
+                            ColorAnimation { duration: Theme.chipFadeDuration }
+                        }
                     }
 
                     Text {
@@ -660,6 +668,10 @@ PanelWindow {
                         color: barWindow.popoutOpen("media") || mediaMouse.containsMouse ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
                         width: Math.min(implicitWidth, Theme.mediaTitleWideWidth)
+
+                        Behavior on color {
+                            ColorAnimation { duration: Theme.chipFadeDuration }
+                        }
                     }
                 }
 
@@ -715,6 +727,10 @@ PanelWindow {
                 radius: Theme.chipRadius
                 color: barWindow.popoutOpen("calendar") ? Theme.hoverFillStrong : clockMouse.containsMouse ? Theme.hoverFill : "transparent"
 
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
+
                 Row {
                     id: clockRow
                     anchors.centerIn: parent
@@ -739,6 +755,10 @@ PanelWindow {
                         font.pixelSize: Theme.barTextSize
                         font.features: Theme.tabularNumberFeatures
                         color: barWindow.popoutOpen("calendar") || clockMouse.containsMouse ? Theme.textMid : Theme.textLow
+
+                        Behavior on color {
+                            ColorAnimation { duration: Theme.chipFadeDuration }
+                        }
                     }
                 }
 
@@ -790,6 +810,10 @@ PanelWindow {
                 radius: Theme.chipRadius
                 color: barWindow.popoutOpen("weather") ? Theme.hoverFillStrong : weatherMouse.containsMouse ? Theme.hoverFill : "transparent"
 
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
+
                 Row {
                     id: weatherRow
                     anchors.centerIn: parent
@@ -821,6 +845,10 @@ PanelWindow {
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.barTextSize
                         color: barWindow.popoutOpen("weather") || weatherMouse.containsMouse ? Theme.textMid : Theme.textLow
+
+                        Behavior on color {
+                            ColorAnimation { duration: Theme.chipFadeDuration }
+                        }
                     }
                 }
 
