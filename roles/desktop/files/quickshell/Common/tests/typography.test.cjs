@@ -7,10 +7,21 @@ const shellDir = path.resolve(__dirname, "../..");
 const themePath = path.join(shellDir, "Common", "Theme.qml");
 const theme = fs.readFileSync(themePath, "utf8");
 
+// Recursive: the bar's modules live in Bar/Modules/, and a font literal
+// hides just as well one directory down.
 function qmlFiles(directory) {
-    return fs.readdirSync(path.join(shellDir, directory))
-        .filter(name => name.endsWith(".qml"))
-        .map(name => path.join(shellDir, directory, name));
+    const out = [];
+    const walk = dir => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory() && entry.name !== "tests")
+                walk(full);
+            else if (entry.name.endsWith(".qml"))
+                out.push(full);
+        }
+    };
+    walk(path.join(shellDir, directory));
+    return out;
 }
 
 function intToken(name) {
@@ -112,7 +123,10 @@ test("all visible bar values use OPPO Sans with tabular figures", () => {
             `${label} still uses the monospace face`);
     }
 
-    for (const name of ["Bar.qml", "BarIcon.qml", "T3Chip.qml", "UsageChips.qml", "Workspaces.qml"]) {
+    // Every bar file that draws a changing number. The four modules joined
+    // the list when Bar.qml stopped drawing any of them itself.
+    for (const name of ["BarIcon.qml", "T3Chip.qml", "UsageChips.qml", "Workspaces.qml",
+                        "Modules/Clock.qml", "Modules/Weather.qml", "Modules/Bell.qml"]) {
         const source = fs.readFileSync(path.join(shellDir, "Bar", name), "utf8");
         assert.match(source, /Theme\.tabularNumberFeatures/,
             `${name} must opt dynamic values into tabular figures`);

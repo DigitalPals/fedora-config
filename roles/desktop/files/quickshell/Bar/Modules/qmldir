@@ -1,0 +1,17 @@
+# Sibling-type resolution inside Bar/Modules/ relies on this explicit index —
+# a directory carrying a qmldir is no longer implicitly scanned, so every
+# Bar/Modules/*.qml type must be listed. qmldir.test.cjs enforces that.
+BarModule BarModule.qml
+Battery Battery.qml
+Bell Bell.qml
+Bluetooth Bluetooth.qml
+Clock Clock.qml
+Control Control.qml
+Idle Idle.qml
+Media Media.qml
+T3 T3.qml
+Usage Usage.qml
+Volume Volume.qml
+Weather Weather.qml
+Wifi Wifi.qml
+Workspaces Workspaces.qml

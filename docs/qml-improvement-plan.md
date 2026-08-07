@@ -1398,7 +1398,61 @@ when clean).
 
 </details>
 
-### [ ] WP4.3 Extract modules to `Bar/Modules/*.qml`
+### [x] WP4.3 Extract modules to `Bar/Modules/*.qml`
+
+> Done for the modules; the two engine extractions were **deliberately not
+> done**, which the WP allows — reasons below. `Bar.qml` 1068 → **615**, with
+> the 13 modules now files under `Bar/Modules/` sharing a `BarModule` base.
+> Notes:
+> - **This also lands WP4.2's deferred half.** `BarModule` declares `isle`,
+>   `dividerBefore`, `dividerAfter` and `detailSaving` as real properties, and
+>   the slot holds the result as `item as BarModule` — a type assertion, which
+>   qmllint honours: `missing-property` 12 → 11. Verified before relying on it,
+>   by linting an `as`-cast access beside a raw one and seeing only the raw one
+>   warn.
+> - `BarModule` is a **Row**, because seven of the thirteen already were one to
+>   sit their content between dividers, and a Row of a single child lays out
+>   exactly as that child did. The bell is the exception: its badge overlaps the
+>   icon through anchors, so those two stay siblings inside an `Item` that the
+>   BarModule wraps — as Row children they would have been laid out side by side.
+> - Modules reach the bar through a typed `host` rather than an outer id.
+>   `compact` lives on the base and is null-safe, because `host` is assigned
+>   after construction and a binding reaching straight through it would evaluate
+>   once against null.
+> - **The clock module owns its own `SystemClock` now**, the way
+>   `CalendarPopover` and the settings preview already did. It needs no
+>   `enabled` gate: WP1.4 gated Bar's shared clock on `barWindow.visible`, but a
+>   module slot only instantiates on a visible bar, so an unmapped output now
+>   has no clock at all rather than a disabled one.
+> - **Equivalence: 0 differing pixels** across the whole bar against the
+>   previous commit, and a second instance under a fake `HOME` renders a
+>   different module set (media, volume) correctly, exercising the URL path for
+>   modules this config never instantiates. All popouts still open; `held` still
+>   lands on the owning module.
+> - **The test list of qmldir directories was hardcoded, so `Bar/Modules/`
+>   escaped every assertion in `qmldir.test.cjs` until noticed.** It now
+>   discovers directories that contain types, and was re-checked by deleting the
+>   new qmldir. Six other assertions across three test files had to follow the
+>   move; all were "read `Bar/Bar.qml`" that should now read the modules.
+>
+> **Why the layout engine and hover controller stayed:**
+> - `recomputeFit` reaches the cluster Repeaters directly (`measuredSlots(repeater)`,
+>   `reconstructedWidth(cluster, repeater)`). Those *are* the visual tree it would
+>   leave behind, so a non-visual `BarLayout` would take them as arguments — the
+>   same code with an extra hop, not a separation.
+> - The hover-to-switch machine would split more cleanly, but it is **the one
+>   subsystem on this machine that cannot be verified**: there is no
+>   pointer-injection tool here (`wtype` is keyboard-only), so its paths are
+>   only observable through their `held`/registration consequences. Moving code
+>   I cannot exercise, immediately after a 13-file extraction, trades a real
+>   risk for a cosmetic line count.
+> - Consequently `Bar.qml` is 615 lines, not the ~400 the accept criterion
+>   names. The criterion assumed both extractions happened.
+
+<details>
+<summary>Original WP4.3 specification</summary>
+
+### WP4.3 Extract modules to `Bar/Modules/*.qml`
 
 Move the 13 inline module components out (spans listed in the architecture
 notes; e.g. `cmpBell` 1116–1181). `moduleComponents` map becomes URLs.
@@ -1408,6 +1462,8 @@ machine (~362–486) into `BarPopoutController.qml` if the split proves clean �
 otherwise leave them and note it.
 **Accept:** `Bar.qml` under ~400 lines; all modules render and toggle
 popouts; reordering modules in Settings still works.
+
+</details>
 
 ### [ ] WP4.4 `PopoutPanel` contract type + anchor-rect caching
 

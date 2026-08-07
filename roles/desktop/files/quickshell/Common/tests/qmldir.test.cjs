@@ -5,11 +5,32 @@ const path = require("node:path");
 
 const shellDir = path.resolve(__dirname, "../..");
 
-// Every directory that carries a qmldir. A directory with one is no longer
-// implicitly scanned by the engine, so an unlisted type fails at runtime as
-// "X is not a type" — which is why this check exists at all, and why it has
-// to cover all four rather than just Settings/ (its original scope).
-const DIRS = [".", "Bar", "Common", "Popovers", "Settings"];
+// Every directory holding QML types, discovered rather than listed. A
+// directory carrying a qmldir is no longer implicitly scanned by the
+// engine, so an unlisted type fails at runtime as "X is not a type" —
+// which is why this check exists at all.
+//
+// Derived on purpose: this list used to be hardcoded, and when Bar/Modules/
+// was added it escaped every assertion below until someone noticed. A new
+// directory of types now joins the check by existing.
+function typeDirs() {
+    const out = [];
+    const walk = (rel) => {
+        const abs = path.join(shellDir, rel);
+        const entries = fs.readdirSync(abs, { withFileTypes: true });
+        if (entries.some(e => e.isFile() && /^[A-Z].*\.qml$/.test(e.name)))
+            out.push(rel);
+        for (const e of entries) {
+            if (e.isDirectory() && !e.name.startsWith(".")
+                    && !["tests", "assets", "scripts"].includes(e.name))
+                walk(rel === "." ? e.name : path.join(rel, e.name));
+        }
+    };
+    walk(".");
+    return out;
+}
+
+const DIRS = typeDirs();
 
 // Files that must NOT be registered as types, with the reason. A stale
 // exemption is itself a failure: see the test below.
@@ -47,6 +68,7 @@ function entriesIn(dir) {
 }
 
 test("every directory that needs a qmldir has one", () => {
+    assert.ok(DIRS.length >= 5, `only found ${DIRS.length} type directories`);
     for (const dir of DIRS)
         assert.ok(fs.existsSync(path.join(shellDir, dir, "qmldir")),
             `${dir}/qmldir is missing`);

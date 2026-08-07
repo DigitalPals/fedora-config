@@ -100,8 +100,11 @@ test("Idle inhibit and Control Center use the reorderable module pipeline", () =
     assert.match(modules, /idle:\s*\{ name: "Idle inhibit"/);
     assert.match(modules, /control:\s*\{ name: "Control Center"/);
     assert.doesNotMatch(modules, /pinnedTail|text:\s*"pinned"/);
-    assert.match(bar, /idle:\s*cmpIdle, control:\s*cmpControl/);
-    assert.match(bar, /id:\s*cmpControl[\s\S]*?panelName:\s*"control"/);
+    // The modules are files now; the bar maps ids to their sources.
+    assert.match(bar, /idle:\s*"Modules\/Idle\.qml"/);
+    assert.match(bar, /control:\s*"Modules\/Control\.qml"/);
+    assert.match(read("Bar/Modules/Control.qml"), /panelName:\s*"control"/);
+    assert.match(read("Bar/Modules/Idle.qml"), /SysInfo\.idleInhibited = !SysInfo\.idleInhibited/);
     assert.doesNotMatch(bar, /togglePopout\("control", "right"/);
 });
 
@@ -142,11 +145,12 @@ test("T3 Code and grouped model usage are separate reorderable modules", () => {
         "fresh layouts should keep the two modules adjacent");
     assert.match(modules, /t3:\s*\{ name: "T3 Code"/);
     assert.match(modules, /usage:\s*\{ name: "Model usage"/);
-    assert.match(bar, /t3:\s*cmpT3, usage:\s*cmpUsage/);
-    assert.match(bar, /id:\s*cmpT3[\s\S]*?panelName:\s*"t3code"/);
-    assert.match(bar, /id:\s*cmpUsage[\s\S]*?panelName:\s*"usage"/);
-    assert.doesNotMatch(bar,
-        /id:\s*cmpT3[\s\S]*?panelName:\s*"usage"[\s\S]*?id:\s*cmpUsage/,
+    assert.match(bar, /t3:\s*"Modules\/T3\.qml"/);
+    assert.match(bar, /usage:\s*"Modules\/Usage\.qml"/);
+    assert.match(read("Bar/Modules/T3.qml"), /panelName:\s*"t3code"/);
+    assert.match(read("Bar/Modules/Usage.qml"), /panelName:\s*"usage"/);
+    // Separate files make this structural rather than a span check.
+    assert.doesNotMatch(read("Bar/Modules/T3.qml"), /panelName:\s*"usage"/,
         "the T3 module must not own the grouped usage popout");
 });
 
@@ -165,7 +169,7 @@ test("the full-bar hover fallback resolves the provider before active Usage", ()
     assert.match(hoverAt, /Usage\.selected = provider/);
     assert.match(bar, /interval:\s*120/,
         "switching from a different popout should retain the standard delay");
-    assert.match(bar,
+    assert.match(read("Bar/Modules/Usage.qml"),
         /Popouts\.openPanel\("usage", usageModule\.isle,[\s\S]*?anchorOf\(usageChips\)\)/,
         "all providers should retain the grouped UsageChips anchor");
 });

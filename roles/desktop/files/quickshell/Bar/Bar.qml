@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
+import "Modules"
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 import "../Common/PanelRegistryData.js" as PanelRegistry
@@ -272,10 +273,17 @@ PanelWindow {
         }
     }
 
-    readonly property var moduleComponents: ({
-        ws: cmpWs, media: cmpMedia, clock: cmpClock, weather: cmpWeather,
-        t3: cmpT3, usage: cmpUsage, vol: cmpVol, wifi: cmpWifi, batt: cmpBatt,
-        bell: cmpBell, bt: cmpBt, idle: cmpIdle, control: cmpControl
+    // Module id -> its file. The modules live in Bar/Modules/ and share a
+    // BarModule base, which is what lets the slot below hold them as a type
+    // rather than duck-typing its way through Loader.item.
+    readonly property var moduleSources: ({
+        ws: "Modules/Workspaces.qml", media: "Modules/Media.qml",
+        clock: "Modules/Clock.qml", weather: "Modules/Weather.qml",
+        t3: "Modules/T3.qml", usage: "Modules/Usage.qml",
+        vol: "Modules/Volume.qml", wifi: "Modules/Wifi.qml",
+        batt: "Modules/Battery.qml", bell: "Modules/Bell.qml",
+        bt: "Modules/Bluetooth.qml", idle: "Modules/Idle.qml",
+        control: "Modules/Control.qml"
     })
 
     // One slot per configured module: loads the module's component when the
@@ -288,8 +296,10 @@ PanelWindow {
         required property int index
         property string col: "left"
         property var colList: []
-        readonly property real detailSaving: item && "detailSaving" in item
-            ? item.detailSaving : 0
+        // `as` gives qmllint a typed handle on what the Loader built, so the
+        // module contract below is checked rather than duck-typed.
+        readonly property BarModule mod: item as BarModule
+        readonly property real detailSaving: mod ? mod.detailSaving : 0
 
         anchors.verticalCenter: parent.verticalCenter
         // Every output carries a bar, but only the mapped one is visible;
@@ -297,16 +307,16 @@ PanelWindow {
         // timers) behind an unmapped surface.
         active: barWindow.visible && modelData.on && barWindow.autoRule(modelData.id)
         visible: active
-        sourceComponent: barWindow.moduleComponents[slot.modelData.id]
+        source: barWindow.moduleSources[slot.modelData.id] ?? ""
         onLoaded: {
-            if ("isle" in item)
-                item.isle = slot.col;
-            if ("dividerBefore" in item)
-                item.dividerBefore = Qt.binding(() =>
+            if (slot.mod) {
+                slot.mod.host = barWindow;
+                slot.mod.isle = slot.col;
+                slot.mod.dividerBefore = Qt.binding(() =>
                     barWindow.anyVisibleBefore(slot.colList, slot.index));
-            if ("dividerAfter" in item)
-                item.dividerAfter = Qt.binding(() =>
+                slot.mod.dividerAfter = Qt.binding(() =>
                     barWindow.anyVisibleAfter(slot.colList, slot.index));
+            }
             fitTimer.restart();
         }
         onWidthChanged: fitTimer.restart()
@@ -557,80 +567,7 @@ PanelWindow {
                 delegate: ModuleSlot { col: "left"; colList: Settings.mods.left }
             }
 
-            Component {
-                id: cmpWs
-
-                Workspaces {
-                    property string isle: "left"
-                    host: barWindow
-                }
-            }
-
-            Component {
-                id: cmpMedia
-
-                Row {
-                    id: mediaModule
-
-                    property string isle: "left"
-                    property bool dividerBefore: false
-                    spacing: 2
-                    readonly property real detailSaving: mediaTitle.implicitWidth > 0
-                        ? Math.min(mediaTitle.implicitWidth, Settings.modOpts.media.maxWidth) + 6 : 0
-
-                    Divider {
-                        visible: mediaModule.dividerBefore
-                    }
-
-            BarChip {
-                id: mediaChip
-                visible: Media.hasTrack
-                host: barWindow
-                panelName: "media"
-                isle: mediaModule.isle
-                tooltip: Media.player ? Media.player.trackTitle : "Media"
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Media.glyph
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.barIconSize
-                    color: mediaChip.held || mediaChip.hovered ? Theme.textHi : Theme.icon
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.chipFadeDuration }
-                    }
-                }
-
-                Text {
-                    id: mediaTitle
-                    visible: !barWindow.moduleCompact("media")
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: {
-                        if (!Media.player)
-                            return "";
-                        const format = Settings.modOpts.media.titleFormat;
-                        const artist = Media.player.trackArtist;
-                        const title = Media.player.trackTitle;
-                        if (format === "title" || !artist)
-                            return title;
-                        return format === "artist-title"
-                            ? artist + " — " + title : title + " — " + artist;
-                    }
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barTextSize
-                    color: mediaChip.held || mediaChip.hovered ? Theme.textHi : Theme.textMid
-                    elide: Text.ElideRight
-                    width: Math.min(implicitWidth, Settings.modOpts.media.maxWidth)
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.chipFadeDuration }
-                    }
-                }
-            }
-                }
-            }
-        }
+}
 
         // CENTER — clock + weather
         Cluster {
@@ -647,125 +584,7 @@ PanelWindow {
                 delegate: ModuleSlot { col: "center"; colList: Settings.mods.center }
             }
 
-            Component {
-                id: cmpClock
-
-            BarChip {
-                id: clockChip
-                readonly property real detailSaving: Settings.modOpts.clock.showDate
-                    ? clockDate.implicitWidth + 6 : 0
-
-                host: barWindow
-                panelName: "calendar"
-                tooltip: Qt.formatDateTime(clock.date, "dddd, MMMM d")
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Qt.formatDateTime(clock.date, Settings.clock24
-                        ? (Settings.modOpts.clock.seconds ? "HH:mm:ss" : "HH:mm")
-                        : (Settings.modOpts.clock.seconds ? "h:mm:ss AP" : "h:mm AP"))
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barTextSize
-                    font.weight: Theme.weightSemibold
-                    font.features: Theme.tabularNumberFeatures
-                    color: Theme.textHi
-                }
-
-                Text {
-                    id: clockDate
-                    visible: Settings.modOpts.clock.showDate && !barWindow.moduleCompact("clock")
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Qt.formatDateTime(clock.date, Settings.modOpts.clock.dateFormat)
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barTextSize
-                    font.features: Theme.tabularNumberFeatures
-                    color: clockChip.held || clockChip.hovered ? Theme.textMid : Theme.textLow
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.chipFadeDuration }
-                    }
-                }
-            }
-            }
-
-            Component {
-                id: cmpWeather
-
-                Row {
-                    id: weatherModule
-
-                    property string isle: "center"
-                    property bool dividerBefore: false
-                    spacing: 3
-                    // An enabled weather module stays on the bar while it is
-                    // offline: a chip that vanishes cannot say why. Only the
-                    // gap before the first forecast lands is blank.
-                    readonly property bool shown: Weather.ready || Weather.offline
-                    visible: shown
-                    readonly property real detailSaving: weatherCondition.implicitWidth + 5
-
-                    Divider {
-                        visible: weatherModule.dividerBefore && weatherModule.shown
-                    }
-
-            // Quiet weather chip next to the clock (design 1g).
-            BarChip {
-                id: weatherChip
-                visible: weatherModule.shown
-                // One tighter than the default: the leading weather glyph
-                // already carries its own side bearing.
-                hPadding: 6
-                spacing: 5
-                host: barWindow
-                panelName: "weather"
-                isle: weatherModule.isle
-                // Offline is the one state the chip cannot spell out in the
-                // width it has, so the reason goes here.
-                tooltip: Weather.place + " · "
-                    + (Weather.offline ? Weather.fetchError : Weather.condition)
-
-                // Weather.code is -1 until a forecast lands, and both glyph()
-                // and glyphColor() already answer that with the na mark in
-                // Theme.textDim — no fallback needed here.
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Weather.glyph(Weather.code, Weather.isDay)
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.barIconSize
-                    color: Weather.glyphColor(Weather.code, Weather.isDay)
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    // Weather.temp is 0 with nothing loaded, and "0°" is a
-                    // reading. A dash is not.
-                    text: Weather.ready ? Weather.temp + "°" : "—"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barTextSize
-                    font.weight: Theme.weightSemibold
-                    font.features: Theme.tabularNumberFeatures
-                    // Dimmed while offline, so a forecast that has stopped
-                    // being refreshed does not read as current.
-                    color: Weather.offline ? Theme.textFaint : Theme.textMid
-                }
-
-                Text {
-                    id: weatherCondition
-                    visible: !barWindow.moduleCompact("weather")
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Weather.ready ? Weather.condition : "unavailable"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barTextSize
-                    color: weatherChip.held || weatherChip.hovered ? Theme.textMid : Theme.textLow
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.chipFadeDuration }
-                    }
-                }
-            }
-                }
-            }
-        }
+}
 
         // RIGHT — the default home for model usage, audio, and status modules
         Cluster {
@@ -781,279 +600,7 @@ PanelWindow {
                 delegate: ModuleSlot { col: "right"; colList: Settings.mods.right }
             }
 
-            Component {
-                id: cmpT3
-
-                Row {
-                    id: t3Module
-
-                    property string isle: "right"
-                    property bool dividerBefore: false
-                    spacing: 1
-                    readonly property real detailSaving: Settings.modOpts.t3.showLabel
-                        ? t3Chip.detailSaving : 0
-
-                    Divider {
-                        visible: t3Module.dividerBefore
-                    }
-
-                    T3Chip {
-                        id: t3Chip
-                        barVisible: barWindow.visible && !barWindow.hidden
-                        displayMode: barWindow.moduleCompact("t3")
-                            || !Settings.modOpts.t3.showLabel ? 0 : 2
-                        host: barWindow
-                        panelName: "t3code"
-                        isle: t3Module.isle
-                    }
-                }
-            }
-
-            Component {
-                id: cmpUsage
-
-                Row {
-                    id: usageModule
-
-                    property string isle: "right"
-                    property bool dividerBefore: false
-                    property bool dividerAfter: false
-                    spacing: 1
-                    readonly property real detailSaving: usageChips.detailSaving
-
-                    Divider {
-                        visible: usageModule.dividerBefore
-                    }
-
-                    // Keep one anchor for the grouped provider module: changing
-                    // Claude/Codex/Kimi content must not slide the panel.
-                    UsageChips {
-                        id: usageChips
-                        host: barWindow
-                        panelName: "usage"
-                        isle: usageModule.isle
-                        displayMode: barWindow.moduleCompact("usage") ? 0 : 2
-                        onChipClicked: key => {
-                            if (barWindow.popoutOpen("usage") && Usage.selected === key) {
-                                Popouts.close();
-                            } else {
-                                Usage.selected = key;
-                                Popouts.openPanel("usage", usageModule.isle,
-                                    barWindow.anchorOf(usageChips));
-                            }
-                        }
-                        onChipEntered: key => {
-                            if (Popouts.open)
-                                Usage.selected = key;
-                            barWindow.hoverOpen("usage", usageModule.isle, usageChips);
-                        }
-                        onChipExited: barWindow.cancelHover("usage")
-                    }
-
-                    Divider {
-                        visible: usageModule.dividerAfter
-                    }
-                }
-            }
-
-            Component {
-                id: cmpIdle
-
-                Row {
-                    id: idleModule
-
-                    property string isle: "right"
-                    property bool dividerBefore: false
-                    spacing: 1
-
-                    Divider {
-                        visible: idleModule.dividerBefore
-                    }
-
-                    // Keep-awake toggle. Lit while inhibiting; no popout, so
-                    // it deliberately skips the hover-switch wiring.
-                    BarIcon {
-                        glyph: "" // coffee
-                        active: SysInfo.idleInhibited
-                        idleColor: Theme.textLow
-                        tooltip: SysInfo.idleInhibited ? "Idle inhibit on" : "Idle inhibit off"
-                        tooltipAlign: 1
-                        onClicked: SysInfo.idleInhibited = !SysInfo.idleInhibited
-                    }
-                }
-            }
-
-            Component {
-                id: cmpVol
-
-            BarIcon {
-                id: audioIcon
-
-                host: barWindow
-                panelName: "audio"
-                glyph: Audio.muted || Audio.volume === 0 ? "" : Audio.volume < 50 ? "" : ""
-                label: Settings.modOpts.vol.showPct ? Audio.volume + "%" : ""
-                compact: barWindow.moduleCompact("vol")
-                alert: Audio.muted
-                tooltip: "Audio " + Audio.volume + "%"
-                    + (Audio.muted ? " · muted" : "")
-                    + " · wheel volume"
-                    + (Settings.modOpts.vol.middleClick === "mute" ? " · middle mute" : "")
-                tooltipAlign: 1
-                onMiddleClicked: {
-                    if (Settings.modOpts.vol.middleClick === "mute")
-                        Audio.toggleMuted();
-                }
-                onWheeled: steps => Audio.stepVolume(steps * (Settings.modOpts.vol.step / 100))
-            }
-
-            }
-
-            Component {
-                id: cmpWifi
-
-            BarIcon {
-                id: wifiIcon
-
-                host: barWindow
-                panelName: "wifi"
-                glyph: ""
-                idleColor: WifiState.enabled ? (WifiState.connected ? Theme.icon : Theme.textLow) : Theme.textFaint
-                tooltip: WifiState.connected ? "Wi-Fi · " + WifiState.name : "Wi-Fi"
-                tooltipAlign: 1
-            }
-
-            }
-
-            Component {
-                id: cmpBt
-
-            BarIcon {
-                id: btIcon
-
-                host: barWindow
-                panelName: "bluetooth"
-                visible: BluetoothState.connected
-                glyph: ""
-                tooltip: "Bluetooth connected"
-                tooltipAlign: 1
-            }
-
-            }
-
-            Component {
-                id: cmpBatt
-
-            BarIcon {
-                id: batteryIcon
-
-                host: barWindow
-                panelName: "battery"
-                visible: Battery.isLaptop
-                // md-battery_high / md-battery_charging_high. The charging
-                // glyph carries its own bolt, so nothing is overlaid; it is
-                // also wider, hence the fixed column below — 13.5 is what
-                // the previous Font Awesome glyph laid out at, so the rest
-                // of the cluster keeps its position.
-                glyph: Battery.pluggedIn ? "󱊦" : "󱊣"
-                glyphWidth: 13.5
-                // An empty label also zeroes BarIcon's detailSaving, so
-                // fitBar never budgets for a percentage that is never shown.
-                label: Settings.modOpts.batt.showPct ? Math.round(Battery.percent) + "%" : ""
-                compact: barWindow.moduleCompact("batt")
-                alert: !Battery.pluggedIn && Battery.percent <= Settings.modOpts.batt.critAt
-                idleColor: Battery.pluggedIn ? Theme.accent : Battery.percent <= Settings.modOpts.batt.warnAt ? Theme.amber : Theme.icon
-                tooltip: "Battery " + Math.round(Battery.percent) + "%"
-                    + (Battery.state === "charging" ? " · charging"
-                        : Battery.state === "full" ? " · fully charged" : "")
-                tooltipAlign: 1
-            }
-
-            }
-
-            Component {
-                id: cmpBell
-
-            Item {
-                id: bellModule
-                property string isle: "right"
-
-                width: bellIcon.width
-                height: Theme.barHeight
-                anchors.verticalCenter: parent.verticalCenter
-
-                BarIcon {
-                    id: bellIcon
-                    glyph: ""
-                    tooltip: Notifs.count + (Notifs.count === 1 ? " notification" : " notifications")
-                    tooltipAlign: 1
-                    host: barWindow
-                    panelName: "notifications"
-                    isle: bellModule.isle
-                    // The wrapper is the anchor: its height is the full bar row,
-                    // which is the rect the popout has always hung under.
-                    anchorItem: bellModule
-                }
-
-                Rectangle {
-                    id: bellBadge
-                    readonly property bool showCount: Settings.modOpts.bell.badge === "count"
-                    visible: Notifs.count > 0 && Settings.modOpts.bell.badge !== "off"
-                    anchors.top: bellIcon.top
-                    anchors.topMargin: showCount ? -3 : -1
-                    anchors.right: bellIcon.right
-                    anchors.rightMargin: showCount ? 0 : 3
-                    width: showCount ? Math.max(height, badgeCount.implicitWidth + 8) : 10
-                    height: showCount ? 15 : 10
-                    radius: height / 2
-                    // Count mode is a single accent pill ringed in bar color;
-                    // dot mode keeps the original barBg ring + inner dot.
-                    color: showCount
-                        ? (Notifs.hasUrgent ? Theme.red : Theme.accent) : Theme.barBg
-                    border.width: showCount ? 1 : 0
-                    border.color: Theme.barBg
-
-                    Rectangle {
-                        visible: !bellBadge.showCount
-                        anchors.centerIn: parent
-                        width: 6
-                        height: 6
-                        radius: 3
-                        color: Notifs.hasUrgent ? Theme.red : Theme.accent
-                    }
-
-                    Text {
-                        id: badgeCount
-                        visible: bellBadge.showCount
-                        anchors.centerIn: parent
-                        text: Notifs.count > 99 ? "99+" : Notifs.count
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
-                        font.weight: Theme.weightSemibold
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.accentFg
-                    }
-                }
-            }
-
-            }
-
-            Component {
-                id: cmpControl
-
-                BarIcon {
-                    id: controlIcon
-
-                    host: barWindow
-                    panelName: "control"
-                    glyph: "\uf30a" // fedora logo — Control Center trigger
-                    glyphSize: Theme.barIconSize
-                    active: barWindow.popoutOpen("control")
-                    tooltip: "Control Center"
-                    tooltipAlign: 1
-                }
-            }
-        }
+}
     }
 
     // Only the clock module reads this, and that module exists only while
