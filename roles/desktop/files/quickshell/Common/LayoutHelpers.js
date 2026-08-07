@@ -100,11 +100,37 @@ function accumulateWheel(accumulator, delta, threshold) {
     return { accumulator: total - steps * limit, steps: steps };
 }
 
+// Shorten only the flare that would cross a rounded outer bar tangent. A
+// roomy edge popout and the side opposite its island retain the full radius.
+function edgeFlareRadii(options) {
+    options = options || {};
+    var island = options.island;
+    var barRadius = Math.max(0, Number(options.barRadius) || 0);
+    var popRadius = Math.max(0, Number(options.popRadius) || 0);
+    var radii = { left: popRadius, right: popRadius };
+    if (!options.floating || barRadius <= 0 || popRadius <= 0)
+        return radii;
+
+    var sideMargin = Number(options.sideMargin) || 0;
+    var bodyX = Number(options.bodyX) || 0;
+    var bodyW = Math.max(0, Number(options.bodyW) || 0);
+    if (island === "left") {
+        var leftRoom = bodyX - (sideMargin + barRadius);
+        radii.left = Math.max(1, Math.min(popRadius, leftRoom));
+    } else if (island === "right") {
+        var rightTangent = (Number(options.width) || 0) - sideMargin - barRadius;
+        var rightRoom = rightTangent - (bodyX + bodyW);
+        radii.right = Math.max(1, Math.min(popRadius, rightRoom));
+    }
+    return radii;
+}
+
 var exported = {
     COMPACT_ORDER: COMPACT_ORDER,
     stackedDropIndex: stackedDropIndex,
     fitBar: fitBar,
-    accumulateWheel: accumulateWheel
+    accumulateWheel: accumulateWheel,
+    edgeFlareRadii: edgeFlareRadii
 };
 
 if (typeof module !== "undefined" && module.exports)

@@ -93,3 +93,52 @@ test("high resolution wheel deltas emit only accumulated steps", () => {
     assert.equal(accumulator, 0);
     assert.deepEqual(H.accumulateWheel(0, -240, 120), { accumulator: 0, steps: -2 });
 });
+
+test("edge joins shorten only the island side when it nears the bar tangent", () => {
+    const base = {
+        floating: true,
+        barRadius: 9,
+        popRadius: 14,
+        sideMargin: 12,
+        width: 1920
+    };
+
+    assert.deepEqual(H.edgeFlareRadii({
+        ...base, island: "left", bodyX: 26, bodyW: 400
+    }), { left: 5, right: 14 });
+    assert.deepEqual(H.edgeFlareRadii({
+        ...base, island: "right", bodyX: 1494, bodyW: 400
+    }), { left: 14, right: 5 });
+});
+
+test("roomy edge popouts retain full flares on both sides", () => {
+    const base = {
+        floating: true,
+        barRadius: 9,
+        popRadius: 14,
+        sideMargin: 12,
+        width: 1920,
+        bodyX: 700,
+        bodyW: 520
+    };
+
+    assert.deepEqual(H.edgeFlareRadii({ ...base, island: "left" }), {
+        left: 14, right: 14
+    });
+    assert.deepEqual(H.edgeFlareRadii({ ...base, island: "right" }), {
+        left: 14, right: 14
+    });
+});
+
+test("center and square attached bars retain full flares", () => {
+    const base = {
+        floating: true, barRadius: 9, popRadius: 14,
+        sideMargin: 12, width: 1920, bodyX: 26, bodyW: 1868
+    };
+    assert.deepEqual(H.edgeFlareRadii({ ...base, island: "center" }), {
+        left: 14, right: 14
+    });
+    assert.deepEqual(H.edgeFlareRadii({
+        ...base, island: "right", floating: false
+    }), { left: 14, right: 14 });
+});

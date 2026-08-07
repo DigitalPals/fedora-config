@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
 import "../Common"
+import "../Common/LayoutHelpers.js" as LayoutHelpers
 
 // One persistent connected surface for every bar module. Triggers stay in
 // the menubar while this host grows the panel directly from the bar edge.
@@ -70,15 +71,29 @@ Item {
         ? Popouts.anchorRect : activeIslandRect
     readonly property real barBottom: activeIslandRect.y + activeIslandRect.height
     readonly property real bloomProgress: Math.max(0, Math.min(1, openProgress))
-    // One shared radius keeps the crown genuinely circular while it opens;
-    // separate width/depth interpolation reads as a diagonal bevel.
-    readonly property real flareRadius: Math.min(
-        Theme.popRadius * bloomProgress,
+    readonly property var edgeFlares: LayoutHelpers.edgeFlareRadii({
+        island: Popouts.island,
+        floating: Settings.floating,
+        barRadius: Theme.clusterRadius,
+        popRadius: Theme.popRadius,
+        sideMargin: Theme.barSideMargin,
+        bodyX: renderedBodyX,
+        bodyW: renderedBodyW,
+        width: host.width
+    })
+    // Each crown remains circular while it opens. Only the outer crown of
+    // an edge popout may shrink, and only when the body is close enough to
+    // collide with the menubar's rounded-end tangent.
+    readonly property real leftFlareRadius: Math.min(
+        edgeFlares.left * bloomProgress,
+        Math.max(0, renderedBodyH / 2))
+    readonly property real rightFlareRadius: Math.min(
+        edgeFlares.right * bloomProgress,
         Math.max(0, renderedBodyH / 2))
     readonly property real bridgeLeft: Math.max(Theme.barSideMargin,
-        renderedBodyX - flareRadius)
+        renderedBodyX - leftFlareRadius)
     readonly property real bridgeRight: Math.min(host.width - Theme.barSideMargin,
-        renderedBodyX + renderedBodyW + flareRadius)
+        renderedBodyX + renderedBodyW + rightFlareRadius)
     // The arc begins at the slab's exact lower edge. Starting it inside the
     // bar clips its horizontal tangent and leaves a visible kink at high DPR.
     readonly property real bridgeY: barBottom
@@ -87,7 +102,8 @@ Item {
     readonly property real bodyBottom: bodyTop + Math.max(0, renderedBodyH)
     readonly property real effectiveRadius: Math.max(0.01,
         Math.min(Theme.popRadius, renderedBodyW / 2, Math.max(0.02, renderedBodyH) / 2))
-    readonly property real bodySideTop: bodyTop + flareRadius
+    readonly property real bodyLeftSideTop: bodyTop + leftFlareRadius
+    readonly property real bodyRightSideTop: bodyTop + rightFlareRadius
     readonly property real requiredHeight: presented
         ? barBottom + envelopeBodyH + 48
         : 0
@@ -476,9 +492,9 @@ Item {
             }
             PathArc {
                 x: host.bodyRight
-                y: host.bodySideTop
-                radiusX: Math.max(0.01, host.flareRadius)
-                radiusY: Math.max(0.01, host.flareRadius)
+                y: host.bodyRightSideTop
+                radiusX: Math.max(0.01, host.rightFlareRadius)
+                radiusY: Math.max(0.01, host.rightFlareRadius)
                 direction: PathArc.Counterclockwise
             }
             PathLine {
@@ -503,13 +519,13 @@ Item {
             }
             PathLine {
                 x: host.renderedBodyX
-                y: host.bodySideTop
+                y: host.bodyLeftSideTop
             }
             PathArc {
                 x: host.bridgeLeft
                 y: host.bridgeY
-                radiusX: Math.max(0.01, host.flareRadius)
-                radiusY: Math.max(0.01, host.flareRadius)
+                radiusX: Math.max(0.01, host.leftFlareRadius)
+                radiusY: Math.max(0.01, host.leftFlareRadius)
                 direction: PathArc.Counterclockwise
             }
         }

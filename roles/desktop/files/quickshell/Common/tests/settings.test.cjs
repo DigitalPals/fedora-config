@@ -54,6 +54,20 @@ test("settings is a connected center popout rather than a modal window", () => {
         /Popouts\.openPanel\("settings",\s*"center",\s*Qt\.rect\(0,\s*0,\s*0,\s*0\)\)/);
 });
 
+test("edge join shortens the mirrored connector without adding a corner cap", () => {
+    const host = read("Bar/IslandPopout.qml");
+    const mirrored = host.match(/Item \{\s*id: mirrorFrame[\s\S]*?\/\/ The layer-shell input mask/)?.[0] ?? "";
+
+    assert.match(host, /LayoutHelpers\.edgeFlareRadii/);
+    assert.match(host, /leftFlareRadius:[\s\S]*?edgeFlares\.left \* bloomProgress/);
+    assert.match(host, /rightFlareRadius:[\s\S]*?edgeFlares\.right \* bloomProgress/);
+    assert.match(mirrored, /host\.rightFlareRadius/);
+    assert.match(mirrored, /host\.leftFlareRadius/);
+    assert.doesNotMatch(mirrored, /host\.edgeJoin !== null/);
+    assert.match(mirrored, /Shape \{/);
+    assert.match(mirrored, /yScale: host\.bottomBar \? -1 : 1/);
+});
+
 test("settings exposes responsive output and keyboard contracts", () => {
     const view = read("Settings/SettingsView.qml");
     const host = read("Bar/IslandPopout.qml");
