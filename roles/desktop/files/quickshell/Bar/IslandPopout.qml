@@ -569,10 +569,14 @@ Item {
                 id: loaderA
                 readonly property bool fillBody: host.slotAName === "settings"
                 active: host.slotAName !== ""
+                asynchronous: true
                 source: active ? host.sources[host.slotAName] : ""
                 x: fillBody ? 0 : (parent.width - implicitWidth) / 2
-                width: fillBody ? parent.width : implicitWidth
-                height: fillBody ? parent.height : implicitHeight
+                // Envelope surfaces lay out once at their target size and are
+                // revealed by the animating clip; sizing them to the clip
+                // itself would relayout the whole tree every morph frame.
+                width: fillBody ? Math.max(1, host.targetBodyW) : implicitWidth
+                height: fillBody ? Math.max(1, host.targetBodyH) : implicitHeight
                 // Content pins to the fused edge, so growth reveals it from
                 // the bar on either position.
                 y: fillBody ? 0 : host.bottomBar ? parent.height - implicitHeight : 0
@@ -595,10 +599,11 @@ Item {
                 id: loaderB
                 readonly property bool fillBody: host.slotBName === "settings"
                 active: host.slotBName !== ""
+                asynchronous: true
                 source: active ? host.sources[host.slotBName] : ""
                 x: fillBody ? 0 : (parent.width - implicitWidth) / 2
-                width: fillBody ? parent.width : implicitWidth
-                height: fillBody ? parent.height : implicitHeight
+                width: fillBody ? Math.max(1, host.targetBodyW) : implicitWidth
+                height: fillBody ? Math.max(1, host.targetBodyH) : implicitHeight
                 y: fillBody ? 0 : host.bottomBar ? parent.height - implicitHeight : 0
                 opacity: 0
                 enabled: host.frontSlot === 1 && Popouts.open

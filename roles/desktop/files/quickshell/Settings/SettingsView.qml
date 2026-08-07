@@ -109,13 +109,6 @@ FocusScope {
         return false;
     }
 
-    Behavior on implicitWidth {
-        NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic }
-    }
-    Behavior on implicitHeight {
-        NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic }
-    }
-
     component NavItem: Rectangle {
         id: navItem
         required property var modelData

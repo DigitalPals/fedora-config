@@ -81,7 +81,11 @@ test("settings exposes responsive output and keyboard contracts", () => {
     assert.match(host, /item\.availableWidth !== undefined/);
     assert.match(host, /item\.availableHeight !== undefined/);
     assert.match(host, /fillBody:\s*host\.slotAName === "settings"/);
-    assert.match(host, /width:\s*fillBody \? parent\.width : implicitWidth/);
+    // Settings lays out once at its target size and is revealed by the
+    // animating clip; binding it to the clip would relayout every frame.
+    assert.match(host, /width:\s*fillBody \? Math\.max\(1, host\.targetBodyW\) : implicitWidth/);
+    assert.doesNotMatch(host, /width:\s*fillBody \? parent\.width/,
+        "the settings surface must not track the animating clip size");
     assert.match(host, /nameFor\(frontSlot\) !== Popouts\.currentName/,
         "an outgoing popover must not overwrite Settings geometry during a morph");
     assert.match(modules, /Qt\.Key_Space/);
@@ -233,7 +237,10 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const system = read("Settings/SystemPage.qml");
 
     assert.match(view, /preferredHeight:\s*660/);
-    assert.match(page, /scrollGutter:\s*scrollbarVisible \? 8 : 0/);
+    // The gutter is unconditional: making it depend on scrollbarVisible
+    // loops (narrower content re-wraps taller and flips the scrollbar).
+    assert.match(page, /scrollGutter:\s*8/);
+    assert.doesNotMatch(page, /scrollGutter:\s*scrollbarVisible/);
     assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
     for (const row of [slider, picker])
         assert.match(row, /Settings\.font === "mono" \? 122 : 90/);

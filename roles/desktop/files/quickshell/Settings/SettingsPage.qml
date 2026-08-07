@@ -6,7 +6,9 @@ Flickable {
     default property alias content: contentRoot.data
     property int spacing: 10
     readonly property bool scrollbarVisible: contentHeight > height + 1
-    readonly property int scrollGutter: scrollbarVisible ? 8 : 0
+    // Always reserved: tying the gutter to scrollbarVisible loops, because
+    // the narrower content re-wraps taller, which flips scrollbarVisible.
+    readonly property int scrollGutter: 8
 
     contentWidth: width
     contentHeight: contentRoot.childrenRect.height
