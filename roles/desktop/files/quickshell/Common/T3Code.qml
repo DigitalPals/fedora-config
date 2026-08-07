@@ -1,7 +1,6 @@
 pragma Singleton
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import "T3CodeHelpers.js" as Helpers
 
 // T3 Code session monitor and remote control: keeps a live WebSocket
@@ -17,30 +16,25 @@ import "T3CodeHelpers.js" as Helpers
 Singleton {
     id: root
 
-    // "unpaired" | "connecting" | "connected" | "offline"
-    property string state: "offline"
-    // Why the last attempt failed, already shortened for a tooltip. Both hops
-    // of connect() fill it — the ticket request and the socket — because a
-    // dead host fails the first one and never reaches the second. Empty means
-    // "nothing worth showing", which leaves every consumer on its generic
-    // offline wording; consumers must also ignore it while unpaired, where
-    // the missing token, not the network, is the story.
-    property string connectionError: ""
-    // The one offline state no retry can end: the WebSocket component itself
-    // failed to load. Consumers use it to drop any "retrying" wording, which
-    // would be a lie here — connect() deliberately arms no timer for it.
-    readonly property bool websocketsMissing: socketLoader.status === Loader.Error
-    property string host: ""            // https base url from the state file
-    property string accessToken: ""
-    property string environmentLabel: ""
-    property string environmentId: ""
-    property string serverVersion: ""
-    property var environmentCapabilities: ({})
+    // ---- connection re-exports -------------------------------------------
+    // The transport lives in Common/T3Connection.qml. These stay here because
+    // 274 call sites across seven files read them off T3Code, and the façade
+    // is what lets that stay true while the inside is split up.
+    readonly property string state: T3Connection.state
+    readonly property string connectionError: T3Connection.connectionError
+    readonly property bool websocketsMissing: T3Connection.websocketsMissing
+    readonly property string host: T3Connection.host
+    readonly property string environmentLabel: T3Connection.environmentLabel
+    readonly property string environmentId: T3Connection.environmentId
+    readonly property string serverVersion: T3Connection.serverVersion
+    readonly property var environmentCapabilities: T3Connection.environmentCapabilities
+    readonly property bool scopeMetadataKnown: T3Connection.scopeMetadataKnown
+    readonly property var tokenScope: T3Connection.tokenScope
 
-    // Scope is persisted by t3-pair.py. Older state files do not contain it;
-    // absence deliberately keeps the old "let the server authorize" behavior.
-    property bool scopeMetadataKnown: false
-    property var tokenScope: ""
+    function connect() {
+        T3Connection.connect();
+    }
+
     readonly property var scopeInfo: Helpers.normalizeScopes(tokenScope, scopeMetadataKnown)
     readonly property bool canRead: scopeInfo.canRead
     readonly property bool canOperate: scopeInfo.canOperate
@@ -134,7 +128,7 @@ Singleton {
 
     signal newThreadConfirmed(string threadId)
 
-    readonly property bool paired: host !== "" && accessToken !== ""
+    readonly property bool paired: T3Connection.paired
     readonly property string pairHint: "python3 ~/.config/quickshell/scripts/t3-pair.py '<pairing-url>'"
 
     // ---- classification ------------------------------------------------
@@ -374,139 +368,6 @@ Singleton {
         });
     }
 
-    // ---- state file ------------------------------------------------------
-
-    FileView {
-        id: stateFile
-        path: Quickshell.env("HOME") + "/.local/state/t3code-bar.json"
-        printErrors: false
-        watchChanges: true
-        onFileChanged: reload()
-        onLoaded: {
-            root.host = (stateData.httpBaseUrl ?? "").replace(/\/+$/, "");
-            root.accessToken = stateData.accessToken ?? "";
-            root.scopeMetadataKnown = typeof stateData.scope === "string"
-                || Array.isArray(stateData.scope);
-            root.tokenScope = root.scopeMetadataKnown ? stateData.scope : "";
-            if (root.paired)
-                root.connect();
-            else
-                root.state = "unpaired";
-        }
-        onLoadFailed: root.state = "unpaired"
-
-        JsonAdapter {
-            id: stateData
-            property string httpBaseUrl: ""
-            property string accessToken: ""
-            property var scope: null
-        }
-    }
-
-    // ---- connection ------------------------------------------------------
-
-    property int retrySecs: 5
-
-    function connect() {
-        if (!paired) {
-            state = "unpaired";
-            return;
-        }
-        // The state file routinely loads before the socket component does.
-        // Without a retry the shell would sit offline until a restart; the
-        // loader's onStatusChanged connects the moment it wins that race and
-        // cancels the pending retry so the two never race each other. A load
-        // *error* is permanent (QtWebSockets missing) and not worth retrying.
-        if (socketLoader.status !== Loader.Ready) {
-            state = "offline";
-            if (socketLoader.status !== Loader.Error)
-                scheduleRetry();
-            return;
-        }
-        state = "connecting";
-        fetchDescriptor();
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", host + "/api/auth/websocket-ticket");
-        xhr.setRequestHeader("Authorization", "Bearer " + accessToken);
-        xhr.onreadystatechange = () => {
-            if (xhr.readyState !== XMLHttpRequest.DONE)
-                return;
-            if (xhr.status === 200) {
-                try {
-                    const ticket = JSON.parse(xhr.responseText).ticket;
-                    openSocket(ticket);
-                    return;
-                } catch (e) {
-                    console.warn("t3code: bad ticket response");
-                    root.connectionError = "Malformed ticket response";
-                }
-            } else if (xhr.status === 401 || xhr.status === 403) {
-                // Token expired or revoked: needs a fresh pairing URL.
-                root.state = "unpaired";
-                return;
-            } else {
-                root.connectionError = Helpers.ticketErrorText(xhr.status);
-            }
-            root.scheduleRetry();
-        };
-        xhr.send();
-    }
-
-    function openSocket(ticket) {
-        const sock = socketLoader.item;
-        sock.active = false;
-        sock.url = host.replace(/^https:/, "wss:").replace(/^http:/, "ws:")
-            + "/ws?wsTicket=" + encodeURIComponent(ticket);
-        sock.active = true;
-    }
-
-    function fetchDescriptor() {
-        const xhr = new XMLHttpRequest();
-        xhr.open("GET", host + "/.well-known/t3/environment");
-        xhr.onreadystatechange = () => {
-            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200)
-                return;
-            try {
-                const d = JSON.parse(xhr.responseText);
-                root.environmentId = d.environmentId ?? "";
-                root.environmentLabel = d.label ?? "";
-                root.serverVersion = typeof d.serverVersion === "string"
-                    ? d.serverVersion : root.serverVersion;
-                if (d.capabilities && typeof d.capabilities === "object")
-                    root.environmentCapabilities = Object.assign({}, d.capabilities);
-            } catch (e) {}
-        };
-        xhr.send();
-    }
-
-    function scheduleRetry() {
-        if (state === "connected")
-            abortPendingRpcs();
-        failAllPendingActions("Disconnected before confirmation");
-        if (socketLoader.item)
-            socketLoader.item.active = false;
-        configLoading = false;
-        configReady = false;
-        if (state !== "unpaired")
-            state = "offline";
-        retryTimer.interval = retrySecs * 1000;
-        retrySecs = Math.min(retrySecs * 2, 120);
-        retryTimer.restart();
-    }
-
-    Timer {
-        id: retryTimer
-        onTriggered: root.connect()
-    }
-
-    Timer {
-        id: pingTimer
-        interval: 30000
-        repeat: true
-        running: root.state === "connected"
-        onTriggered: socketLoader.item?.sendText(JSON.stringify({ _tag: "Ping" }))
-    }
-
     // ---- protocol --------------------------------------------------------
 
     readonly property string shellReqId: "1"
@@ -550,9 +411,9 @@ Singleton {
     }
 
     function sendRequest(id, tag, payload) {
-        if (!socketLoader.item || state !== "connected")
+        if (state !== "connected")
             return false;
-        socketLoader.item.sendText(JSON.stringify({
+        T3Connection.send(JSON.stringify({
             _tag: "Request",
             id: id,
             tag: tag,
@@ -566,7 +427,7 @@ Singleton {
     // wrapper retains the final value, applies a hard timeout, and never
     // retries implicitly after a transport loss.
     function requestOnce(tag, payload, onSuccess, onFailure, options) {
-        if (state !== "connected" || !socketLoader.item) {
+        if (state !== "connected") {
             onFailure?.("Not connected");
             return "";
         }
@@ -630,13 +491,16 @@ Singleton {
             }
             const safe = Helpers.sanitizeServerConfig(value);
             root.providerConfigurations = safe.providers;
-            root.environmentCapabilities = safe.capabilities;
+            // The environment fields belong to the connection: the descriptor
+            // fetch fills them first and this refines them, so both writers
+            // have to target the same properties.
+            T3Connection.environmentCapabilities = safe.capabilities;
             if (safe.environmentId !== "")
-                root.environmentId = safe.environmentId;
+                T3Connection.environmentId = safe.environmentId;
             if (safe.label !== "")
-                root.environmentLabel = safe.label;
+                T3Connection.environmentLabel = safe.label;
             if (safe.serverVersion !== "")
-                root.serverVersion = safe.serverVersion;
+                T3Connection.serverVersion = safe.serverVersion;
             root.configLoading = false;
             root.configReady = true;
             root.reconcileDraftSelections();
@@ -685,7 +549,7 @@ Singleton {
         for (const msg of msgs) {
             const reqId = msg.requestId !== undefined ? String(msg.requestId) : "";
             if (msg._tag === "Chunk") {
-                socketLoader.item.sendText(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
+                T3Connection.send(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
                 if (reqId === shellReqId) {
                     for (const item of (Array.isArray(msg.values) ? msg.values : []))
                         dirty = applyItem(item) || dirty;
@@ -724,7 +588,7 @@ Singleton {
                 const handler = root.rpcHandlers[id];
                 if (handler.deadline === undefined || now < handler.deadline)
                     continue;
-                socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: id }));
+                T3Connection.send(JSON.stringify({ _tag: "Interrupt", requestId: id }));
                 root.dropRpcHandler(id);
                 handler.timeout?.();
             }
@@ -863,7 +727,7 @@ Singleton {
             const handler = rpcHandlers[id];
             if (!handler || handler.actionKey !== key)
                 continue;
-            socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: id }));
+            T3Connection.send(JSON.stringify({ _tag: "Interrupt", requestId: id }));
             dropRpcHandler(id);
         }
         clearAction(key);
@@ -893,7 +757,7 @@ Singleton {
             return "";
         if (!canOperate)
             return rejectAction(key, "This pairing is read-only", opts.awaitResolution);
-        if (state !== "connected" || !socketLoader.item)
+        if (state !== "connected")
             return rejectAction(key, "Not connected", opts.awaitResolution);
         if (!Array.isArray(commands) || commands.length === 0)
             return rejectAction(key, "Nothing to send", opts.awaitResolution);
@@ -2156,7 +2020,7 @@ Singleton {
             return "";
         if (!canOperate)
             return rejectAction(key, "This pairing is read-only", false);
-        if (state !== "connected" || !socketLoader.item)
+        if (state !== "connected")
             return rejectAction(key, "Not connected", false);
         const payload = Helpers.buildGitActionPayload({
             actionId: genId(), cwd: threadCwd(threadId), action: action });
@@ -2341,7 +2205,7 @@ Singleton {
     function stopDetailRequest() {
         if (detailReqId === "")
             return;
-        socketLoader.item?.sendText(JSON.stringify({ _tag: "Interrupt", requestId: detailReqId }));
+        T3Connection.send(JSON.stringify({ _tag: "Interrupt", requestId: detailReqId }));
         dropRpcHandler(detailReqId);
         detailReqId = "";
     }
@@ -2420,68 +2284,25 @@ Singleton {
         }
     }
 
-    Loader {
-        id: socketLoader
-        source: "T3Socket.qml"
-        onStatusChanged: {
-            if (status === Loader.Error) {
-                console.warn("t3code: QtWebSockets unavailable — install qt6-qtwebsockets-devel");
-                // Not a transport failure but the same symptom — a permanently
-                // off chip — and the only one the user must act on. Nothing can
-                // overwrite it: connect() returns on the not-Ready branch before
-                // it ever requests a ticket, the Connections block below only
-                // enables while the loader is Ready, and the one line that
-                // clears connectionError runs on a socket that can never open.
-                root.connectionError = "QtWebSockets is not installed";
-                return;
-            }
-            // Pick up a connect() that arrived before this component finished
-            // loading. retryTimer is stopped first: connect() armed it on the
-            // not-ready path, and letting it fire afterwards would tear down
-            // the socket this call is about to open.
-            if (status === Loader.Ready && root.paired
-                    && root.state !== "connected" && root.state !== "connecting") {
-                retryTimer.stop();
-                root.connect();
-            }
-        }
-    }
-
+    // The transport's half of the conversation. T3Connection owns the socket;
+    // this is where its frames become protocol.
     Connections {
-        target: socketLoader.item
-        enabled: socketLoader.status === Loader.Ready
+        target: T3Connection
 
-        function onTextReceived(message) {
-            root.handleMessage(message);
+        function onMessage(text) {
+            root.handleMessage(text);
         }
 
-        function onStatusChanged() {
-            const st = socketLoader.item.status;
-            if (st === 1) { // open
-                // Cleared before the state change so no listener ever sees a
-                // connected shell still carrying the failure it recovered from.
-                root.connectionError = "";
-                root.state = "connected";
-                root.retrySecs = 5;
-                root.subscribe();
-            } else if (st === 3 || st === 4) { // closed | error
-                // Qt raises the close and the error that caused it as two
-                // separate transitions, in either order and with only one of
-                // them carrying text (a refusal closes first, a TLS failure
-                // errors first). So the reason is read on both, an empty
-                // string never overwrites a real one, and the read sits
-                // outside the guard below — by the time the error arrives the
-                // close has often already scheduled the retry.
-                const reason = Helpers.socketErrorText(socketLoader.item.errorString);
-                if (reason !== "")
-                    root.connectionError = reason;
-                if (root.state === "connected" || root.state === "connecting") {
-                    root.abortPendingRpcs();
-                    root.configLoading = false;
-                    root.configReady = false;
-                    root.scheduleRetry();
-                }
-            }
+        function onOpened() {
+            root.subscribe();
+        }
+
+        // Fired before a retry is armed: nothing in flight can still land.
+        function onDropped() {
+            root.abortPendingRpcs();
+            root.failAllPendingActions("Disconnected before confirmation");
+            root.configLoading = false;
+            root.configReady = false;
         }
     }
 }

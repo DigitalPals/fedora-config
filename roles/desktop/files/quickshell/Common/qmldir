@@ -15,6 +15,7 @@ singleton Screens Screens.qml
 singleton Launcher Launcher.qml
 singleton Usage Usage.qml
 singleton T3Code T3Code.qml
+singleton T3Connection T3Connection.qml
 singleton Notifs Notifs.qml
 singleton SysInfo SysInfo.qml
 singleton Osd Osd.qml

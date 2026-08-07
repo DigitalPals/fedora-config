@@ -36,9 +36,9 @@ const DIRS = typeDirs();
 // exemption is itself a failure: see the test below.
 const EXEMPT = {
     "Common/T3Socket.qml":
-        "imports the optional QtWebSockets package; T3Code loads it through a "
-        + "Loader by URL so a missing package degrades to Loader.Error instead "
-        + "of an unresolvable type"
+        "imports the optional QtWebSockets package; T3Connection loads it "
+        + "through a Loader by URL so a missing package degrades to "
+        + "Loader.Error instead of an unresolvable type"
 };
 
 function read(relative) {
@@ -126,6 +126,7 @@ test("every exemption still exists and still says why", () => {
 });
 
 test("T3Socket stays reachable by URL, since it is not a type", () => {
-    // The exemption is only safe while this is how it loads.
-    assert.match(read("Common/T3Code.qml"), /source:\s*"T3Socket\.qml"/);
+    // The exemption is only safe while this is how it loads. It moved from
+    // T3Code to T3Connection when the transport was split out.
+    assert.match(read("Common/T3Connection.qml"), /source:\s*"T3Socket\.qml"/);
 });

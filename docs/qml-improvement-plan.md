@@ -1563,11 +1563,36 @@ its `// ----` section banners are the decomposition map. **Keep `T3Code.qml`
 as a façade re-exporting the current API** so the 269 call sites migrate
 gradually. Strictly sequential; land each WP green before the next.
 
-### [ ] WP5.1 `T3Connection.qml` — state file, ticket fetch, socket loader,
-retry/backoff, ping (lines ~355–472, 2340–2385). Exposes `state`, `host`,
-`send()`, `signal message(text)`. Includes the WP1.1 fix — port it, don't
-re-break it. Also fix the empty `catch (e) {}` at ~441 (environment descriptor)
-with a `console.warn`.
+### [x] WP5.1 `T3Connection.qml` — state file, ticket fetch, socket loader, retry/backoff, ping
+
+> Done. `Common/T3Connection.qml` owns the transport; `T3Code.qml` 2487 → 2309
+> and re-exports `state`, `connectionError`, `websocketsMissing`, `host`,
+> `paired`, the environment fields and the scope metadata, so all 274 call
+> sites are untouched. The WP1.1 loader race fix and WP1.10's two-transition
+> error reading were moved verbatim. The empty `catch` on the environment
+> descriptor now warns.
+>
+> **A probe was built first, and it earned itself twice.** Phase 4 shipped a
+> regression because a pixel-identical bar was taken for a working one, so
+> before touching this the whole observable contract — 40 readable properties
+> and the presence of all 62 consumed functions — was captured over IPC as a
+> baseline to diff against. It caught two failures that left the shell looking
+> completely normal:
+> - `socketLoader` was referenced from **eight** places in the protocol code,
+>   not just the connection section. With the loader moved, every send threw
+>   `ReferenceError` — while `state` still read "connected" and the T3 chip
+>   still rendered. All sends go through `T3Connection.send()` now.
+> - The protocol's `server.getConfig` handler also writes the environment
+>   fields, which the façade had made read-only. `configReady` stayed false and
+>   `configError` read "Request timed out"; the popover still drew its header.
+>
+> Neither would have been visible in a screenshot. The final snapshot is
+> byte-identical to the baseline.
+>
+> Signals rather than reach-back: `message` carries frames to the protocol
+> layer, `opened` triggers `subscribe()`, and `dropped` fires before a retry is
+> armed so the RPC layer can fail what is in flight. That is what keeps
+> `scheduleRetry()` from needing to know about `abortPendingRpcs`.
 ### [ ] WP5.2 `T3Rpc.qml` — request ids, `rpcHandlers`, timeout sweeper,
 `actionStates` machine (~474–714, 716–1040). Port the WP1.6 timer gating.
 ### [ ] WP5.3 `T3Threads.qml` — classification, `threadMap`/projections,
