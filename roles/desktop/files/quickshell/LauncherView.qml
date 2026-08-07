@@ -26,6 +26,21 @@ Surface {
     property bool calcLoading: false
     property string calcError: ""
 
+    // The instance survives across opens, so each open must restore the
+    // fresh state a create-per-open Loader used to provide implicitly.
+    // Clearing the query also clears results and errors via onQueryChanged.
+    Connections {
+        target: Launcher
+
+        function onOpenChanged() {
+            if (!Launcher.open)
+                return;
+            search.text = "";
+            root.selected = 0;
+            search.forceActiveFocus();
+        }
+    }
+
     function words(value) {
         return (value || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
     }

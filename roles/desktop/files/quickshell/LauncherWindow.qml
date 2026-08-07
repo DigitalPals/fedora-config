@@ -85,10 +85,16 @@ PanelWindow {
 
                 Loader {
                     id: launcherLoader
-                    active: Launcher.open
+                    // Stay warm after the first open so reopening is instant;
+                    // the view resets its own state on each open.
+                    property bool warm: false
+                    active: Launcher.open || warm
                     focus: true
                     source: active ? "LauncherView.qml" : ""
-                    onLoaded: item.drawBackground = false
+                    onLoaded: {
+                        warm = true;
+                        item.drawBackground = false;
+                    }
                 }
             }
         }
