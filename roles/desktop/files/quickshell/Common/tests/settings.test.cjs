@@ -181,6 +181,14 @@ test("regression fixes keep asynchronous state identity-safe", () => {
     assert.match(tooltip,
         /target:\s*Popouts[\s\S]*function onOpenChanged\(\)[\s\S]*delay\.stop\(\)[\s\S]*root\.ready = false/,
         "tooltips must be disarmed when a popout surface maps or unmaps");
+    assert.match(bar, /readonly property bool tooltipPointerInside:\s*barHover\.hovered/);
+    assert.match(bar,
+        /barWindow\.tooltipPointerPosition = scenePoint/,
+        "the full-bar handler must publish pointer motion for tooltip validation");
+    assert.match(tooltip, /readonly property bool activeHover:\s*hovered && pointerOverTarget/);
+    assert.match(tooltip,
+        /if \(!window\.tooltipPointerInside \|\| !root\.parent\)\s*return false/,
+        "a stale local MouseArea must not keep a tooltip visible after leaving the bar");
 });
 
 test("schema three adds detail policies and a configurable wallpaper folder", () => {

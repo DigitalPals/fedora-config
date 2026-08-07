@@ -23,6 +23,11 @@ PanelWindow {
     }
     property var compactIds: []
     property real centerShift: 0
+    // Shared pointer truth for tooltips. Individual MouseAreas can miss an
+    // exit when the pointer leaves this layer surface, while the full-window
+    // handler below still reports that the bar itself is no longer hovered.
+    readonly property bool tooltipPointerInside: barHover.hovered
+    property point tooltipPointerPosition: Qt.point(-1, -1)
     readonly property int safetyGutter: 8
     readonly property int closedHeight: Theme.barTopMargin + Theme.barHeight + 34
     implicitHeight: closedHeight
@@ -510,6 +515,7 @@ PanelWindow {
             onPointChanged: {
                 const scenePoint = hoverLayer.mapToItem(null,
                     point.position.x, point.position.y);
+                barWindow.tooltipPointerPosition = scenePoint;
                 barWindow.hoverPanelAt(scenePoint);
             }
 

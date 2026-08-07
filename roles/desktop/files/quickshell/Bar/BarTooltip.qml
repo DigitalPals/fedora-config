@@ -9,6 +9,23 @@ Item {
     // -1 left, 0 centered, 1 right.
     property int align: 0
     property bool ready: false
+    // Validate the local MouseArea state against the bar-wide pointer. This
+    // clears stale containsMouse values after a missed surface-exit event and
+    // also prevents a tooltip from lingering over a different module.
+    readonly property bool pointerOverTarget: {
+        const window = root.Window.window;
+        if (!window || !("tooltipPointerInside" in window)
+                || !("tooltipPointerPosition" in window))
+            return root.hovered;
+        if (!window.tooltipPointerInside || !root.parent)
+            return false;
+        const scenePoint = window.tooltipPointerPosition;
+        const localPoint = root.parent.mapFromItem(null,
+            scenePoint.x, scenePoint.y);
+        return localPoint.x >= 0 && localPoint.x <= root.parent.width
+            && localPoint.y >= 0 && localPoint.y <= root.parent.height;
+    }
+    readonly property bool activeHover: hovered && pointerOverTarget
 
     width: tip.implicitWidth
     height: tip.implicitHeight
@@ -22,8 +39,8 @@ Item {
             ? -(root.height + root.parent.height + 12) : 0
     }
 
-    onHoveredChanged: {
-        if (hovered)
+    onActiveHoverChanged: {
+        if (activeHover)
             delay.restart();
         else {
             delay.stop();
@@ -47,7 +64,7 @@ Item {
     Timer {
         id: delay
         interval: 550
-        onTriggered: root.ready = root.hovered
+        onTriggered: root.ready = root.activeHover
     }
 
     Rectangle {
