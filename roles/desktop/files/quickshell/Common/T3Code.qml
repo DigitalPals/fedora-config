@@ -19,6 +19,17 @@ Singleton {
 
     // "unpaired" | "connecting" | "connected" | "offline"
     property string state: "offline"
+    // Why the last attempt failed, already shortened for a tooltip. Both hops
+    // of connect() fill it — the ticket request and the socket — because a
+    // dead host fails the first one and never reaches the second. Empty means
+    // "nothing worth showing", which leaves every consumer on its generic
+    // offline wording; consumers must also ignore it while unpaired, where
+    // the missing token, not the network, is the story.
+    property string connectionError: ""
+    // The one offline state no retry can end: the WebSocket component itself
+    // failed to load. Consumers use it to drop any "retrying" wording, which
+    // would be a lie here — connect() deliberately arms no timer for it.
+    readonly property bool websocketsMissing: socketLoader.status === Loader.Error
     property string host: ""            // https base url from the state file
     property string accessToken: ""
     property string environmentLabel: ""
@@ -427,11 +438,14 @@ Singleton {
                     return;
                 } catch (e) {
                     console.warn("t3code: bad ticket response");
+                    root.connectionError = "Malformed ticket response";
                 }
             } else if (xhr.status === 401 || xhr.status === 403) {
                 // Token expired or revoked: needs a fresh pairing URL.
                 root.state = "unpaired";
                 return;
+            } else {
+                root.connectionError = Helpers.ticketErrorText(xhr.status);
             }
             root.scheduleRetry();
         };
@@ -2412,6 +2426,13 @@ Singleton {
         onStatusChanged: {
             if (status === Loader.Error) {
                 console.warn("t3code: QtWebSockets unavailable — install qt6-qtwebsockets-devel");
+                // Not a transport failure but the same symptom — a permanently
+                // off chip — and the only one the user must act on. Nothing can
+                // overwrite it: connect() returns on the not-Ready branch before
+                // it ever requests a ticket, the Connections block below only
+                // enables while the loader is Ready, and the one line that
+                // clears connectionError runs on a socket that can never open.
+                root.connectionError = "QtWebSockets is not installed";
                 return;
             }
             // Pick up a connect() that arrived before this component finished
@@ -2437,10 +2458,23 @@ Singleton {
         function onStatusChanged() {
             const st = socketLoader.item.status;
             if (st === 1) { // open
+                // Cleared before the state change so no listener ever sees a
+                // connected shell still carrying the failure it recovered from.
+                root.connectionError = "";
                 root.state = "connected";
                 root.retrySecs = 5;
                 root.subscribe();
             } else if (st === 3 || st === 4) { // closed | error
+                // Qt raises the close and the error that caused it as two
+                // separate transitions, in either order and with only one of
+                // them carrying text (a refusal closes first, a TLS failure
+                // errors first). So the reason is read on both, an empty
+                // string never overwrites a real one, and the read sits
+                // outside the guard below — by the time the error arrives the
+                // close has often already scheduled the retry.
+                const reason = Helpers.socketErrorText(socketLoader.item.errorString);
+                if (reason !== "")
+                    root.connectionError = reason;
                 if (root.state === "connected" || root.state === "connecting") {
                     root.abortPendingRpcs();
                     root.configLoading = false;

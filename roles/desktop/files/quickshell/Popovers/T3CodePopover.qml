@@ -97,6 +97,7 @@ Surface {
     }
 
     Item {
+        id: headerRow
         width: parent.width
         height: root.headerHeight
 
@@ -139,11 +140,25 @@ Surface {
             }
 
             Text {
+                // Long enough for a transport error, never long enough to
+                // reach the buttons on the other side of the header.
+                width: Math.max(0, headerRow.width - headerActions.width - 18)
+                elide: Text.ElideRight
                 text: {
-                    if (T3Code.state !== "connected")
+                    if (T3Code.state === "unpaired")
+                        return "not paired";
+                    if (T3Code.state !== "connected") {
+                        // The reason outranks "connecting…": it survives the
+                        // retry that follows it, so the caption stays on the
+                        // failure instead of flickering back to a generic
+                        // line every time the retry timer fires. A missing
+                        // QtWebSockets is the one reason nothing retries.
+                        if (T3Code.connectionError !== "")
+                            return T3Code.connectionError
+                                + (T3Code.websocketsMissing ? "" : " — retrying");
                         return T3Code.state === "connecting" ? "connecting…"
-                            : T3Code.state === "unpaired" ? "not paired"
                             : "server unreachable — retrying";
+                    }
                     const environment = T3Code.environmentLabel !== ""
                         ? T3Code.environmentLabel : "connected";
                     return environment + " · " + T3Code.runningCount + " running · "
@@ -157,6 +172,7 @@ Surface {
         }
 
         Row {
+            id: headerActions
             anchors.right: parent.right
             anchors.rightMargin: 4
             anchors.verticalCenter: parent.verticalCenter

@@ -670,3 +670,54 @@ test("error text is extracted from array-shaped Effect causes", () => {
     assert.equal(H.findErrorText({ _tag: "Failure", cause: [] }, 0), "");
     assert.equal(H.findErrorText(null, 0), "");
 });
+
+// Every string below was captured from a Qt 6.11 QML WebSocket / XMLHttpRequest
+// against a refused port, an unresolvable host, a plaintext server addressed as
+// wss:, and a server that answers the upgrade with 401.
+test("socket error text keeps what a user can act on and drops Qt's noise", () => {
+    assert.equal(H.socketErrorText("Connection refused"), "Connection refused");
+    assert.equal(H.socketErrorText("Host not found"), "Host not found");
+    assert.equal(H.socketErrorText("The remote host closed the connection"),
+        "The remote host closed the connection");
+    assert.equal(H.socketErrorText(
+        "Error during SSL handshake: error:0A00010B:SSL routines::wrong version number"),
+        "TLS handshake failed: wrong version number");
+    assert.equal(H.socketErrorText("Error during SSL handshake"), "TLS handshake failed");
+    assert.equal(H.socketErrorText("QWebSocketPrivate::processHandshake: "
+        + "Unhandled http status code: 401 (Unauthorized)"),
+        "WebSocket rejected (HTTP 401)");
+    assert.equal(H.socketErrorText("QWebSocketPrivate::processHandshake: "
+        + "Unsupported WWW-Authenticate challenges encountered."),
+        "WebSocket handshake rejected");
+});
+
+test("a socket error with nothing to say reads as no error at all", () => {
+    // A closed status arrives with an empty string; callers must not let that
+    // overwrite the error that explains the disconnect.
+    assert.equal(H.socketErrorText(""), "");
+    assert.equal(H.socketErrorText("   \n  "), "");
+    assert.equal(H.socketErrorText("Unknown error"), "");
+    assert.equal(H.socketErrorText("unknown error."), "");
+    assert.equal(H.socketErrorText("QQmlWebSocket is not ready."), "");
+    assert.equal(H.socketErrorText(null), "");
+    assert.equal(H.socketErrorText(undefined), "");
+    assert.equal(H.socketErrorText(42), "");
+});
+
+test("a long socket error is shortened to fit a bar tooltip", () => {
+    const long = H.socketErrorText("The proxy refused the connection because the "
+        + "upstream certificate could not be verified");
+    assert.equal(long, "The proxy refused the connection because the…");
+    assert.ok(long.length <= 49);
+    assert.equal(H.socketErrorText("Multi\nline   error\ttext"), "Multi line error text");
+});
+
+test("ticket request failures name the hop that broke", () => {
+    // QML's XMLHttpRequest collapses refused/DNS/TLS/timeout into status 0.
+    assert.equal(H.ticketErrorText(0), "Server did not respond");
+    assert.equal(H.ticketErrorText(undefined), "Server did not respond");
+    assert.equal(H.ticketErrorText(NaN), "Server did not respond");
+    assert.equal(H.ticketErrorText(502), "Server error 502");
+    assert.equal(H.ticketErrorText(401), "Pairing token rejected");
+    assert.equal(H.ticketErrorText(404), "Ticket request failed (HTTP 404)");
+});

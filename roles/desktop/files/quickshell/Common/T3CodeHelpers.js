@@ -1033,6 +1033,67 @@ function findErrorText(value, depth) {
     return "";
 }
 
+// ---- connection failures ---------------------------------------------------
+
+// Connecting has two hops — an HTTP ticket request and the WebSocket itself —
+// and a bar chip that only ever says "off" hides which one broke. These turn
+// either hop into one short phrase. Qt's errorString is free-form and often
+// says nothing ("", "Unknown error", "QQmlWebSocket is not ready."), and it
+// prefixes handshake failures with the C++ frame that raised them; anything
+// carrying no information collapses to "", which every caller reads as "keep
+// the wording you had before".
+var MAX_CONNECTION_ERROR_CHARS = 48;
+var EMPTY_SOCKET_ERRORS = /^(unknown error|qqmlwebsocket is not ready)\.?$/i;
+
+function shortenErrorText(text) {
+    if (text.length <= MAX_CONNECTION_ERROR_CHARS)
+        return text;
+    var cut = text.slice(0, MAX_CONNECTION_ERROR_CHARS);
+    var space = cut.lastIndexOf(" ");
+    if (space > MAX_CONNECTION_ERROR_CHARS / 2)
+        cut = cut.slice(0, space);
+    return cut.replace(/[\s,.;:-]+$/, "") + "…";
+}
+
+function socketErrorText(raw) {
+    if (typeof raw !== "string")
+        return "";
+    var text = raw.replace(/\s+/g, " ").trim();
+    // "QWebSocketPrivate::processHandshake: Unhandled http status code: 401
+    // (Unauthorized)" — the frame is noise, but it identifies the hop.
+    var handshake = /processHandshake/i.test(text);
+    text = text.replace(/^[A-Za-z_]\w*::[A-Za-z_]\w*:\s*/, "");
+    if (text === "" || EMPTY_SOCKET_ERRORS.test(text))
+        return "";
+    if (/^error during ssl handshake/i.test(text)) {
+        // OpenSSL states the reason last: "Error during SSL handshake:
+        // error:0A00010B:SSL routines::wrong version number".
+        var reason = text.split("::").pop().trim();
+        return shortenErrorText(reason !== "" && !/ssl handshake/i.test(reason)
+            ? "TLS handshake failed: " + reason : "TLS handshake failed");
+    }
+    var status = text.match(/http status code:?\s*(\d{3})/i);
+    if (status !== null)
+        return "WebSocket rejected (HTTP " + status[1] + ")";
+    if (handshake)
+        return "WebSocket handshake rejected";
+    return shortenErrorText(text);
+}
+
+// The websocket-ticket POST. QML's XMLHttpRequest reports every transport
+// failure — refused, DNS, TLS, timeout — as status 0 with no error text, so
+// a dead host can only be reported as silence.
+function ticketErrorText(status) {
+    var code = typeof status === "number" && isFinite(status) ? Math.trunc(status) : 0;
+    if (code <= 0)
+        return "Server did not respond";
+    if (code === 401 || code === 403)
+        return "Pairing token rejected";
+    if (code >= 500)
+        return "Server error " + code;
+    return "Ticket request failed (HTTP " + code + ")";
+}
+
 function expireActionStates(states, nowMs, timeoutMs) {
     var next = Object.assign({}, states || {});
     var expired = [];
@@ -1244,6 +1305,8 @@ var exported = {
     truncateDiff: truncateDiff,
     canBeginAction: canBeginAction,
     findErrorText: findErrorText,
+    socketErrorText: socketErrorText,
+    ticketErrorText: ticketErrorText,
     expireActionStates: expireActionStates,
     draftAfterOutcome: draftAfterOutcome,
     resolveThreadCwd: resolveThreadCwd,

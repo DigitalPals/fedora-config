@@ -774,7 +774,48 @@ stderr collector + exit-code branch):
 **Accept:** unplug network → weather module shows offline state; break the
 usage script → chip shows error; popovers still correct in the happy path.
 
-### [ ] WP1.10 ∥ T3 socket error surfacing
+### [x] WP1.10 ∥ T3 socket error surfacing
+
+> Done. **Deviation:** the property is `T3Code.connectionError`, the last
+> *connection* error, not the last socket error — QML's `XMLHttpRequest`
+> collapses refused/DNS/TLS/timeout into `status === 0` with an empty
+> `statusText`, so at a dead port the ticket POST fails and
+> `T3Socket.errorString` is never written at all; a socket-only property fails
+> this WP's own accept check. `Common/T3CodeHelpers.js` gained
+> `socketErrorText`/`ticketErrorText` (t3code-helpers 34 → 38 tests). Notes:
+> - Qt raises the close and the error that caused it as two transitions in
+>   either order, and only one carries text — a refusal is `3 ("")` then
+>   `4 ("Connection refused")`, a TLS failure is `4` then `3 ("")`. Both are
+>   read, an empty string never overwrites a real one, and the read sits
+>   outside the connected/connecting guard because the close has usually
+>   already called `scheduleRetry()` by then. Every string in the tests was
+>   captured from a live Qt 6.11 WebSocket, not written from memory.
+> - The reason survives the retries that follow it and is cleared only just
+>   before `state = "connected"`, so the caption stays on the failure instead of
+>   flickering to a generic line on every retry tick.
+> - `Loader.Error` (QtWebSockets missing) now sets `connectionError` to
+>   "QtWebSockets is not installed" — not a socket error but a different and
+>   more actionable diagnosis, and previously the one permanent "off" with no
+>   on-screen explanation at all. It cannot be overwritten or cleared by
+>   construction: `connect()` returns on the not-Ready branch before it requests
+>   a ticket, the socket `Connections` block only enables while the loader is
+>   `Ready`, and the clear runs on an open that can never happen. The existing
+>   journal warning, which names the package, still fires. A derived
+>   `readonly property bool websocketsMissing` lets the popover drop its
+>   "— retrying" suffix here, where nothing retries — it is also the only way a
+>   consumer can tell this terminal state from a retrying one, since both read
+>   `state === "offline"`.
+> - The popover's header caption got an explicit width and `ElideRight` (new ids
+>   `headerRow`/`headerActions`): at `t3MinWidth` an unelided error ran under
+>   the ＋New/↻ buttons. Measured in the shell's own font, the QtWebSockets
+>   caption fits unelided at that width precisely because it carries no suffix.
+> - Verified end to end in a windowless throwaway instance (dead port, upgrade
+>   500, upgrade 401, recovery clearing the error, and a forced `Loader.Error`).
+>   **Not verified against the live shell** — doing so means swapping the real
+>   pairing file aside; the procedure is safe (the shell only ever reads it,
+>   never `writeAdapter()`s) but it was not run.
+
+
 
 **Files touched:** `Popovers/T3CodePopover.qml`, `Bar/T3Chip.qml` (coordinate
 with WP1.4 if concurrent), `Common/T3Code.qml` (one property; coordinate)

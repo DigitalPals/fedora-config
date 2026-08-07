@@ -141,8 +141,13 @@ Item {
             text: {
                 if (T3Code.state === "unpaired")
                     return "T3 Code · not paired";
+                // Off covers a refused port, a dead name, a bad certificate
+                // and a rejected ticket; say which one when the transport
+                // gave a reason worth repeating.
                 if (!root.live)
-                    return "T3 Code · " + T3Code.state;
+                    return "T3 Code · " + T3Code.state
+                        + (T3Code.connectionError !== ""
+                           ? " · " + T3Code.connectionError : "");
                 const host = T3Code.environmentLabel !== "" ? T3Code.environmentLabel : "sessions";
                 return "T3 Code · " + host + " · " + T3Code.runningCount + " running, "
                     + T3Code.attentionCount + " waiting";
