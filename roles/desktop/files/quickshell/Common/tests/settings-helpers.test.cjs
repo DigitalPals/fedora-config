@@ -133,8 +133,32 @@ test("merge over a partial object fills the rest from defaults", () => {
 test("merge on null or garbage returns pure defaults", () => {
     assert.deepEqual(H.merge(null), H.defaults());
     assert.deepEqual(H.merge("nope"), H.defaults());
-    assert.equal(H.parse("{broken"), null);
-    assert.equal(H.parse("42"), null);
+});
+
+test("parse separates an absent settings file from an unreadable one", () => {
+    // Both merge to defaults, but only "empty" may be saved over: a corrupt
+    // file's bytes are the user's only copy and have to survive.
+    for (const absent of ["", "   ", "\n\t\n", undefined, null])
+        assert.equal(H.parse(absent).status, "empty", `${JSON.stringify(absent)} is absent`);
+
+    // Unparseable, and valid JSON that is not a settings object. Both are
+    // damage, not a first run.
+    for (const corrupt of ["{broken", "42", "null", "[]", '"text"', "true", "{}}"])
+        assert.equal(H.parse(corrupt).status, "corrupt", `${corrupt} is corrupt`);
+
+    assert.equal(H.parse("{broken").value, null);
+});
+
+test("parse returns the settings object unchanged when it is readable", () => {
+    const result = H.parse('{"v":3,"barHeight":36}');
+    assert.equal(result.status, "ok");
+    assert.deepEqual(result.value, { v: 3, barHeight: 36 });
+    assert.equal(H.merge(result.value).barHeight, 36);
+
+    // A truncated file must not merge as if it were the settings it came from.
+    const truncated = H.parse('{"v":3,"barHeight":36');
+    assert.equal(truncated.status, "corrupt");
+    assert.deepEqual(H.merge(truncated.value), H.defaults());
 });
 
 test("merge clamps and snaps numeric ranges", () => {

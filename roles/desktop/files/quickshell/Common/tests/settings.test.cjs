@@ -224,7 +224,7 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
     assert.match(settings, /interval:\s*8000/);
     assert.match(settings, /function retrySave/);
     assert.match(settings, /migrationPending = parsed !== null && parsed\.v !== 3/);
-    assert.match(settings, /if \(!ready \|\| migrationPending\)/,
+    assert.match(settings, /if \(!ready \|\| migrationPending \|\| corruptBackupPending\)/,
         "v1/v2 files must wait for the next user mutation before a v3 write");
     assert.match(bindings, /mainMod \..*" \+ comma".*settings toggle/);
 });
@@ -348,4 +348,42 @@ test("the settings store keeps its fixed literal state path", () => {
     assert.match(settings, /path:\s*root\.filePath/);
     assert.doesNotMatch(settings, /:\s*Quickshell\.statePath\(/,
         "Settings must not use statePath — it forks per config directory");
+});
+
+test("an unreadable settings file is preserved before anything saves over it", () => {
+    // Regression guard for silent data loss: parse() used to answer null for
+    // both "no file yet" and "file we could not read", so applyLoaded treated
+    // damage as a first run and the next debounced save replaced the user's
+    // only copy with defaults.
+    const settings = read("Common/Settings.qml");
+
+    assert.match(settings, /firstRun = result\.status === "empty"/,
+        "only an absent file counts as a first run");
+
+    // The backup has to be triggered ahead of applyLoaded's no-op early
+    // return, or a corrupt file that merges to the running state slips past.
+    const applyLoaded = settings.slice(settings.indexOf("function applyLoaded"));
+    const backupAt = applyLoaded.indexOf("backUpCorruptFile()");
+    const earlyReturnAt = applyLoaded.indexOf("serialize(snapshot())");
+    assert.ok(backupAt > 0, "applyLoaded must back up a corrupt file");
+    assert.ok(backupAt < earlyReturnAt,
+        "the backup must happen before the unchanged-settings early return");
+
+    assert.match(settings, /"mv", filePath, corruptBackupProc\.backupPath/,
+        "the original bytes are moved aside, not rewritten");
+    assert.match(settings, /\.corrupt-" \+ Math\.floor\(Date\.now\(\) \/ 1000\)/);
+
+    // Both save paths stay shut until the move has succeeded, and the failure
+    // branch must not clear the guard.
+    assert.match(settings, /function saveNow\(\) \{\s*\n\s*if \(!ready \|\| corruptBackupPending\)/);
+    assert.match(settings,
+        /function scheduleSave\(\) \{\s*\n\s*if \(!ready \|\| migrationPending \|\| corruptBackupPending\)/);
+    const onExited = settings.slice(settings.indexOf("id: corruptBackupProc"));
+    const clears = onExited.slice(0, onExited.indexOf("console.warn"))
+        .match(/corruptBackupPending = false/g) ?? [];
+    assert.equal(clears.length, 1,
+        "corruptBackupPending clears only on a successful move");
+
+    assert.match(settings, /root\.announcement = "The settings file could not be read\./,
+        "the user is told the file was kept rather than lost");
 });

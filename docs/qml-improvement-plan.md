@@ -193,7 +193,25 @@ disabled it.
 
 **Accept:** an introduced unqualified access fails `tests/run`.
 
-### [ ] WP0.5 Settings-corruption safety
+### [x] WP0.5 Settings-corruption safety
+
+> Done. `parse()` now returns `{status, value}` with `status` in
+> `empty | ok | corrupt`; only `empty` counts as a first run. Notes:
+> - The backup is triggered *before* `applyLoaded`'s unchanged-settings early
+>   return — otherwise a corrupt file whose defaults match the running state
+>   slips past unprotected. The new test asserts that ordering.
+> - `corruptBackupPending` gates both `scheduleSave()` and `saveNow()`, and
+>   deliberately stays set if the `mv` fails: saving then would destroy the
+>   file we could not copy. The user is told so via `announcement`.
+> - Valid JSON that is not a settings object (`42`, `[]`, `null`) is corrupt,
+>   not absent. The old code let `[]` through as an object.
+> - Verified live: truncating the real `shell-settings.json` mid-object
+>   produced `shell-settings.json.corrupt-<epoch>` byte-identical to the
+>   damaged file, the shell fell back to defaults, and nothing overwrote it.
+> - **Follow-up for WP1.2:** `announcement` reaches the user only as an
+>   `Accessible.AlertMessage` inside the settings window, so someone who never
+>   opens Settings sees nothing. Route it through `Notifs.send()` once that
+>   helper exists.
 
 **Files touched:** `Common/SettingsHelpers.js`, `Common/Settings.qml`,
 `Common/tests/settings-helpers.test.cjs`

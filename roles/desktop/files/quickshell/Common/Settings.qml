@@ -74,6 +74,10 @@ Singleton {
     property string resetLabel: ""
     property string announcement: ""
     property bool migrationPending: false
+    // Blocks every save while an unreadable settings file is being moved
+    // aside, and stays set if that move fails — overwriting it then would
+    // destroy the only copy of the user's settings.
+    property bool corruptBackupPending: false
     readonly property bool undoAvailable: resetSnapshot !== null
 
     // Guards saves while loaded values are being applied.
@@ -262,8 +266,25 @@ Singleton {
         return SettingsHelpers.normalizeModOpts(next);
     }
 
+    // A file we cannot read is not a first run — those bytes are the user's
+    // only copy. Move them aside before anything is allowed to save over them.
+    function backUpCorruptFile() {
+        if (corruptBackupPending)
+            return;
+        corruptBackupPending = true;
+        console.warn("settings: unreadable file at", filePath, "— backing it up");
+        corruptBackupProc.backupPath = filePath + ".corrupt-" + Math.floor(Date.now() / 1000);
+        corruptBackupProc.command = ["mv", filePath, corruptBackupProc.backupPath];
+        corruptBackupProc.running = true;
+    }
+
     function applyLoaded(rawText) {
-        const parsed = SettingsHelpers.parse(rawText);
+        const result = SettingsHelpers.parse(rawText);
+        // Before the no-op check below: a corrupt file whose defaults happen to
+        // match the running state would otherwise slip through unprotected.
+        if (result.status === "corrupt")
+            backUpCorruptFile();
+        const parsed = result.value;
         const merged = SettingsHelpers.merge(parsed);
         // Skip echoes of our own atomic writes (watchChanges reports them)
         // and external edits that merge back to the current state.
@@ -309,13 +330,13 @@ Singleton {
         wallAccentFor = merged.wallAccentFor;
         ready = true;
         migrationPending = parsed !== null && parsed.v !== 3;
-        firstRun = parsed === null;
+        firstRun = result.status === "empty";
         loaded = true;
         applyScrollFactor();
     }
 
     function saveNow() {
-        if (!ready)
+        if (!ready || corruptBackupPending)
             return;
         const retrying = saveError;
         saveError = false;
@@ -334,7 +355,7 @@ Singleton {
     }
 
     function scheduleSave() {
-        if (!ready || migrationPending)
+        if (!ready || migrationPending || corruptBackupPending)
             return;
         savePending = true;
         saveTimer.restart();
@@ -421,6 +442,26 @@ Singleton {
                 console.warn("could not apply touchpad scroll speed:", exitCode);
             if (Math.abs(root.dispatchedScrollFactor - root.scrollFactor) > 0.001)
                 scrollApplyTimer.restart();
+        }
+    }
+
+    Process {
+        id: corruptBackupProc
+
+        property string backupPath: ""
+
+        onExited: exitCode => {
+            if (exitCode === 0) {
+                root.corruptBackupPending = false;
+                root.announcement = "The settings file could not be read. It was kept as "
+                    + corruptBackupProc.backupPath + " and the defaults were restored.";
+                return;
+            }
+            // Deliberately leaves corruptBackupPending set: saving now would
+            // overwrite the file we just failed to copy.
+            root.announcement = "The settings file could not be read or backed up. "
+                + "Settings will not be saved until " + root.filePath + " is moved aside.";
+            console.warn("settings: backing up", root.filePath, "failed with exit", exitCode);
         }
     }
 

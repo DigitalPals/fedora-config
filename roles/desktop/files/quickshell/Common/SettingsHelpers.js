@@ -423,13 +423,25 @@ function serialize(settings) {
     return JSON.stringify(ordered, null, 2) + "\n";
 }
 
+// Distinguishing "no settings yet" from "settings we could not read" is what
+// keeps a corrupt file recoverable: both merge to defaults, but only the empty
+// case may be overwritten. Returns { status, value } where status is one of:
+//   "empty"   — nothing on disk yet (or a whitespace-only file); first run.
+//   "ok"      — a settings object; value is it.
+//   "corrupt" — bytes exist but are not a settings object. Value is null and
+//               the caller must preserve the file before saving over it.
 function parse(text) {
+    if (typeof text !== "string" || text.trim() === "")
+        return { status: "empty", value: null };
+    var parsed;
     try {
-        var parsed = JSON.parse(text);
-        return parsed && typeof parsed === "object" ? parsed : null;
+        parsed = JSON.parse(text);
     } catch (e) {
-        return null;
+        return { status: "corrupt", value: null };
     }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        return { status: "corrupt", value: null };
+    return { status: "ok", value: parsed };
 }
 
 var exported = {
