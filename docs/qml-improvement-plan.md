@@ -1563,6 +1563,45 @@ its `// ----` section banners are the decomposition map. **Keep `T3Code.qml`
 as a façade re-exporting the current API** so the 269 call sites migrate
 gradually. Strictly sequential; land each WP green before the next.
 
+> **How to verify a T3 split — do not skip this.** Every WP here has the same
+> failure mode, and it is not visible: the shell comes up looking completely
+> normal — connected chip, popover header, thread list, settled count — while
+> something behind it is broken. It happened in **both** WP5.1 (`socketLoader`
+> was referenced from eight places, so every send threw `ReferenceError`) and
+> WP5.2 (two properties moved but never declared, leaving `configReady` false).
+> `tests/run` passed in both cases; so did the screenshots.
+>
+> `tests/t3-contract-snapshot` dumps the whole observable contract — every
+> property consumers read, and the presence of every function they call —
+> against the running shell. Snapshot before, deploy, snapshot after, diff.
+> The lists are derived from what the popover and chip actually touch, so they
+> do not go stale as the API moves.
+>
+> ```sh
+> tests/t3-contract-snapshot > /tmp/before.json     # on the last green commit
+> # …make the change, deploy it…
+> tests/t3-contract-snapshot > /tmp/after.json
+> diff /tmp/before.json /tmp/after.json            # must be empty
+> ```
+>
+> Also read `journalctl --user -u quickshell.service` afterwards: a
+> `ReferenceError` or `TypeError` there is the usual first sign, and none of it
+> reaches the screen. A snapshot diff plus a clean journal is the bar; a
+> screenshot is not.
+>
+> **The pattern that works**, from the two WPs already landed: the new
+> singleton owns its state and talks *upward* through signals rather than
+> reaching back into `T3Code` — `T3Connection` raises `message`/`opened`/
+> `dropped`, `T3Rpc` raises `aborted`. Members the rest of `T3Code` calls
+> become direct `T3Rpc.`/`T3Connection.` calls; only the members *consumers*
+> read need a façade wrapper, and that is usually a small minority (9 of 41 in
+> WP5.2). Check which is which before writing wrappers:
+>
+> ```sh
+> grep -rho 'T3Code\.[a-zA-Z_][a-zA-Z0-9_]*' --include='*.qml' \
+>   roles/desktop/files/quickshell | sed 's/T3Code\.//' | sort -u
+> ```
+
 ### [x] WP5.1 `T3Connection.qml` — state file, ticket fetch, socket loader, retry/backoff, ping
 
 > Done. `Common/T3Connection.qml` owns the transport; `T3Code.qml` 2487 → 2309

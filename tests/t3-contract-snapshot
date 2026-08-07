@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Dump the observable T3Code contract from the running shell, as JSON on stdout.
+#
+# Phase 5 of docs/qml-improvement-plan.md splits Common/T3Code.qml apart behind
+# a façade. The failure mode that split has is specific and nasty: the shell
+# comes up looking completely normal — connected chip, popover header, thread
+# list — while something behind it is broken. It happened in WP5.1 (every send
+# throwing ReferenceError) and again in WP5.2 (two properties moved but never
+# declared), and neither was visible on screen.
+#
+# So: snapshot before the change, snapshot after, diff. Any difference is either
+# a regression or something you can explain.
+#
+#   tests/t3-contract-snapshot > /tmp/before.json     # on a known-good tree
+#   …make the change, then deploy it…
+#   tests/t3-contract-snapshot > /tmp/after.json
+#   diff /tmp/before.json /tmp/after.json
+#
+# The property and function lists are derived from what the popover and chip
+# actually read off T3Code, so they track the real contract instead of going
+# stale. Requires a running quickshell (`systemctl --user status quickshell`).
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+shell_src="$repo/roles/desktop/files/quickshell"
+deployed="${QS_CONFIG_DIR:-$HOME/.config/quickshell}"
+settle=${T3_SNAPSHOT_SETTLE:-16}
+
+if ! command -v qs >/dev/null; then
+  echo "qs not on PATH — is quickshell installed?" >&2
+  exit 1
+fi
+
+# What consumers actually touch, split into readable properties and functions.
+mapfile -t members < <(
+  grep -rho 'T3Code\.[a-zA-Z_][a-zA-Z0-9_]*' --include='*.qml' "$shell_src" \
+    | sed 's/T3Code\.//' | sort -u \
+    | grep -vx qml)   # prose mentioning the filename, not a member
+
+props=() funcs=()
+for m in "${members[@]}"; do
+  if grep -rqE "^\s*function $m\b" "$shell_src"/Common/T3*.qml; then
+    funcs+=("$m")
+  elif grep -rqE "^\s*(readonly )?property \w+(<[^>]*>)? $m\b" "$shell_src"/Common/T3*.qml; then
+    props+=("$m")
+  else
+    echo "warning: $m resolves to neither a property nor a function" >&2
+  fi
+done
+
+json_list() { printf '%s\n' "$@" | sed 's/.*/"&"/' | paste -sd, - ; }
+
+probe=$(cat <<EOF
+    // Injected by tests/t3-contract-snapshot. Not part of the shell.
+    IpcHandler {
+        target: "t3contract"
+
+        function snapshot(): string {
+            const out = {};
+            for (const name of [$(json_list "${props[@]}")]) {
+                let v;
+                try { v = T3Code[name]; } catch (e) { v = "<throw>"; }
+                if (v === undefined) { out[name] = "<undefined>"; continue; }
+                if (v === null) { out[name] = null; continue; }
+                if (Array.isArray(v)) { out[name] = "array[" + v.length + "]"; continue; }
+                if (typeof v === "object") {
+                    out[name] = "object{" + Object.keys(v).sort().join(",") + "}";
+                    continue;
+                }
+                out[name] = v;
+            }
+            const missing = [];
+            for (const name of [$(json_list "${funcs[@]}")]) {
+                if (typeof T3Code[name] !== "function")
+                    missing.push(name);
+            }
+            out["__missingFunctions"] = missing;
+            return JSON.stringify(out, Object.keys(out).sort(), 1);
+        }
+    }
+
+EOF
+)
+
+# The deployed tree is disposable (the Ansible role is the source of truth), so
+# the probe goes there and is rsynced away again on the way out.
+restore() {
+  rsync -a --delete "$shell_src/" "$deployed/"
+}
+trap restore EXIT
+
+rsync -a --delete "$shell_src/" "$deployed/"
+python3 - "$deployed/shell.qml" <<PY
+import io, sys
+path = sys.argv[1]
+s = io.open(path, encoding="utf-8").read()
+anchor = '    IpcHandler {\n        target: "popouts"\n'
+assert anchor in s, "shell.qml has no popouts IpcHandler to anchor against"
+io.open(path, "w", encoding="utf-8").write(s.replace(anchor, """$probe""" + anchor, 1))
+PY
+
+# Quickshell reloads on file change; the connection then has to reach the
+# server and finish its subscribe before the thread counts mean anything.
+sleep "$settle"
+qs ipc call t3contract snapshot
