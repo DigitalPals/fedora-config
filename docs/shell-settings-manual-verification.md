@@ -67,8 +67,8 @@ is manual.
 
 ## Modules page
 
-- [ ] Mini preview mirrors order and enablement (disabled = dashed chip);
-      CC chip stays pinned.
+- [ ] Mini preview mirrors order and enablement (disabled = dashed chip),
+      including Idle inhibit and Control Center.
 - [ ] Toggles apply to the bar instantly; auto-rules keep working (Media
       only while playing, Bluetooth only when connected, Battery on
       laptops).
@@ -78,6 +78,8 @@ is manual.
       second Esc closes the window).
 - [ ] Disabling a module whose popout is open closes that popout.
 - [ ] The T3 chips + usage percentages move as one module.
+- [ ] Idle inhibit and Control Center can be reordered within or across
+      columns; moving Control Center keeps its popout attached to its module.
 
 ## System page
 

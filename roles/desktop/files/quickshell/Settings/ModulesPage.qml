@@ -19,7 +19,9 @@ Item {
         wifi: { name: "Wi-Fi", short: "Wi-Fi" },
         batt: { name: "Battery", short: "Batt", tag: "on laptops" },
         bell: { name: "Notifications", short: "Bell" },
-        bt: { name: "Bluetooth", short: "BT", tag: "when connected" }
+        bt: { name: "Bluetooth", short: "BT", tag: "when connected" },
+        idle: { name: "Idle inhibit", short: "Idle" },
+        control: { name: "Control Center", short: "CC" }
     })
 
     // ---- drag state -------------------------------------------------------
@@ -264,11 +266,10 @@ Item {
 
         required property string colId
         required property string title
-        property bool pinnedTail: false
 
         readonly property var list: Settings.mods[colId]
         readonly property int naturalHeight: page.rowsStartY
-            + list.length * page.pitch + (pinnedTail ? page.pitch * 2 : 0)
+            + list.length * page.pitch
 
         Text {
             text: column.title
@@ -288,66 +289,6 @@ Item {
                 model: column.list
                 delegate: ModuleRow { colId: column.colId }
             }
-
-            // Idle inhibit and Control Center are permanent tail items in
-            // the real right island, outside Settings.mods.
-            Rectangle {
-                visible: column.pinnedTail
-                width: parent.width
-                height: 28
-                radius: Theme.rowRadius
-                color: Theme.cardFill
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 22
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Idle inhibit"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textLow
-                }
-
-                Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "pinned"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textFaint
-                }
-            }
-
-            Rectangle {
-                visible: column.pinnedTail
-                width: parent.width
-                height: 28
-                radius: 7
-                color: Qt.rgba(1, 1, 1, 0.03)
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 22
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Control Center"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textLow
-                }
-
-                Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "pinned"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textFaint
-                }
-            }
-
-
         }
 
         // Insertion caret in the row gap — an overlay, so rows never move.
@@ -431,42 +372,6 @@ Item {
                     model: Settings.mods.right
                     delegate: MiniChip {}
                 }
-
-                Rectangle { width: 1; height: 14; color: Theme.hairline }
-
-                Rectangle {
-                    height: 18
-                    width: idleText.implicitWidth + 10
-                    radius: 4
-                    color: Theme.cardFill
-
-                    Text {
-                        id: idleText
-                        anchors.centerIn: parent
-                        text: "Idle"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
-                        color: Theme.textLow
-                    }
-                }
-
-                Rectangle {
-                    height: 18
-                    width: ccText.implicitWidth + 10
-                    radius: 4
-                    color: Theme.accentAlpha(0.14)
-
-                    Text {
-                        id: ccText
-                        anchors.centerIn: parent
-                        text: "CC"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
-                        font.weight: Theme.weightMedium
-                        color: Theme.textHi
-                        renderType: Text.QtRendering
-                    }
-                }
             }
         }
     }
@@ -521,7 +426,6 @@ Item {
             height: page.stacked ? naturalHeight : parent.height
             colId: "right"
             title: "RIGHT"
-            pinnedTail: true
         }
         }
     }

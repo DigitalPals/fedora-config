@@ -230,8 +230,6 @@ PanelWindow {
     }
 
     function moduleForPanel(name) {
-        if (name === "control")
-            return controlIcon;
         const item = panelAnchors[name];
         return item && item.visible ? item : null;
     }
@@ -253,7 +251,8 @@ PanelWindow {
 
     readonly property var moduleComponents: ({
         ws: cmpWs, media: cmpMedia, clock: cmpClock, weather: cmpWeather,
-        t3: cmpT3, vol: cmpVol, wifi: cmpWifi, batt: cmpBatt, bell: cmpBell, bt: cmpBt
+        t3: cmpT3, vol: cmpVol, wifi: cmpWifi, batt: cmpBatt, bell: cmpBell, bt: cmpBt,
+        idle: cmpIdle, control: cmpControl
     })
 
     // One slot per configured module: loads the module's component when the
@@ -699,7 +698,7 @@ PanelWindow {
             }
         }
 
-        // RIGHT — model usage + audio + status modules + Control Center
+        // RIGHT — the default home for model usage, audio, and status modules
         Cluster {
             id: rightCluster
             anchors.right: parent.right
@@ -779,17 +778,31 @@ PanelWindow {
                 }
             }
 
-            Divider {}
+            Component {
+                id: cmpIdle
 
-            // Keep-awake toggle. Lit while inhibiting; no popout, so it
-            // deliberately skips the hover-switch wiring.
-            BarIcon {
-                glyph: "" // coffee
-                active: SysInfo.idleInhibited
-                idleColor: Theme.textLow
-                tooltip: SysInfo.idleInhibited ? "Idle inhibit on" : "Idle inhibit off"
-                tooltipAlign: 1
-                onClicked: SysInfo.idleInhibited = !SysInfo.idleInhibited
+                Row {
+                    id: idleModule
+
+                    property string isle: "right"
+                    property bool dividerBefore: false
+                    spacing: 1
+
+                    Divider {
+                        visible: idleModule.dividerBefore
+                    }
+
+                    // Keep-awake toggle. Lit while inhibiting; no popout, so
+                    // it deliberately skips the hover-switch wiring.
+                    BarIcon {
+                        glyph: "" // coffee
+                        active: SysInfo.idleInhibited
+                        idleColor: Theme.textLow
+                        tooltip: SysInfo.idleInhibited ? "Idle inhibit on" : "Idle inhibit off"
+                        tooltipAlign: 1
+                        onClicked: SysInfo.idleInhibited = !SysInfo.idleInhibited
+                    }
+                }
             }
 
             Component {
@@ -941,16 +954,24 @@ PanelWindow {
 
             }
 
-            BarIcon {
-                id: controlIcon
-                glyph: "\uf30a" // fedora logo — Control Center trigger
-                glyphSize: Theme.barIconSize
-                active: barWindow.popoutOpen("control")
-                tooltip: "Control Center"
-                tooltipAlign: 1
-                onClicked: barWindow.togglePopout("control", "right", controlIcon)
-                onEntered: barWindow.hoverOpen("control", "right", controlIcon)
-                onExited: barWindow.cancelHover("control")
+            Component {
+                id: cmpControl
+
+                BarIcon {
+                    id: controlIcon
+                    property string isle: "right"
+
+                    Component.onCompleted: barWindow.registerPanel("control", controlIcon)
+                    Component.onDestruction: barWindow.unregisterPanel("control", controlIcon)
+                    glyph: "\uf30a" // fedora logo — Control Center trigger
+                    glyphSize: Theme.barIconSize
+                    active: barWindow.popoutOpen("control")
+                    tooltip: "Control Center"
+                    tooltipAlign: 1
+                    onClicked: barWindow.togglePopout("control", controlIcon.isle, controlIcon)
+                    onEntered: barWindow.hoverOpen("control", controlIcon.isle, controlIcon)
+                    onExited: barWindow.cancelHover("control")
+                }
             }
         }
     }

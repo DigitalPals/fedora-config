@@ -77,6 +77,20 @@ test("settings exposes responsive output and keyboard contracts", () => {
         "picker flows need a concrete lane width or every pill wraps");
 });
 
+test("Idle inhibit and Control Center use the reorderable module pipeline", () => {
+    const helpers = read("Common/SettingsHelpers.js");
+    const modules = read("Settings/ModulesPage.qml");
+    const bar = read("Bar/Bar.qml");
+
+    assert.match(helpers, /"idle", "control"/);
+    assert.match(modules, /idle:\s*\{ name: "Idle inhibit"/);
+    assert.match(modules, /control:\s*\{ name: "Control Center"/);
+    assert.doesNotMatch(modules, /pinnedTail|text:\s*"pinned"/);
+    assert.match(bar, /idle:\s*cmpIdle, control:\s*cmpControl/);
+    assert.match(bar, /registerPanel\("control", controlIcon\)/);
+    assert.doesNotMatch(bar, /togglePopout\("control", "right"/);
+});
+
 test("regression fixes keep asynchronous state identity-safe", () => {
     const wallpaper = read("Common/Wallpaper.qml");
     const sysInfo = read("Common/SysInfo.qml");

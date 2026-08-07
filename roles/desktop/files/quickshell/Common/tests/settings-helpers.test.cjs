@@ -23,9 +23,12 @@ test("defaults carry the design values", () => {
     assert.equal(d.shuffle, "Off");
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id), ["clock", "weather"]);
-    assert.deepEqual(d.mods.right.map(m => m.id), ["t3", "vol", "wifi", "batt", "bell", "bt"]);
+    assert.deepEqual(d.mods.right.map(m => m.id),
+        ["t3", "vol", "wifi", "batt", "bell", "bt", "idle", "control"]);
     assert.equal(d.mods.left[1].on, false);
     assert.equal(d.mods.right[5].on, false);
+    assert.equal(d.mods.right[6].on, true);
+    assert.equal(d.mods.right[7].on, true);
 });
 
 test("merge over a partial object fills the rest from defaults", () => {
@@ -88,7 +91,8 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.left.map(m => m.id), ["vol", "ws", "media"]);
     assert.equal(next.left[0].on, false);
     assert.deepEqual(next.center.map(m => m.id), ["clock", "weather"]);
-    assert.deepEqual(next.right.map(m => m.id), ["t3", "wifi", "batt", "bell", "bt"]);
+    assert.deepEqual(next.right.map(m => m.id),
+        ["t3", "wifi", "batt", "bell", "bt", "idle", "control"]);
     assert.ok(next.left.some(m => m.id === "media" && m.on === false),
         "appended module keeps its default enable flag");
 });
@@ -96,6 +100,18 @@ test("normalizeMods appends ids missing from the file at their default column", 
 test("normalizeMods falls back to the default flag for a non-boolean", () => {
     const next = H.normalizeMods({ left: [{ id: "media", on: "yes" }], center: [], right: [] });
     assert.equal(next.left[0].on, false);
+});
+
+test("Idle inhibit and Control Center persist in any module column", () => {
+    const raw = H.defaultMods();
+    raw.right = raw.right.filter(m => m.id !== "idle" && m.id !== "control");
+    raw.left.unshift({ id: "control", on: true });
+    raw.center.push({ id: "idle", on: true });
+
+    const next = H.normalizeMods(raw);
+    assert.equal(next.left[0].id, "control");
+    assert.equal(next.center.at(-1).id, "idle");
+    assert.ok(!next.right.some(m => m.id === "idle" || m.id === "control"));
 });
 
 test("serialize is stable, versioned, and round-trips through merge", () => {

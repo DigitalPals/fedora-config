@@ -3,7 +3,10 @@
 
 var VERSION = 1;
 
-var MODULE_IDS = ["ws", "media", "clock", "weather", "t3", "vol", "wifi", "batt", "bell", "bt"];
+var MODULE_IDS = [
+    "ws", "media", "clock", "weather", "t3", "vol", "wifi", "batt", "bell", "bt",
+    "idle", "control"
+];
 
 var FONT_CHOICES = [
     { id: "oppo", label: "OPPO Sans 4.0", family: "OPPO Sans 4.0" },
@@ -17,7 +20,8 @@ function defaultMods() {
         center: [{ id: "clock", on: true }, { id: "weather", on: true }],
         right: [
             { id: "t3", on: true }, { id: "vol", on: true }, { id: "wifi", on: true },
-            { id: "batt", on: true }, { id: "bell", on: true }, { id: "bt", on: false }
+            { id: "batt", on: true }, { id: "bell", on: true }, { id: "bt", on: false },
+            { id: "idle", on: true }, { id: "control", on: true }
         ]
     };
 }
