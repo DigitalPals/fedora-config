@@ -24,6 +24,17 @@ Singleton {
     property var actionStates: ({})
     readonly property int actionTimeoutMs: 15000
 
+    // Optional-capability gates for the lifecycle commands below. Derived from
+    // the connection here — where the commands live — and re-exported by
+    // T3Code; a missing key means an older server, so the command is never
+    // sent under version skew.
+    readonly property bool supportsSettlement:
+        T3Connection.environmentCapabilities.threadSettlement === true
+    readonly property bool supportsSnooze:
+        T3Connection.environmentCapabilities.threadSnooze === true
+    readonly property bool supportsTitleRegeneration:
+        T3Connection.environmentCapabilities.threadTitleRegeneration === true
+
     function putRpcHandler(id, handler) {
         dropRpcHandler(id);
         rpcHandlers[id] = handler;
@@ -372,7 +383,7 @@ Singleton {
 
     function settle(threadId) {
         const key = actionKey("settle", threadId, "");
-        const thread = threadMap[threadId];
+        const thread = T3Threads.threadMap[threadId];
         if (!supportsSettlement)
             return rejectAction(key, "Settlement is not supported by this server", false);
         if (!Helpers.canOperateLifecycle(thread, Date.now()))
@@ -401,7 +412,7 @@ Singleton {
         if (!supportsSettlement)
             return rejectAction(key, "Settlement is not supported by this server", false);
         const ids = Array.isArray(threadIds) ? threadIds.filter(id =>
-            Helpers.canOperateLifecycle(threadMap[id], Date.now())) : [];
+            Helpers.canOperateLifecycle(T3Threads.threadMap[id], Date.now())) : [];
         const commands = ids.map(id => ({
             type: "thread.settle", commandId: genId(), threadId: id
         }));
@@ -410,7 +421,7 @@ Singleton {
 
     function snooze(threadId, snoozedUntil) {
         const key = actionKey("snooze", threadId, "");
-        const thread = threadMap[threadId];
+        const thread = T3Threads.threadMap[threadId];
         if (!supportsSnooze)
             return rejectAction(key, "Snooze is not supported by this server", false);
         if (!Helpers.canOperateLifecycle(thread, Date.now()))
@@ -472,7 +483,7 @@ Singleton {
         const key = actionKey("regenerate-title", threadId, "");
         if (!supportsTitleRegeneration)
             return rejectAction(key, "Title regeneration is not supported", false);
-        if (threadMap[threadId]?.titleRegeneration)
+        if (T3Threads.threadMap[threadId]?.titleRegeneration)
             return rejectAction(key, "Title regeneration is already running", false);
         return dispatch({
             type: "thread.meta.update",

@@ -50,12 +50,9 @@ Singleton {
     readonly property bool hasReadyProvider: configReady
         && providerConfigurations.some(provider => provider.ready === true
             && Array.isArray(provider.models) && provider.models.length > 0)
-    readonly property bool supportsSettlement:
-        environmentCapabilities.threadSettlement === true
-    readonly property bool supportsSnooze:
-        environmentCapabilities.threadSnooze === true
-    readonly property bool supportsTitleRegeneration:
-        environmentCapabilities.threadTitleRegeneration === true
+    readonly property bool supportsSettlement: T3Rpc.supportsSettlement
+    readonly property bool supportsSnooze: T3Rpc.supportsSnooze
+    readonly property bool supportsTitleRegeneration: T3Rpc.supportsTitleRegeneration
 
     // threadId → thread shell, projectId → project shell (raw server shapes)
 
@@ -105,6 +102,7 @@ Singleton {
         T3Rpc.unsnooze(threadId);
     }
 
+
     function stopSession(threadId) {
         T3Rpc.stopSession(threadId);
     }
@@ -133,6 +131,7 @@ Singleton {
     function threadUrl(threadId) {
         return T3Threads.threadUrl(threadId);
     }
+
 
     function relTime(iso) {
         return T3Threads.relTime(iso);

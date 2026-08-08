@@ -99,6 +99,14 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
 
 ## Traps
 
+- **An unqualified reference to another singleton's property lints clean and
+  throws at runtime.** Inside a Quickshell `Singleton`, qmllint cannot resolve
+  the scope, so `threadMap` where `T3Threads.threadMap` was meant produces no
+  warning — and every call throws `ReferenceError`, invisibly except in the
+  journal. This shipped three times during the T3 split (WP5.1, WP5.2, and
+  settle/snooze after Phase 5). `tests/quickshell/t3-singleton-scope.test.cjs`
+  now enforces a watchlist; extend the list when a new cross-singleton name
+  appears.
 - **In-place mutation never re-evaluates a binding.** Mutating an object or
   array in place is invisible to QML; reassigning it notifies. Both behaviours
   are useful — a memo cache wants the former, an invalidation wants the latter
