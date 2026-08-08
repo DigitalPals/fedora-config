@@ -107,6 +107,16 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
   settle/snooze after Phase 5). `tests/quickshell/t3-singleton-scope.test.cjs`
   now enforces a watchlist; extend the list when a new cross-singleton name
   appears.
+- **A `Connections` handler that matches nothing on its target is silently
+  dead.** qmllint has no opinion, the configuration loads, and Quickshell logs
+  one WARN at reload and never calls it — so the code reads as wired and does
+  nothing. The T3 façade makes this easy: views only talk to `T3Code`, so a
+  handler for state that still lives on `T3Drafts`/`T3Detail` looks right at
+  both ends. Shipped three times (`threadDrafts`/`userInputDrafts`,
+  `newThreadConfirmed`, `detailThreadId`). Re-export on the façade — a
+  property binds, a signal needs its own declaration plus a relaying
+  `Connections`. `tests/quickshell/connections-handlers.test.cjs` now resolves
+  every handler against its target singleton's real surface.
 - **In-place mutation never re-evaluates a binding.** Mutating an object or
   array in place is invisible to QML; reassigning it notifies. Both behaviours
   are useful — a memo cache wants the former, an invalidation wants the latter

@@ -296,6 +296,20 @@ Singleton {
     readonly property var threadDrafts: T3Drafts.threadDrafts
     readonly property var userInputDrafts: T3Drafts.userInputDrafts
 
+    // The same re-export, for a signal instead of a property: there is no
+    // value to bind, so the façade declares its own and relays it. Views never
+    // reference T3Drafts, so without this the popover's handler is dead and a
+    // thread the user just created is never opened.
+    signal newThreadConfirmed(string threadId)
+
+    Connections {
+        target: T3Drafts
+
+        function onNewThreadConfirmed(threadId) {
+            root.newThreadConfirmed(threadId);
+        }
+    }
+
     function buildInputAnswers(threadId, pendingInput) {
         return T3Drafts.buildInputAnswers(threadId, pendingInput);
     }
@@ -451,6 +465,11 @@ Singleton {
     // ---- detail re-exports -------------------------------------------------
     // Common/T3Detail.qml owns the open thread's stream and its projections.
     // Only T3ThreadPage reads these.
+    //
+    // detailThreadId is re-exported for its change signal more than its value:
+    // the page resets its message window and re-follows the tail when the
+    // stream switches threads, and that handler was dead without it here.
+    readonly property string detailThreadId: T3Detail.detailThreadId
     readonly property bool detailLoading: T3Detail.detailLoading
     readonly property string detailError: T3Detail.detailError
     readonly property var detailMessages: T3Detail.detailMessages
