@@ -2,16 +2,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { shellDir, load } = require("./shell.cjs");
 
-const R = require("../PanelRegistryData.js");
-const SettingsHelpers = require("../SettingsHelpers.js");
-
-const shellDir = path.resolve(__dirname, "../..");
+const R = load("PanelRegistryData.js");
+const SettingsHelpers = load("SettingsHelpers.js");
 
 function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
 }
-
 
 // The bar and the module files it loads, as one corpus: ownership is declared
 // in Bar/Modules/*.qml now, while the slot that drives it is in Bar.qml.

@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { load } = require("./shell.cjs");
 
-const H = require("../ProcHelpers.js");
+const H = load("ProcHelpers.js");
 
 // ---- error text ----------------------------------------------------------
 

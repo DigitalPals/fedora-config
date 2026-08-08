@@ -2,8 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-
-const shellDir = path.resolve(__dirname, "../..");
+const { shellDir } = require("./shell.cjs");
 
 // Every directory holding QML types, discovered rather than listed. A
 // directory carrying a qmldir is no longer implicitly scanned by the

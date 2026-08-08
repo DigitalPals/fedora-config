@@ -2,8 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-
-const shellDir = path.resolve(__dirname, "../..");
+const { shellDir } = require("./shell.cjs");
 
 // qmllint does not catch this, and the failure is total: QML reports
 // "Property value set multiple times", the whole configuration fails to load,

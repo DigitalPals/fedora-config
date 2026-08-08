@@ -2,8 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { shellDir, load } = require("./shell.cjs");
 
-const shellDir = path.resolve(__dirname, "../..");
 const themePath = path.join(shellDir, "Common", "Theme.qml");
 const theme = fs.readFileSync(themePath, "utf8");
 
@@ -83,7 +83,7 @@ test("settings-driven tokens default to the original menu metrics", () => {
     // fontMenu / barHeight / clusterRadius moved from literals to Shell
     // settings bindings; the defaults must still reproduce the design values
     // and Theme must actually bind to Settings rather than re-hardcode.
-    const H = require("../SettingsHelpers.js");
+    const H = load("SettingsHelpers.js");
     const d = H.defaults();
     assert.equal(d.barHeight, 30);
     assert.equal(d.barRadius, 9);

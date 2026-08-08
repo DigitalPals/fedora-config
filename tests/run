@@ -41,14 +41,18 @@ excerpt() {
 # ── Quickshell pure-logic unit tests ────────────────────────────────────────
 # `node --test <dir>` does not discover these (the runner tries to load the
 # directory as a module), so the files are expanded here instead.
+#
+# They live here rather than beside the code they test: the Ansible role copies
+# the whole shell tree into ~/.config/quickshell, and test files have no
+# business in a deployed config directory.
 stage_unit_tests() {
   local files=() out rc=0 t0 elapsed passed failed
   shopt -s nullglob
-  files=("$shell_dir"/Common/tests/*.test.cjs)
+  files=(tests/quickshell/*.test.cjs)
   shopt -u nullglob
 
   if ((${#files[@]} == 0)); then
-    fail 'unit tests' "no *.test.cjs under $shell_dir/Common/tests"
+    fail 'unit tests' 'no *.test.cjs under tests/quickshell'
     return
   fi
   if ! command -v node >/dev/null 2>&1; then

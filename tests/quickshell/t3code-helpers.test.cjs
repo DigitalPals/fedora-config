@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { load } = require("./shell.cjs");
 
-const H = require("../T3CodeHelpers.js");
+const H = load("T3CodeHelpers.js");
 
 const NOW = Date.parse("2026-08-03T12:00:00.000Z");
 

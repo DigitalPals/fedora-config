@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { load } = require("./shell.cjs");
 
-const H = require("../SettingsHelpers.js");
+const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();

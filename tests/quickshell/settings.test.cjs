@@ -2,8 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-
-const shellDir = path.resolve(__dirname, "../..");
+const { shellDir, load } = require("./shell.cjs");
 
 function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
@@ -29,7 +28,7 @@ test("the settings IPC target is declared exactly once shell-wide", () => {
 test("settings is a connected center popout rather than a modal window", () => {
     const shell = read("shell.qml");
     const settings = read("Common/Settings.qml");
-    const registry = require("../PanelRegistryData.js");
+    const registry = load("PanelRegistryData.js");
 
     assert.equal(fs.existsSync(path.join(shellDir, "SettingsWindow.qml")), false);
     assert.doesNotMatch(shell, /SettingsWindow\s*\{/);

@@ -2,8 +2,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { load } = require("./shell.cjs");
 
-const H = require("../StatusHelpers.js");
+const H = load("StatusHelpers.js");
 
 function player(identity, desktopEntry = "", extra = {}) {
     return {

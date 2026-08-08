@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { load } = require("./shell.cjs");
 
-const H = require("../LayoutHelpers.js");
+const H = load("LayoutHelpers.js");
 
 test("stacked drops subtract each column origin before finding the row", () => {
     const columns = [

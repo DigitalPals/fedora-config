@@ -92,8 +92,11 @@ non-destructive — prefer these to the disruptive checks some WPs still name):
 - Theme values come from `Common/Theme.qml` tokens; add a token rather than a
   literal when a value expresses a design role.
 - Pure logic goes in a `.js` module beside `Common/SettingsHelpers.js` with a
-  Node test in `Common/tests/` — that harness is fast (whole suite ~360ms) and
-  runs without Qt.
+  Node test in **`tests/quickshell/`** — that harness is fast (whole suite
+  ~360ms) and runs without Qt. The tests used to sit in `Common/tests/`, but
+  the Ansible role copies the whole shell tree to `~/.config/quickshell`, so
+  they were being deployed; `tests/quickshell/shell.cjs` locates the source
+  tree and `load("X.js")` pulls a helper out of `Common/`.
 
 ---
 
@@ -1897,11 +1900,20 @@ consistently.
 - `Theme.asset(name, variant)` helper for the 11 hand-built
   `Quickshell.shellDir + "/assets/…"` paths.
 
-### [ ] WP6.9 Deploy hygiene
-Exclude `Common/tests/` from the Ansible copy (or move it to the repo-level
-`tests/` tree) so the deployed config dir stops accumulating non-runtime
-files; the role's retired-files cleanup task (main.yml:244–251) shows this
-drift recurs.
+### [x] WP6.9 Deploy hygiene
+
+> Done, by moving rather than excluding. `ansible.builtin.copy` has no exclude
+> and `ansible.posix` is not installed, so the alternatives were a
+> copy-then-delete (the very pattern the WP cites as evidence of drift) or
+> taking the tests out of the deployed tree. They are repo tests, so they now
+> live in `tests/quickshell/` beside `tests/run`, with `shell.cjs` locating the
+> source tree — `load("StatusHelpers.js")` reads better than the
+> `require("../StatusHelpers.js")` it replaces, and the six copies of
+> `path.resolve(__dirname, "../..")` collapsed into one.
+> - `Common/tests` was added to the role's retired-files loop so machines that
+>   already deployed it get the stale copies removed.
+> - The style rule above was updated: new pure-logic tests go in
+>   `tests/quickshell/`, not `Common/tests/`.
 
 ---
 

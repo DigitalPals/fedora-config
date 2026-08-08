@@ -291,6 +291,10 @@
     - Common/Popovers.qml
     - Popovers/LauncherPopover.qml
     - Popovers/PopoverWindow.qml
+    # The unit tests moved to the repo's tests/quickshell/; this clears the
+    # copies earlier deploys left behind. Safe to drop once every machine has
+    # run the playbook since.
+    - Common/tests
 
 - name: Configure portal preference without patching Fedora files
   become: true

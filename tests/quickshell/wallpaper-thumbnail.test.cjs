@@ -4,9 +4,9 @@ const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { shellDir } = require("./shell.cjs");
 const { fileURLToPath } = require("node:url");
 
-const shellDir = path.resolve(__dirname, "../..");
 const helper = path.join(shellDir, "scripts/wallpaper-thumbnail.py");
 
 test("wallpaper thumbnails persist, hit the cache, and revise changed sources", t => {
