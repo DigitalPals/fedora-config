@@ -289,6 +289,12 @@ Singleton {
     // singleton because T3CodePopover is rebuilt on every open.
     readonly property var newThreadDraft: T3Drafts.newThreadDraft
     readonly property string pendingNewThreadId: T3Drafts.pendingNewThreadId
+    // Re-exported for their change signals: the composer and request card
+    // watch these through `Connections { target: T3Code }`, and a Connections
+    // handler on a façade without the property is silently dead — Quickshell
+    // logs one WARN at reload and never calls it.
+    readonly property var threadDrafts: T3Drafts.threadDrafts
+    readonly property var userInputDrafts: T3Drafts.userInputDrafts
 
     function buildInputAnswers(threadId, pendingInput) {
         return T3Drafts.buildInputAnswers(threadId, pendingInput);

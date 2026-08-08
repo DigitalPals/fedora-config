@@ -34,6 +34,8 @@ const WATCHLIST = [
     "snoozedThreads",
     "settledThreads",
     "newThreadDraft",
+    "threadDrafts",
+    "userInputDrafts",
 ];
 
 const commonDir = path.join(shellDir, "Common");
