@@ -20,6 +20,10 @@ Singleton {
     readonly property color hoverFillStrong: Qt.rgba(1, 1, 1, 0.09)
     readonly property color activeFill: Qt.rgba(1, 1, 1, 0.07)
     readonly property color cardFill: Qt.rgba(1, 1, 1, 0.04)
+    // A link or footer action under the pointer: the accent, lifted.
+    readonly property color accentHover: "#c8e2f4"
+    // Recessed panel inside a surface — a picker list, a diff pane.
+    readonly property color insetSurface: "#1b1c22"
 
     readonly property color textHi: "#e2e5ec"
     readonly property color textMid: "#c2c6d1"
@@ -117,10 +121,6 @@ Singleton {
     readonly property int chipRadius: 6
     readonly property int chipHeight: 24
     readonly property int tooltipHeight: 26
-    readonly property int breakpointMedium: 1200
-    readonly property int breakpointWide: 1680
-    readonly property int mediaTitleMediumWidth: 140
-    readonly property int mediaTitleWideWidth: 220
     readonly property int popWidth: 400
     readonly property int popWideWidth: 420
     readonly property int t3MinWidth: 320

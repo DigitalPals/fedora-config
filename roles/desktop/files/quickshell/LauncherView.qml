@@ -318,7 +318,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.mode === "" ? "\uf002" : root.glyphFor(({ "/": "file", ">": "command", "=": "calc", "@": "web", "$": "window" })[root.mode])
                 font.family: Theme.fontIcon
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 color: Theme.textLow
             }
 
@@ -327,7 +327,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.width - 72
                 font.family: Theme.fontSans
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 color: Theme.textHi
                 clip: true
                 focus: true
@@ -425,8 +425,8 @@ Surface {
                     textFormat: Text.StyledText
                     text: root.titleFor(resultRow.modelData)
                     font.family: Theme.fontSans
-                    font.pixelSize: 13
-                    font.weight: 500
+                    font.pixelSize: Theme.fontSecondary
+                    font.weight: Theme.weightMedium
                     color: resultRow.isSelected ? Theme.textHi : Theme.textMid
                     elide: Text.ElideRight
                 }

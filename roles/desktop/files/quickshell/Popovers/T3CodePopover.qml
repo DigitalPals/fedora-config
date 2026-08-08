@@ -372,7 +372,7 @@ Surface {
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightSemibold
-            color: openMouse.containsMouse ? "#c8e2f4" : Theme.accent
+            color: openMouse.containsMouse ? Theme.accentHover : Theme.accent
 
             MouseArea {
                 id: openMouse

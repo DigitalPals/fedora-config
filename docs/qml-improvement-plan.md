@@ -1834,7 +1834,35 @@ The popover variants currently have **zero** keyboard/`Accessible` support —
 the merged components carry the Settings versions' a11y at both sizes. Size
 variants become Theme tokens.
 
-### [ ] WP6.3 ∥ Theme tokens + adoption
+### [x] WP6.3 ∥ Theme tokens + adoption
+
+> Done, except one item that contradicts a tested design decision — see below.
+> Added `Theme.accentHover` and `Theme.insetSurface`; adopted `Theme.hairline`
+> for the four `Qt.rgba(1,1,1,0.08)` sites; deleted the four dead tokens
+> (`breakpointMedium/Wide`, `mediaTitleMediumWidth/WideWidth`).
+> - **`#b7dcf6` → `accentHover` is a real colour change**, not a token swap:
+>   it differs from `#c8e2f4` by 18/441 euclidean, on the media play-button
+>   hover. The WP asked for both literals to go and this is exactly the drift a
+>   token fixes, but it is a visible change, not a no-op.
+> - **The pixelSize mapping is partial and should stay that way.** Of the 20
+>   literals in Launcher/toasts/OSD only 12, 13 and 14 have names in the scale;
+>   9, 10, 11, 15, 17 and 18 have none, and the popover scale carries a
+>   deliberate 12px floor that `typography.test.cjs` enforces. Forcing them on
+>   would redesign three surfaces. The weights mapped exactly — Qt 6 spells
+>   `Font.Medium` as 500 and `Font.DemiBold` as 600 — so all six moved.
+> - **`Theme.fontSans` → `Theme.fontMenu` was reverted, not done.**
+>   `typography.test.cjs` has a test called "OPPO Sans is scoped to the bar and
+>   its popovers" asserting that `LauncherView.qml` and `NotificationToasts.qml`
+>   *must retain* `fontSans` and *must not* use `fontMenu`. That is a deliberate
+>   scoping decision with a name explaining itself, and this WP's line
+>   ("so these windows finally respect the user's font setting") asserts the
+>   opposite. **This is a design call, not a technical one, and needs deciding
+>   before either side is changed.** Nothing was overridden silently.
+
+<details>
+<summary>Original WP6.3 specification</summary>
+
+### WP6.3 ∥ Theme tokens + adoption
 - Add `Theme.accentHover` (kills `#c8e2f4` ×4 + `#b7dcf6`), `Theme.rowInset`
   (the bare `x: 10` ×29), `Theme.insetSurface` (`#1b1c22` ×2), radius roles
   for the 6/7/8 "small control" cluster.
@@ -1845,6 +1873,8 @@ variants become Theme tokens.
   so these windows finally respect the user's font setting.
 - Delete dead tokens `Theme.breakpointMedium/Wide`,
   `mediaTitleMediumWidth/WideWidth` (Theme.qml:120–123).
+
+</details>
 
 ### [ ] WP6.4 ∥ Notification card unification
 `NotificationToasts.qml:94–344` and `NotifsPopover.qml` (~150–330) build the

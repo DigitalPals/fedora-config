@@ -64,7 +64,7 @@ Item {
         width: parent.width
         height: 4
         radius: 2
-        color: root.gradientTrack || root.hueTrack ? "transparent" : Qt.rgba(1, 1, 1, 0.08)
+        color: root.gradientTrack || root.hueTrack ? "transparent" : Theme.hairline
         opacity: root.dimmed ? 0.45 : 1
         gradient: root.hueTrack ? hueGradient : root.gradientTrack ? warmGradient : null
 
@@ -72,7 +72,7 @@ Item {
             id: warmGradient
             orientation: Gradient.Horizontal
             GradientStop { position: 0; color: "#ff8c3c" }
-            GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0.08) }
+            GradientStop { position: 1; color: Theme.hairline }
         }
 
         Gradient {

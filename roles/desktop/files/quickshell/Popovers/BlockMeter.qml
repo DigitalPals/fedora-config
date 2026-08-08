@@ -10,7 +10,7 @@ Item {
 
     property real value: 0 // 0..1
     property color fillColor: Theme.accent
-    property color trackColor: Qt.rgba(1, 1, 1, 0.08)
+    property color trackColor: Theme.hairline
     property int blockWidth: 4
     property int gap: 2
     property bool interactive: false

@@ -176,7 +176,7 @@ Item {
         y: root.openUpward ? -height - 4 : root.height + 4
         height: Math.min(root.menuRows, root.options.length) * 30 + 8
         radius: 8
-        color: "#1b1c22"
+        color: Theme.insetSurface
         border.width: 1
         border.color: Theme.popBorder
         clip: true

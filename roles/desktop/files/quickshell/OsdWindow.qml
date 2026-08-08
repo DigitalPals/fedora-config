@@ -115,7 +115,7 @@ PanelWindow {
                     ? (root.muted || root.value === 0 ? "" : root.value < 0.5 ? "" : "")
                     : ""
                 font.family: Theme.fontIcon
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 color: root.muted ? Theme.redText : Theme.textHi
             }
 
@@ -141,8 +141,8 @@ PanelWindow {
                         ? Math.round(root.value * 100)
                         : (SysInfo.brightness >= 0 ? SysInfo.brightness : "--")
                     font.family: Theme.fontMono
-                    font.pixelSize: 12
-                    font.weight: 600
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
                     color: Theme.textHi
                 }
 
@@ -164,7 +164,7 @@ PanelWindow {
                     text: "MUTE"
                     font.family: Theme.fontMono
                     font.pixelSize: 10
-                    font.weight: 600
+                    font.weight: Theme.weightSemibold
                     color: Theme.redText
                 }
             }

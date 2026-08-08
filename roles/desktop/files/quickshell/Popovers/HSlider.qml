@@ -17,7 +17,7 @@ Item {
         width: parent.width
         height: 4
         radius: 2
-        color: Qt.rgba(1, 1, 1, 0.08)
+        color: Theme.hairline
         opacity: root.dimmed ? 0.45 : 1
 
         Rectangle {

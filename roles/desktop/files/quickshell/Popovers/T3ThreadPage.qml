@@ -508,7 +508,7 @@ Column {
             width: 190
             height: menuColumn.implicitHeight + 10
             radius: 8
-            color: "#1b1c22"
+            color: Theme.insetSurface
             border.width: 1
             border.color: Theme.popBorder
 

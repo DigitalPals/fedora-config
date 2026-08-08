@@ -219,8 +219,8 @@ PanelWindow {
                                         + (slot.modelData.displaySummary
                                             ? " · " + slot.modelData.displaySummary : "")
                                     font.family: Theme.fontSans
-                                    font.pixelSize: 12
-                                    font.weight: 600
+                                    font.pixelSize: Theme.fontCaption
+                                    font.weight: Theme.weightSemibold
                                     color: Theme.textHi
                                     elide: Text.ElideRight
                                 }
@@ -238,7 +238,7 @@ PanelWindow {
                                         text: Notifs.timeAgo(slot.modelData.arrived, root.now)
                                         font.family: Theme.fontMono
                                         font.pixelSize: 10
-                                        font.weight: 500
+                                        font.weight: Theme.weightMedium
                                         color: Theme.textDim
                                     }
 
@@ -267,7 +267,7 @@ PanelWindow {
                                 width: parent.width
                                 text: slot.modelData.displayBody || ""
                                 font.family: Theme.fontSans
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontCaption
                                 color: card.critical ? Theme.textHi : Theme.icon
                                 wrapMode: Text.Wrap
                                 maximumLineCount: Math.max(1, Settings.notifBodyLines)
@@ -306,7 +306,7 @@ PanelWindow {
                                             text: parent.modelData.text
                                             font.family: Theme.fontSans
                                             font.pixelSize: 11
-                                            font.weight: 500
+                                            font.weight: Theme.weightMedium
                                             color: parent.fg
                                             horizontalAlignment: Text.AlignHCenter
                                             elide: Text.ElideRight

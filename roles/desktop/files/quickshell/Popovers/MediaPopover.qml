@@ -333,7 +333,7 @@ Surface {
                 width: 44
                 height: 44
                 radius: 22
-                color: playMouse.containsMouse ? "#b7dcf6" : Theme.accent
+                color: playMouse.containsMouse ? Theme.accentHover : Theme.accent
 
                 Text {
                     anchors.centerIn: parent

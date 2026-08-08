@@ -495,7 +495,7 @@ Surface {
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontSecondary
             font.weight: Theme.weightMedium
-            color: clearMouse.containsMouse ? "#c8e2f4" : Theme.accent
+            color: clearMouse.containsMouse ? Theme.accentHover : Theme.accent
 
             MouseArea {
                 id: clearMouse
