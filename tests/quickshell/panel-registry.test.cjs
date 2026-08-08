@@ -164,6 +164,27 @@ test("panelName is what actually drives the panel wiring", () => {
     }
 });
 
+test("a primitive that registers a panel also opens it", () => {
+    // The half that registration does not cover: the bar's hover switch is
+    // gated on a popout already being open, so a chip whose own click and
+    // hover are unwired looks dead until some other module is opened first.
+    // T3Chip shipped that way once — it registered, derived held, and did
+    // nothing when clicked.
+    //
+    // UsageChips is the exception, and the test below pins it as the only
+    // one: its per-provider clicks select a provider or close, which the
+    // generic toggle cannot express, so Usage.qml wires those at the module.
+    for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/T3Chip.qml"]) {
+        const src = read(file);
+        assert.match(src, /host\.togglePopout\(\s*(root\.)?panelName/,
+            `${file} registers a panel but never toggles it on click`);
+        assert.match(src, /host\.hoverOpen\(\s*(root\.)?panelName/,
+            `${file} must join the bar's hover switch`);
+        assert.match(src, /host\.cancelHover\(\s*(root\.)?panelName/,
+            `${file} must disarm the hover switch on exit`);
+    }
+});
+
 test("no bar module hand-wires a panel the primitive already owns", () => {
     // One exception, commented as such: the usage module's per-provider clicks
     // select a provider or close, which the generic toggle cannot express.

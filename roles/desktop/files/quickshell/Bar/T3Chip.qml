@@ -37,6 +37,16 @@ Item {
             host.unregisterPanel(panelName, root);
     }
 
+    // Registration alone only reaches the bar's hover switch, which is gated
+    // on a popout already being open; the chip's own click and hover are what
+    // open the first one. Driven from inside the MouseArea as BarIcon/BarChip
+    // do, so a use-site onClicked cannot silently unwire the panel.
+    function hoverIn() {
+        if (ownsPanel)
+            host.hoverOpen(panelName, isle, root);
+        entered();
+    }
+
     signal clicked()
     signal entered()
     signal exited()
@@ -159,10 +169,20 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onEntered: root.entered()
-            onPositionChanged: root.entered()
-            onExited: root.exited()
-            onClicked: root.clicked()
+            onEntered: root.hoverIn()
+            // A newly mapped layer surface can cost Qt the next enter event;
+            // motion over the chip still re-arms the bar's hover switch.
+            onPositionChanged: root.hoverIn()
+            onExited: {
+                if (root.ownsPanel)
+                    root.host.cancelHover(root.panelName);
+                root.exited();
+            }
+            onClicked: {
+                if (root.ownsPanel)
+                    root.host.togglePopout(root.panelName, root.isle, root);
+                root.clicked();
+            }
         }
 
         BarTooltip {
