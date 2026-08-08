@@ -24,7 +24,11 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 shell_src="$repo/roles/desktop/files/quickshell"
 deployed="${QS_CONFIG_DIR:-$HOME/.config/quickshell}"
-settle=${T3_SNAPSHOT_SETTLE:-16}
+# Long enough for a full reload plus connect plus the shell subscription to
+# land. 16 was marginal once the tree grew; a short settle shows up as
+# "Target not found" (the reload had not finished) or as empty thread
+# counts. Raise it with T3_SNAPSHOT_SETTLE if a run looks half-loaded.
+settle=${T3_SNAPSHOT_SETTLE:-24}
 
 if ! command -v qs >/dev/null; then
   echo "qs not on PATH — is quickshell installed?" >&2

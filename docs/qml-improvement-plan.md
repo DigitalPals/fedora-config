@@ -1737,9 +1737,29 @@ gradually. Strictly sequential; land each WP green before the next.
 >   grepping every `T3Code.` reference including `Common/T3*.qml`, so an
 >   implementation reach-back grew the "contract" instead of being noticed.
 >   `tests/t3-contract-snapshot` now scans only the consumers.
-### [ ] WP5.5 `T3Drafts.qml` — composer + structured-input drafts (~1042–1676).
-Pure state, no I/O; must remain a singleton (drafts survive popover teardown —
-contract documented at `T3CodePopover.qml:5–7`).
+### [x] WP5.5 `T3Drafts.qml` — composer + structured-input drafts
+
+> Done. `Common/T3Drafts.qml` (677 lines) holds every per-thread composer draft
+> with its provider/model/runtime selection, the new-thread draft, and the
+> answers being assembled for a structured input request. `T3Code.qml`
+> 1113 → **641**.
+> - **The cleanest split of the phase: nothing else in `T3Code` referenced it.**
+>   Drafts is a genuine leaf, which is why the façade is large (40 members) and
+>   the coupling is nil.
+> - **Server config is bound down, not leaked up.** The leak check found
+>   `configReady` and `hasReadyProvider` being read from the drafts layer. The
+>   fix is not a reach-back and not a manual push at each write site: `T3Code`
+>   keeps ownership and three `Binding` blocks feed `providerConfigurations`,
+>   `configReady` and `hasReadyProvider` down. One writer, always in sync.
+> - **The singleton contract was tested, not assumed.** Set a draft, cycle the
+>   popover open and closed — which rebuilds `T3CodePopover` from scratch — and
+>   read the prompt back. It survives, which is the entire reason this state
+>   lives outside the popover. Also verified provider/model choices, the
+>   selection label, trait descriptors, and that the façade returns the same
+>   object rather than a copy.
+> - `tests/t3-contract-snapshot` needed its settle raised from 16s to 24s. A
+>   short settle shows up as `Target not found` (the reload had not finished) or
+>   as empty thread counts, both of which look like a regression and are not.
 ### [ ] WP5.6 `T3Git.qml` — git/VCS actions (~2040–2148). Then delete dead
 properties from the façade: `detailActionStates`, `pairHint`, `dayMs`,
 `queuedTurnGraceMs` (grep to confirm still unreferenced).
