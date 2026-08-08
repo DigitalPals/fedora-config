@@ -84,9 +84,14 @@ Item {
         width: chipRow.implicitWidth + 12
         radius: Theme.chipRadius
         anchors.verticalCenter: parent.verticalCenter
+        // The same ladder every other chip uses: transparent at rest, the
+        // light fill under the pointer, the strong one while the popout is
+        // open. This used to rest on hoverFill, which read as a chip stuck in
+        // its hover state next to the transparent glyph buttons beside it.
         color: root.stressed ? Theme.amberBg
-             : root.held || chipPointer.over ? Theme.hoverFillStrong
-             : Theme.hoverFill
+             : root.held ? Theme.hoverFillStrong
+             : chipPointer.over ? Theme.hoverFill
+             : "transparent"
 
         Behavior on color {
             ColorAnimation { duration: Theme.chipFadeDuration }

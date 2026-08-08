@@ -176,10 +176,14 @@ Item {
                 height: Theme.chipHeight
                 width: chipRow.implicitWidth + 12
                 radius: Theme.chipRadius
+                // Same ladder as the offline chip above and every other chip:
+                // transparent at rest, light under the pointer, strong while
+                // this provider's view is the one expanded below.
                 color: status === "crit" ? Theme.redBg
                      : status === "warn" ? Theme.amberBg
-                     : current || chipPointer.over ? Theme.hoverFillStrong
-                     : Theme.hoverFill
+                     : current ? Theme.hoverFillStrong
+                     : chipPointer.over ? Theme.hoverFill
+                     : "transparent"
                 anchors.verticalCenter: parent.verticalCenter
 
                 Row {

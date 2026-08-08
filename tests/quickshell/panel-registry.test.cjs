@@ -280,6 +280,25 @@ test("every bar primitive that draws a hover state is fully wired", () => {
         "an unwired hover state cannot clear itself after a missed exit");
 });
 
+test("every bar chip is transparent at rest", () => {
+    // One ladder for all of them: transparent at rest, Theme.hoverFill under
+    // the pointer, Theme.hoverFillStrong while the popout is open. The T3 and
+    // usage provider chips used to rest on hoverFill instead, which beside the
+    // transparent glyph buttons read as a chip stuck in its hover state —
+    // reported as exactly that. Their own offline chip already did it this way.
+    const offenders = [];
+    for (const file of barQmlFiles()) {
+        const lines = fs.readFileSync(file, "utf8").split("\n");
+        lines.forEach((line, index) => {
+            // The last arm of a colour expression is the resting value.
+            if (/^\s*:?\s*Theme\.hoverFill\s*$/.test(line))
+                offenders.push(`${path.relative(shellDir, file)}:${index + 1}`);
+        });
+    }
+    assert.deepEqual(offenders, [],
+        "a chip resting on hoverFill looks permanently hovered");
+});
+
 test("nothing in the bar draws a hover state straight off a MouseArea", () => {
     // The point of PointerCheck is that one stale `containsMouse` cannot leave
     // a chip lit, so a colour or a tooltip bound to the raw state defeats it.
