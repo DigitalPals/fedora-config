@@ -228,10 +228,10 @@ test("regression fixes keep asynchronous state identity-safe", () => {
     // The bar reaches the tooltip as a typed `host` now, not through
     // Window.window — an attached window is a plain QQuickWindow to the
     // type system, so that read could never be checked.
-    assert.match(tooltip, /property Bar host/,
-        "the tooltip must take the bar as a typed property");
+    assert.match(tooltip, /required property Bar host/,
+        "the tooltip must take the bar as a typed, required property");
     assert.match(tooltip,
-        /if \(!root\.host\.tooltipPointerInside \|\| !root\.parent\)\s*return false/,
+        /if \(!root\.host \|\| !root\.host\.tooltipPointerInside \|\| !root\.parent\)\s*return false/,
         "a stale local MouseArea must not keep a tooltip visible after leaving the bar");
     // Match code, not prose: the file explains in a comment why it stopped
     // using Window.window.

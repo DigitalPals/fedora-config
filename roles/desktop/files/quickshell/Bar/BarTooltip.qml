@@ -12,8 +12,10 @@ Item {
     // The bar that owns this tooltip, threaded down from the module rather
     // than reached through Window.window: an attached window is a plain
     // QQuickWindow to the type system, so reading the bar's pointer state off
-    // it could not be checked. Null degrades to the local hover state.
-    property Bar host: null
+    // it could not be checked. Required, not defaulted: this is the only
+    // thing that dismisses a tip after a missed exit event, and a module that
+    // quietly left it null got a tooltip that stuck on screen for good.
+    required property Bar host
     // Validate the local MouseArea state against the bar-wide pointer. This
     // clears stale containsMouse values after a missed surface-exit event and
     // also prevents a tooltip from lingering over a different module.
@@ -23,9 +25,10 @@ Item {
         // cost nothing on pointer moves elsewhere in the bar.
         if (!root.hovered)
             return false;
-        if (!root.host)
-            return root.hovered;
-        if (!root.host.tooltipPointerInside || !root.parent)
+        // `host` is assigned after construction, so it is briefly null before
+        // the bar hands it down. No pointer truth, no tooltip: the delay timer
+        // outlives that window, so nothing is lost by waiting for it.
+        if (!root.host || !root.host.tooltipPointerInside || !root.parent)
             return false;
         const scenePoint = root.host.tooltipPointerPosition;
         const localPoint = root.parent.mapFromItem(null,

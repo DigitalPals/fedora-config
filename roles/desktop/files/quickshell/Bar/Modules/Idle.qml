@@ -13,9 +13,12 @@ BarModule {
         visible: idleModule.dividerBefore
     }
 
-    // Keep-awake toggle. Lit while inhibiting; no popout, so
-    // it deliberately skips the hover-switch wiring.
+    // Keep-awake toggle. Lit while inhibiting; no popout, so it owns no
+    // panel name and never joins the hover-switch. `host` is still needed:
+    // it is what the tooltip validates its hover against, and without it a
+    // missed exit event leaves the tip on screen indefinitely.
     BarIcon {
+        host: idleModule.host
         glyph: "" // coffee
         active: SysInfo.idleInhibited
         idleColor: Theme.textLow

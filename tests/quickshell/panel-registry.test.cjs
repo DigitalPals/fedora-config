@@ -203,3 +203,66 @@ test("no bar module hand-wires a panel the primitive already owns", () => {
     assert.deepEqual(hoverSites, ["Usage.qml", "Usage.qml"],
         "only the usage module's bespoke per-provider hover should remain");
 });
+
+// Text at the immediate level of a QML block, with nested objects removed, so
+// a property set on a child is not mistaken for one set here.
+function topLevel(body) {
+    let previous;
+    do {
+        previous = body;
+        body = body.replace(/\{[^{}]*\}/g, " ");
+    } while (body !== previous);
+    return body;
+}
+
+function barQmlFiles() {
+    const found = [];
+    const walk = dir => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory())
+                walk(full);
+            else if (entry.name.endsWith(".qml"))
+                found.push(full);
+        }
+    };
+    walk(path.join(shellDir, "Bar"));
+    return found;
+}
+
+test("every bar primitive that can show a tooltip is handed the bar", () => {
+    // `host` is not only panel wiring: BarTooltip validates its own hover
+    // against the bar-wide HoverHandler, which keeps reporting the pointer
+    // when a newly mapped layer surface has cost a MouseArea its exit event.
+    // The idle module was instantiated without one — it owns no panel, so
+    // nothing else in the chip needed the bar — and its tooltip then stayed
+    // on screen long after the pointer had left, with no path back to false.
+    //
+    // qmllint fails this too, now that `host` is required and RequiredProperty
+    // is an error. Kept here as well because this states *why*, and because
+    // the lint sweep SKIPs when qmllint is not installed.
+    const offenders = [];
+    for (const file of barQmlFiles()) {
+        const src = fs.readFileSync(file, "utf8")
+            // Strings before comments: a stripped string cannot then look
+            // like the start of one.
+            .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, '""')
+            .replace(/\/\/[^\n]*/g, "");
+        for (const match of src.matchAll(/\b(BarIcon|BarChip|BarTooltip)\s*\{/g)) {
+            const start = match.index + match[0].length - 1;
+            let depth = 0;
+            let end = start;
+            while (end < src.length) {
+                if (src[end] === "{")
+                    depth++;
+                else if (src[end] === "}" && --depth === 0)
+                    break;
+                end++;
+            }
+            if (!/\bhost:/.test(topLevel(src.slice(start + 1, end))))
+                offenders.push(`${path.relative(shellDir, file)}: ${match[1]}`);
+        }
+    }
+    assert.deepEqual(offenders, [],
+        "a tooltip without a host cannot dismiss itself after a missed exit");
+});

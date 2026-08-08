@@ -146,6 +146,14 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
   registration regression that looked perfect in a screenshot. `tests/run`
   carries a duplicate-handler check because qmllint has no opinion on that and
   the failure mode is a shell silently running stale code.
+- **A defaulted property that a safety check depends on will eventually be
+  left unset.** `BarIcon.host` looked like panel wiring, so the idle module —
+  which owns no panel — never set it, and `BarTooltip` silently fell back to
+  the local `containsMouse` it exists to second-guess. A missed exit event
+  then stranded "Idle inhibit off" on screen with no path back to false.
+  `host` is `required` on `BarIcon`/`BarChip`/`BarTooltip` now and
+  `RequiredProperty` is an error in `.qmllint.ini`; the general lesson is that
+  a null-degrades default turns a loud failure into a silent one.
 
 ## Layout
 

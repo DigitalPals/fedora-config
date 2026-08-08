@@ -16,7 +16,11 @@ Rectangle {
     // `isle` is the column the module actually sits in — the user can move
     // modules between columns, so it is assigned by the bar's ModuleSlot and
     // is not the registry's default island.
-    property Bar host: null
+    //
+    // `host` is required even for an icon that owns no panel: BarTooltip
+    // dismisses itself against the bar-wide pointer state, so leaving it null
+    // is what strands a tooltip on screen after a missed exit event.
+    required property Bar host
     property string panelName: ""
     property string isle: ""
 
