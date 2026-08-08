@@ -1690,8 +1690,53 @@ gradually. Strictly sequential; land each WP green before the next.
 > - **Watch for a false diff here**: the server is live, so thread counts move
 >   between snapshots on their own. Take the two snapshots close together and
 >   read a count change as activity unless the *shape* changed too.
-### [ ] WP5.4 `T3Detail.qml` — detail subscription + `recomputeDetailDerived`
-(~1678–2340). Only `T3ThreadPage` consumes it.
+### [x] WP5.4 `T3Detail.qml` — detail subscription + `recomputeDetailDerived`
+
+> Done. `Common/T3Detail.qml` (639 lines) owns the open thread's second stream,
+> its history/activity/approval projections and `recomputeDetailDerived`.
+> `T3Code.qml` 1668 → **1113**. Four reach-backs became signals:
+> `draftMessageConfirmed`, `userInputResolved`, `vcsRefreshWanted` and the
+> inbound `adoptShellSummary()` the threads layer's `rebuilt` feeds.
+>
+> **The important finding: the contract snapshot has a blind spot, and this WP
+> fell into it.** With no thread open the whole detail subsystem is inert, so
+> every one of its properties reads its default — a broken subscription and a
+> working one produce byte-identical snapshots. `tests/run` passed, qmllint
+> passed, and the snapshot was identical, while `startDetailSubscription`
+> returned immediately on a `ReferenceError: state is not defined` that the
+> rewrite had left behind. Only driving a real thread open over IPC caught it:
+> `messages=0 reqIdSet=false` where it should read `messages=14 reqIdSet=true`.
+>
+> So for a subsystem that is idle at rest, **the snapshot proves nothing on its
+> own** — it has to be exercised. Three more leaks turned up the same way, and
+> a systematic check (identifiers T3Detail uses that only T3Code declares, with
+> comments stripped so prose cannot match) found the last of them. That check is
+> worth running after every remaining split:
+>
+> ```sh
+> # in roles/desktop/files/quickshell
+> python3 - <<'EOF'
+> import io, re
+> new = io.open("Common/T3Detail.qml").read()     # the file just created
+> old = io.open("Common/T3Code.qml").read()
+> names = lambda t: set(re.findall(r'^\s*function (\w+)', t, re.M)) | \
+>     set(re.findall(r'^\s*(?:readonly )?property \w+(?:<[^>]*>)? (\w+)', t, re.M))
+> body = "\n".join(l for l in new.split("\n") if not l.strip().startswith("//"))
+> print(sorted(n for n in names(old) - names(new)
+>              if re.search(r'(?<![.\w])' + n + r'(?![\w])', body)) or "none")
+> EOF
+> ```
+>
+> - `detailVcs` and `detailGit` moved here because `resetDetailData()` owns
+>   their lifecycle, but the git actions still in `T3Code` write them across the
+>   boundary. **WP5.6 should take them along with git.** Noted in the file.
+> - `handledRequestActivities` had been left in `T3Code` although only the
+>   detail layer ever read it — moving it removed a reach-back *and* a false
+>   entry in the snapshot.
+> - **That false entry exposed a flaw in the tool**: it derived the contract by
+>   grepping every `T3Code.` reference including `Common/T3*.qml`, so an
+>   implementation reach-back grew the "contract" instead of being noticed.
+>   `tests/t3-contract-snapshot` now scans only the consumers.
 ### [ ] WP5.5 `T3Drafts.qml` — composer + structured-input drafts (~1042–1676).
 Pure state, no I/O; must remain a singleton (drafts survive popover teardown —
 contract documented at `T3CodePopover.qml:5–7`).

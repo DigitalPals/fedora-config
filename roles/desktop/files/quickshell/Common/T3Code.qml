@@ -61,34 +61,6 @@ Singleton {
 
     // Expanded-thread detail (orchestration.subscribeThread). The popover
     // owns one selection, so there is deliberately only one detail stream.
-    property string detailThreadId: ""
-    property bool detailLoading: false
-    property string detailError: ""
-    property var detailMessages: []
-    property var detailActivities: []
-    property var detailProposedPlans: []
-    property var detailCheckpoints: []
-    property var detailSession: null
-    property var detailLatestTurn: null
-    property var detailApprovals: []
-    property var detailPendingInputs: []
-    property var detailLatestAssistant: null
-    property var detailLatestActivity: null
-    property var detailActionablePlan: null
-    property var detailCheckpointSummary: null
-    property var detailDiff: ({ checkpointRef: "", loading: false, error: "",
-        text: "", fullText: "", truncated: false, totalChars: 0, totalLines: 0 })
-
-    // Repository status for the selected thread (vcs.refreshStatus), fetched
-    // per detail open and after git actions; drives which git actions are
-    // shown at all. detailGit tracks the one in-flight/last stacked action.
-    property var detailVcs: ({ cwd: "", loading: false, error: "", status: null, fetchedAt: 0 })
-    property var detailGit: ({ actionId: "", action: "", label: "", summary: "",
-        prUrl: "", error: "" })
-
-    // Action state is keyed by kind/thread/request. Generic commands clear
-    // when T3Rpc.dispatch succeeds; approvals and structured input wait for the
-    // provider's matching resolution activity.
     readonly property var detailActionStates: T3Rpc.actionStates
 
     // Structured-input drafts live in the singleton rather than the Loader
@@ -97,7 +69,6 @@ Singleton {
     // the matching draft.
     property var userInputDrafts: ({})
     property var userInputQuestionIndices: ({})
-    property var handledRequestActivities: ({})
 
     // Composer state belongs to the process-wide singleton so Loader teardown,
     // navigation, and reconnects never discard text or selections.
@@ -239,14 +210,14 @@ Singleton {
     }
 
     function subscribe() {
-        const selected = detailThreadId;
+        const selected = T3Detail.detailThreadId;
         T3Rpc.clearRpcHandlers();
         T3Rpc.nextReqId = 2;
         T3Threads.threadMap = {};
         T3Threads.projectMap = {};
         T3Threads.shellReady = false;
-        detailReqId = "";
-        resetDetailData();
+        T3Detail.detailReqId = "";
+        T3Detail.resetDetailData();
         T3Threads.nowMs = Date.now();
         T3Threads.rebuild();
         configReady = false;
@@ -258,7 +229,7 @@ Singleton {
         // A reconnect invalidates every stream request id. Keep the user's
         // selection and establish a fresh detail stream on the new socket.
         if (selected !== "") {
-            pendingDetailResubscribeId = selected;
+            T3Detail.pendingDetailResubscribeId = selected;
             detailResubscribeTimer.restart();
         }
     }
@@ -465,13 +436,13 @@ Singleton {
     function setThreadProvider(threadId, instanceId) {
         const thread = T3Threads.threadMap[threadId];
         const allowed = Helpers.selectableProvidersForThread(thread, providerConfigurations,
-            detailThreadId === threadId ? detailMessages.length : 0);
+            T3Detail.detailThreadId === threadId ? T3Detail.detailMessages.length : 0);
         const provider = Helpers.findProvider(allowed, instanceId);
         if (!provider)
             return;
         const model = Helpers.defaultModel(provider);
         if (!Helpers.modelChangeAllowed(thread, { instanceId: instanceId, model: model },
-                providerConfigurations, detailThreadId === threadId ? detailMessages.length : 0)) {
+                providerConfigurations, T3Detail.detailThreadId === threadId ? T3Detail.detailMessages.length : 0)) {
             updateThreadDraft(threadId, {
                 traitError: "This provider requires a new thread to change models"
             });
@@ -496,7 +467,7 @@ Singleton {
             return;
         const nextSelection = { instanceId: draft.instanceId, model: model };
         if (!Helpers.modelChangeAllowed(thread, nextSelection, providerConfigurations,
-                detailThreadId === threadId ? detailMessages.length : 0)) {
+                T3Detail.detailThreadId === threadId ? T3Detail.detailMessages.length : 0)) {
             updateThreadDraft(threadId, {
                 traitError: "This provider requires a new thread to change models"
             });
@@ -519,7 +490,7 @@ Singleton {
 
     function threadProviderChoices(threadId) {
         const thread = T3Threads.threadMap[threadId];
-        const detailCount = detailThreadId === threadId ? detailMessages.length : 0;
+        const detailCount = T3Detail.detailThreadId === threadId ? T3Detail.detailMessages.length : 0;
         const currentInstanceId = thread?.session?.providerInstanceId
             ?? thread?.modelSelection?.instanceId ?? "";
         return Helpers.selectableProvidersForThread(thread, providerConfigurations, detailCount)
@@ -537,7 +508,7 @@ Singleton {
             return [];
         return provider.models.filter(model => Helpers.modelChangeAllowed(T3Threads.threadMap[threadId],
             { instanceId: provider.instanceId, model: model.slug }, providerConfigurations,
-            detailThreadId === threadId ? detailMessages.length : 0));
+            T3Detail.detailThreadId === threadId ? T3Detail.detailMessages.length : 0));
     }
 
     function draftTraitDescriptors(draft) {
@@ -704,7 +675,7 @@ Singleton {
         if (!selection)
             return T3Rpc.rejectAction(key, "Choose a ready provider and model", false);
         if (!Helpers.modelChangeAllowed(thread, selection, providerConfigurations,
-                detailThreadId === threadId ? detailMessages.length : 0))
+                T3Detail.detailThreadId === threadId ? T3Detail.detailMessages.length : 0))
             return T3Rpc.rejectAction(key, "Start a new thread to change this model", false);
         const createdAt = new Date().toISOString();
         const messageId = T3Rpc.genId();
@@ -934,366 +905,32 @@ Singleton {
         }
     }
 
-    // ---- selected thread detail -----------------------------------------
+    // ---- detail re-exports -------------------------------------------------
+    // Common/T3Detail.qml owns the open thread's stream and its projections.
+    // Only T3ThreadPage reads these.
+    readonly property bool detailLoading: T3Detail.detailLoading
+    readonly property string detailError: T3Detail.detailError
+    readonly property var detailMessages: T3Detail.detailMessages
+    readonly property var detailSession: T3Detail.detailSession
+    readonly property var detailApprovals: T3Detail.detailApprovals
+    readonly property var detailPendingInputs: T3Detail.detailPendingInputs
+    readonly property var detailLatestActivity: T3Detail.detailLatestActivity
+    readonly property var detailActionablePlan: T3Detail.detailActionablePlan
+    readonly property var detailCheckpointSummary: T3Detail.detailCheckpointSummary
+    readonly property var detailDiff: T3Detail.detailDiff
+    readonly property var detailVcs: T3Detail.detailVcs
+    readonly property var detailGit: T3Detail.detailGit
 
-    property string detailReqId: ""
-    property string pendingDetailResubscribeId: ""
-
-    function resetDetailData() {
-        detailLoading = false;
-        detailError = "";
-        detailMessages = [];
-        detailActivities = [];
-        detailProposedPlans = [];
-        detailCheckpoints = [];
-        detailSession = null;
-        detailLatestTurn = null;
-        detailApprovals = [];
-        detailPendingInputs = [];
-        detailLatestAssistant = null;
-        detailLatestActivity = null;
-        detailActionablePlan = null;
-        detailCheckpointSummary = null;
-        detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "", fullText: "",
-            truncated: false, totalChars: 0, totalLines: 0 });
-        detailVcs = ({ cwd: "", loading: false, error: "", status: null, fetchedAt: 0 });
-        detailGit = ({ actionId: "", action: "", label: "", summary: "", prUrl: "", error: "" });
+    function openDetail(threadId) {
+        T3Detail.openDetail(threadId);
     }
 
-    function historyCompare(left, right) {
-        if (typeof left?.sequence === "number" && typeof right?.sequence === "number"
-                && left.sequence !== right.sequence)
-            return left.sequence - right.sequence;
-        const lm = T3Threads.parseMs(left?.createdAt ?? left?.updatedAt ?? left?.completedAt);
-        const rm = T3Threads.parseMs(right?.createdAt ?? right?.updatedAt ?? right?.completedAt);
-        if (!isNaN(lm) && !isNaN(rm) && lm !== rm)
-            return lm - rm;
-        const lid = typeof left?.id === "string" ? left.id : "";
-        const rid = typeof right?.id === "string" ? right.id : "";
-        return lid.localeCompare(rid);
-    }
-
-    function sortedHistory(values) {
-        return (Array.isArray(values) ? values.slice() : []).sort(historyCompare);
-    }
-
-    function upsertHistory(values, value, idField) {
-        const next = Array.isArray(values) ? values.slice() : [];
-        const key = value ? value[idField] : undefined;
-        let at = -1;
-        if (key !== undefined && key !== null)
-            at = next.findIndex(entry => entry && entry[idField] === key);
-        if (at >= 0)
-            next[at] = value;
-        else if (value)
-            next.push(value);
-        return sortedHistory(next);
-    }
-
-    function approvalKind(requestType) {
-        switch (requestType) {
-        case "file_read_approval":
-            return "file-read";
-        case "file_change_approval":
-        case "apply_patch_approval":
-            return "file-change";
-        default:
-            return "command";
-        }
-    }
-
-    function stalePendingFailure(detail) {
-        return /stale pending (approval|user[- ]input) request|unknown pending (approval|permission|user[- ]input|codex user input) request/i
-            .test(typeof detail === "string" ? detail : "");
-    }
-
-    function parseInputQuestions(payload) {
-        if (!payload || !Array.isArray(payload.questions))
-            return null;
-        const questions = [];
-        for (const raw of payload.questions) {
-            if (!raw || typeof raw !== "object" || typeof raw.id !== "string"
-                    || typeof raw.question !== "string" || !Array.isArray(raw.options))
-                continue;
-            const options = [];
-            for (const rawOption of raw.options) {
-                if (!rawOption || typeof rawOption !== "object"
-                        || typeof rawOption.label !== "string")
-                    continue;
-                const label = rawOption.label.trim();
-                if (label === "")
-                    continue;
-                options.push({
-                    label: label,
-                    description: typeof rawOption.description === "string"
-                        ? rawOption.description : ""
-                });
-            }
-            if (raw.id.trim() === "" || raw.question.trim() === "" || options.length === 0)
-                continue;
-            questions.push({
-                id: raw.id,
-                header: typeof raw.header === "string" && raw.header.trim() !== ""
-                    ? raw.header : "Question",
-                question: raw.question,
-                options: options,
-                multiSelect: raw.multiSelect === true
-            });
-        }
-        return questions.length > 0 ? questions : null;
-    }
-
-    function requestActivityId(activity) {
-        if (activity && typeof activity.id === "string" && activity.id !== "")
-            return activity.id;
-        const payload = activity && typeof activity.payload === "object" ? activity.payload : {};
-        return (activity?.kind ?? "") + "|" + (payload.requestId ?? "") + "|"
-            + (activity?.createdAt ?? "");
-    }
-
-    function reconcileRequestActivity(activity, threadId) {
-        if (!activity)
-            return;
-        const terminal = activity.kind === "approval.resolved"
-            || activity.kind === "user-input.resolved"
-            || activity.kind === "provider.approval.respond.failed"
-            || activity.kind === "provider.user-input.respond.failed";
-        if (!terminal)
-            return;
-        const identity = requestActivityId(activity);
-        if (handledRequestActivities[identity] === true)
-            return;
-        const handled = Object.assign({}, handledRequestActivities);
-        handled[identity] = true;
-        handledRequestActivities = handled;
-
-        const payload = activity.payload && typeof activity.payload === "object"
-            ? activity.payload : {};
-        const requestId = typeof payload.requestId === "string" ? payload.requestId : "";
-        if (requestId === "")
-            return;
-        if (activity.kind === "approval.resolved") {
-            T3Rpc.clearAction(T3Rpc.actionKey("approval", threadId, requestId));
-        } else if (activity.kind === "user-input.resolved") {
-            T3Rpc.clearAction(T3Rpc.actionKey("input", threadId, requestId));
-            clearUserInputDraft(threadId, requestId);
-        } else if (activity.kind === "provider.approval.respond.failed") {
-            T3Rpc.failAction(T3Rpc.actionKey("approval", threadId, requestId),
-                typeof payload.detail === "string" ? payload.detail : activity.summary);
-        } else if (activity.kind === "provider.user-input.respond.failed") {
-            T3Rpc.failAction(T3Rpc.actionKey("input", threadId, requestId),
-                typeof payload.detail === "string" ? payload.detail : activity.summary);
-        }
-    }
-
-    // Mirrors the reference client's pending approval/user-input derivation.
-    function recomputePendingRequests() {
-        const approvals = {};
-        const inputs = {};
-        const activities = sortedHistory(detailActivities);
-        for (const activity of activities) {
-            const payload = activity && activity.payload && typeof activity.payload === "object"
-                ? activity.payload : {};
-            const requestId = typeof payload.requestId === "string" ? payload.requestId : "";
-            if (requestId !== "") {
-                if (activity.kind === "approval.requested") {
-                    approvals[requestId] = {
-                        requestId: requestId,
-                        kind: payload.requestKind === "file-read"
-                            || payload.requestKind === "file-change"
-                            || payload.requestKind === "command"
-                            ? payload.requestKind : approvalKind(payload.requestType),
-                        detail: typeof payload.detail === "string" ? payload.detail : "",
-                        createdAt: activity.createdAt ?? ""
-                    };
-                } else if (activity.kind === "approval.resolved") {
-                    delete approvals[requestId];
-                } else if (activity.kind === "provider.approval.respond.failed"
-                           && stalePendingFailure(payload.detail)) {
-                    delete approvals[requestId];
-                } else if (activity.kind === "user-input.requested") {
-                    const questions = parseInputQuestions(payload);
-                    if (questions) {
-                        inputs[requestId] = {
-                            requestId: requestId,
-                            createdAt: activity.createdAt ?? "",
-                            questions: questions
-                        };
-                    }
-                } else if (activity.kind === "user-input.resolved") {
-                    delete inputs[requestId];
-                } else if (activity.kind === "provider.user-input.respond.failed"
-                           && stalePendingFailure(payload.detail)) {
-                    delete inputs[requestId];
-                }
-            }
-            reconcileRequestActivity(activity, detailThreadId);
-        }
-        detailApprovals = Object.values(approvals)
-            .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-        detailPendingInputs = Object.values(inputs)
-            .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    }
-
-    function recomputeDetailDerived() {
-        const messages = sortedHistory(detailMessages);
-        let assistant = null;
-        for (const message of messages) {
-            if (message && message.role === "assistant" && typeof message.text === "string"
-                    && message.text.trim() !== "")
-                assistant = message;
-        }
-        detailLatestAssistant = assistant;
-
-        const ignoredKinds = {
-            "approval.requested": true,
-            "approval.resolved": true,
-            "user-input.requested": true,
-            "user-input.resolved": true,
-            "turn.plan.updated": true,
-            "tool.started": true,
-            "task.started": true,
-            "context-window.updated": true
-        };
-        let latestActivity = null;
-        for (const activity of sortedHistory(detailActivities)) {
-            if (!activity || typeof activity.summary !== "string"
-                    || activity.summary.trim() === "")
-                continue;
-            if (activity.tone !== "error" && (ignoredKinds[activity.kind] === true
-                    || activity.summary === "Checkpoint captured"))
-                continue;
-            latestActivity = activity;
-        }
-        if (detailSession && detailSession.status === "error"
-                && typeof detailSession.lastError === "string"
-                && detailSession.lastError.trim() !== "") {
-            const sessionError = {
-                tone: "error",
-                kind: "session.error",
-                summary: detailSession.lastError,
-                createdAt: detailSession.updatedAt ?? ""
-            };
-            if (!latestActivity || historyCompare(latestActivity, sessionError) <= 0)
-                latestActivity = sessionError;
-        }
-        detailLatestActivity = latestActivity;
-
-        const plans = (Array.isArray(detailProposedPlans) ? detailProposedPlans.slice() : [])
-            .filter(plan => plan && typeof plan === "object")
-            .sort((left, right) => {
-                const lm = T3Threads.parseMs(left?.updatedAt ?? left?.createdAt);
-                const rm = T3Threads.parseMs(right?.updatedAt ?? right?.createdAt);
-                if (!isNaN(lm) && !isNaN(rm) && lm !== rm)
-                    return lm - rm;
-                return (left?.id ?? "").localeCompare(right?.id ?? "");
-            });
-        let latestPlan = null;
-        const latestTurnId = detailLatestTurn ? detailLatestTurn.turnId : null;
-        if (latestTurnId) {
-            const matchingPlans = plans.filter(plan => plan.turnId === latestTurnId);
-            if (matchingPlans.length > 0)
-                latestPlan = matchingPlans[matchingPlans.length - 1];
-        }
-        if (!latestPlan && plans.length > 0)
-            latestPlan = plans[plans.length - 1];
-        detailActionablePlan = latestPlan
-            && (latestPlan.implementedAt === null || latestPlan.implementedAt === undefined)
-            ? latestPlan : null;
-
-        const ready = (Array.isArray(detailCheckpoints) ? detailCheckpoints.slice() : [])
-            .filter(checkpoint => checkpoint && checkpoint.status === "ready")
-            .sort(historyCompare);
-        if (ready.length === 0) {
-            detailCheckpointSummary = null;
-            if (detailDiff.checkpointRef !== "") {
-                T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
-                detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
-                    fullText: "", truncated: false, totalChars: 0, totalLines: 0 });
-            }
-        } else {
-            const checkpoint = ready[ready.length - 1];
-            const files = Array.isArray(checkpoint.files) ? checkpoint.files : [];
-            let additions = 0, deletions = 0;
-            const filenames = [];
-            for (const file of files) {
-                if (!file || typeof file !== "object")
-                    continue;
-                if (typeof file.additions === "number" && isFinite(file.additions))
-                    additions += Math.max(0, file.additions);
-                if (typeof file.deletions === "number" && isFinite(file.deletions))
-                    deletions += Math.max(0, file.deletions);
-                if (typeof file.path === "string" && file.path !== "")
-                    filenames.push(file.path);
-            }
-            detailCheckpointSummary = Object.assign({}, checkpoint, {
-                fileCount: files.length,
-                additions: additions,
-                deletions: deletions,
-                filenames: filenames.slice(0, 3)
-            });
-            if (detailDiff.checkpointRef !== ""
-                    && detailDiff.checkpointRef !== checkpoint.checkpointRef) {
-                T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
-                detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
-                    fullText: "", truncated: false, totalChars: 0, totalLines: 0 });
-            }
-        }
-    }
-
-    function recomputeDetail() {
-        recomputePendingRequests();
-        recomputeDetailDerived();
+    function closeDetail() {
+        T3Detail.closeDetail();
     }
 
     function loadFullThreadDiff(threadId, checkpoint) {
-        const key = T3Rpc.actionKey("diff", threadId, "");
-        if (!canRead)
-            return T3Rpc.rejectAction(key, "This pairing cannot read thread data", false);
-        if (!checkpoint || checkpoint.status !== "ready"
-                || typeof checkpoint.checkpointTurnCount !== "number")
-            return T3Rpc.rejectAction(key, "No ready checkpoint is available", false);
-        if (!Helpers.canBeginAction(T3Rpc.actionStates, key))
-            return "";
-        T3Rpc.beginAction(key, "", false);
-        detailDiff = ({ checkpointRef: checkpoint.checkpointRef ?? "", loading: true,
-            error: "", text: "", fullText: "", truncated: false,
-            totalChars: 0, totalLines: 0 });
-        return T3Rpc.requestOnce("orchestration.getFullThreadDiff", {
-            threadId: threadId,
-            toTurnCount: checkpoint.checkpointTurnCount,
-            ignoreWhitespace: false
-        }, value => {
-            if (root.detailThreadId !== threadId
-                    || root.detailDiff.checkpointRef !== (checkpoint.checkpointRef ?? "")
-                    || root.detailCheckpointSummary?.checkpointRef !== checkpoint.checkpointRef) {
-                T3Rpc.clearAction(key);
-                return;
-            }
-            if (!value || typeof value.diff !== "string") {
-                T3Rpc.failAction(key, "Malformed diff response");
-                root.detailDiff = Object.assign({}, root.detailDiff, {
-                    loading: false, error: "Malformed diff response"
-                });
-                return;
-            }
-            const rendered = Helpers.truncateDiff(value.diff);
-            root.detailDiff = Object.assign({
-                checkpointRef: checkpoint.checkpointRef ?? "", loading: false, error: "",
-                fullText: value.diff
-            }, rendered);
-            T3Rpc.clearAction(key);
-        }, error => {
-            if (root.detailThreadId !== threadId
-                    || root.detailDiff.checkpointRef !== (checkpoint.checkpointRef ?? "")) {
-                T3Rpc.clearAction(key);
-                return;
-            }
-            T3Rpc.failAction(key, error);
-            root.detailDiff = Object.assign({}, root.detailDiff, {
-                loading: false, error: error
-            });
-        }, { actionKey: key, fallback: "Diff unavailable" });
+        T3Detail.loadFullThreadDiff(threadId, checkpoint);
     }
 
     // ---- git actions -----------------------------------------------------
@@ -1303,34 +940,34 @@ Singleton {
         return Helpers.resolveThreadCwd(thread, thread ? T3Threads.projectMap[thread.projectId] : null);
     }
 
-    // Reads detailVcs so QML visibility bindings refresh with the status.
+    // Reads T3Detail.detailVcs so QML visibility bindings refresh with the status.
     function gitActionApplies(action) {
-        return Helpers.gitActionVisible(detailVcs.status, action);
+        return Helpers.gitActionVisible(T3Detail.detailVcs.status, action);
     }
 
     function refreshVcsStatus(threadId, force) {
-        if (state !== "connected" || !canRead || detailThreadId !== threadId)
+        if (state !== "connected" || !canRead || T3Detail.detailThreadId !== threadId)
             return;
-        if (force !== true && detailVcs.fetchedAt > 0
-                && Date.now() - detailVcs.fetchedAt < 10000)
+        if (force !== true && T3Detail.detailVcs.fetchedAt > 0
+                && Date.now() - T3Detail.detailVcs.fetchedAt < 10000)
             return;
         const cwd = threadCwd(threadId);
         if (cwd === "") {
             // No worktree and no project root: nothing to show, hide the card.
-            detailVcs = ({ cwd: "", loading: false, error: "", status: null,
+            T3Detail.detailVcs = ({ cwd: "", loading: false, error: "", status: null,
                 fetchedAt: Date.now() });
             return;
         }
-        detailVcs = Object.assign({}, detailVcs, { cwd: cwd, loading: true, error: "" });
+        T3Detail.detailVcs = Object.assign({}, T3Detail.detailVcs, { cwd: cwd, loading: true, error: "" });
         T3Rpc.requestOnce("vcs.refreshStatus", { cwd: cwd }, value => {
-            if (root.detailThreadId !== threadId)
+            if (T3Detail.detailThreadId !== threadId)
                 return;
-            root.detailVcs = ({ cwd: cwd, loading: false, error: "",
+            T3Detail.detailVcs = ({ cwd: cwd, loading: false, error: "",
                 status: Helpers.sanitizeVcsStatus(value), fetchedAt: Date.now() });
         }, error => {
-            if (root.detailThreadId !== threadId)
+            if (T3Detail.detailThreadId !== threadId)
                 return;
-            root.detailVcs = Object.assign({}, root.detailVcs, {
+            T3Detail.detailVcs = Object.assign({}, T3Detail.detailVcs, {
                 loading: false, error: error, fetchedAt: Date.now()
             });
         }, { fallback: "Repository status unavailable" });
@@ -1351,16 +988,16 @@ Singleton {
         if (!payload)
             return T3Rpc.rejectAction(key, "No repository folder for this thread", false);
         T3Rpc.beginAction(key, "", false, gitActionTimeoutMs);
-        detailGit = ({ actionId: payload.actionId, action: action,
+        T3Detail.detailGit = ({ actionId: payload.actionId, action: action,
             label: action === "push" ? "Pushing…" : "Committing…",
             summary: "", prUrl: "", error: "" });
         // The terminal chunk (action_finished/action_failed) is what
         // T3Rpc.requestOnce retains; a Failure exit prefers the streamed message.
         let streamedFailure = "";
         const finish = fields => {
-            if (root.detailThreadId === threadId
-                    && root.detailGit.actionId === payload.actionId)
-                root.detailGit = Object.assign({ actionId: "", action: "", label: "",
+            if (T3Detail.detailThreadId === threadId
+                    && T3Detail.detailGit.actionId === payload.actionId)
+                T3Detail.detailGit = Object.assign({ actionId: "", action: "", label: "",
                     summary: "", prUrl: "", error: "" }, fields);
             root.refreshVcsStatus(threadId, true);
         };
@@ -1392,224 +1029,37 @@ Singleton {
                 if (current && current.pending === true)
                     T3Rpc.putActionState(key, Object.assign({}, current,
                         { startedAt: Date.now() }));
-                if (root.detailThreadId !== threadId
-                        || root.detailGit.actionId !== payload.actionId)
+                if (T3Detail.detailThreadId !== threadId
+                        || T3Detail.detailGit.actionId !== payload.actionId)
                     return;
                 const label = Helpers.gitProgressLabel(event);
                 if (label !== "")
-                    root.detailGit = Object.assign({}, root.detailGit, { label: label });
+                    T3Detail.detailGit = Object.assign({}, T3Detail.detailGit, { label: label });
             }
         });
         // Deliberately not interrupted on detail close/switch: interrupting
         // could abort a server-side push mid-flight. Late results are no-ops
-        // behind the detailThreadId/actionId guards above.
-    }
-
-    function reconcileCommandEvent(event) {
-        if (!event || typeof event.commandId !== "string" || event.commandId === "")
-            return;
-        for (const key in T3Rpc.actionStates) {
-            const current = T3Rpc.actionStates[key];
-            if (!current || current.commandId !== event.commandId)
-                continue;
-            // A subscription event may race ahead of dispatchCommand's RPC
-            // response. The batch owns live action progress; clearing it here
-            // could otherwise prevent the next sequenced command from running.
-            if (current.pending === true)
-                return;
-            if (current.awaitResolution === true
-                    && (event.type === "thread.approval-response-requested"
-                        || event.type === "thread.user-input-response-requested"))
-                return;
-            T3Rpc.clearAction(key);
-            return;
-        }
-    }
-
-    function applyDetailEvent(event, threadId) {
-        if (!event || typeof event !== "object")
-            return;
-        const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
-        if (typeof payload.threadId === "string" && payload.threadId !== threadId)
-            return;
-        reconcileCommandEvent(event);
-
-        switch (event.type) {
-        case "thread.message-sent": {
-            if (typeof payload.messageId === "string") {
-                const existing = detailMessages.find(message =>
-                    message && message.id === payload.messageId);
-                const incomingText = typeof payload.text === "string" ? payload.text : "";
-                const existingText = existing && typeof existing.text === "string"
-                    ? existing.text : "";
-                const text = existing
-                    ? (payload.streaming === true ? existingText + incomingText
-                        : incomingText !== "" ? incomingText : existingText)
-                    : incomingText;
-                const message = {
-                    id: payload.messageId,
-                    role: payload.role ?? "system",
-                    text: text,
-                    attachments: Array.isArray(payload.attachments) ? payload.attachments
-                        : (existing?.attachments ?? []),
-                    turnId: payload.turnId ?? null,
-                    streaming: payload.streaming === true,
-                    createdAt: existing?.createdAt ?? payload.createdAt ?? event.occurredAt ?? "",
-                    updatedAt: payload.updatedAt ?? event.occurredAt ?? ""
-                };
-                detailMessages = upsertHistory(detailMessages, message, "id");
-                confirmDraftMessage(threadId, payload.messageId);
-            }
-            break;
-        }
-        case "thread.activity-appended":
-            if (payload.activity && typeof payload.activity === "object")
-                detailActivities = upsertHistory(detailActivities, payload.activity, "id");
-            break;
-        case "thread.proposed-plan-upserted":
-            if (payload.proposedPlan && typeof payload.proposedPlan === "object")
-                detailProposedPlans = upsertHistory(detailProposedPlans,
-                    payload.proposedPlan, "id");
-            break;
-        case "thread.turn-diff-completed": {
-            const checkpoint = {
-                turnId: payload.turnId,
-                checkpointTurnCount: payload.checkpointTurnCount ?? 0,
-                checkpointRef: payload.checkpointRef,
-                status: payload.status,
-                files: Array.isArray(payload.files) ? payload.files : [],
-                assistantMessageId: payload.assistantMessageId ?? null,
-                completedAt: payload.completedAt ?? event.occurredAt ?? ""
-            };
-            detailCheckpoints = upsertHistory(detailCheckpoints, checkpoint, "checkpointRef");
-            // A finished turn usually changed the working tree.
-            if (payload.status === "ready")
-                refreshVcsStatus(threadId, true);
-            break;
-        }
-        case "thread.session-set":
-            detailSession = payload.session ?? null;
-            break;
-        case "thread.reverted":
-            // Revert invalidates message, activity, plan, and checkpoint
-            // histories. A fresh snapshot is the only safe reconciliation.
-            pendingDetailResubscribeId = threadId;
-            detailLoading = true;
-            detailResubscribeTimer.restart();
-            break;
-        case "thread.deleted":
-            closeDetail();
-            return;
-        }
-        recomputeDetail();
-    }
-
-    function applyDetailSnapshot(snapshot, threadId) {
-        const thread = snapshot && snapshot.thread;
-        if (!thread || typeof thread !== "object" || (thread.id && thread.id !== threadId)) {
-            detailLoading = false;
-            detailError = "Malformed thread snapshot";
-            return;
-        }
-        detailMessages = sortedHistory(thread.messages);
-        for (const message of detailMessages) {
-            if (message && typeof message.id === "string")
-                confirmDraftMessage(threadId, message.id);
-        }
-        detailActivities = sortedHistory(thread.activities);
-        detailProposedPlans = sortedHistory(thread.proposedPlans);
-        detailCheckpoints = sortedHistory(thread.checkpoints);
-        detailSession = thread.session ?? null;
-        detailLatestTurn = thread.latestTurn ?? null;
-        detailLoading = false;
-        detailError = "";
-        recomputeDetail();
-    }
-
-    function stopDetailRequest() {
-        if (detailReqId === "")
-            return;
-        T3Connection.send(JSON.stringify({ _tag: "Interrupt", requestId: detailReqId }));
-        T3Rpc.dropRpcHandler(detailReqId);
-        detailReqId = "";
-    }
-
-    function startDetailSubscription(threadId) {
-        detailResubscribeTimer.stop();
-        pendingDetailResubscribeId = "";
-        stopDetailRequest();
-        T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", threadId, ""));
-        resetDetailData();
-        if (state !== "connected" || threadId === "")
-            return;
-
-        detailLoading = true;
-        const shell = T3Threads.threadMap[threadId];
-        if (shell) {
-            detailSession = shell.session ?? null;
-            detailLatestTurn = shell.latestTurn ?? null;
-        }
-        const id = String(T3Rpc.nextReqId++);
-        detailReqId = id;
-        T3Rpc.putRpcHandler(id, {
-            item: item => {
-                if (root.detailReqId !== id || root.detailThreadId !== threadId)
-                    return;
-                if (item.kind === "snapshot")
-                    root.applyDetailSnapshot(item.snapshot, threadId);
-                else if (item.kind === "event")
-                    root.applyDetailEvent(item.event, threadId);
-            },
-            exit: msg => {
-                if (root.detailReqId !== id)
-                    return;
-                root.detailReqId = "";
-                root.detailLoading = false;
-                if (msg.exit && msg.exit._tag === "Failure")
-                    root.detailError = T3Rpc.failureMessage(msg, "Thread details unavailable");
-            }
-        });
-        T3Rpc.sendRequest(id, "orchestration.subscribeThread", { threadId: threadId });
-        refreshVcsStatus(threadId, true);
-    }
-
-    function openDetail(threadId) {
-        if (typeof threadId !== "string" || threadId === "") {
-            closeDetail();
-            return;
-        }
-        if (detailThreadId === threadId && detailReqId !== "")
-            return;
-        if (detailThreadId !== "" && detailThreadId !== threadId)
-            T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
-        detailThreadId = threadId;
-        startDetailSubscription(threadId);
-    }
-
-    function closeDetail() {
-        if (detailThreadId !== "")
-            T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
-        detailResubscribeTimer.stop();
-        pendingDetailResubscribeId = "";
-        stopDetailRequest();
-        detailThreadId = "";
-        resetDetailData();
-    }
-
-    Timer {
-        id: detailResubscribeTimer
-        interval: 1
-        onTriggered: {
-            const threadId = root.pendingDetailResubscribeId;
-            root.pendingDetailResubscribeId = "";
-            if (threadId !== "" && root.detailThreadId === threadId
-                    && root.state === "connected")
-                root.startDetailSubscription(threadId);
-        }
+        // behind the T3Detail.detailThreadId/actionId guards above.
     }
 
     // The transport's half of the conversation. T3Connection owns the socket;
     // this is where its frames become protocol.
+    Connections {
+        target: T3Detail
+
+        function onDraftMessageConfirmed(threadId, messageId) {
+            root.confirmDraftMessage(threadId, messageId);
+        }
+
+        function onUserInputResolved(threadId, requestId) {
+            root.clearUserInputDraft(threadId, requestId);
+        }
+
+        function onVcsRefreshWanted(threadId) {
+            root.refreshVcsStatus(threadId, true);
+        }
+    }
+
     Connections {
         target: T3Threads
 
@@ -1627,12 +1077,7 @@ Singleton {
         // Shell updates carry a fresher session summary than the detail stream
         // while that stream is catching up.
         function onRebuilt() {
-            const selected = T3Threads.threadMap[root.detailThreadId];
-            if (selected) {
-                root.detailSession = selected.session ?? null;
-                root.detailLatestTurn = selected.latestTurn ?? null;
-                root.recomputeDetailDerived();
-            }
+            T3Detail.adoptShellSummary(T3Threads.threadMap[T3Detail.detailThreadId]);
         }
     }
 
@@ -1642,7 +1087,7 @@ Singleton {
         // The RPC layer dropped everything in flight; the detail subscription
         // id it was holding is meaningless now.
         function onAborted() {
-            root.detailReqId = "";
+            T3Detail.detailReqId = "";
         }
     }
 

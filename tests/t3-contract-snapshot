@@ -32,8 +32,15 @@ if ! command -v qs >/dev/null; then
 fi
 
 # What consumers actually touch, split into readable properties and functions.
+#
+# Deliberately excludes Common/T3*.qml: those are the implementation, and while
+# Phase 5 is in flight they still reference T3Code themselves. Counting those
+# would grow the "contract" every time a split leaves a reach-back behind —
+# which is exactly the thing worth noticing, not absorbing.
 mapfile -t members < <(
-  grep -rho 'T3Code\.[a-zA-Z_][a-zA-Z0-9_]*' --include='*.qml' "$shell_src" \
+  grep -rho 'T3Code\.[a-zA-Z_][a-zA-Z0-9_]*' --include='*.qml' \
+      "$shell_src/Bar" "$shell_src/Popovers" "$shell_src/Settings" "$shell_src" \
+      --exclude-dir=Common \
     | sed 's/T3Code\.//' | sort -u \
     | grep -vx qml)   # prose mentioning the filename, not a member
 

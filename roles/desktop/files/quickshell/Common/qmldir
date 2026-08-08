@@ -17,6 +17,7 @@ singleton Usage Usage.qml
 singleton T3Code T3Code.qml
 singleton T3Connection T3Connection.qml
 singleton T3Rpc T3Rpc.qml
+singleton T3Detail T3Detail.qml
 singleton T3Threads T3Threads.qml
 singleton Notifs Notifs.qml
 singleton SysInfo SysInfo.qml
