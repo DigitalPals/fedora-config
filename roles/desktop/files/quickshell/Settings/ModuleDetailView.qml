@@ -228,7 +228,7 @@ SettingsPage {
 
             Text {
                 width: parent.width
-                leftPadding: Settings.font === "mono" ? 122 : 90
+                leftPadding: Theme.settingsLabelWidth
                 text: "12/24-hour time is set on the System page"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption

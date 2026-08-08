@@ -2,30 +2,16 @@ import QtQuick
 import "../Common"
 
 // [label 90][description fill][switch][undo 18] (design v2 behavior rows).
-Item {
+SettingsRow {
     id: root
 
-    property string label
     property string description: ""
-    property bool checked: false
-    property bool dirty: false
-    readonly property bool narrow: width < 440
-    readonly property int labelWidth: Settings.font === "mono" ? 122 : 90
+    property bool checked: root.stored === true
     signal toggled(bool value)
-    signal resetRequested()
 
-    height: narrow ? 48 : 32
-
-    Text {
-        id: labelText
-        anchors.left: parent.left
-        y: root.narrow ? 2 : (parent.height - height) / 2
-        width: root.narrow ? parent.width - 82 : root.labelWidth
-        text: root.label
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
-        color: Theme.textMid
-    }
+    narrowHeight: 48
+    narrowLabelY: 2
+    narrowLabelInset: 82
 
     Text {
         x: root.narrow ? 0 : root.labelWidth
@@ -42,25 +28,14 @@ Item {
 
     Toggle {
         id: control
-        anchors.right: undoSlot.left
-        anchors.rightMargin: 2
+        x: root.contentRight - width - 2
         y: root.narrow ? 0 : (parent.height - height) / 2
         metrics: Theme.switchRow
         checked: root.checked
         accessibleName: root.label
-        onToggled: value => root.toggled(value)
-    }
-
-    Item {
-        id: undoSlot
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        width: 28
-        height: 28
-
-        UndoChip {
-            visible: root.dirty
-            onClicked: root.resetRequested()
+        onToggled: value => {
+            root.commit(value);
+            root.toggled(value);
         }
     }
 }

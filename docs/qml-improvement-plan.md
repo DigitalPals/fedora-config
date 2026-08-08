@@ -2028,13 +2028,71 @@ Extract a shared card component (probably `Popovers/NotifCard.qml` or a new
 
 </details>
 
-### [ ] WP6.5 ∥ Settings row scaffolding
+### [x] WP6.5 ∥ Settings row scaffolding
+
+> Done. `Settings/SettingsRow.qml` (87) carries the skeleton; the four rows go
+> 333 → 233 lines and the four pages that use `settingKey` go 1,127 → 1,066.
+> Notes:
+> - **`settingKey` covers 22 of the 51 row instances, and that is the ceiling,
+>   not a shortfall.** The other 28 are `ModuleDetailView`'s, which store
+>   per-module options through `setOpt`/`optDirty`/`resetOpt` rather than
+>   settings keys — the very helpers this WP cites as the proven pattern. They
+>   keep explicit wiring and still get the skeleton. Converting them too would
+>   mean teaching the base about a second store; not worth it for one file.
+> - **`Settings[settingKey]` is a live binding**, which was the whole
+>   premise and is not obvious — dynamic property access still goes through
+>   the property system, so it is captured. Verified against the live shell:
+>   a `Settings.set("gap", 16)` driven over IPC moved the Edge gap knob, moved
+>   the readout to "16 px", and made the undo chip appear; resetting put all
+>   three back.
+> - The commit direction was verified through the keyboard rather than
+>   assumed: Tab ×5 + Space on the Notifications page's Do Not Disturb row —
+>   which no longer has an `onToggled` at the call site — flips `notifDnd` in
+>   the settings file and raises the undo chip. WP6.2 is what makes that
+>   testable at all.
+> - **Two rows keep bespoke wiring for a reason.** Touchpad scroll speed is a
+>   float, so its `dirty` needs a tolerance rather than the base's `!==`;
+>   accent hue writes through a helper and restores two keys. Both still take
+>   their undo chip from the base, via `resetKeys`.
+> - **`resetKeys` is a property, not just the base's default.** The quiet-hours
+>   mode picker restores `notifQuiet`, `notifQuietStart` and `notifQuietEnd`
+>   together, because the custom times only mean anything under that mode.
+>   Verified by keyboard: Tab to the chip, Space, all three keys back to
+>   defaults with one "Quiet hours reset." announcement.
+> - **Every row now announces itself by name.** The base defaults `resetLabel`
+>   to the row's label, so the ~12 sites that passed nothing said "Setting
+>   reset." and now say "Edge gap reset."; the 6 that passed something more
+>   specific than their label ("Toast duration" for a row labelled "Duration")
+>   keep it as an explicit `resetLabel`.
+> - `Theme.settingsLabelWidth` and `settingsNarrowWidth` replace six copies of
+>   the label-column expression and three of the 440px breakpoint, including
+>   the three footnote paddings outside the rows.
+>   `settings.test.cjs`'s "wide menu fonts" test asserted the literal inside
+>   `SliderRow`/`PickerRow`; it now asserts the token in Theme, the base's use
+>   of it, and that all four rows still build on the base — same intent, at the
+>   new address.
+> - Rendering is unchanged on all six settings pages. The residue is live
+>   clock previews: HEAD vs merged captured ~20s apart differs *less* than the
+>   merged tree against itself 70s apart, which it could not if the difference
+>   were code.
+> - New `tests/quickshell/settings-rows.test.cjs` (4 tests). The important one
+>   checks every `settingKey` and `resetKeys` entry against
+>   `SettingsHelpers.defaults()`: a typo resolves to `undefined`, which reads
+>   as "never dirty" and commits nowhere, with nothing from QML or qmllint to
+>   say so. All four were checked against deliberately broken variants.
+
+<details>
+<summary>Original WP6.5 specification</summary>
+
+### WP6.5 ∥ Settings row scaffolding
 A `SettingsRow` base absorbing `narrow`, `labelWidth`, the 12-line UndoChip
 slot, and label block duplicated across `SwitchRow`/`PickerRow`/`SliderRow`/
 `SettingsTextRow` (+ the offset 5th copy in `SystemPage.qml:97`). Give rows a
 `settingKey` property generating `dirty`/`set`/`reset` (pattern already proven
 in `ModuleDetailView.qml:31–40`); pass the friendly label to `resetKeys`
 consistently.
+
+</details>
 
 ### [ ] WP6.6 ∥ Formatting helpers + small dead code
 - One `Common/Format.js`: `m:ss` (×2), d/h/m duration (×5 variants!), clamp01

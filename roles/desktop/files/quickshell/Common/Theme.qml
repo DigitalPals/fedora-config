@@ -135,6 +135,13 @@ Singleton {
     readonly property int popRadius: 14
     readonly property int rowRadius: 9
 
+    // The settings row grid: a fixed label column, and the width below which
+    // a row stacks its control under its label instead of beside it. The
+    // label column widens for the mono menu face. A footnote that belongs to
+    // the row above it aligns to the control, at labelWidth + 10.
+    readonly property int settingsLabelWidth: Settings.font === "mono" ? 122 : 90
+    readonly property int settingsNarrowWidth: 440
+
     // Switch geometry per surface, for Common/Toggle.qml: `box` is the hit
     // area, `track` the pill drawn centred inside it. The knob always sits
     // 4px inside the track height, so it follows from `track` alone. Popover

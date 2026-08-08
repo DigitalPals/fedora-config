@@ -48,37 +48,30 @@ SettingsPage {
         PickerRow {
             width: parent.width
             label: "Clock"
+            settingKey: "clock24"
             model: [{ value: true, label: "24 h" }, { value: false, label: "12 h" }]
-            current: Settings.clock24
             caption: Qt.formatDateTime(page.nowDate, Settings.clock24 ? "HH:mm" : "h:mm AP")
-            dirty: Settings.clock24 !== Settings.defaults.clock24
-            onPicked: value => Settings.set("clock24", value)
-            onResetRequested: Settings.resetKeys(["clock24"])
         }
 
         PickerRow {
             width: parent.width
             label: "Temperature"
+            settingKey: "unit"
             model: [{ value: "c", label: "°C" }, { value: "f", label: "°F" }]
-            current: Settings.unit
             caption: Weather.ready ? Weather.temp + "° outside" : ""
-            dirty: Settings.unit !== Settings.defaults.unit
-            onPicked: value => Settings.set("unit", value)
-            onResetRequested: Settings.resetKeys(["unit"])
         }
 
         SliderRow {
             width: parent.width
             label: "Scroll speed"
+            settingKey: "scrollFactor"
+            resetLabel: "Touchpad scroll speed"
             min: 0.2
             max: 2.0
             step: 0.1
             decimals: 1
-            value: Settings.scrollFactor
             unit: "×"
             dirty: Math.abs(Settings.scrollFactor - Settings.defaults.scrollFactor) > 0.001
-            onMoved: value => Settings.set("scrollFactor", value)
-            onResetRequested: Settings.resetKeys(["scrollFactor"], "Touchpad scroll speed")
         }
 
         SectionHeader {
@@ -88,20 +81,17 @@ SettingsPage {
         SliderRow {
             width: parent.width
             label: "Warmth"
+            settingKey: "warmth"
             min: 1900
             max: 4500
             step: 50
-            value: Settings.warmth
             unit: "K"
             gradientTrack: true
-            dirty: Settings.warmth !== Settings.defaults.warmth
-            onMoved: value => Settings.set("warmth", value)
-            onResetRequested: Settings.resetKeys(["warmth"])
         }
 
         Text {
             width: parent.width
-            leftPadding: page.width < 440 ? 0 : Settings.font === "mono" ? 132 : 100
+            leftPadding: page.width < Theme.settingsNarrowWidth ? 0 : Theme.settingsLabelWidth + 10
             text: "Tint applies while Night light is on in Control Center — "
                 + (SysInfo.nightLight ? "currently on" : "currently off")
             font.family: Theme.fontMenu
@@ -117,13 +107,10 @@ SettingsPage {
         PickerRow {
             width: parent.width
             label: "Placement"
+            settingKey: "osd"
             model: [{ value: "top", label: "Top center" }, { value: "bottom", label: "Bottom center" }]
-            current: Settings.osd
             caption: "volume / brightness popup"
             captionMono: false
-            dirty: Settings.osd !== Settings.defaults.osd
-            onPicked: value => Settings.set("osd", value)
-            onResetRequested: Settings.resetKeys(["osd"])
         }
 
         SectionHeader {
@@ -133,13 +120,10 @@ SettingsPage {
         PickerRow {
             width: parent.width
             label: "Poll every"
+            settingKey: "pollMax"
             model: [{ value: 60, label: "1 min" }, { value: 300, label: "5 min" }, { value: 600, label: "10 min" }]
-            current: Settings.pollMax
             caption: "next " + Math.floor(page.pollLeft / 60) + ":"
                 + String(page.pollLeft % 60).padStart(2, "0")
-            dirty: Settings.pollMax !== Settings.defaults.pollMax
-            onPicked: value => Settings.set("pollMax", value)
-            onResetRequested: Settings.resetKeys(["pollMax"])
         }
     }
 

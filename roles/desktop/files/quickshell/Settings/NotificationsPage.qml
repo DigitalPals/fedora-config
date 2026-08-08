@@ -11,8 +11,8 @@ SettingsPage {
 
     readonly property var quietRange: SettingsHelpers.quietRange(Settings.notifQuiet,
         Settings.notifQuietStart, Settings.notifQuietEnd)
-    readonly property int footnotePad: width < 440 ? 0
-        : Settings.font === "mono" ? 132 : 100
+    readonly property int footnotePad: width < Theme.settingsNarrowWidth ? 0
+        : Theme.settingsLabelWidth + 10
 
     function sendTest() {
         Quickshell.execDetached(["notify-send", "-a", "Shell settings",
@@ -185,71 +185,59 @@ SettingsPage {
         SwitchRow {
             width: parent.width
             label: "Do Not Disturb"
+            settingKey: "notifDnd"
             description: "Silence toasts — everything still lands in the center"
-            checked: Settings.notifDnd
-            dirty: Settings.notifDnd !== Settings.defaults.notifDnd
-            onToggled: value => Settings.set("notifDnd", value)
-            onResetRequested: Settings.resetKeys(["notifDnd"], "Do Not Disturb")
         }
 
         PickerRow {
             width: parent.width
             label: "Quiet hours"
+            settingKey: "notifQuiet"
+            resetKeys: ["notifQuiet", "notifQuietStart", "notifQuietEnd"]
             model: [
                 { value: "off", label: "Off" },
                 { value: "nights", label: "Nights" },
                 { value: "custom", label: "Custom" }
             ]
-            current: Settings.notifQuiet
             caption: page.quietRange
                 ? SettingsHelpers.formatMinutes(page.quietRange.start) + " – "
                     + SettingsHelpers.formatMinutes(page.quietRange.end)
                 : ""
-            dirty: Settings.notifQuiet !== Settings.defaults.notifQuiet
-            onPicked: value => Settings.set("notifQuiet", value)
-            onResetRequested: Settings.resetKeys(
-                ["notifQuiet", "notifQuietStart", "notifQuietEnd"], "Quiet hours")
         }
 
         SliderRow {
             visible: Settings.notifQuiet === "custom"
             width: parent.width
             label: "Quiet from"
+            settingKey: "notifQuietStart"
+            resetLabel: "Quiet hours start"
             min: 0
             max: 1425
             step: 15
-            value: Settings.notifQuietStart
             valueLabel: SettingsHelpers.formatMinutes(Settings.notifQuietStart)
-            dirty: Settings.notifQuietStart !== Settings.defaults.notifQuietStart
-            onMoved: value => Settings.set("notifQuietStart", value)
-            onResetRequested: Settings.resetKeys(["notifQuietStart"], "Quiet hours start")
         }
 
         SliderRow {
             visible: Settings.notifQuiet === "custom"
             width: parent.width
             label: "Quiet until"
+            settingKey: "notifQuietEnd"
+            resetLabel: "Quiet hours end"
             min: 0
             max: 1425
             step: 15
-            value: Settings.notifQuietEnd
             valueLabel: SettingsHelpers.formatMinutes(Settings.notifQuietEnd)
-            dirty: Settings.notifQuietEnd !== Settings.defaults.notifQuietEnd
-            onMoved: value => Settings.set("notifQuietEnd", value)
-            onResetRequested: Settings.resetKeys(["notifQuietEnd"], "Quiet hours end")
         }
 
         SliderRow {
             width: parent.width
             label: "Duration"
+            settingKey: "notifDuration"
+            resetLabel: "Toast duration"
             min: 4
             max: 20
             step: 1
-            value: Settings.notifDuration
             unit: "s"
-            dirty: Settings.notifDuration !== Settings.defaults.notifDuration
-            onMoved: value => Settings.set("notifDuration", value)
-            onResetRequested: Settings.resetKeys(["notifDuration"], "Toast duration")
         }
 
         Text {
@@ -265,16 +253,14 @@ SettingsPage {
         PickerRow {
             width: parent.width
             label: "Position"
+            settingKey: "notifPosition"
+            resetLabel: "Toast position"
             model: [
                 { value: "top-left", label: "Top left" },
                 { value: "top-right", label: "Top right" },
                 { value: "bottom-left", label: "Bottom left" },
                 { value: "bottom-right", label: "Bottom right" }
             ]
-            current: Settings.notifPosition
-            dirty: Settings.notifPosition !== Settings.defaults.notifPosition
-            onPicked: value => Settings.set("notifPosition", value)
-            onResetRequested: Settings.resetKeys(["notifPosition"], "Toast position")
         }
 
         SectionHeader {
@@ -284,51 +270,40 @@ SettingsPage {
         PickerRow {
             width: parent.width
             label: "Density"
+            settingKey: "notifDensity"
+            resetLabel: "Toast density"
             model: [
                 { value: "compact", label: "Compact" },
                 { value: "default", label: "Default" },
                 { value: "roomy", label: "Roomy" }
             ]
-            current: Settings.notifDensity
-            dirty: Settings.notifDensity !== Settings.defaults.notifDensity
-            onPicked: value => Settings.set("notifDensity", value)
-            onResetRequested: Settings.resetKeys(["notifDensity"], "Toast density")
         }
 
         SwitchRow {
             width: parent.width
             label: "App icons"
+            settingKey: "notifIcons"
             description: "Show the sender's icon on each card"
-            checked: Settings.notifIcons
-            dirty: Settings.notifIcons !== Settings.defaults.notifIcons
-            onToggled: value => Settings.set("notifIcons", value)
-            onResetRequested: Settings.resetKeys(["notifIcons"], "App icons")
         }
 
         SwitchRow {
             width: parent.width
             label: "Timeout progress"
+            settingKey: "notifProgress"
             description: "Thin bar counting down a toast's remaining time"
-            checked: Settings.notifProgress
-            dirty: Settings.notifProgress !== Settings.defaults.notifProgress
-            onToggled: value => Settings.set("notifProgress", value)
-            onResetRequested: Settings.resetKeys(["notifProgress"], "Timeout progress")
         }
 
         SliderRow {
             width: parent.width
             label: "Body preview"
+            settingKey: "notifBodyLines"
             min: 0
             max: 3
             step: 1
-            value: Settings.notifBodyLines
             valueLabel: Settings.notifBodyLines === 0 ? "hidden"
                 : Settings.notifBodyLines === 1 ? "1 line"
                 : Settings.notifBodyLines + " lines"
             valueWidth: 52
-            dirty: Settings.notifBodyLines !== Settings.defaults.notifBodyLines
-            onMoved: value => Settings.set("notifBodyLines", value)
-            onResetRequested: Settings.resetKeys(["notifBodyLines"], "Body preview")
         }
 
         Row {

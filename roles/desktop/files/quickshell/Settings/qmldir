@@ -15,6 +15,7 @@ SettingsTextRow SettingsTextRow.qml
 SettingsAction SettingsAction.qml
 SettingsCard SettingsCard.qml
 SettingsPage SettingsPage.qml
+SettingsRow SettingsRow.qml
 SettingsView SettingsView.qml
 SliderRow SliderRow.qml
 SwitchRow SwitchRow.qml

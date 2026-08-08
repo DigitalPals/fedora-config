@@ -69,35 +69,26 @@ SettingsPage {
         PickerRow {
             width: parent.width
             label: "Position"
+            settingKey: "position"
             model: [{ value: "top", label: "Top" }, { value: "bottom", label: "Bottom" }]
-            current: Settings.position
-            dirty: Settings.position !== Settings.defaults.position
-            onPicked: value => Settings.set("position", value)
-            onResetRequested: Settings.resetKeys(["position"])
         }
 
         SwitchRow {
             width: parent.width
             label: "Floating"
+            settingKey: "floating"
             description: "Detached island with rounded corners; off = edge-to-edge"
-            checked: Settings.floating
-            dirty: Settings.floating !== Settings.defaults.floating
-            onToggled: value => Settings.set("floating", value)
-            onResetRequested: Settings.resetKeys(["floating"])
         }
 
         SliderRow {
             width: parent.width
             label: "Edge gap"
+            settingKey: "gap"
             min: 4
             max: 20
             step: 1
-            value: Settings.gap
             unit: "px"
             dimmed: !Settings.floating
-            dirty: Settings.gap !== Settings.defaults.gap
-            onMoved: value => Settings.set("gap", value)
-            onResetRequested: Settings.resetKeys(["gap"])
         }
 
         SectionHeader {
@@ -107,21 +98,15 @@ SettingsPage {
         SwitchRow {
             width: parent.width
             label: "Auto-hide"
+            settingKey: "autoHide"
             description: "Bar slides away when idle — hover the screen edge to reveal"
-            checked: Settings.autoHide
-            dirty: Settings.autoHide !== Settings.defaults.autoHide
-            onToggled: value => Settings.set("autoHide", value)
-            onResetRequested: Settings.resetKeys(["autoHide"])
         }
 
         SwitchRow {
             width: parent.width
             label: "Reserve space"
+            settingKey: "exclusive"
             description: "Exclusive zone — tiled windows stop at the bar"
-            checked: Settings.exclusive
-            dirty: Settings.exclusive !== Settings.defaults.exclusive
-            onToggled: value => Settings.set("exclusive", value)
-            onResetRequested: Settings.resetKeys(["exclusive"])
         }
 
         SectionHeader {

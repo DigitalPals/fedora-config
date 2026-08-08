@@ -277,8 +277,8 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
 test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const view = read("Settings/SettingsView.qml");
     const page = read("Settings/SettingsPage.qml");
-    const slider = read("Settings/SliderRow.qml");
-    const picker = read("Settings/PickerRow.qml");
+    const theme = read("Common/Theme.qml");
+    const base = read("Settings/SettingsRow.qml");
     const system = read("Settings/SystemPage.qml");
 
     assert.match(view, /preferredHeight:\s*660/);
@@ -287,8 +287,16 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     assert.match(page, /scrollGutter:\s*8/);
     assert.doesNotMatch(page, /scrollGutter:\s*scrollbarVisible/);
     assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
-    for (const row of [slider, picker])
-        assert.match(row, /Settings\.font === "mono" \? 122 : 90/);
+    // The label column widens for the mono menu face. Every row used to
+    // carry this expression; it lives in Theme now and reaches the rows
+    // through SettingsRow, so assert it where it is rather than where it
+    // was — the rows below check that they still inherit the base.
+    assert.match(theme,
+        /readonly property int settingsLabelWidth:\s*Settings\.font === "mono" \? 122 : 90/);
+    assert.match(base, /readonly property int labelWidth:\s*Theme\.settingsLabelWidth/);
+    for (const row of ["SliderRow", "PickerRow", "SwitchRow", "SettingsTextRow"])
+        assert.match(read(`Settings/${row}.qml`), /^SettingsRow \{$/m,
+            `${row} must build on SettingsRow`);
     assert.doesNotMatch(system, /resetArmed|Confirm reset/);
     assert.match(system, /onTriggered:\s*Settings\.resetAll\(\)/);
 });

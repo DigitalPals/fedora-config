@@ -97,28 +97,22 @@ SettingsPage {
         SliderRow {
             width: parent.width
             label: "Height"
+            settingKey: "barHeight"
             min: 24
             max: 44
             step: 1
-            value: Settings.barHeight
             unit: "px"
-            dirty: Settings.barHeight !== Settings.defaults.barHeight
-            onMoved: value => Settings.set("barHeight", value)
-            onResetRequested: Settings.resetKeys(["barHeight"])
         }
 
         SliderRow {
             width: parent.width
             label: "Corner radius"
+            settingKey: "barRadius"
             min: 0
             max: 16
             step: 1
-            value: Settings.barRadius
             unit: "px"
             dimmed: !Settings.floating
-            dirty: Settings.barRadius !== Settings.defaults.barRadius
-            onMoved: value => Settings.set("barRadius", value)
-            onResetRequested: Settings.resetKeys(["barRadius"])
         }
 
         PillRow {
@@ -254,6 +248,8 @@ SettingsPage {
         SliderRow {
             width: parent.width
             label: "Accent hue"
+            resetKeys: ["accent", "accentWall"]
+            resetLabel: "Accent"
             min: 0
             max: 359
             step: 1
@@ -262,7 +258,6 @@ SettingsPage {
             hueTrack: true
             dirty: Settings.accent !== Settings.defaults.accent || Settings.accentWall
             onMoved: value => page.pickAccent(SettingsHelpers.hueToHex(value))
-            onResetRequested: Settings.resetKeys(["accent", "accentWall"], "Accent")
         }
 
         Row {
