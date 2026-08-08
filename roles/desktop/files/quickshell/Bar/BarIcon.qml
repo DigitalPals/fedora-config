@@ -77,12 +77,29 @@ Rectangle {
     property real wheelAccumulator: 0
     readonly property real detailSaving: label === "" ? 0 : labelText.implicitWidth + 4
 
-    readonly property color fg: active ? Theme.accentFg : alert ? Theme.redText : held || mouse.hovered ? hoverColor : idleColor
+    // Validated rather than the MouseArea's own state: the raw value survives a
+    // missed exit event, which leaves the pill lit with no event left to clear
+    // it. The tooltip below reads the same check, so the two always agree.
+    //
+    // `containsMouse` rather than a flag set from onEntered/onExited, which is
+    // what this used to be: that flag was never re-armed by onPositionChanged,
+    // so the missed *enter* the handler below compensates for left the pill
+    // unlit while the pointer moved across it — the same bug the other way up.
+    readonly property bool hovered: pointer.over
+
+    PointerCheck {
+        id: pointer
+        host: root.host
+        target: root
+        hovered: mouse.containsMouse
+    }
+
+    readonly property color fg: active ? Theme.accentFg : alert ? Theme.redText : held || root.hovered ? hoverColor : idleColor
 
     implicitHeight: Theme.chipHeight
     implicitWidth: inner.implicitWidth + hPadding * 2
     radius: Theme.chipRadius
-    color: active ? Theme.accent : alert ? Theme.redBg : held ? Theme.hoverFillStrong : mouse.hovered ? Theme.hoverFill : "transparent"
+    color: active ? Theme.accent : alert ? Theme.redBg : held ? Theme.hoverFillStrong : root.hovered ? Theme.hoverFill : "transparent"
     anchors.verticalCenter: parent.verticalCenter
 
     Behavior on color {
@@ -136,13 +153,11 @@ Rectangle {
 
     MouseArea {
         id: mouse
-        property bool hovered: false
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         cursorShape: Qt.PointingHandCursor
         onEntered: {
-            hovered = true;
             if (root.ownsPanel)
                 root.host.hoverOpen(root.panelName, root.isle, root.anchorItem);
             root.entered();
@@ -155,7 +170,6 @@ Rectangle {
             root.entered();
         }
         onExited: {
-            hovered = false;
             if (root.ownsPanel)
                 root.host.cancelHover(root.panelName);
             root.exited();
@@ -181,8 +195,7 @@ Rectangle {
     }
 
     BarTooltip {
-        host: root.host
-        hovered: mouse.hovered
+        check: pointer
         text: root.tooltip
         align: root.tooltipAlign
         y: root.height + 6

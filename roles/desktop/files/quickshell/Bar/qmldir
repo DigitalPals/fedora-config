@@ -10,6 +10,7 @@ BarTooltip BarTooltip.qml
 Cluster Cluster.qml
 Divider Divider.qml
 IslandPopout IslandPopout.qml
+PointerCheck PointerCheck.qml
 T3Chip T3Chip.qml
 UsageChips UsageChips.qml
 Workspaces Workspaces.qml

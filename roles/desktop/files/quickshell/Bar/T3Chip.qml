@@ -85,7 +85,7 @@ Item {
         radius: Theme.chipRadius
         anchors.verticalCenter: parent.verticalCenter
         color: root.stressed ? Theme.amberBg
-             : root.held || chipMouse.containsMouse ? Theme.hoverFillStrong
+             : root.held || chipPointer.over ? Theme.hoverFillStrong
              : Theme.hoverFill
 
         Behavior on color {
@@ -164,6 +164,13 @@ Item {
             }
         }
 
+        PointerCheck {
+            id: chipPointer
+            host: root.host
+            target: chip
+            hovered: chipMouse.containsMouse
+        }
+
         MouseArea {
             id: chipMouse
             anchors.fill: parent
@@ -186,8 +193,7 @@ Item {
         }
 
         BarTooltip {
-            host: root.host
-            hovered: chipMouse.containsMouse
+            check: chipPointer
             text: {
                 if (T3Code.state === "unpaired")
                     return "T3 Code · not paired";

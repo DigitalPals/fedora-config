@@ -156,6 +156,16 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
   registration regression that looked perfect in a screenshot. `tests/run`
   carries a duplicate-handler check because qmllint has no opinion on that and
   the failure mode is a shell silently running stale code.
+- **`hyprctl cursor.move` warps the pointer without delivering hover to the
+  client.** No `MouseArea` under it sees `onEntered`, and `containsMouse` stays
+  false — verified by probe, with the bar's own `HoverHandler` reporting
+  `hovered: true` and a live position at the same moment. The cursor *shape*
+  still changes, so a screenshot looks like a real hover and is not one. A
+  uinput virtual pointer emitting `EV_REL` a pixel at a time does generate real
+  motion, but Qt's legacy hover path still did not pick it up here — so testing
+  anything gated on `containsMouse` needs a human hand on the mouse. What is
+  testable without one: pin the raw hover state to `true` in the deployed copy
+  and check what the bar-wide validation does with it.
 - **A defaulted property that a safety check depends on will eventually be
   left unset.** `BarIcon.host` looked like panel wiring, so the idle module —
   which owns no panel — never set it, and `BarTooltip` silently fell back to

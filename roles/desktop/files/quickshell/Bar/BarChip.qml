@@ -68,7 +68,18 @@ Rectangle {
     property string tooltip: ""
     property int tooltipAlign: 0
 
-    readonly property bool hovered: mouse.containsMouse
+    // Validated rather than `mouse.containsMouse` directly: the raw state
+    // survives a missed exit event, which leaves the pill lit with no event
+    // left to clear it. Module content binds its colours off this, and the
+    // tooltip below reads the same check, so all three always agree.
+    readonly property bool hovered: pointer.over
+
+    PointerCheck {
+        id: pointer
+        host: root.host
+        target: root
+        hovered: mouse.containsMouse
+    }
 
     function hoverIn() {
         if (ownsPanel)
@@ -83,7 +94,7 @@ Rectangle {
     implicitHeight: Theme.chipHeight
     implicitWidth: inner.implicitWidth + hPadding * 2
     radius: Theme.chipRadius
-    color: held ? Theme.hoverFillStrong : mouse.containsMouse ? Theme.hoverFill : "transparent"
+    color: held ? Theme.hoverFillStrong : root.hovered ? Theme.hoverFill : "transparent"
     anchors.verticalCenter: parent.verticalCenter
 
     Behavior on color {
@@ -118,8 +129,7 @@ Rectangle {
     }
 
     BarTooltip {
-        host: root.host
-        hovered: mouse.containsMouse
+        check: pointer
         text: root.tooltip
         align: root.tooltipAlign
         y: root.height + 6

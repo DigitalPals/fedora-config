@@ -98,13 +98,15 @@ Item {
 
         // Offline / loading state
         Rectangle {
+            id: emptyChip
+
             property string providerKey: "claude"
 
             visible: root.empty
             height: Theme.chipHeight
             width: emptyRow.implicitWidth + 12
             radius: Theme.chipRadius
-            color: root.held ? Theme.hoverFillStrong : emptyMouse.containsMouse ? Theme.hoverFill : "transparent"
+            color: root.held ? Theme.hoverFillStrong : emptyPointer.over ? Theme.hoverFill : "transparent"
             anchors.verticalCenter: parent.verticalCenter
 
             Row {
@@ -134,6 +136,13 @@ Item {
                     font.pixelSize: Theme.barTextSize
                     color: Usage.fetchError !== "" ? Theme.redText : Theme.textFaint
                 }
+            }
+
+            PointerCheck {
+                id: emptyPointer
+                host: root.host
+                target: emptyChip
+                hovered: emptyMouse.containsMouse
             }
 
             MouseArea {
@@ -169,7 +178,7 @@ Item {
                 radius: Theme.chipRadius
                 color: status === "crit" ? Theme.redBg
                      : status === "warn" ? Theme.amberBg
-                     : current || chipMouse.containsMouse ? Theme.hoverFillStrong
+                     : current || chipPointer.over ? Theme.hoverFillStrong
                      : Theme.hoverFill
                 anchors.verticalCenter: parent.verticalCenter
 
@@ -203,6 +212,13 @@ Item {
                     }
                 }
 
+                PointerCheck {
+                    id: chipPointer
+                    host: root.host
+                    target: chip
+                    hovered: chipMouse.containsMouse
+                }
+
                 MouseArea {
                     id: chipMouse
                     anchors.fill: parent
@@ -215,8 +231,7 @@ Item {
                 }
 
                 BarTooltip {
-                    host: root.host
-                    hovered: chipMouse.containsMouse
+                    check: chipPointer
                     text: Usage.meta[chip.modelData].title + " usage · "
                         + (chip.status === "error" || chip.remaining < 0
                             ? "unavailable" : chip.remaining + "% remaining")

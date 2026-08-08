@@ -51,7 +51,7 @@ Row {
                 visible: slot.showNumber
                 anchors.fill: parent
                 radius: Theme.chipRadius
-                color: slot.focused ? Theme.accent : slot.urgent ? Theme.redBg : wsMouse.containsMouse ? Theme.hoverFill : "transparent"
+                color: slot.focused ? Theme.accent : slot.urgent ? Theme.redBg : wsPointer.over ? Theme.hoverFill : "transparent"
 
                 Behavior on color {
                     ColorAnimation { duration: Theme.chipFadeDuration }
@@ -64,7 +64,7 @@ Row {
                     font.pixelSize: Theme.barTextSize
                     font.weight: slot.focused || slot.urgent ? Theme.weightSemibold : Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
-                    color: slot.focused ? Theme.accentFg : slot.urgent ? Theme.redText : wsMouse.containsMouse ? Theme.textHi : Theme.textLow
+                    color: slot.focused ? Theme.accentFg : slot.urgent ? Theme.redText : wsPointer.over ? Theme.textHi : Theme.textLow
 
                     Behavior on color {
                         ColorAnimation { duration: Theme.chipFadeDuration }
@@ -83,6 +83,13 @@ Row {
                     : slot.exists ? Theme.textLow : Theme.dotDim
             }
 
+            PointerCheck {
+                id: wsPointer
+                host: root.host
+                target: slot
+                hovered: wsMouse.containsMouse
+            }
+
             MouseArea {
                 id: wsMouse
                 anchors.fill: parent
@@ -94,8 +101,7 @@ Row {
             }
 
             BarTooltip {
-                host: root.host
-                hovered: wsMouse.containsMouse
+                check: wsPointer
                 text: "Workspace " + slot.wsId
                     + (slot.focused ? " · current" : slot.urgent ? " · urgent" : slot.exists ? "" : " · empty")
                 y: slot.height + 6

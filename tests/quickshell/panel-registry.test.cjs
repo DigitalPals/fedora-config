@@ -230,17 +230,25 @@ function barQmlFiles() {
     return found;
 }
 
-test("every bar primitive that can show a tooltip is handed the bar", () => {
-    // `host` is not only panel wiring: BarTooltip validates its own hover
-    // against the bar-wide HoverHandler, which keeps reporting the pointer
-    // when a newly mapped layer surface has cost a MouseArea its exit event.
-    // The idle module was instantiated without one — it owns no panel, so
-    // nothing else in the chip needed the bar — and its tooltip then stayed
-    // on screen long after the pointer had left, with no path back to false.
-    //
-    // qmllint fails this too, now that `host` is required and RequiredProperty
-    // is an error. Kept here as well because this states *why*, and because
-    // the lint sweep SKIPs when qmllint is not installed.
+// What each bar primitive cannot be built without. A MouseArea on a layer
+// surface can miss its exit event, so nothing that draws a hover state may
+// rely on `containsMouse` alone: PointerCheck is the second opinion, and these
+// are the wires that reach it. The idle module was instantiated without a
+// `host` — it owns no panel, so nothing else in the chip needed the bar — and
+// its tooltip then stayed on screen long after the pointer had left, with no
+// path back to false.
+//
+// qmllint fails these too, now that they are `required` and RequiredProperty
+// is an error. Kept here as well because this states *why*, and because the
+// lint sweep SKIPs when qmllint is not installed.
+const REQUIRED_WIRING = {
+    BarIcon: ["host"],
+    BarChip: ["host"],
+    BarTooltip: ["check"],
+    PointerCheck: ["host", "target", "hovered"],
+};
+
+test("every bar primitive that draws a hover state is fully wired", () => {
     const offenders = [];
     for (const file of barQmlFiles()) {
         const src = fs.readFileSync(file, "utf8")
@@ -248,7 +256,8 @@ test("every bar primitive that can show a tooltip is handed the bar", () => {
             // like the start of one.
             .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, '""')
             .replace(/\/\/[^\n]*/g, "");
-        for (const match of src.matchAll(/\b(BarIcon|BarChip|BarTooltip)\s*\{/g)) {
+        const types = Object.keys(REQUIRED_WIRING).join("|");
+        for (const match of src.matchAll(new RegExp(`\\b(${types})\\s*\\{`, "g"))) {
             const start = match.index + match[0].length - 1;
             let depth = 0;
             let end = start;
@@ -259,10 +268,36 @@ test("every bar primitive that can show a tooltip is handed the bar", () => {
                     break;
                 end++;
             }
-            if (!/\bhost:/.test(topLevel(src.slice(start + 1, end))))
-                offenders.push(`${path.relative(shellDir, file)}: ${match[1]}`);
+            const body = topLevel(src.slice(start + 1, end));
+            for (const property of REQUIRED_WIRING[match[1]]) {
+                if (!new RegExp(`\\b${property}:`).test(body))
+                    offenders.push(`${path.relative(shellDir, file)}: `
+                        + `${match[1]} is missing ${property}`);
+            }
         }
     }
     assert.deepEqual(offenders, [],
-        "a tooltip without a host cannot dismiss itself after a missed exit");
+        "an unwired hover state cannot clear itself after a missed exit");
+});
+
+test("nothing in the bar draws a hover state straight off a MouseArea", () => {
+    // The point of PointerCheck is that one stale `containsMouse` cannot leave
+    // a chip lit, so a colour or a tooltip bound to the raw state defeats it.
+    // Feeding PointerCheck itself is the one legitimate read.
+    const offenders = [];
+    for (const file of barQmlFiles()) {
+        if (path.basename(file) === "Bar.qml")
+            continue;              // owns the HoverHandler the check reads
+        const lines = fs.readFileSync(file, "utf8").split("\n");
+        lines.forEach((line, index) => {
+            if (/^\s*\/\//.test(line))
+                return;
+            if (!/\.containsMouse\b|\bmouse\.hovered\b/.test(line))
+                return;
+            if (/^\s*hovered:/.test(line))
+                return;            // the raw opinion, on its way into the check
+            offenders.push(`${path.relative(shellDir, file)}:${index + 1}`);
+        });
+    }
+    assert.deepEqual(offenders, []);
 });

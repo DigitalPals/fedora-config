@@ -5,38 +5,17 @@ Item {
     id: root
 
     property string text: ""
-    property bool hovered: false
     // -1 left, 0 centered, 1 right.
     property int align: 0
     property bool ready: false
-    // The bar that owns this tooltip, threaded down from the module rather
-    // than reached through Window.window: an attached window is a plain
-    // QQuickWindow to the type system, so reading the bar's pointer state off
-    // it could not be checked. Required, not defaulted: this is the only
-    // thing that dismisses a tip after a missed exit event, and a module that
-    // quietly left it null got a tooltip that stuck on screen for good.
-    required property Bar host
-    // Validate the local MouseArea state against the bar-wide pointer. This
-    // clears stale containsMouse values after a missed surface-exit event and
-    // also prevents a tooltip from lingering over a different module.
-    readonly property bool pointerOverTarget: {
-        // Skip the scene mapping while not hovered: this also drops the
-        // binding's dependency on tooltipPointerPosition, so idle tooltips
-        // cost nothing on pointer moves elsewhere in the bar.
-        if (!root.hovered)
-            return false;
-        // `host` is assigned after construction, so it is briefly null before
-        // the bar hands it down. No pointer truth, no tooltip: the delay timer
-        // outlives that window, so nothing is lost by waiting for it.
-        if (!root.host || !root.host.tooltipPointerInside || !root.parent)
-            return false;
-        const scenePoint = root.host.tooltipPointerPosition;
-        const localPoint = root.parent.mapFromItem(null,
-            scenePoint.x, scenePoint.y);
-        return localPoint.x >= 0 && localPoint.x <= root.parent.width
-            && localPoint.y >= 0 && localPoint.y <= root.parent.height;
-    }
-    readonly property bool activeHover: hovered && pointerOverTarget
+    // The module's shared pointer state, not a bare bool: a MouseArea on a
+    // layer surface can miss its exit event, and a tooltip armed off that
+    // stale value has nothing left to dismiss it. Taking the check as a typed,
+    // required object means a raw `containsMouse` cannot reach here by
+    // mistake, and that the tip agrees with the pill it hangs under — both
+    // read the one answer.
+    required property PointerCheck check
+    readonly property bool activeHover: check.over
 
     width: tip.implicitWidth
     height: tip.implicitHeight

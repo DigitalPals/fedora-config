@@ -224,19 +224,27 @@ test("regression fixes keep asynchronous state identity-safe", () => {
     assert.match(bar,
         /barWindow\.tooltipPointerPosition = scenePoint/,
         "the full-bar handler must publish pointer motion for tooltip validation");
-    assert.match(tooltip, /readonly property bool activeHover:\s*hovered && pointerOverTarget/);
-    // The bar reaches the tooltip as a typed `host` now, not through
-    // Window.window — an attached window is a plain QQuickWindow to the
-    // type system, so that read could never be checked.
-    assert.match(tooltip, /required property Bar host/,
-        "the tooltip must take the bar as a typed, required property");
-    assert.match(tooltip,
-        /if \(!root\.host \|\| !root\.host\.tooltipPointerInside \|\| !root\.parent\)\s*return false/,
-        "a stale local MouseArea must not keep a tooltip visible after leaving the bar");
-    // Match code, not prose: the file explains in a comment why it stopped
+    // The hover check lives in one shared object now, so a chip's fill and the
+    // tooltip hanging under it cannot disagree about whether the pointer is
+    // there. The tooltip takes it as a typed, required property, which is what
+    // stops a raw `containsMouse` being handed over by mistake.
+    const check = read("Bar/PointerCheck.qml");
+    assert.match(tooltip, /required property PointerCheck check/,
+        "the tooltip must take the shared check, not a bare bool");
+    assert.match(tooltip, /readonly property bool activeHover:\s*check\.over/);
+    // The bar reaches the check as a typed `host`, not through Window.window —
+    // an attached window is a plain QQuickWindow to the type system, so that
+    // read could never be checked.
+    assert.match(check, /required property Bar host/);
+    assert.match(check, /required property Item target/);
+    assert.match(check,
+        /if \(!root\.host \|\| !root\.host\.tooltipPointerInside \|\| !root\.target\)\s*return false/,
+        "a stale local MouseArea must not keep a hover state alive after leaving the bar");
+    // Match code, not prose: the files explain in comments why they stopped
     // using Window.window.
-    const tooltipCode = tooltip.split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
-    assert.doesNotMatch(tooltipCode, /Window\.window/,
+    const code = (tooltip + check).split("\n")
+        .filter(l => !l.trim().startsWith("//")).join("\n");
+    assert.doesNotMatch(code, /Window\.window/,
         "reading the bar off the attached window is what made this unverifiable");
 });
 
