@@ -241,6 +241,20 @@ Column {
                                 spacing: 4
 
                                 Action {
+                                    visible: T3Code.supportsPinning
+                                    revealed: entry.revealed
+                                    readonly property string kind: entry.thread.pinned
+                                        ? "unpin" : "pin"
+                                    label: T3Code.actionPending(kind, entry.thread.id, "")
+                                        ? "…" : (entry.thread.pinned ? "Unpin" : "Pin")
+                                    enabled: T3Code.canDispatch
+                                        && !T3Code.actionPending(kind, entry.thread.id, "")
+                                    onTriggered: entry.thread.pinned
+                                        ? T3Code.unpin(entry.thread.id)
+                                        : T3Code.pin(entry.thread.id)
+                                }
+
+                                Action {
                                     visible: entry.active && T3Code.supportsSettlement
                                     revealed: entry.revealed
                                     label: T3Code.actionPending("settle", entry.thread.id, "")
@@ -320,7 +334,7 @@ Column {
             x: 33
             width: parent.width - 39
             text: {
-                for (const kind of ["settle", "unsettle", "snooze", "unsnooze"]) {
+                for (const kind of ["pin", "unpin", "settle", "unsettle", "snooze", "unsnooze"]) {
                     const error = T3Code.actionError(kind, entry.thread.id, "");
                     if (error !== "")
                         return error;
@@ -457,7 +471,8 @@ Column {
 
                 Text {
                     visible: T3Code.state === "connected" && T3Code.shellReady
-                        && T3Code.threads.length === 0 && T3Code.snoozedThreads.length === 0
+                        && T3Code.threads.length === 0 && T3Code.pinnedThreads.length === 0
+                        && T3Code.snoozedThreads.length === 0
                         && T3Code.settledThreads.length === 0
                     width: parent.width
                     topPadding: 12
@@ -467,6 +482,19 @@ Column {
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontBody
                     color: Theme.textDim
+                }
+
+                // Pinned first, like the reference sidebar. Rows keep their
+                // live status word, so a pinned thread that needs you still
+                // reads amber — it is just anchored here instead of sorted.
+                GroupHeader {
+                    visible: T3Code.pinnedThreads.length > 0
+                    label: "PINNED"
+                    count: T3Code.pinnedThreads.length
+                }
+                Repeater {
+                    model: T3Code.pinnedThreads
+                    delegate: ThreadRow { required property var modelData; thread: modelData }
                 }
 
                 GroupHeader {

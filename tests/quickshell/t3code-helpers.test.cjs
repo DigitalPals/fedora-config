@@ -130,6 +130,48 @@ test("classification gives snooze precedence and preserves active chip counts", 
         done: result.doneCount }, { running: 1, attention: 1, done: 1 });
 });
 
+test("a pin beats settledness, loses to snooze, and still feeds the chip counts", () => {
+    const map = {
+        pinnedQuiet: thread({ id: "pinnedQuiet", pinnedAt: "2026-08-02T12:00:00.000Z",
+            settledOverride: "settled", settledAt: "2026-08-03T10:00:00.000Z" }),
+        pinnedBusy: thread({ id: "pinnedBusy", pinnedAt: "2026-08-02T12:00:00.000Z",
+            hasPendingUserInput: true }),
+        pinnedSnoozed: thread({ id: "pinnedSnoozed", pinnedAt: "2026-08-02T12:00:00.000Z",
+            snoozedAt: "2026-08-03T10:30:00.000Z",
+            snoozedUntil: "2026-08-04T12:00:00.000Z" }),
+        plain: thread({ id: "plain", session: { status: "running" } }),
+    };
+    const result = H.classifyThreads(map, { "project-1": { title: "Project" } }, NOW, 3);
+    assert.deepEqual(result.pinned.map((value) => value.id).sort(),
+        ["pinnedBusy", "pinnedQuiet"]);
+    assert.deepEqual(result.active.map((value) => value.id), ["plain"]);
+    assert.deepEqual(result.snoozed.map((value) => value.id), ["pinnedSnoozed"]);
+    assert.deepEqual(result.settled, []);
+    // pinnedBusy needs attention even though it sits in the pinned section.
+    assert.deepEqual({ running: result.runningCount, attention: result.attentionCount },
+        { running: 1, attention: 1 });
+    const busy = result.pinned.find((value) => value.id === "pinnedBusy");
+    assert.equal(busy.pinned, true);
+    assert.equal(busy.pinnedAt, "2026-08-02T12:00:00.000Z");
+    assert.equal(busy.cls, "attention");
+});
+
+test("pinned order: orderKey ascending first, then keyless pins newest-created", () => {
+    const map = {
+        keyless_old: thread({ id: "keyless_old", pinnedAt: "2026-08-02T12:00:00.000Z",
+            createdAt: "2026-07-01T12:00:00.000Z" }),
+        keyless_new: thread({ id: "keyless_new", pinnedAt: "2026-08-02T12:00:00.000Z",
+            createdAt: "2026-08-01T12:00:00.000Z" }),
+        key_b: thread({ id: "key_b", pinnedAt: "2026-08-02T12:00:00.000Z",
+            pinOrderKey: "b" }),
+        key_a: thread({ id: "key_a", pinnedAt: "2026-08-02T12:00:00.000Z",
+            pinOrderKey: "a" }),
+    };
+    const result = H.classifyThreads(map, {}, NOW, 3);
+    assert.deepEqual(result.pinned.map((value) => value.id),
+        ["key_a", "key_b", "keyless_new", "keyless_old"]);
+});
+
 test("working time follows the live turn and falls back through valid timestamps", () => {
     const startedAt = "2026-08-03T11:42:00.000Z";
     const requestedAt = "2026-08-03T11:41:00.000Z";
@@ -189,6 +231,7 @@ test("server config keeps only safe provider and capability fields", () => {
             label: "Laptop",
             serverVersion: "9.1.0",
             capabilities: { threadSettlement: true, threadSnooze: false,
+                threadPinning: true, threadPinReorder: false,
                 threadTitleRegeneration: true },
         },
         providers: [{
@@ -209,6 +252,8 @@ test("server config keeps only safe provider and capability fields", () => {
     });
     assert.equal(result.providers[0].ready, true);
     assert.equal(result.capabilities.threadSettlement, true);
+    assert.equal(result.capabilities.threadPinning, true);
+    assert.equal(result.capabilities.threadPinReorder, false);
     assert.equal(result.serverVersion, "9.1.0");
     assert.deepEqual(result.providers[0].models[0].optionDescriptors.map((value) => value.id),
         ["effort", "fastMode"]);

@@ -35,8 +35,10 @@ Singleton {
         .some(project => project && !project.deletedAt)
 
     // Derived, popover-ready: the active inbox only (settled and snoozed
-    // threads are dropped), sorted by urgency then recency.
+    // threads are dropped), sorted by urgency then recency. Pinned threads
+    // are their own list — shown first, and never settled away.
     property var threads: []
+    property var pinnedThreads: []
     property var snoozedThreads: []
     property var settledThreads: []
     property int runningCount: 0
@@ -168,6 +170,7 @@ Singleton {
             autoSettleAfterDays);
         const sig = JSON.stringify({
             active: projection.active,
+            pinned: projection.pinned,
             snoozed: projection.snoozed,
             settled: projection.settled
         });
@@ -177,13 +180,14 @@ Singleton {
 
         // Hidden threads keep a class of their own so one that comes back —
         // the server un-settles on a new approval or question — reads as a
-        // transition and still raises its toast.
+        // transition and still raises its toast. Pinned threads are live rows
+        // and notify like active ones.
         const next = {};
         for (const th of projection.snoozed)
             next[th.id] = "hidden";
         for (const th of projection.settled)
             next[th.id] = "hidden";
-        for (const th of projection.active) {
+        for (const th of projection.active.concat(projection.pinned)) {
             next[th.id] = th.cls;
             const prev = lastClass[th.id];
             if (prev !== undefined && prev !== th.cls)
@@ -192,6 +196,7 @@ Singleton {
         lastClass = next;
 
         threads = projection.active;
+        pinnedThreads = projection.pinned;
         snoozedThreads = projection.snoozed;
         settledThreads = projection.settled;
         runningCount = projection.runningCount;
@@ -208,7 +213,7 @@ Singleton {
     }
 
     function projectedThread(threadId) {
-        for (const list of [threads, snoozedThreads, settledThreads]) {
+        for (const list of [threads, pinnedThreads, snoozedThreads, settledThreads]) {
             const found = list.find(thread => thread.id === threadId);
             if (found)
                 return found;

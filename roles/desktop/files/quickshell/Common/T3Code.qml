@@ -53,6 +53,7 @@ Singleton {
     readonly property bool supportsSettlement: T3Rpc.supportsSettlement
     readonly property bool supportsSnooze: T3Rpc.supportsSnooze
     readonly property bool supportsTitleRegeneration: T3Rpc.supportsTitleRegeneration
+    readonly property bool supportsPinning: T3Rpc.supportsPinning
 
     // threadId → thread shell, projectId → project shell (raw server shapes)
 
@@ -102,6 +103,13 @@ Singleton {
         T3Rpc.unsnooze(threadId);
     }
 
+    function pin(threadId) {
+        T3Rpc.pin(threadId);
+    }
+
+    function unpin(threadId) {
+        T3Rpc.unpin(threadId);
+    }
 
     function stopSession(threadId) {
         T3Rpc.stopSession(threadId);
@@ -116,6 +124,7 @@ Singleton {
     // Common/T3Threads.qml owns the maps, the classification and the
     // projections. These are what the chip and the inbox read.
     readonly property var threads: T3Threads.threads
+    readonly property var pinnedThreads: T3Threads.pinnedThreads
     readonly property var snoozedThreads: T3Threads.snoozedThreads
     readonly property var settledThreads: T3Threads.settledThreads
     readonly property int runningCount: T3Threads.runningCount
@@ -135,7 +144,6 @@ Singleton {
     function threadPath(threadId) {
         return T3Threads.threadPath(threadId);
     }
-
 
     function relTime(iso) {
         return T3Threads.relTime(iso);

@@ -210,6 +210,9 @@ function projectThread(thread, projectMap, nowMs, lifecycle) {
         settledAt: thread.settledAt || null,
         snoozedUntil: thread.snoozedUntil || null,
         snoozedAt: thread.snoozedAt || null,
+        pinned: typeof thread.pinnedAt === "string",
+        pinnedAt: typeof thread.pinnedAt === "string" ? thread.pinnedAt : null,
+        pinOrderKey: typeof thread.pinOrderKey === "string" ? thread.pinOrderKey : null,
         titleRegeneration: thread.titleRegeneration || null,
         updatedAt: typeof thread.updatedAt === "string" ? thread.updatedAt : "",
         createdAt: typeof thread.createdAt === "string" ? thread.createdAt : ""
@@ -218,20 +221,39 @@ function projectThread(thread, projectMap, nowMs, lifecycle) {
 
 function classifyThreads(threadMap, projectMap, nowMs, autoSettleAfterDays) {
     var active = [];
+    var pinned = [];
     var snoozed = [];
     var settled = [];
     var runningCount = 0;
     var attentionCount = 0;
     var doneCount = 0;
     var rank = { attention: 0, error: 1, running: 2, done: 3, idle: 4 };
+    var countClass = function(cls) {
+        if (cls === "running")
+            runningCount++;
+        else if (cls === "attention" || cls === "error")
+            attentionCount++;
+        else if (cls === "done")
+            doneCount++;
+    };
     var source = threadMap && typeof threadMap === "object" ? threadMap : {};
     for (var id in source) {
         var thread = source[id];
         if (!thread || thread.archivedAt)
             continue;
-        // Snooze is an overlay and therefore wins over settledness.
+        // Snooze is an overlay and therefore wins over settledness — and over
+        // a pin, matching the reference sidebar.
         if (isEffectivelySnoozed(thread, nowMs)) {
             snoozed.push(projectThread(thread, projectMap, nowMs, "snoozed"));
+            continue;
+        }
+        // A pin beats settledness: the reference client keeps a pinned thread
+        // in its Pinned section however quiet it goes, so it stays a live row
+        // here too — classified and counted like any active thread.
+        if (typeof thread.pinnedAt === "string") {
+            var pinnedProjected = projectThread(thread, projectMap, nowMs, "active");
+            pinned.push(pinnedProjected);
+            countClass(pinnedProjected.cls);
             continue;
         }
         if (isEffectivelySettled(thread, nowMs, autoSettleAfterDays)) {
@@ -240,12 +262,7 @@ function classifyThreads(threadMap, projectMap, nowMs, autoSettleAfterDays) {
         }
         var projected = projectThread(thread, projectMap, nowMs, "active");
         active.push(projected);
-        if (projected.cls === "running")
-            runningCount++;
-        else if (projected.cls === "attention" || projected.cls === "error")
-            attentionCount++;
-        else if (projected.cls === "done")
-            doneCount++;
+        countClass(projected.cls);
     }
     active.sort(function(left, right) {
         var rankDelta = rank[left.cls] - rank[right.cls];
@@ -256,6 +273,7 @@ function classifyThreads(threadMap, projectMap, nowMs, autoSettleAfterDays) {
             return timeDelta;
         return String(left.id).localeCompare(String(right.id));
     });
+    pinned.sort(comparePinned);
     var byRecent = function(left, right) {
         var delta = parseMs(right.updatedAt) - parseMs(left.updatedAt);
         return !isNaN(delta) && delta !== 0
@@ -265,12 +283,33 @@ function classifyThreads(threadMap, projectMap, nowMs, autoSettleAfterDays) {
     settled.sort(byRecent);
     return {
         active: active,
+        pinned: pinned,
         snoozed: snoozed,
         settled: settled,
         runningCount: runningCount,
         attentionCount: attentionCount,
         doneCount: doneCount
     };
+}
+
+// The reference client's pinned order: threads carrying an orderKey first,
+// ascending (plain string comparison — the keys are fractional indexes),
+// then keyless pins newest-created first.
+function comparePinned(left, right) {
+    var tieBreak = String(left.id).localeCompare(String(right.id));
+    if (left.pinOrderKey !== null && right.pinOrderKey !== null) {
+        if (left.pinOrderKey < right.pinOrderKey)
+            return -1;
+        if (left.pinOrderKey > right.pinOrderKey)
+            return 1;
+        return tieBreak;
+    }
+    if (left.pinOrderKey !== null)
+        return -1;
+    if (right.pinOrderKey !== null)
+        return 1;
+    var delta = parseMs(right.createdAt) - parseMs(left.createdAt);
+    return !isNaN(delta) && delta !== 0 ? delta : tieBreak;
 }
 
 function normalizeScopes(rawScope, metadataKnown) {
@@ -362,6 +401,8 @@ function sanitizeServerConfig(config) {
         connectionProbe: rawCapabilities.connectionProbe === true,
         threadSettlement: rawCapabilities.threadSettlement === true,
         threadSnooze: rawCapabilities.threadSnooze === true,
+        threadPinning: rawCapabilities.threadPinning === true,
+        threadPinReorder: rawCapabilities.threadPinReorder === true,
         threadTitleRegeneration: rawCapabilities.threadTitleRegeneration === true
     };
     var providers = [];

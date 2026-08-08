@@ -34,6 +34,8 @@ Singleton {
         T3Connection.environmentCapabilities.threadSnooze === true
     readonly property bool supportsTitleRegeneration:
         T3Connection.environmentCapabilities.threadTitleRegeneration === true
+    readonly property bool supportsPinning:
+        T3Connection.environmentCapabilities.threadPinning === true
 
     function putRpcHandler(id, handler) {
         dropRpcHandler(id);
@@ -445,6 +447,31 @@ Singleton {
             commandId: genId(),
             threadId: threadId,
             reason: "user"
+        }, key, false);
+    }
+
+    // Pinning is metadata, not lifecycle: the reference client offers it on
+    // running and blocked threads alike, so there is no idleness gate here.
+    // orderKey is omitted — the bar never reorders pins.
+    function pin(threadId) {
+        const key = actionKey("pin", threadId, "");
+        if (!supportsPinning)
+            return rejectAction(key, "Pinning is not supported by this server", false);
+        return dispatch({
+            type: "thread.pin",
+            commandId: genId(),
+            threadId: threadId
+        }, key, false);
+    }
+
+    function unpin(threadId) {
+        const key = actionKey("unpin", threadId, "");
+        if (!supportsPinning)
+            return rejectAction(key, "Pinning is not supported by this server", false);
+        return dispatch({
+            type: "thread.unpin",
+            commandId: genId(),
+            threadId: threadId
         }, key, false);
     }
 

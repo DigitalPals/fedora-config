@@ -374,8 +374,9 @@ Column {
             && root.thread.lifecycle === "active" && T3Code.supportsSettlement
         readonly property bool canUnsettleHere: root.thread !== null
             && root.thread.lifecycle === "settled" && T3Code.supportsSettlement
-        readonly property bool hasLifecycleMenuItems: sessionLive || canSnoozeHere || canWakeHere
-            || canSettleHere || canUnsettleHere
+        readonly property bool canPinHere: root.thread !== null && T3Code.supportsPinning
+        readonly property bool hasLifecycleMenuItems: sessionLive || canPinHere
+            || canSnoozeHere || canWakeHere || canSettleHere || canUnsettleHere
         readonly property bool hasCopyMenuItems: root.copyPath !== "" || root.copyBranch !== ""
         readonly property bool hasMenuItems: root.hasGitMenuItems || hasLifecycleMenuItems
             || hasCopyMenuItems
@@ -530,6 +531,28 @@ Column {
 
                 MenuDivider {
                     visible: root.hasGitMenuItems && header.hasLifecycleMenuItems
+                }
+
+                // The reference client lists pin above the other lifecycle
+                // actions in its thread menu.
+                MenuEntry {
+                    visible: header.canPinHere
+                    label: {
+                        const kind = root.thread !== null && root.thread.pinned ? "unpin" : "pin";
+                        if (T3Code.actionPending(kind, root.threadId, ""))
+                            return kind === "unpin" ? "Unpinning…" : "Pinning…";
+                        return kind === "unpin" ? "Unpin thread" : "Pin thread";
+                    }
+                    enabled: T3Code.canDispatch
+                        && !T3Code.actionPending("pin", root.threadId, "")
+                        && !T3Code.actionPending("unpin", root.threadId, "")
+                    onTriggered: {
+                        root.menuOpen = false;
+                        if (root.thread !== null && root.thread.pinned)
+                            T3Code.unpin(root.threadId);
+                        else
+                            T3Code.pin(root.threadId);
+                    }
                 }
 
                 MenuEntry {
@@ -1147,7 +1170,7 @@ Column {
         width: parent.width
         text: {
             for (const kind of ["prompt", "interrupt", "session-stop", "settle", "unsettle",
-                    "snooze", "unsnooze"]) {
+                    "snooze", "unsnooze", "pin", "unpin"]) {
                 const error = T3Code.actionError(kind, root.threadId, "");
                 if (error !== "")
                     return error;
