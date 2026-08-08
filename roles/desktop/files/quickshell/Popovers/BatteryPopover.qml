@@ -4,6 +4,7 @@ import QtQuick
 // the battery reading itself comes from Common/Battery.qml.
 import Quickshell.Services.UPower
 import "../Common"
+import "../Common/Format.js" as Format
 
 Surface {
     id: root
@@ -11,9 +12,9 @@ Surface {
     function fmtDuration(secs) {
         if (!secs || secs <= 0)
             return "";
-        const h = Math.floor(secs / 3600);
-        const m = Math.round((secs % 3600) / 60);
-        return h > 0 ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
+        const h = Math.floor(secs / Format.HOUR);
+        const m = Math.round((secs % Format.HOUR) / Format.MINUTE);
+        return h > 0 ? `${h} h ${Format.pad2(m)} min` : `${m} min`;
     }
 
     // Percentage + state

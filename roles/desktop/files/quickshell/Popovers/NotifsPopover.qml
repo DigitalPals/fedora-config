@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Notifications
 import "../Common"
+import "../Common/Format.js" as Format
 
 // Notification center built from the same anatomy as the popup card: source
 // icon, app · summary header, timestamp, wrapped body, whole-card default
@@ -50,9 +51,9 @@ Surface {
 
     readonly property real nowMs: relativeClock.date.getTime()
     readonly property var recentGroups: groups.filter(group =>
-        nowMs - group.items[0].arrived < 3600000)
+        nowMs - group.items[0].arrived < Format.MS_HOUR)
     readonly property var earlierGroups: groups.filter(group =>
-        nowMs - group.items[0].arrived >= 3600000)
+        nowMs - group.items[0].arrived >= Format.MS_HOUR)
 
     // ---- card wiring ----------------------------------------------------
 

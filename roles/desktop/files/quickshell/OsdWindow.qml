@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Wayland
 import "Common"
 import "Popovers"
+import "Common/Format.js" as Format
 
 // Volume / brightness OSD (design t3, shape 3a): a bottom-center pill —
 // icon · blocked meter · mono % — on the overlay layer, no focus steal.
@@ -176,7 +177,7 @@ PanelWindow {
                 const steps = wheel.angleDelta.y / 120;
                 if (root.volumeKind) {
                     if (root.audio)
-                        root.audio.volume = Math.max(0, Math.min(1, root.audio.volume + steps * 0.05));
+                        root.audio.volume = Format.clamp01(root.audio.volume + steps * 0.05);
                 } else {
                     SysInfo.setBrightness(SysInfo.brightness + steps * 5);
                     Osd.show("brightness");

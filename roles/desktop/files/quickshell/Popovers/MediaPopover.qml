@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell.Services.Mpris
 import "../Common"
 import "../Common/StatusHelpers.js" as StatusHelpers
+import "../Common/Format.js" as Format
 
 // Media view (design t5): header with source switcher, full-bleed
 // artwork, centered track info, seek bar, transport row. Volume lives in
@@ -28,14 +29,6 @@ Surface {
     property real pos: 0
     readonly property real len: player && player.lengthSupported ? player.length : 0
     readonly property bool hasArt: player !== null && player.trackArtUrl !== ""
-
-    function fmt(secs) {
-        if (!secs || secs < 0)
-            return "0:00";
-        const m = Math.floor(secs / 60);
-        const s = Math.floor(secs % 60);
-        return `${m}:${String(s).padStart(2, "0")}`;
-    }
 
     Timer {
         interval: 1000
@@ -250,7 +243,7 @@ Surface {
             Text {
                 id: positionText
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.fmt(root.pos)
+                text: Format.mmss(root.pos)
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontSecondary
                 font.weight: Theme.weightMedium
@@ -261,7 +254,7 @@ Surface {
                 id: durationText
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.len > 0 ? root.fmt(root.len) : "--:--"
+                text: root.len > 0 ? Format.mmss(root.len) : "--:--"
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontSecondary
                 font.weight: Theme.weightMedium

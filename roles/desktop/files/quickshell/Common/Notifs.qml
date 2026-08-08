@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Services.Notifications
 import "NotifHelpers.js" as Helpers
 import "SettingsHelpers.js" as SettingsHelpers
+import "Format.js" as Format
 
 Singleton {
     id: root
@@ -269,12 +270,12 @@ Singleton {
 
     function timeAgo(arrived, now) {
         const s = Math.max(0, ((now || Date.now()) - arrived) / 1000);
-        if (s < 60)
+        if (s < Format.MINUTE)
             return "now";
-        if (s < 3600)
-            return Math.floor(s / 60) + "m";
-        if (s < 86400)
-            return Math.floor(s / 3600) + "h";
-        return Math.floor(s / 86400) + "d";
+        if (s < Format.HOUR)
+            return Math.floor(s / Format.MINUTE) + "m";
+        if (s < Format.DAY)
+            return Math.floor(s / Format.HOUR) + "h";
+        return Math.floor(s / Format.DAY) + "d";
     }
 }

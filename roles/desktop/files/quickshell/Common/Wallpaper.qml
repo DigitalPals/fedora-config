@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Qt.labs.folderlistmodel
 import "SettingsHelpers.js" as SettingsHelpers
+import "Format.js" as Format
 
 // Wallpaper management: quickshell draws the image on the background layer;
 // this singleton tracks the directory and delegates the current selection to
@@ -196,7 +197,7 @@ Singleton {
 
     // ---- rotate wallpaper -------------------------------------------------
     readonly property int shuffleMs: Settings.shuffle === "15m" ? 900000
-        : Settings.shuffle === "1h" ? 3600000 : 86400000
+        : Settings.shuffle === "1h" ? Format.MS_HOUR : Format.MS_DAY
 
     Timer {
         running: Settings.shuffle !== "Off"
@@ -234,26 +235,14 @@ Singleton {
     // Average color → hue only; saturation/lightness are pinned to the
     // built-in palette's pastel band (#9ecbeb ≈ S.53 L.77) so any wallpaper
     // yields an AA-safe accent and accentFg stays legible on accent fills.
+    // The same two helpers drive the accent-hue slider, and they carry the
+    // 0.5/0.75 constants this used to restate; hexHue rounds to whole
+    // degrees on the way through, which moves a channel by at most 1/255.
     function pastelize(hexText) {
         const match = hexText.match(/[0-9a-fA-F]{6}/);
         if (!match)
             return "";
-        const r = parseInt(match[0].slice(0, 2), 16) / 255;
-        const g = parseInt(match[0].slice(2, 4), 16) / 255;
-        const b = parseInt(match[0].slice(4, 6), 16) / 255;
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-        let h = 0;
-        if (max !== min) {
-            const d = max - min;
-            if (max === r)
-                h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-            else if (max === g)
-                h = ((b - r) / d + 2) / 6;
-            else
-                h = ((r - g) / d + 4) / 6;
-        }
-        return String(Qt.hsla(h, 0.5, 0.75, 1));
+        return SettingsHelpers.hueToHex(SettingsHelpers.hexHue("#" + match[0], 0));
     }
 
     Process {

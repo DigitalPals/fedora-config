@@ -199,6 +199,8 @@ Rectangle {
             TextInput {
                 id: custom
                 property bool syncing: false
+                // Not dead: onDraftKeyChanged below re-syncs the field when
+                // the card moves to another thread, request or question.
                 property string draftKey: root.question
                     ? root.threadId + "|" + root.request.requestId + "|" + root.question.id : ""
 

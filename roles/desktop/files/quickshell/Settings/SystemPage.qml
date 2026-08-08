@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import "../Common"
+import "../Common/Format.js" as Format
 
 // System page (design v2): clock/temperature formats, night-light warmth,
 // OSD placement, T3 usage polling, and the config-file footer.
@@ -122,8 +123,7 @@ SettingsPage {
             label: "Poll every"
             settingKey: "pollMax"
             model: [{ value: 60, label: "1 min" }, { value: 300, label: "5 min" }, { value: 600, label: "10 min" }]
-            caption: "next " + Math.floor(page.pollLeft / 60) + ":"
-                + String(page.pollLeft % 60).padStart(2, "0")
+            caption: "next " + Format.mmss(page.pollLeft)
         }
     }
 

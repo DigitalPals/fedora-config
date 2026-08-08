@@ -5,6 +5,7 @@ import "../Common"
 import "../Popovers"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 import "../Common/PanelRegistryData.js" as PanelRegistry
+import "../Common/Format.js" as Format
 
 // One persistent connected surface for every bar module. Triggers stay in
 // the menubar while this host grows the panel directly from the bar edge.
@@ -72,7 +73,7 @@ Item {
     readonly property rect effectiveAnchor: Popouts.anchorRect.width > 0
         ? Popouts.anchorRect : activeIslandRect
     readonly property real barBottom: activeIslandRect.y + activeIslandRect.height
-    readonly property real bloomProgress: Math.max(0, Math.min(1, openProgress))
+    readonly property real bloomProgress: Format.clamp01(openProgress)
     readonly property var edgeFlares: LayoutHelpers.edgeFlareRadii({
         island: Popouts.island,
         floating: Settings.floating,

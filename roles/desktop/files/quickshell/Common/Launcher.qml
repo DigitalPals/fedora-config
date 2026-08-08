@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Format.js" as Format
 
 // Launcher lifecycle and persistent application-use ranking. The selected
 // screen is captured when opening so the overlay does not jump mid-search.
@@ -43,7 +44,7 @@ Singleton {
         const item = usage[app.id || app.name];
         if (!item)
             return 0;
-        const ageDays = Math.max(0, Date.now() - item.last) / 86400000;
+        const ageDays = Math.max(0, Date.now() - item.last) / Format.MS_DAY;
         return Math.log(1 + item.count) * 180 + 700 / (1 + ageDays);
     }
 

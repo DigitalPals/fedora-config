@@ -12,7 +12,6 @@ Controls.Dialog {
 
     signal folderChosen(string path)
     property string selectedPath: ""
-    property string displayPath: folderModel.folder.toString()
 
     parent: Controls.Overlay.overlay
     anchors.centerIn: parent

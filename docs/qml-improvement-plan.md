@@ -2094,7 +2094,57 @@ consistently.
 
 </details>
 
-### [ ] WP6.6 ∥ Formatting helpers + small dead code
+### [x] WP6.6 ∥ Formatting helpers + small dead code
+
+> Done, with four corrections to the WP's own counts. `Common/Format.js` (52)
+> carries the constants, `pad2`, `clamp01` and `mmss`; 21 files changed, net
+> −4 lines, which is the point — this WP buys single definitions, not brevity.
+> Notes:
+> - **`T3RequestCard.draftKey` is not dead, and deleting it broke the file.**
+>   It has an `onDraftKeyChanged` handler that re-syncs the custom-answer field
+>   when the card moves to another thread, request or question. `tests/run`
+>   caught it immediately — qmllint reported "no matching signal found for
+>   handler onDraftKeyChanged" — which is exactly what WP0.4's promotion of
+>   `unqualified` to an error was for. Restored, with a comment saying why it
+>   looks unused. The other five deletions were genuinely unreferenced.
+> - **The five coarse duration formatters were not folded, deliberately.**
+>   Usage's quota reset, the battery estimate, Notifs' "5m", and T3's two
+>   working-timer variants render six different shapes ("3d 05h", "2 h 05 min",
+>   "5m", "45s", "12m 30s", "5m" ceil) for six contexts. One function would
+>   need a format argument per caller — the duplication again, with
+>   indirection. They share the arithmetic, which is what Format.js carries;
+>   each now spells its thresholds `Format.HOUR` rather than `3600`.
+> - **clamp01 was ×9, not ×15.** Four of the fifteen clamp to *100*, not 1
+>   (`SysInfo` ×3, `UsagePopover` ×1) and are a different function; they stay.
+> - **m:ss was ×3, not ×2** — `Settings/SystemPage.qml` restated the popover's
+>   countdown inline. All three now call `mmss`, which is *not* bit-identical
+>   to two of them: the usage and system copies rendered "-1:-30" and "0:12.7"
+>   for negative and fractional input where `mmss` reads zero. Neither can
+>   occur — `Usage.nextPollSecs` is a clamped `int` — so this is a latent bug
+>   removed, not a behaviour change. A test walks 0–4000 s against all three
+>   originals.
+> - **`pastelize` differs from the helpers by at most 1/255 in one channel**,
+>   because `hexHue` rounds to whole degrees on the way through. Measured over
+>   50,653 colours in Node, then confirmed inside QML with a `qs -p` harness
+>   calling the shipped function: 9 of 10 cases byte-identical, the tenth off
+>   by one in green — and it is the same case the sweep named as worst.
+> - `Common/T3CodeHelpers.js` keeps its bare `60000`: a `.js` cannot import
+>   another `.js` the way a QML file can without introducing a second module
+>   mechanism for one constant. The regression test exempts it by name.
+> - Verified live: control centre meters, media seek labels, the usage
+>   popover's "next poll 2:59" and "resets in 6d 06h", the battery popover's
+>   "12 h 12 min", toast countdown bar, launcher ranking, and — for the
+>   `shell.qml` change — a `notify-send` sent immediately after a reload with
+>   no popover opened, which only lands if `Component.onCompleted` brought the
+>   notification server up the way the `_init` array did.
+> - New `tests/quickshell/format.test.cjs` (5 tests), all checked against
+>   deliberately broken variants. One of them asserts the replaced idioms do
+>   not come back anywhere in the tree.
+
+<details>
+<summary>Original WP6.6 specification</summary>
+
+### WP6.6 ∥ Formatting helpers + small dead code
 - One `Common/Format.js`: `m:ss` (×2), d/h/m duration (×5 variants!), clamp01
   (×15), hour/day ms constants (×5).
 - `Wallpaper.pastelize` (Wallpaper.qml:237–257) → call the already-tested
@@ -2105,6 +2155,8 @@ consistently.
   `nm-connection-editor` command string in WifiPopover (×2 → one property).
 - Replace `shell.qml:150` `_init` side-effect array with explicit
   `Component.onCompleted` touches.
+
+</details>
 
 ### [ ] WP6.7 ∥ Interaction polish sweep
 - `cursorShape: Qt.PointingHandCursor` on the clickable MouseAreas missing it

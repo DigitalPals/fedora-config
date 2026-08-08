@@ -1,4 +1,5 @@
 import QtQuick
+import "Format.js" as Format
 
 // The one slider: 4px track, 10px knob. Continuous while `step` is 0 (the
 // media seek bar), stepped otherwise (settings rows, all of which set one).
@@ -21,7 +22,7 @@ Item {
     property string accessibleName: "Slider"
     signal moved(real value)
 
-    readonly property real ratio: Math.max(0, Math.min(1, (value - min) / (max - min)))
+    readonly property real ratio: Format.clamp01((value - min) / (max - min))
     // Arrow keys and assistive increments move by `step`. A continuous slider
     // has no grain of its own, so it moves by a twentieth of its range —
     // without this a focusable seek bar would ignore the keyboard entirely.

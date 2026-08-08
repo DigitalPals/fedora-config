@@ -148,7 +148,12 @@ ShellRoot {
     NotificationToasts {}
     OsdWindow {}
 
-    // Touch the singletons so notifications collect, usage polls, and
-    // settings load from session start, not first popover open.
-    readonly property var _init: [Notifs.server, Usage.pollIntervalSecs, Settings.loaded]
+    // Reading a singleton's property is what constructs it. Notifications
+    // must start collecting, usage must start polling and settings must load
+    // from session start rather than from the first popover open.
+    Component.onCompleted: {
+        void Notifs.server;
+        void Usage.pollIntervalSecs;
+        void Settings.loaded;
+    }
 }

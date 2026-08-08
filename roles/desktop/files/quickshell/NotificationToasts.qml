@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import "Common"
+import "Common/Format.js" as Format
 
 // Readable fixed-width notification cards. Newest of at most three is on top;
 // normal cards use an adaptive timer based on the configured duration, paused
@@ -195,7 +196,7 @@ PanelWindow {
                         Rectangle {
                             height: parent.height
                             width: slot.total > 0
-                                ? parent.width * Math.max(0, Math.min(1, slot.remaining / slot.total))
+                                ? parent.width * Format.clamp01(slot.remaining / slot.total)
                                 : 0
                             color: Theme.accent
                         }

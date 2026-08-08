@@ -21,7 +21,6 @@ Column {
     readonly property var models: newThread ? T3Code.newModelChoices()
         : T3Code.threadModelChoices(threadId)
     readonly property var traits: T3Code.draftTraitDescriptors(draft)
-    readonly property var selectedProvider: T3Code.providerConfiguration(draft.instanceId)
     readonly property bool showInteraction: draft.modeFixed !== true
         && T3Code.providerShowsInteraction(draft.instanceId)
     readonly property bool overLimit: promptEdit.text.length > T3Code.maxPromptChars

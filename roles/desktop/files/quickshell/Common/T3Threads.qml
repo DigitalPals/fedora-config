@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import "T3CodeHelpers.js" as Helpers
+import "Format.js" as Format
 
 // What the shell knows about threads: the raw maps the server streams in, the
 // classification that turns them into "running / needs attention / done /
@@ -225,7 +226,7 @@ Singleton {
     // Auto-settle and snooze wake are clock-driven: without a tick a thread
     // would sit in the list until the next server event.
     Timer {
-        interval: 60000
+        interval: Format.MS_MINUTE
         repeat: true
         running: T3Connection.state === "connected"
         onTriggered: {

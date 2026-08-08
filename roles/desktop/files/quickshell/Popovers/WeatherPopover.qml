@@ -7,7 +7,6 @@ import "../Common"
 Surface {
     id: root
 
-    implicitWidth: Theme.popWidth
     padding: Theme.surfacePadding
     spacing: 8
 

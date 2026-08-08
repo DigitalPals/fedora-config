@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "ProcHelpers.js" as ProcHelpers
+import "Format.js" as Format
 
 Singleton {
     id: root
@@ -136,20 +137,14 @@ Singleton {
         let s = resetsAt - Date.now() / 1000;
         if (s <= 0)
             return "now";
-        const d = Math.floor(s / 86400);
-        const h = Math.floor((s % 86400) / 3600);
-        const m = Math.floor((s % 3600) / 60);
+        const d = Math.floor(s / Format.DAY);
+        const h = Math.floor((s % Format.DAY) / Format.HOUR);
+        const m = Math.floor((s % Format.HOUR) / Format.MINUTE);
         if (d > 0)
-            return `${d}d ${String(h).padStart(2, "0")}h`;
+            return `${d}d ${Format.pad2(h)}h`;
         if (h > 0)
             return `${h}h ${m}m`;
         return `${Math.max(1, m)}m`;
-    }
-
-    function formatCountdown(secs) {
-        const m = Math.floor(secs / 60);
-        const s = secs % 60;
-        return `${m}:${String(s).padStart(2, "0")}`;
     }
 
     // Absolute reset moment: "14:12" within 24h, else "Aug 5, 08:00".

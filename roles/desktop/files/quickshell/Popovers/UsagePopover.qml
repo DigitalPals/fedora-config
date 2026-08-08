@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "../Common"
+import "../Common/Format.js" as Format
 
 // Per-provider usage view (design 1a + 1c): brand header with mini
 // provider tabs, blocked-bar window cards with status borders and
@@ -640,7 +641,7 @@ Surface {
             anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.RichText
-            text: `next poll <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatCountdown(Usage.nextPollSecs)}</font>`
+            text: `next poll <font color="${Theme.textLow}" face="${Theme.fontMono}">${Format.mmss(Usage.nextPollSecs)}</font>`
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontCaption
             color: Theme.textDim

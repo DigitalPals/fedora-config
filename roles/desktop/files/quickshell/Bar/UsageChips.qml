@@ -55,10 +55,7 @@ Item {
         // tab in the popover still shows the sign-in hint.
         return p.status === "ok" || p.kind !== "nocreds";
     })
-    readonly property var visibleKeys: {
-        return availableKeys;
-    }
-    readonly property bool empty: visibleKeys.length === 0
+    readonly property bool empty: availableKeys.length === 0
     readonly property real detailSaving: {
         if (empty)
             return emptyText.implicitWidth + 6;
@@ -152,7 +149,7 @@ Item {
 
         Repeater {
             id: providerRepeater
-            model: root.visibleKeys
+            model: root.availableKeys
 
             delegate: Rectangle {
                 id: chip

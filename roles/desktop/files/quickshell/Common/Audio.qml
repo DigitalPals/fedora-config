@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Services.Pipewire
+import "Format.js" as Format
 
 // Default audio devices for the whole shell. Pipewire only populates a
 // node's `audio` group while something tracks it, and the bar is
@@ -40,7 +41,7 @@ Singleton {
     function setVolume(fraction) {
         if (!ready)
             return;
-        sink.audio.volume = Math.max(0, Math.min(1, fraction));
+        sink.audio.volume = Format.clamp01(fraction);
     }
 
     function stepVolume(delta) {
@@ -62,7 +63,7 @@ Singleton {
     function setSourceVolume(fraction) {
         if (!sourceReady)
             return;
-        source.audio.volume = Math.max(0, Math.min(1, fraction));
+        source.audio.volume = Format.clamp01(fraction);
     }
 
     function toggleSourceMuted() {

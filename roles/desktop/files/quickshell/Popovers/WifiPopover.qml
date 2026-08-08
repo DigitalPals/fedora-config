@@ -10,6 +10,12 @@ import "../Common/StatusHelpers.js" as StatusHelpers
 Surface {
     id: root
 
+    // Both the header link and the connected-network row open the same
+    // editor, falling back to GNOME's panel where NetworkManager's own is
+    // not installed.
+    readonly property var networkSettingsCommand: ["sh", "-c",
+        "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center wifi"]
+
     property string ipAddress: ""
 
     Process {
@@ -156,7 +162,7 @@ Surface {
                 anchors.fill: parent
                 hoverEnabled: true
                 onClicked: {
-                    Quickshell.execDetached(["sh", "-c", "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center wifi"]);
+                    Quickshell.execDetached(root.networkSettingsCommand);
                     Popouts.close();
                 }
             }
@@ -262,7 +268,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: "Network settings"
             onClicked: {
-                Quickshell.execDetached(["sh", "-c", "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center wifi"]);
+                Quickshell.execDetached(root.networkSettingsCommand);
                 Popouts.close();
             }
         }

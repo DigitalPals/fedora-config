@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
+import "../Common/Format.js" as Format
 
 // Shared "blocked" meter (Lumen language): a strip of fixed-width blocks
 // with the filled fraction overlaid in color. One component for every
@@ -26,7 +27,7 @@ Item {
     readonly property int pitch: Math.max(1, root.blockWidth + root.gap)
     readonly property int blocks: Math.max(0, Math.ceil(root.width / root.pitch))
     readonly property int fillWidth: Math.round(
-        Math.max(0, Math.min(1, root.value)) * root.width)
+        Format.clamp01(root.value) * root.width)
     // Filled width of the bisected block; 0 when the boundary falls in a gap
     // or exactly on a block edge, in which case no partial block is drawn.
     readonly property int partialWidth: {
@@ -60,10 +61,10 @@ Item {
         visible: root.interactive
         anchors.fill: parent
         anchors.margins: -4
-        onPressed: mouse => root.moved(Math.max(0, Math.min(1, mouse.x / root.width)))
+        onPressed: mouse => root.moved(Format.clamp01(mouse.x / root.width))
         onPositionChanged: mouse => {
             if (pressed)
-                root.moved(Math.max(0, Math.min(1, mouse.x / root.width)));
+                root.moved(Format.clamp01(mouse.x / root.width));
         }
     }
 }
