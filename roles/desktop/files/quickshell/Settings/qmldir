@@ -11,8 +11,6 @@ PickerRow PickerRow.qml
 PillRow PillRow.qml
 PreviewStrip PreviewStrip.qml
 SectionHeader SectionHeader.qml
-SettingsSlider SettingsSlider.qml
-SettingsSwitch SettingsSwitch.qml
 SettingsTextRow SettingsTextRow.qml
 SettingsAction SettingsAction.qml
 SettingsCard SettingsCard.qml

@@ -77,6 +77,7 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             checked: WifiState.enabled
+            accessibleName: "Wi-Fi"
             onToggled: v => WifiState.setEnabled(v)
         }
     }

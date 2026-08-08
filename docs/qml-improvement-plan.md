@@ -1860,12 +1860,69 @@ reconnect behavior (kill server, watch backoff in journal).
 
 </details>
 
-### [ ] WP6.2 ∥ Unified Toggle/Slider with accessibility
+### [x] WP6.2 ∥ Unified Toggle/Slider with accessibility
+
+> Done. Four types → `Common/Toggle.qml` and `Common/HSlider.qml`; 271 lines
+> → 195. Notes:
+> - **The premise checked out and then some.** A popout takes
+>   `WlrKeyboardFocus.OnDemand` while it is open
+>   (`Bar/BarPopoutWindow.qml:36`), so the popover switches sat inside a
+>   focused surface with no way to focus them. Proven both ways on the live
+>   shell with `wtype`: against the merged tree, Tab then Space on the
+>   notifications popover flips `notifDnd` false → true → false; against the
+>   HEAD tree the identical sequence leaves it false. `wtype` is installed and
+>   is the cheapest way to test a real key path — worth remembering.
+> - **Home is `Common/`, not a new widgets directory.** Both consumer
+>   directories already `import "../Common"` for Theme, so the merge cost no
+>   new import line anywhere, and `Common/qmldir` already had a plain-types
+>   section (`Claim`). WP6.4 can follow the same route.
+> - **Size variants are one Theme token per surface, not a pair of ints.**
+>   `Theme.switchPopover / switchRow / switchCompact` are `var` objects
+>   carrying `box` (hit area) and `track`, in the idiom Theme already uses for
+>   `tabularNumberFeatures`. One property at the call site — `metrics:` — and
+>   the knob follows from the track height, so the three sizes state only
+>   what actually differs. The box has to be carried separately: the popover
+>   is 44×34 around a 34×20 track while both settings scales are 34×28, and
+>   no single formula produces all three. Dropping the popover's wider box
+>   would have shifted four popovers 5px and shrunk a hit target in the WP
+>   that exists to improve reachability.
+> - **`step: 0` now means continuous**, which is how the media seek bar uses
+>   it; `SliderRow` pins `step: 1` so a settings row that forgets one stays
+>   stepped. All 18 existing rows set it explicitly. A continuous slider has
+>   no grain for the keyboard, so `nudge`/`pageNudge` fall back to a
+>   twentieth/fifth of the range — without that a focusable seek bar would
+>   ignore arrow keys entirely.
+> - Popover switches gain the knob-slide animation, the focus ring and a
+>   pointing-hand cursor (the last is WP6.7's sweep, arriving early here).
+>   Everything else is pixel-identical: 0 differing pixels for the Wi-Fi
+>   popover switch and for the Modules and Appearance settings pages, against
+>   a HEAD tree deployed from `git archive`. Notifications differs by 1018px,
+>   all of it inside the animated toast preview WP6.8 flags — the switches
+>   and sliders on that page show none. The probe has teeth: forcing
+>   `Theme.switchRow` on the Wi-Fi switch moves 1770px.
+> - **`compare -metric AE` is not a pixel count in ImageMagick 7 here** — it
+>   returned 6.7e7 for a 120×80 crop. Use
+>   `magick a b -compose difference -composite -colorspace Gray -threshold 8%
+>   -format '%[fx:mean*w*h]' info:` instead, and check it against a
+>   deliberately broken variant before believing a zero.
+> - New `tests/quickshell/controls.test.cjs` (4 tests) guards the outcome
+>   rather than the refactor: one definition per control, both carrying
+>   `activeFocusOnTab`/`Accessible.role`/`Keys.onPressed`, and every call site
+>   passing an `accessibleName` so nothing ships announcing itself as
+>   "Toggle". Its last test asserts the block scanner still matches anything,
+>   so the call-site check cannot pass by finding nothing.
+
+<details>
+<summary>Original WP6.2 specification</summary>
+
+### WP6.2 ∥ Unified Toggle/Slider with accessibility
 `Popovers/Toggle.qml` + `Settings/SettingsSwitch.qml` → one parameterized
 switch; `Popovers/HSlider.qml` + `Settings/SettingsSlider.qml` → one slider.
 The popover variants currently have **zero** keyboard/`Accessible` support —
 the merged components carry the Settings versions' a11y at both sizes. Size
 variants become Theme tokens.
+
+</details>
 
 ### [x] WP6.3 ∥ Theme tokens + adoption
 
@@ -1939,8 +1996,9 @@ consistently.
   `Component.onCompleted` touches.
 
 ### [ ] WP6.7 ∥ Interaction polish sweep
-- `cursorShape: Qt.PointingHandCursor` on the 56 clickable MouseAreas missing
-  it (all of `Popovers/`, 4 in Bar).
+- `cursorShape: Qt.PointingHandCursor` on the clickable MouseAreas missing it
+  (all of `Popovers/`, 4 in Bar). The count was 56; WP6.2 took the five
+  switch/slider sites, so re-survey rather than trusting the number.
 - `Accessible.role`/`name` for the T3 pages that already have
   `activeFocusOnTab` (focus ring with no label is worse than neither).
 - Settings key audit: `Settings.qml` `snapshot()`/`applyLoaded()`/`sectionKeys`

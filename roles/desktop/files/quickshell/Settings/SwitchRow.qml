@@ -40,13 +40,14 @@ Item {
         maximumLineCount: root.narrow ? 2 : 1
     }
 
-    SettingsSwitch {
+    Toggle {
         id: control
         anchors.right: undoSlot.left
         anchors.rightMargin: 2
         y: root.narrow ? 0 : (parent.height - height) / 2
+        metrics: Theme.switchRow
         checked: root.checked
-        Accessible.name: root.label
+        accessibleName: root.label
         onToggled: value => root.toggled(value)
     }
 

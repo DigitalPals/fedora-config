@@ -234,6 +234,7 @@ Surface {
             width: parent.width
             value: root.len > 0 ? root.pos / root.len : 0
             dimmed: !root.player || !root.player.canSeek || root.len <= 0
+            accessibleName: "Seek"
             onMoved: v => {
                 if (root.player && root.player.canSeek && root.len > 0) {
                     root.player.position = v * root.len;

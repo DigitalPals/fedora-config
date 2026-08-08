@@ -598,6 +598,7 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             checked: Notifs.dnd
+            accessibleName: "Do Not Disturb"
             onToggled: value => Notifs.setDnd(value)
         }
     }

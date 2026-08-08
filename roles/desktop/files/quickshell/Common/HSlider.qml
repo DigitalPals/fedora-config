@@ -1,55 +1,65 @@
 import QtQuick
-import "../Common"
 
-// Stepped min/max slider in the HSlider drawing language: 4px track, 10px
-// knob. gradientTrack renders the night-light warmth ramp with no fill.
+// The one slider: 4px track, 10px knob. Continuous while `step` is 0 (the
+// media seek bar), stepped otherwise (settings rows, all of which set one).
+// `gradientTrack` renders the night-light warmth ramp and `hueTrack` the
+// accent wheel, both with no fill.
+//
+// Merged from the popover and settings copies for the same reason as
+// Common/Toggle.qml: the popover one had no Accessible or Keys handling at
+// all, inside a surface that does take keyboard focus.
 Item {
     id: root
 
     property real value: 0
     property real min: 0
     property real max: 1
-    property real step: 1
+    property real step: 0
     property bool dimmed: false
     property bool gradientTrack: false
     property bool hueTrack: false
     property string accessibleName: "Slider"
     signal moved(real value)
 
-    height: 28
+    readonly property real ratio: Math.max(0, Math.min(1, (value - min) / (max - min)))
+    // Arrow keys and assistive increments move by `step`. A continuous slider
+    // has no grain of its own, so it moves by a twentieth of its range —
+    // without this a focusable seek bar would ignore the keyboard entirely.
+    readonly property real nudge: step > 0 ? step : (max - min) / 20
+    readonly property real pageNudge: step > 0 ? step * 10 : (max - min) / 5
+
+    height: Theme.controlHeight
     activeFocusOnTab: !dimmed
     Accessible.role: Accessible.Slider
     Accessible.name: accessibleName
     Accessible.description: String(value)
-    Accessible.onIncreaseAction: applyValue(value + step)
-    Accessible.onDecreaseAction: applyValue(value - step)
+    Accessible.onIncreaseAction: applyValue(value + nudge)
+    Accessible.onDecreaseAction: applyValue(value - nudge)
 
-    readonly property real ratio: Math.max(0, Math.min(1, (value - min) / (max - min)))
+    function quantize(v) {
+        const stepped = root.step > 0 ? Math.round(v / root.step) * root.step : v;
+        return Math.max(root.min, Math.min(root.max, stepped));
+    }
 
     function apply(x) {
-        let v = min + (x / width) * (max - min);
-        v = Math.round(v / step) * step;
-        v = Math.max(min, Math.min(max, v));
-        if (v !== value)
-            moved(v);
+        applyValue(root.min + (x / root.width) * (root.max - root.min));
     }
 
     function applyValue(next) {
-        const clamped = Math.max(min, Math.min(max,
-            Math.round(next / step) * step));
-        if (clamped !== value)
+        const clamped = quantize(next);
+        if (clamped !== root.value)
             moved(clamped);
     }
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Left || event.key === Qt.Key_Down)
-            applyValue(value - step);
+            applyValue(value - nudge);
         else if (event.key === Qt.Key_Right || event.key === Qt.Key_Up)
-            applyValue(value + step);
+            applyValue(value + nudge);
         else if (event.key === Qt.Key_PageDown)
-            applyValue(value - step * 10);
+            applyValue(value - pageNudge);
         else if (event.key === Qt.Key_PageUp)
-            applyValue(value + step * 10);
+            applyValue(value + pageNudge);
         else if (event.key === Qt.Key_Home)
             applyValue(min);
         else if (event.key === Qt.Key_End)

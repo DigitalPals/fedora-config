@@ -427,15 +427,14 @@ Item {
             }
         }
 
-        SettingsSwitch {
+        Toggle {
             id: rowSwitch
             anchors.right: parent.right
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            trackWidth: 22
-            trackHeight: 12
+            metrics: Theme.switchCompact
             checked: row.modelData.on
-            Accessible.name: "Show " + row.meta.name
+            accessibleName: "Show " + row.meta.name
             onActiveFocusChanged: {
                 if (activeFocus)
                     page.revealRow(row);

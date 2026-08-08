@@ -28,6 +28,7 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             checked: BluetoothState.enabled
+            accessibleName: "Bluetooth"
             onToggled: v => {
                 BluetoothState.setEnabled(v);
             }

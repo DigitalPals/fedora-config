@@ -295,6 +295,13 @@
     # copies earlier deploys left behind. Safe to drop once every machine has
     # run the playbook since.
     - Common/tests
+    # The switch and slider merged into Common/Toggle.qml and
+    # Common/HSlider.qml. A directory carrying a qmldir is not scanned, so a
+    # leftover copy is inert rather than ambiguous — this is tidiness.
+    - Popovers/Toggle.qml
+    - Popovers/HSlider.qml
+    - Settings/SettingsSwitch.qml
+    - Settings/SettingsSlider.qml
 
 - name: Configure portal preference without patching Fedora files
   become: true

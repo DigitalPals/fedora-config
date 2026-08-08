@@ -34,5 +34,9 @@ singleton Battery Battery.qml
 singleton Media Media.qml
 singleton Tailscale Tailscale.qml
 
-# Plain types (not singletons)
+# Plain types (not singletons). The two controls live here rather than in
+# Popovers/ or Settings/ because both directories draw them and both already
+# import "../Common" for Theme, so unifying them cost no new import anywhere.
 Claim Claim.qml
+HSlider HSlider.qml
+Toggle Toggle.qml

@@ -52,6 +52,7 @@ Surface {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             checked: Tailscale.running
+            accessibleName: "Tailscale"
             onToggled: v => {
                 Quickshell.execDetached(["sh", "-c", v ? "tailscale up" : "tailscale down"]);
                 Tailscale.toggle();

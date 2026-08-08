@@ -39,11 +39,15 @@ Item {
         color: slider.dimmed ? Theme.textDim : Theme.textMid
     }
 
-    SettingsSlider {
+    HSlider {
         id: slider
         x: root.narrow ? 0 : root.labelWidth
         y: root.narrow ? 23 : (parent.height - height) / 2
         width: root.narrow ? parent.width : valueText.x - x - 10
+        height: Theme.settingsControlHeight
+        // Every settings row overrides this; the default matters only so a
+        // row that forgets stays stepped rather than silently continuous.
+        step: 1
         accessibleName: root.label
         onMoved: value => root.moved(value)
     }

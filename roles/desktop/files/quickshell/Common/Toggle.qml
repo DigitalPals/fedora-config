@@ -1,24 +1,35 @@
 import QtQuick
-import "../Common"
 
-// Compact switch at the settings scale (design v2: 26×14 rows, 22×12 in the
-// module list) — deliberately smaller than the popover Toggle.
+// The one switch, at the three scales Theme carries (`switchPopover`,
+// `switchRow`, `switchCompact`). `metrics.box` is the hit area, `metrics.track`
+// the pill drawn centred inside it; the knob follows from the track height.
+//
+// Popover chrome and settings rows drew this twice with drifted geometry, and
+// only the settings copy was keyboard-reachable. That was a real gap rather
+// than a theoretical one: a popout takes WlrKeyboardFocus.OnDemand while it is
+// open (Bar/BarPopoutWindow.qml), so the Wi-Fi, Bluetooth, Tailscale and DND
+// switches sat inside a focused surface with nothing to focus them with.
 Item {
     id: root
 
-    property int trackWidth: 26
-    property int trackHeight: 14
+    property var metrics: Theme.switchPopover
     property bool checked: false
+    property string accessibleName: "Toggle"
     signal toggled(bool value)
 
-    width: Math.max(34, trackWidth)
-    height: Math.max(28, trackHeight)
+    readonly property int trackWidth: metrics.track.width
+    readonly property int trackHeight: metrics.track.height
+
+    width: metrics.box.width
+    height: metrics.box.height
     activeFocusOnTab: true
     Accessible.role: Accessible.CheckBox
     Accessible.checked: checked
-    Accessible.name: "Toggle"
+    Accessible.name: accessibleName
     Accessible.onToggleAction: root.toggled(!root.checked)
 
+    // Escape and Tab deliberately fall through: the popout's FocusScope owns
+    // Escape (Bar/IslandPopout.qml) and Tab is the reason this type exists.
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {

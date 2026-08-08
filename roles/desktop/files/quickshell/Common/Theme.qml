@@ -127,12 +127,31 @@ Singleton {
     readonly property int t3MaxWidth: 520
     readonly property int surfacePadding: 12
     readonly property int controlHeight: 34
+    readonly property int settingsControlHeight: 28
     readonly property int rowHeight: 44
     readonly property int tileHeight: 56
     readonly property int calendarCellSize: 32
     readonly property int pickerRowHeight: 40
     readonly property int popRadius: 14
     readonly property int rowRadius: 9
+
+    // Switch geometry per surface, for Common/Toggle.qml: `box` is the hit
+    // area, `track` the pill drawn centred inside it. The knob always sits
+    // 4px inside the track height, so it follows from `track` alone. Popover
+    // chrome is the roomy one; settings rows and the compact module list step
+    // down from it but keep the same 34×28 target to click at.
+    readonly property var switchPopover: ({
+        box: Qt.size(44, root.controlHeight),
+        track: Qt.size(34, 20)
+    })
+    readonly property var switchRow: ({
+        box: Qt.size(34, root.settingsControlHeight),
+        track: Qt.size(26, 14)
+    })
+    readonly property var switchCompact: ({
+        box: Qt.size(34, root.settingsControlHeight),
+        track: Qt.size(22, 12)
+    })
 
     // Connected popout motion. The trigger remains in the menubar while the
     // panel expands from its position directly beneath the bar. Spatial
