@@ -58,22 +58,6 @@ Singleton {
         environmentCapabilities.threadTitleRegeneration === true
 
     // threadId → thread shell, projectId → project shell (raw server shapes)
-    property var threadMap: ({})
-    property var projectMap: ({})
-    property bool shellReady: false
-    readonly property bool hasProjects: Object.values(projectMap)
-        .some(project => project && !project.deletedAt)
-
-    // Derived, popover-ready: the active inbox only (settled and snoozed
-    // threads are dropped), sorted by urgency then recency.
-    property var threads: []
-    property var snoozedThreads: []
-    property var settledThreads: []
-    property int runningCount: 0
-    property int attentionCount: 0
-    property int doneCount: 0
-    property int settledCount: 0
-    property int snoozedCount: 0
 
     // Expanded-thread detail (orchestration.subscribeThread). The popover
     // owns one selection, so there is deliberately only one detail stream.
@@ -171,240 +155,53 @@ Singleton {
         T3Rpc.stopSession(threadId);
     }
 
-    // ---- classification ------------------------------------------------
-
-    // Days of quiet after which a thread settles itself. Mirrors the web
-    // client's sidebar setting (its default is 3); 0 disables auto-settle.
-    property int autoSettleAfterDays: 3
-
-    readonly property int dayMs: Helpers.DAY_MS
-    // A turn.start is adopted by a session within seconds; past this the
-    // message is a failed start, not pending work.
-    readonly property int queuedTurnGraceMs: Helpers.QUEUED_TURN_GRACE_MS
     // Stacked git actions stream progress while the server generates a
     // commit message and runs hooks; the deadline slides on each chunk.
     readonly property int gitActionTimeoutMs: 120000
     readonly property int maxPromptChars: Helpers.MAX_PROMPT_CHARS
 
-    // Bumped once a minute so settledness and the relative time labels
-    // follow the clock — both move without any server event. The working
-    // clock ticks independently so a live duration does not rebuild lists.
-    property double nowMs: Date.now()
-    property double workingNowMs: Date.now()
+    // ---- thread re-exports -----------------------------------------------
+    // Common/T3Threads.qml owns the maps, the classification and the
+    // projections. These are what the chip and the inbox read.
+    readonly property var threads: T3Threads.threads
+    readonly property var snoozedThreads: T3Threads.snoozedThreads
+    readonly property var settledThreads: T3Threads.settledThreads
+    readonly property int runningCount: T3Threads.runningCount
+    readonly property int attentionCount: T3Threads.attentionCount
+    readonly property int doneCount: T3Threads.doneCount
+    readonly property bool shellReady: T3Threads.shellReady
+    readonly property bool hasProjects: T3Threads.hasProjects
 
-    function parseMs(iso) {
-        return Helpers.parseMs(iso);
-    }
-
-    // Newest real activity on a thread (reference: threadLastActivityAt).
-    function lastActivityMs(t) {
-        return Helpers.lastActivityMs(t);
-    }
-
-    // A user message no session has adopted yet: the turn exists but none
-    // of the status fields show it, so it has to be detected as a message
-    // strictly newer than every timestamp on the latest turn.
-    function hasQueuedTurnStart(t, now) {
-        return Helpers.hasQueuedTurnStart(t, now);
-    }
-
-    // Mirrors the reference client's effectiveSettled, which is what the
-    // web sidebar partitions on: blocked or live work stays active whatever
-    // the flags say, then an explicit settle/unsettle wins, then a thread
-    // quiet past the window settles itself. The reference's third input —
-    // pull request state — isn't subscribed here, so a merged PR only
-    // settles its thread once the thread also goes quiet.
-    function isSettled(t, now) {
-        return Helpers.isEffectivelySettled(t, now, autoSettleAfterDays);
-    }
-
-    // Shelved until its wake time — unless the thread raises its hand:
-    // blocked on the user, freshly failed, or finished a run after the
-    // snooze was set.
-    function isSnoozed(t, now) {
-        return Helpers.isEffectivelySnoozed(t, now);
-    }
-
-    // "attention" | "running" | "error" | "done" | "idle". Only ever asked
-    // of active threads — settledness is decided before this runs.
-    function threadClass(t) {
-        return Helpers.threadClass(t);
-    }
-
-    function threadCanPrompt(t, now) {
-        return Helpers.canPrompt(t, now);
-    }
-
-    function projectTitle(projectId) {
-        const p = projectMap[projectId];
-        return p ? p.title : "";
+    function projectedThread(threadId) {
+        return T3Threads.projectedThread(threadId);
     }
 
     function threadUrl(threadId) {
-        if (host === "" || environmentId === "")
-            return host;
-        return host + "/" + environmentId + "/" + threadId;
+        return T3Threads.threadUrl(threadId);
     }
 
-    // Reads nowMs so callers' bindings re-run on the minute tick.
     function relTime(iso) {
-        if (!iso)
-            return "";
-        let s = (nowMs - Date.parse(iso)) / 1000;
-        if (s < 90)
-            return "now";
-        if (s < 3600)
-            return Math.round(s / 60) + "m";
-        if (s < 86400)
-            return Math.round(s / 3600) + "h";
-        return Math.round(s / 86400) + "d";
-    }
-
-    // These read workingNowMs so visible inbox/thread labels update without
-    // waiting for orchestration traffic. Invalid timestamps deliberately
-    // produce no duration; callers can still show the Working state itself.
-    function workingDurationLabel(iso) {
-        const startedMs = Helpers.parseMs(iso);
-        if (isNaN(startedMs))
-            return "";
-        return Helpers.formatWorkingDurationLabel(workingNowMs - startedMs);
+        return T3Threads.relTime(iso);
     }
 
     function workingTimerLabel(iso) {
-        const startedMs = Helpers.parseMs(iso);
-        if (isNaN(startedMs))
-            return "";
-        return Helpers.formatWorkingTimerLabel(workingNowMs - startedMs);
-    }
-
-    // Previous class per thread, for transition notifications.
-    property var lastClass: ({})
-    // Last published list, so a no-op rebuild leaves the popover's
-    // delegates (and a half-typed prompt) alone.
-    property string listSignature: ""
-
-    function rebuild() {
-        const now = Date.now();
-        const projection = Helpers.classifyThreads(threadMap, projectMap, now,
-            autoSettleAfterDays);
-        const sig = JSON.stringify({
-            active: projection.active,
-            snoozed: projection.snoozed,
-            settled: projection.settled
-        });
-        if (sig === listSignature)
-            return;
-        listSignature = sig;
-
-        // Hidden threads keep a class of their own so one that comes back —
-        // the server un-settles on a new approval or question — reads as a
-        // transition and still raises its toast.
-        const next = {};
-        for (const th of projection.snoozed)
-            next[th.id] = "hidden";
-        for (const th of projection.settled)
-            next[th.id] = "hidden";
-        for (const th of projection.active) {
-            next[th.id] = th.cls;
-            const prev = lastClass[th.id];
-            if (prev !== undefined && prev !== th.cls)
-                notifyTransition(prev, th);
-        }
-        lastClass = next;
-
-        threads = projection.active;
-        snoozedThreads = projection.snoozed;
-        settledThreads = projection.settled;
-        runningCount = projection.runningCount;
-        attentionCount = projection.attentionCount;
-        doneCount = projection.doneCount;
-        settledCount = projection.settled.length;
-        snoozedCount = projection.snoozed.length;
-
-        // Shell updates carry the freshest session/latest-turn summary even
-        // while the detailed history stream is catching up.
-        const selected = threadMap[detailThreadId];
-        if (selected) {
-            detailSession = selected.session ?? null;
-            detailLatestTurn = selected.latestTurn ?? null;
-            recomputeDetailDerived();
-        }
-    }
-
-    function projectedThread(threadId) {
-        for (const list of [threads, snoozedThreads, settledThreads]) {
-            const found = list.find(thread => thread.id === threadId);
-            if (found)
-                return found;
-        }
-        return null;
-    }
-
-    function rawThread(threadId) {
-        return threadMap[threadId] ?? null;
+        return T3Threads.workingTimerLabel(iso);
     }
 
     function sortedProjects() {
-        return Object.values(projectMap).filter(project => project && !project.deletedAt)
-            .sort((left, right) => (left.title ?? "").localeCompare(right.title ?? ""));
+        return T3Threads.sortedProjects();
     }
 
     function snoozePresets() {
-        return Helpers.resolveSnoozePresets(new Date());
+        return T3Threads.snoozePresets();
     }
 
     function snoozeWakeLabel(iso) {
-        return Helpers.snoozeWakeLabel(iso, nowMs);
+        return T3Threads.snoozeWakeLabel(iso);
     }
 
     function historyPage(messages, visibleCount) {
-        return Helpers.historyPage(messages, visibleCount);
-    }
-
-    // Auto-settle and snooze wake are clock-driven: without a tick a thread
-    // would sit in the list until the next server event.
-    Timer {
-        interval: 60000
-        repeat: true
-        running: root.state === "connected"
-        onTriggered: {
-            root.nowMs = Date.now();
-            root.rebuild();
-        }
-    }
-
-    // workingNowMs is read only by workingDurationLabel/workingTimerLabel, and
-    // those are read only by the T3 popover's inbox and thread pages — the bar
-    // chip shows counts, never a duration. Ticking while the popover is shut
-    // would move labels nobody can see. triggeredOnStart refreshes them the
-    // moment it opens rather than up to a second later.
-    Timer {
-        interval: 1000
-        repeat: true
-        triggeredOnStart: true
-        running: root.state === "connected" && root.runningCount > 0
-            && Popouts.open && Popouts.currentName === "t3code"
-        onTriggered: root.workingNowMs = Date.now()
-    }
-
-    // A session asking for input is always worth a toast; finishing or
-    // failing only when it was actually working a moment ago.
-    function notifyTransition(prev, th) {
-        let what;
-        if (th.cls === "attention")
-            what = th.pendingApprovals ? "waiting for approval" : "has a question";
-        else if (th.cls === "error" && (prev === "running" || prev === "attention"))
-            what = "failed";
-        else if (th.cls === "done" && (prev === "running" || prev === "attention"))
-            what = "finished";
-        else
-            return;
-        Notifs.send({
-            appName: "T3 Code",
-            appIcon: "utilities-terminal",
-            summary: th.title,
-            body: th.project + " · " + what
-        });
+        return T3Threads.historyPage(messages, visibleCount);
     }
 
     // ---- protocol --------------------------------------------------------
@@ -445,19 +242,19 @@ Singleton {
         const selected = detailThreadId;
         T3Rpc.clearRpcHandlers();
         T3Rpc.nextReqId = 2;
-        threadMap = {};
-        projectMap = {};
-        shellReady = false;
+        T3Threads.threadMap = {};
+        T3Threads.projectMap = {};
+        T3Threads.shellReady = false;
         detailReqId = "";
         resetDetailData();
-        nowMs = Date.now();
-        rebuild();
+        T3Threads.nowMs = Date.now();
+        T3Threads.rebuild();
         configReady = false;
         loadServerConfig();
         if (canRead)
             T3Rpc.sendRequest(T3Rpc.shellReqId, "orchestration.subscribeShell", {});
         else
-            shellReady = false;
+            T3Threads.shellReady = false;
         // A reconnect invalidates every stream request id. Keep the user's
         // selection and establish a fresh detail stream on the new socket.
         if (selected !== "") {
@@ -482,7 +279,7 @@ Singleton {
                 T3Connection.send(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
                 if (reqId === T3Rpc.shellReqId) {
                     for (const item of (Array.isArray(msg.values) ? msg.values : []))
-                        dirty = applyItem(item) || dirty;
+                        dirty = T3Threads.applyItem(item) || dirty;
                 } else if (T3Rpc.rpcHandlers[reqId]) {
                     for (const item of (Array.isArray(msg.values) ? msg.values : []))
                         T3Rpc.rpcHandlers[reqId].item?.(item);
@@ -498,59 +295,10 @@ Singleton {
             }
         }
         if (dirty)
-            rebuild();
+            T3Threads.rebuild();
     }
 
-    function applyItem(item) {
-        switch (item.kind) {
-        case "snapshot": {
-            const tm = {}, pm = {};
-            for (const p of item.snapshot.projects)
-                pm[p.id] = p;
-            for (const t of item.snapshot.threads)
-                tm[t.id] = t;
-            projectMap = pm;
-            threadMap = tm;
-            shellReady = true;
-            reconcileDraftSelections();
-            reconcileNewThreadCreation();
-            return true;
-        }
-        case "synchronized":
-            shellReady = true;
-            return false;
-        case "project-upserted": {
-            const next = Object.assign({}, projectMap);
-            next[item.project.id] = item.project;
-            projectMap = next;
-            return true;
-        }
-        case "project-removed": {
-            const next = Object.assign({}, projectMap);
-            delete next[item.projectId];
-            projectMap = next;
-            return true;
-        }
-        case "thread-upserted": {
-            const next = Object.assign({}, threadMap);
-            next[item.thread.id] = item.thread;
-            threadMap = next;
-            reconcileDraftSelections();
-            reconcileNewThreadCreation(item.thread.id);
-            return true;
-        }
-        case "thread-removed": {
-            const next = Object.assign({}, threadMap);
-            delete next[item.threadId];
-            threadMap = next;
-            return true;
-        }
-        default:
-            return false;
-        }
-    }
-
-    // ---- composer drafts and provider selection --------------------------
+// ---- composer drafts and provider selection --------------------------
 
     function providerConfiguration(instanceId) {
         return Helpers.findProvider(providerConfigurations, instanceId);
@@ -562,11 +310,11 @@ Singleton {
     }
 
     function threadProviderIcon(threadId) {
-        return Helpers.threadProviderIconName(rawThread(threadId), providerConfigurations);
+        return Helpers.threadProviderIconName(T3Threads.rawThread(threadId), providerConfigurations);
     }
 
     function threadSelectionLabel(threadId) {
-        return Helpers.threadSelectionLabel(rawThread(threadId), providerConfigurations);
+        return Helpers.threadSelectionLabel(T3Threads.rawThread(threadId), providerConfigurations);
     }
 
     function modelConfiguration(instanceId, model) {
@@ -623,7 +371,7 @@ Singleton {
             const draft = drafts[threadId];
             let selection = selectionFromDraft(draft);
             if (!selection)
-                selection = Helpers.selectionForThread(threadMap[threadId], providerConfigurations);
+                selection = Helpers.selectionForThread(T3Threads.threadMap[threadId], providerConfigurations);
             if (!selection)
                 continue;
             const current = {
@@ -648,7 +396,7 @@ Singleton {
                 && newThreadDraft.projectId !== "") {
             let newSelection = selectionFromDraft(newThreadDraft);
             if (!newSelection)
-                newSelection = defaultNewThreadSelection(projectMap[newThreadDraft.projectId]);
+                newSelection = defaultNewThreadSelection(T3Threads.projectMap[newThreadDraft.projectId]);
             if (newSelection) {
                 const currentNew = {
                     instanceId: newThreadDraft.instanceId ?? "",
@@ -686,7 +434,7 @@ Singleton {
     function ensureThreadDraft(threadId) {
         if (threadDrafts[threadId] !== undefined)
             return threadDrafts[threadId];
-        const thread = threadMap[threadId];
+        const thread = T3Threads.threadMap[threadId];
         if (!thread)
             return null;
         const next = Object.assign({}, threadDrafts);
@@ -715,7 +463,7 @@ Singleton {
     }
 
     function setThreadProvider(threadId, instanceId) {
-        const thread = threadMap[threadId];
+        const thread = T3Threads.threadMap[threadId];
         const allowed = Helpers.selectableProvidersForThread(thread, providerConfigurations,
             detailThreadId === threadId ? detailMessages.length : 0);
         const provider = Helpers.findProvider(allowed, instanceId);
@@ -740,7 +488,7 @@ Singleton {
     }
 
     function setThreadModel(threadId, model) {
-        const thread = threadMap[threadId];
+        const thread = T3Threads.threadMap[threadId];
         const draft = threadDraft(threadId);
         const provider = providerConfiguration(draft.instanceId);
         const config = Helpers.findModel(provider, model);
@@ -770,7 +518,7 @@ Singleton {
     }
 
     function threadProviderChoices(threadId) {
-        const thread = threadMap[threadId];
+        const thread = T3Threads.threadMap[threadId];
         const detailCount = detailThreadId === threadId ? detailMessages.length : 0;
         const currentInstanceId = thread?.session?.providerInstanceId
             ?? thread?.modelSelection?.instanceId ?? "";
@@ -787,7 +535,7 @@ Singleton {
         const provider = providerConfiguration(draft.instanceId);
         if (!provider)
             return [];
-        return provider.models.filter(model => Helpers.modelChangeAllowed(threadMap[threadId],
+        return provider.models.filter(model => Helpers.modelChangeAllowed(T3Threads.threadMap[threadId],
             { instanceId: provider.instanceId, model: model.slug }, providerConfigurations,
             detailThreadId === threadId ? detailMessages.length : 0));
     }
@@ -807,15 +555,15 @@ Singleton {
     }
 
     function defaultProjectId(contextThreadId) {
-        const context = threadMap[contextThreadId];
-        if (context && projectMap[context.projectId])
+        const context = T3Threads.threadMap[contextThreadId];
+        if (context && T3Threads.projectMap[context.projectId])
             return context.projectId;
-        const projects = sortedProjects();
+        const projects = T3Threads.sortedProjects();
         return projects.length > 0 ? projects[0].id : "";
     }
 
     function buildNewDraft(projectId, prompt, sourceProposedPlan, projectFixed, modeFixed) {
-        const project = projectMap[projectId];
+        const project = T3Threads.projectMap[projectId];
         const selection = defaultNewThreadSelection(project);
         return {
             projectId: projectId,
@@ -850,7 +598,7 @@ Singleton {
     }
 
     function setNewProject(projectId) {
-        if (newThreadDraft.projectFixed === true || !projectMap[projectId])
+        if (newThreadDraft.projectFixed === true || !T3Threads.projectMap[projectId])
             return;
         const replacement = buildNewDraft(projectId, newThreadDraft.prompt, null, false, false);
         newThreadDraft = replacement;
@@ -906,7 +654,7 @@ Singleton {
     }
 
     function prepareNewThreadForPlan(sourceThreadId, plan) {
-        const source = threadMap[sourceThreadId];
+        const source = T3Threads.threadMap[sourceThreadId];
         if (!source || !plan)
             return false;
         newThreadDraft = buildNewDraft(source.projectId,
@@ -938,7 +686,7 @@ Singleton {
 
     function submitExisting(threadId, overrideText, interactionOverride, sourceProposedPlan,
             clearDraft) {
-        const thread = threadMap[threadId];
+        const thread = T3Threads.threadMap[threadId];
         const draft = threadDraft(threadId);
         const key = T3Rpc.actionKey("prompt", threadId, "");
         const text = typeof overrideText === "string" ? overrideText : draft.prompt;
@@ -1006,7 +754,7 @@ Singleton {
         if (!hasReadyProvider)
             return T3Rpc.rejectAction(key, configReady ? "No provider with an advertised model is ready"
                 : "Provider configuration is not ready", false);
-        if (!draft || !projectMap[draft.projectId])
+        if (!draft || !T3Threads.projectMap[draft.projectId])
             return T3Rpc.rejectAction(key, "Choose a project", false);
         if (text.trim() === "")
             return T3Rpc.rejectAction(key, "Write the first prompt", false);
@@ -1053,7 +801,7 @@ Singleton {
             return;
         if (candidateId !== undefined && candidateId !== pendingNewThreadId)
             return;
-        if (!threadMap[pendingNewThreadId])
+        if (!T3Threads.threadMap[pendingNewThreadId])
             return;
         const confirmed = pendingNewThreadId;
         if (pendingNewThreadActionKey !== "")
@@ -1216,8 +964,8 @@ Singleton {
         if (typeof left?.sequence === "number" && typeof right?.sequence === "number"
                 && left.sequence !== right.sequence)
             return left.sequence - right.sequence;
-        const lm = parseMs(left?.createdAt ?? left?.updatedAt ?? left?.completedAt);
-        const rm = parseMs(right?.createdAt ?? right?.updatedAt ?? right?.completedAt);
+        const lm = T3Threads.parseMs(left?.createdAt ?? left?.updatedAt ?? left?.completedAt);
+        const rm = T3Threads.parseMs(right?.createdAt ?? right?.updatedAt ?? right?.completedAt);
         if (!isNaN(lm) && !isNaN(rm) && lm !== rm)
             return lm - rm;
         const lid = typeof left?.id === "string" ? left.id : "";
@@ -1434,8 +1182,8 @@ Singleton {
         const plans = (Array.isArray(detailProposedPlans) ? detailProposedPlans.slice() : [])
             .filter(plan => plan && typeof plan === "object")
             .sort((left, right) => {
-                const lm = parseMs(left?.updatedAt ?? left?.createdAt);
-                const rm = parseMs(right?.updatedAt ?? right?.createdAt);
+                const lm = T3Threads.parseMs(left?.updatedAt ?? left?.createdAt);
+                const rm = T3Threads.parseMs(right?.updatedAt ?? right?.createdAt);
                 if (!isNaN(lm) && !isNaN(rm) && lm !== rm)
                     return lm - rm;
                 return (left?.id ?? "").localeCompare(right?.id ?? "");
@@ -1551,8 +1299,8 @@ Singleton {
     // ---- git actions -----------------------------------------------------
 
     function threadCwd(threadId) {
-        const thread = threadMap[threadId];
-        return Helpers.resolveThreadCwd(thread, thread ? projectMap[thread.projectId] : null);
+        const thread = T3Threads.threadMap[threadId];
+        return Helpers.resolveThreadCwd(thread, thread ? T3Threads.projectMap[thread.projectId] : null);
     }
 
     // Reads detailVcs so QML visibility bindings refresh with the status.
@@ -1796,7 +1544,7 @@ Singleton {
             return;
 
         detailLoading = true;
-        const shell = threadMap[threadId];
+        const shell = T3Threads.threadMap[threadId];
         if (shell) {
             detailSession = shell.session ?? null;
             detailLatestTurn = shell.latestTurn ?? null;
@@ -1862,6 +1610,32 @@ Singleton {
 
     // The transport's half of the conversation. T3Connection owns the socket;
     // this is where its frames become protocol.
+    Connections {
+        target: T3Threads
+
+        // A snapshot replaced the world: draft selections may point at threads
+        // or projects that no longer exist.
+        function onSnapshotApplied() {
+            root.reconcileDraftSelections();
+            root.reconcileNewThreadCreation();
+        }
+
+        function onThreadUpserted(threadId) {
+            root.reconcileNewThreadCreation(threadId);
+        }
+
+        // Shell updates carry a fresher session summary than the detail stream
+        // while that stream is catching up.
+        function onRebuilt() {
+            const selected = T3Threads.threadMap[root.detailThreadId];
+            if (selected) {
+                root.detailSession = selected.session ?? null;
+                root.detailLatestTurn = selected.latestTurn ?? null;
+                root.recomputeDetailDerived();
+            }
+        }
+    }
+
     Connections {
         target: T3Rpc
 

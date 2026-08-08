@@ -1661,9 +1661,35 @@ gradually. Strictly sequential; land each WP green before the next.
 >   error text, `clearAction` removes the entry, and `T3Code.actionStates ===
 >   T3Rpc.actionStates` — the re-export is the same object consumers bind to,
 >   which is what makes the façade transparent rather than a stale copy.
-### [ ] WP5.3 `T3Threads.qml` — classification, `threadMap`/projections,
-counts, `notifyTransition` (~129–353 + `applyItem`). This is all
-`Bar/T3Chip.qml` and `T3InboxPage` actually need.
+### [x] WP5.3 `T3Threads.qml` — classification, `threadMap`/projections, counts, `notifyTransition`
+
+> Done. `Common/T3Threads.qml` (324 lines) owns the raw maps, the
+> running/attention/done/settled/snoozed classification, the projections the
+> inbox lists, `applyItem`, and the transition notification. `T3Code.qml`
+> 1894 → 1668. 17 members needed façade wrappers; 11 more were internal calls.
+> - **Three signals replace three reach-backs**, continuing the pattern:
+>   `snapshotApplied` (the draft layer reconciles selections against a world
+>   that was just replaced), `threadUpserted(id)` (the draft layer is watching
+>   for the id it is waiting on after a create), and `rebuilt` (the detail layer
+>   refreshes the session summary of whatever thread it happens to be showing).
+>   Without them the threads layer would have had to know that drafts and a
+>   detail view exist.
+> - `gitActionTimeoutMs` and `maxPromptChars` stayed in `T3Code`: they sat in
+>   the classification section by proximity, but one belongs to git actions
+>   (WP5.6) and the other is a prompt limit. Moving them would have been
+>   filing by accident.
+> - Contract snapshot identical, journal clean. Beyond that the classification
+>   was exercised live through the façade — `projectedThread`, `threadUrl`
+>   (which needs the environment id from the connection two layers down),
+>   `relTime`, `threadClass`, `sortedProjects`, `snoozePresets`,
+>   `snoozeWakeLabel`, `historyPage` — and `T3Code.threads === T3Threads.threads`,
+>   so the re-export is the same array and bindings still propagate.
+> - Visible confirmation the timers survived: the popover shows a WORKING
+>   section with two threads counting up ("working 8m 39s"), which is
+>   `workingTimerLabel` running off the gated `workingNowMs` tick WP1.6 added.
+> - **Watch for a false diff here**: the server is live, so thread counts move
+>   between snapshots on their own. Take the two snapshots close together and
+>   read a count change as activity unless the *shape* changed too.
 ### [ ] WP5.4 `T3Detail.qml` — detail subscription + `recomputeDetailDerived`
 (~1678–2340). Only `T3ThreadPage` consumes it.
 ### [ ] WP5.5 `T3Drafts.qml` — composer + structured-input drafts (~1042–1676).
