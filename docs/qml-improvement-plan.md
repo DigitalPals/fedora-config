@@ -1856,8 +1856,10 @@ variants become Theme tokens.
 >   *must retain* `fontSans` and *must not* use `fontMenu`. That is a deliberate
 >   scoping decision with a name explaining itself, and this WP's line
 >   ("so these windows finally respect the user's font setting") asserts the
->   opposite. **This is a design call, not a technical one, and needs deciding
->   before either side is changed.** Nothing was overridden silently.
+>   opposite. **Decided 2026-08-08: the scoping stands, the WP line was wrong.**
+>   The launcher and the toasts are overlay surfaces rather than menubar chrome,
+>   so they follow the general UI face and do not track the menu font setting.
+>   The instruction has been struck from the spec below so it is not retried.
 
 <details>
 <summary>Original WP6.3 specification</summary>
@@ -1869,8 +1871,9 @@ variants become Theme tokens.
 - `Qt.rgba(1,1,1,0.08)` in HSlider/SettingsSlider/BlockMeter is exactly
   `Theme.hairline` — use it.
 - Launcher/toasts/OSD: replace 19 numeric `font.pixelSize` + 6 `font.weight`
-  literals with the type scale, and `Theme.fontSans` ×9 with `Theme.fontMenu`
-  so these windows finally respect the user's font setting.
+  literals with the type scale. ~~and `Theme.fontSans` ×9 with
+  `Theme.fontMenu`~~ — struck: those windows deliberately stay on the general
+  UI face, which `typography.test.cjs` enforces.
 - Delete dead tokens `Theme.breakpointMedium/Wide`,
   `mediaTitleMediumWidth/WideWidth` (Theme.qml:120–123).
 
