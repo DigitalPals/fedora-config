@@ -118,6 +118,7 @@ Surface {
 
         MouseArea {
             anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
             onClicked: root.copyIp(Tailscale.ip)
         }
     }
@@ -242,6 +243,7 @@ Surface {
                 id: peerMouse
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: root.copyIp(peerRow.modelData.ip)
             }
         }

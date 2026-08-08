@@ -128,6 +128,9 @@ Column {
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accent
             activeFocusOnTab: true
+            Accessible.role: Accessible.Button
+            Accessible.name: entry.thread.title
+            Accessible.onPressAction: root.threadRequested(entry.thread.id)
 
             // A passive handler keeps the row hovered while the pointer is
             // over one of its child actions. A MouseArea loses containsMouse
@@ -147,6 +150,7 @@ Column {
             MouseArea {
                 id: rowMouse
                 anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
                 onClicked: root.threadRequested(entry.thread.id)
             }
 
@@ -346,6 +350,9 @@ Column {
         color: drawerMouse.containsMouse ? Theme.hoverFill
             : drawer.subdued ? "transparent" : Theme.cardFill
         activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: drawer.label + ", " + drawer.count
+        Accessible.onPressAction: drawer.toggled()
         border.width: activeFocus ? 1 : 0
         border.color: Theme.accent
 
@@ -396,6 +403,7 @@ Column {
             id: drawerMouse
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: drawer.toggled()
         }
     }

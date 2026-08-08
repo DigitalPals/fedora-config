@@ -97,6 +97,7 @@ Surface {
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: Qt.PointingHandCursor
             onClicked: mouse => {
                 if (mouse.button === Qt.RightButton && tile.chevron)
                     tile.expanded();
@@ -130,6 +131,7 @@ Surface {
                 anchors.fill: parent
                 anchors.margins: -3
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: tile.expanded()
             }
         }
@@ -420,6 +422,7 @@ Surface {
                     id: actionMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.run(action.modelData.cmd)
                 }
             }
@@ -467,6 +470,7 @@ Surface {
                     id: gearMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: Settings.showPanel()
                 }
             }
@@ -503,6 +507,7 @@ Surface {
                         id: sessMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.run(sess.modelData.cmd)
                     }
                 }

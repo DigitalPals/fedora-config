@@ -158,6 +158,7 @@ Item {
             id: chipMouse
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onEntered: root.entered()
             onPositionChanged: root.entered()
             onExited: root.exited()

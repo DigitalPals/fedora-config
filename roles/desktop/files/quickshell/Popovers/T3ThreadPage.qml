@@ -246,7 +246,14 @@ Column {
         id: iconButton
         property string glyph: ""
         property color tint: Theme.textMid
+        // A glyph is not a label. Every call site names itself, because a
+        // focus ring on an unnamed arrow is worse than no focus ring.
+        property string accessibleName: ""
         signal triggered()
+
+        Accessible.role: Accessible.Button
+        Accessible.name: iconButton.accessibleName
+        Accessible.onPressAction: iconButton.triggered()
 
         width: 26
         height: Theme.controlHeight
@@ -281,6 +288,7 @@ Column {
             anchors.fill: parent
             enabled: iconButton.enabled
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: iconButton.triggered()
         }
     }
@@ -290,6 +298,10 @@ Column {
         property string label: ""
         property color tint: Theme.textMid
         signal triggered()
+
+        Accessible.role: Accessible.Button
+        Accessible.name: menuEntry.label
+        Accessible.onPressAction: menuEntry.triggered()
 
         width: parent ? parent.width : 0
         height: Theme.controlHeight
@@ -329,6 +341,7 @@ Column {
             anchors.fill: parent
             enabled: menuEntry.enabled
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: menuEntry.triggered()
         }
     }
@@ -376,6 +389,7 @@ Column {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     glyph: "←"
+                    accessibleName: "Back to inbox"
                     onTriggered: root.backRequested()
                 }
 
@@ -421,6 +435,7 @@ Column {
                     anchors.rightMargin: menuButton.visible ? 6 : 0
                     anchors.verticalCenter: parent.verticalCenter
                     glyph: "↗"
+                    accessibleName: "Open in browser"
                     tint: Theme.accent
                     onTriggered: {
                         Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
@@ -434,6 +449,7 @@ Column {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     glyph: "⋯"
+                    accessibleName: "Thread menu"
                     tint: root.menuOpen ? Theme.accent : Theme.textMid
                     onTriggered: root.menuOpen = !root.menuOpen
                 }
@@ -904,6 +920,9 @@ Column {
                 Rectangle {
                     id: changesRow
                     visible: root.hasCheckpointChanges
+                    Accessible.role: Accessible.Button
+                    Accessible.name: root.changesExpanded
+                        ? "Hide changed files" : "Show changed files"
                     width: parent.width
                     height: Theme.controlHeight
                     radius: 6
@@ -962,6 +981,7 @@ Column {
                         id: changesMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             changesRow.forceActiveFocus();
                             root.toggleChanges();

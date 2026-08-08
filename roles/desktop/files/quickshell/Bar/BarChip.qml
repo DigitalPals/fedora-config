@@ -96,6 +96,7 @@ Rectangle {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
         onEntered: root.hoverIn()
         // A newly mapped layer surface can cost Qt the next enter event;
         // motion over the chip still re-arms the bar's hover switch.

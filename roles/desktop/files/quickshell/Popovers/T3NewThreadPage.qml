@@ -24,6 +24,9 @@ Item {
         radius: 6
         color: actionMouse.containsMouse ? Theme.hoverFillStrong : Theme.hoverFill
         activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: action.label
+        Accessible.onPressAction: action.triggered()
         border.width: activeFocus ? 1 : 0
         border.color: Theme.accent
 
@@ -48,6 +51,7 @@ Item {
             id: actionMouse
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: action.triggered()
         }
     }

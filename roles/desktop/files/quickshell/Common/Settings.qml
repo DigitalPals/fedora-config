@@ -231,22 +231,15 @@ Singleton {
     }
 
     // ---- Persistence -----------------------------------------------------
+    // The persisted set is exactly the schema's keys, read off this object by
+    // name. Enumerating them here as well is how a new setting gets added and
+    // then silently never saved; settings.test.cjs holds the schema and the
+    // property declarations together instead.
     function snapshot() {
-        return {
-            wall: wall, wallDir: wallDir, shuffle: shuffle,
-            barHeight: barHeight, barRadius: barRadius,
-            font: font, accent: accent, accentWall: accentWall, position: position,
-            floating: floating, gap: gap, autoHide: autoHide, exclusive: exclusive,
-            monitor: monitor, clock24: clock24, unit: unit, warmth: warmth,
-            osd: osd, pollMax: pollMax, scrollFactor: scrollFactor,
-            notifDnd: notifDnd, notifQuiet: notifQuiet,
-            notifQuietStart: notifQuietStart, notifQuietEnd: notifQuietEnd,
-            notifDuration: notifDuration, notifPosition: notifPosition,
-            notifDensity: notifDensity, notifIcons: notifIcons,
-            notifProgress: notifProgress, notifBodyLines: notifBodyLines,
-            mods: mods, modOpts: modOpts,
-            wallAccent: wallAccent, wallAccentFor: wallAccentFor
-        };
+        const out = {};
+        for (const key of Object.keys(root.defaults))
+            out[key] = root[key];
+        return out;
     }
 
     // One-time migration of the old QS_WEATHER_* env configuration: only a
@@ -317,40 +310,12 @@ Singleton {
         saveTimer.stop();
         savePending = false;
         clearUndo();
-        wall = merged.wall;
-        wallDir = merged.wallDir;
-        shuffle = merged.shuffle;
-        barHeight = merged.barHeight;
-        barRadius = merged.barRadius;
-        font = merged.font;
-        accent = merged.accent;
-        accentWall = merged.accentWall;
-        position = merged.position;
-        floating = merged.floating;
-        gap = merged.gap;
-        autoHide = merged.autoHide;
-        exclusive = merged.exclusive;
-        monitor = merged.monitor;
-        clock24 = merged.clock24;
-        unit = merged.unit;
-        warmth = merged.warmth;
-        osd = merged.osd;
-        pollMax = merged.pollMax;
-        scrollFactor = merged.scrollFactor;
-        notifDnd = merged.notifDnd;
-        notifQuiet = merged.notifQuiet;
-        notifQuietStart = merged.notifQuietStart;
-        notifQuietEnd = merged.notifQuietEnd;
-        notifDuration = merged.notifDuration;
-        notifPosition = merged.notifPosition;
-        notifDensity = merged.notifDensity;
-        notifIcons = merged.notifIcons;
-        notifProgress = merged.notifProgress;
-        notifBodyLines = merged.notifBodyLines;
-        mods = merged.mods;
+        for (const key of Object.keys(root.defaults))
+            root[key] = merged[key];
+        // The one key that is not a straight copy: a file predating modOpts
+        // (or no file at all) still takes the retired QS_WEATHER_* env
+        // configuration on its way in.
         modOpts = seedWeatherFromEnv(parsed, merged.modOpts);
-        wallAccent = merged.wallAccent;
-        wallAccentFor = merged.wallAccentFor;
         ready = true;
         migrationPending = parsed !== null && parsed.v !== 3;
         firstRun = result.status === "empty";

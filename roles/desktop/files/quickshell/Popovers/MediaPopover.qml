@@ -99,6 +99,7 @@ Surface {
                 anchors.fill: parent
                 hoverEnabled: true
                 enabled: root.players.length > 1
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     const cur = root.players.indexOf(root.player);
                     root.sourceIdx = (cur + 1) % root.players.length;
@@ -293,6 +294,7 @@ Surface {
                     anchors.fill: parent
                     hoverEnabled: true
                     enabled: root.player !== null && root.player.shuffleSupported
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.player.shuffle = !root.player.shuffle
                 }
             }
@@ -318,6 +320,7 @@ Surface {
                     anchors.fill: parent
                     hoverEnabled: true
                     enabled: root.player !== null && root.player.canGoPrevious
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.player.previous()
                 }
             }
@@ -342,6 +345,7 @@ Surface {
                     anchors.fill: parent
                     hoverEnabled: true
                     enabled: root.player !== null
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.player.togglePlaying()
                 }
             }
@@ -367,6 +371,7 @@ Surface {
                     anchors.fill: parent
                     hoverEnabled: true
                     enabled: root.player !== null && root.player.canGoNext
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.player.next()
                 }
             }
@@ -392,6 +397,7 @@ Surface {
                     anchors.fill: parent
                     hoverEnabled: true
                     enabled: root.player !== null && root.player.loopSupported
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         const s = root.player.loopState;
                         root.player.loopState = s === MprisLoopState.None ? MprisLoopState.Playlist : s === MprisLoopState.Playlist ? MprisLoopState.Track : MprisLoopState.None;

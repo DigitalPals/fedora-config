@@ -33,6 +33,9 @@ Rectangle {
     color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
     opacity: enabled ? 1 : 0.4
     activeFocusOnTab: enabled && visible && revealed
+    Accessible.role: Accessible.Button
+    Accessible.name: label
+    Accessible.onPressAction: root.triggered()
     border.width: activeFocus ? 1 : 0
     border.color: Theme.accent
 

@@ -136,6 +136,7 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+        cursorShape: Qt.PointingHandCursor
         onEntered: {
             hovered = true;
             if (root.ownsPanel)

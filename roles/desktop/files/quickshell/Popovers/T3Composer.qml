@@ -303,6 +303,9 @@ Column {
             anchors.bottomMargin: 7
             width: Math.max(31, sendText.implicitWidth + 18)
             height: Theme.controlHeight
+            Accessible.role: Accessible.Button
+            Accessible.name: root.sendLabel
+            Accessible.onPressAction: root.sendRequested()
             radius: 7
             color: sendMouse.containsMouse && sendMouse.enabled
                 ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
@@ -335,6 +338,7 @@ Column {
                 enabled: root.sendEnabled && !root.sending && !root.overLimit
                     && promptEdit.text.trim() !== ""
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: root.sendRequested()
             }
         }
@@ -368,6 +372,8 @@ Column {
                 radius: 7
                 color: settingsMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
                 activeFocusOnTab: true
+                Accessible.role: Accessible.Button
+                Accessible.name: "Composer settings"
                 border.width: activeFocus ? 1 : 0
                 border.color: Theme.accent
 
@@ -448,6 +454,7 @@ Column {
 
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         settingsHeader.forceActiveFocus();
                         settingsPresentation.expanded = !settingsPresentation.expanded;
@@ -603,6 +610,9 @@ Column {
                                     radius: 6
                                     color: traitMouse.containsMouse && root.editable
                                         ? Theme.hoverFillStrong : Theme.hoverFill
+                                    Accessible.role: Accessible.CheckBox
+                                    Accessible.name: root.traitLabel(traitRow.modelData)
+                                    Accessible.checked: traitRow.modelData.currentValue === true
                                     opacity: root.editable && !root.sending ? 1 : 0.48
                                     activeFocusOnTab: root.editable && !root.sending
                                     border.width: activeFocus ? 1 : 0
@@ -648,6 +658,7 @@ Column {
                                         anchors.fill: parent
                                         enabled: root.editable && !root.sending
                                         hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
                                         onClicked: {
                                             traitToggle.forceActiveFocus();
                                             root.chooseTrait(traitRow.modelData.id,

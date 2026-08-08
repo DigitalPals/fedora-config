@@ -120,6 +120,10 @@ Rectangle {
                         : Qt.rgba(0, 0, 0, 0.17)
                     opacity: root.actionable ? 1 : 0.5
                     activeFocusOnTab: root.actionable
+                    Accessible.role: root.question && root.question.multiSelect
+                        ? Accessible.CheckBox : Accessible.RadioButton
+                    Accessible.name: option.modelData.label
+                    Accessible.checked: option.chosen
 
                     Keys.onPressed: event => {
                         if (!root.actionable)
@@ -179,6 +183,7 @@ Rectangle {
                         anchors.fill: parent
                         enabled: root.actionable
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: T3Code.toggleInputOption(root.threadId,
                             root.request.requestId, root.question.id,
                             option.modelData.label, root.question.multiSelect)

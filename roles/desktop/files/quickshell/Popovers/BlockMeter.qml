@@ -61,6 +61,7 @@ Item {
         visible: root.interactive
         anchors.fill: parent
         anchors.margins: -4
+        cursorShape: Qt.PointingHandCursor
         onPressed: mouse => root.moved(Format.clamp01(mouse.x / root.width))
         onPositionChanged: mouse => {
             if (pressed)

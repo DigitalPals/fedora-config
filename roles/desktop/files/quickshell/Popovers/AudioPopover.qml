@@ -52,6 +52,7 @@ Surface {
 
             MouseArea {
                 anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     Audio.toggleMuted();
                 }
@@ -119,6 +120,7 @@ Surface {
             id: discMouse
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: root.devicesOpen = !root.devicesOpen
         }
     }
@@ -173,6 +175,7 @@ Surface {
                     id: devMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: Audio.setDefaultSink(sink.modelData)
                 }
             }
@@ -211,6 +214,7 @@ Surface {
 
             MouseArea {
                 anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     Audio.toggleSourceMuted();
                 }

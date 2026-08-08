@@ -161,6 +161,7 @@ Surface {
                 id: gearMouse
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     Quickshell.execDetached(root.networkSettingsCommand);
                     Popouts.close();
@@ -239,6 +240,7 @@ Surface {
                 id: netMouse
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: net.modelData.connect()
             }
         }

@@ -455,6 +455,7 @@ Surface {
                 id: rowMouse
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onEntered: root.selected = resultRow.index
                 onClicked: root.activate(resultRow.modelData)
             }

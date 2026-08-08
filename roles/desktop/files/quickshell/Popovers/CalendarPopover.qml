@@ -82,6 +82,7 @@ Surface {
                         id: navMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.monthOffset += parent.modelData.d
                     }
                 }

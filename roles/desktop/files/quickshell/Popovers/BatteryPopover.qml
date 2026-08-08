@@ -148,6 +148,7 @@ Surface {
                     id: profMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: PowerProfiles.profile = parent.modelData.profile
                 }
             }

@@ -142,6 +142,7 @@ Surface {
                         id: miniTabMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         // Hover-through: mirroring the bar chips, hovering a
                         // tab switches the whole view to that provider.
                         onEntered: Usage.selected = miniTab.modelData
@@ -168,6 +169,7 @@ Surface {
                     id: refreshMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: Usage.refresh()
                 }
             }
@@ -532,6 +534,7 @@ Surface {
                                 id: rangeMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
                                 onClicked: root.histMode = rangeChip.modelData.key
                             }
                         }

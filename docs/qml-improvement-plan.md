@@ -70,7 +70,11 @@ non-destructive — prefer these to the disruptive checks some WPs still name):
 - **Multi-monitor without hardware**: `hyprctl output create headless`, then
   read the name back (`HEADLESS-1`). This Hyprland speaks a **Lua dispatch
   dialect** — `hyprctl dispatch 'hl.dsp.focus({ monitor = "<name>" })'`; plain
-  `focusmonitor`/`movecursor` do not exist. Focus may refuse to move to an
+  `focusmonitor`/`movecursor` do not exist. The pointer *can* be moved, as
+  `hl.dsp.cursor.move({ x = …, y = … })` in absolute screen-logical
+  coordinates — call it until `hyprctl cursorpos` agrees, since the first
+  call after the pointer has been elsewhere can land short. With `grim -c`
+  that makes cursor shape and hover state observable (WP6.7). Focus may refuse to move to an
   empty output, so the reliable way to exercise a bar's `visible` binding is to
   pin `barEnabled` to the output in the deployed `shell.qml`.
   `hyprctl layers -j` shows which output each `qs-*` surface is mapped to.
@@ -2158,7 +2162,56 @@ consistently.
 
 </details>
 
-### [ ] WP6.7 ∥ Interaction polish sweep
+### [x] WP6.7 ∥ Interaction polish sweep
+
+> Done, all three items. Notes:
+> - **48 MouseAreas gained a cursor, and four deliberately did not.** The
+>   survey found 51 clickable ones without a `cursorShape`; the exceptions are
+>   `Bar.qml`'s right-button-only context area over the whole bar,
+>   `LauncherWindow`'s click-outside backdrop over the whole screen, and
+>   `OsdWindow`'s wheel handler — none is a click target, and a hand over the
+>   entire desktop would be a lie. `BlockMeter` was added by hand: it drags
+>   rather than clicks, so the sweep's `onClicked` rule skipped it, but WP6.2
+>   gave `HSlider` a hand and the two are the same gesture.
+> - **`hl.dsp.cursor.move({ x, y })` exists** — this corrects the note under
+>   "Runtime validation" saying the cursor cannot be moved. It takes absolute
+>   screen-logical coordinates, but the first call after the pointer has been
+>   elsewhere can land short; call it in a loop until `hyprctl cursorpos`
+>   agrees. With `grim -c` that makes cursor *shape* and hover states
+>   observable. Confirmed the pointing hand over the bar clock (a `BarChip`
+>   MouseArea this WP changed) and over the Wi-Fi popover's Toggle (WP6.2's),
+>   and the plain arrow on surfaces with no `cursorShape`. Popouts close or
+>   re-animate when the pointer is warped around them, so aim once and shoot;
+>   the bar and the settings window are the stable targets.
+> - **`Accessible.role`/`name` on 18 focusable objects**, of which one edit —
+>   `Popovers/ActionButton.qml` — covers 21 call sites. `T3ThreadPage`'s
+>   `IconButton` gained an `accessibleName` property because a glyph is not a
+>   label: "←", "↗" and "⋯" now announce as Back to inbox, Open in browser and
+>   Thread menu. The three `Flickable`s are exempt and stay that way: their
+>   `activeFocusOnTab` exists so arrow keys scroll, they draw no ring, and
+>   they have no label of their own to give.
+> - **The settings key audit is two loops, not four.** `snapshot()` and
+>   `applyLoaded()` now enumerate `Object.keys(defaults)`. The other two
+>   restatements cannot be loops — QML properties are declared statically, and
+>   `sectionKeys` is a UI grouping the schema knows nothing about — so
+>   `settings-schema.test.cjs` holds them to the schema instead: every key has
+>   a property, every user-facing key belongs to exactly one page, and Reset
+>   all skips exactly the two keys no page owns.
+> - **Persistence verified end to end** before and after, over IPC: an int, a
+>   bool, a string and a real written, landing on disk in a 35-key file, and
+>   read back correctly through the looped `applyLoaded` after a reload. The
+>   file was byte-identical before and after the whole WP.
+> - Rendering unchanged: 0 differing pixels on six of eight popovers and two
+>   of four settings pages; the rest are live values (the battery estimate,
+>   the clock previews, CPU/RAM/temp — the control centre differs from itself
+>   by 134k px eight seconds apart).
+> - New `tests/quickshell/focusable.test.cjs` (3) and `settings-schema.test.cjs`
+>   (5), every one checked against a deliberately broken variant.
+
+<details>
+<summary>Original WP6.7 specification</summary>
+
+### WP6.7 ∥ Interaction polish sweep
 - `cursorShape: Qt.PointingHandCursor` on the clickable MouseAreas missing it
   (all of `Popovers/`, 4 in Bar). The count was 56; WP6.2 took the five
   switch/slider sites, so re-survey rather than trusting the number.
@@ -2167,6 +2220,8 @@ consistently.
 - Settings key audit: `Settings.qml` `snapshot()`/`applyLoaded()`/`sectionKeys`
   hand-enumerate the schema ×4 — loop `Object.keys(SettingsHelpers.defaults())`
   instead (~80 lines saved, kills "added a setting, forgot to persist it").
+
+</details>
 
 ### [ ] WP6.8 ∥ Remaining perf odds and ends
 - Toast countdown (`NotificationToasts.qml:142–156`): when `!showProgress`,

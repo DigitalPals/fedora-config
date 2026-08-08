@@ -144,6 +144,7 @@ Surface {
                     anchors.fill: parent
                     hoverEnabled: true
                     enabled: dev.modelData.connected
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: dev.modelData.disconnect()
                 }
             }
@@ -153,6 +154,7 @@ Surface {
                 anchors.fill: parent
                 hoverEnabled: true
                 z: -1
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     if (!dev.modelData.connected && !dev.busy)
                         dev.modelData.connect();

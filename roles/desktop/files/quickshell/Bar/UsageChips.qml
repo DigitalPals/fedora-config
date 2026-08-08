@@ -140,6 +140,7 @@ Item {
                 id: emptyMouse
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onEntered: root.chipEntered("claude")
                 onPositionChanged: root.chipEntered("claude")
                 onExited: root.chipExited("claude")
@@ -206,6 +207,7 @@ Item {
                     id: chipMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onEntered: root.chipEntered(chip.modelData)
                     onPositionChanged: root.chipEntered(chip.modelData)
                     onExited: root.chipExited(chip.modelData)

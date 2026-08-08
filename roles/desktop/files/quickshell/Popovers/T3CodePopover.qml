@@ -200,6 +200,9 @@ Surface {
                 radius: 7
                 readonly property bool usable: T3Code.canDispatch && T3Code.hasReadyProvider
                     && T3Code.hasProjects
+                Accessible.role: Accessible.Button
+                Accessible.name: "New thread"
+                Accessible.onPressAction: root.showNew()
                 color: newMouse.containsMouse && usable
                     ? Qt.lighter(Theme.accentBg, 1.2) : Theme.accentBg
                 opacity: usable ? 1 : 0.4
@@ -232,6 +235,7 @@ Surface {
                     anchors.fill: parent
                     enabled: newButton.usable
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.showNew()
                 }
             }
@@ -244,6 +248,9 @@ Surface {
                 radius: 6
                 color: refreshMouse.containsMouse ? Theme.hoverFill : "transparent"
                 activeFocusOnTab: true
+                Accessible.role: Accessible.Button
+                Accessible.name: "Reconnect"
+                Accessible.onPressAction: T3Code.connect()
 
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -265,6 +272,7 @@ Surface {
                     id: refreshMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: T3Code.connect()
                 }
             }

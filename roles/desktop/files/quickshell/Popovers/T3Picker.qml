@@ -19,6 +19,9 @@ Item {
     implicitHeight: 34
     z: expanded ? 100 : 0
     activeFocusOnTab: enabled && visible
+    Accessible.role: Accessible.ComboBox
+    Accessible.name: root.label
+    Accessible.description: root.value
 
     function optionId(option) {
         if (!option)
@@ -159,6 +162,7 @@ Item {
             anchors.fill: parent
             enabled: root.enabled
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: {
                 root.forceActiveFocus();
                 root.expanded = !root.expanded;
@@ -240,6 +244,7 @@ Item {
                             anchors.fill: parent
                             enabled: choice.modelData.disabled !== true
                             hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 root.selected(choice.choiceId);
                                 root.expanded = false;

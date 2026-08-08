@@ -87,6 +87,7 @@ Row {
                 id: wsMouse
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 // This Hyprland build speaks the Lua IPC dialect: raw
                 // dispatch text is evaluated as `hl.dispatch(<text>)`.
                 onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + slot.wsId + " })")
