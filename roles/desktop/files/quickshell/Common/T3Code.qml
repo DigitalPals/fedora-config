@@ -132,6 +132,10 @@ Singleton {
         return T3Threads.threadUrl(threadId);
     }
 
+    function threadPath(threadId) {
+        return T3Threads.threadPath(threadId);
+    }
+
 
     function relTime(iso) {
         return T3Threads.relTime(iso);

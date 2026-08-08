@@ -59,6 +59,9 @@ Column {
         : gitSuccessVisible ? git.summary : ""
     readonly property bool gitFeedbackFailed: !gitPending
         && (git.error !== "" || T3Code.detailVcs.error !== "")
+    // Rebound whenever the projection refreshes because `thread` is a dep.
+    readonly property string copyPath: thread !== null ? T3Code.threadPath(threadId) : ""
+    readonly property string copyBranch: thread !== null && thread.branch ? thread.branch : ""
 
     spacing: 5
 
@@ -373,7 +376,9 @@ Column {
             && root.thread.lifecycle === "settled" && T3Code.supportsSettlement
         readonly property bool hasLifecycleMenuItems: sessionLive || canSnoozeHere || canWakeHere
             || canSettleHere || canUnsettleHere
+        readonly property bool hasCopyMenuItems: root.copyPath !== "" || root.copyBranch !== ""
         readonly property bool hasMenuItems: root.hasGitMenuItems || hasLifecycleMenuItems
+            || hasCopyMenuItems
 
         Column {
             id: headerColumn
@@ -593,6 +598,29 @@ Column {
                     onTriggered: {
                         root.menuOpen = false;
                         T3Code.unsettle(root.threadId);
+                    }
+                }
+
+                MenuDivider {
+                    visible: header.hasCopyMenuItems
+                        && (root.hasGitMenuItems || header.hasLifecycleMenuItems)
+                }
+
+                MenuEntry {
+                    visible: root.copyPath !== ""
+                    label: "Copy path"
+                    onTriggered: {
+                        root.menuOpen = false;
+                        Quickshell.clipboardText = root.copyPath;
+                    }
+                }
+
+                MenuEntry {
+                    visible: root.copyBranch !== ""
+                    label: "Copy branch"
+                    onTriggered: {
+                        root.menuOpen = false;
+                        Quickshell.clipboardText = root.copyBranch;
                     }
                 }
             }

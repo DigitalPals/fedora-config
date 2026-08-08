@@ -111,6 +111,20 @@ Singleton {
         return T3Connection.host + "/" + T3Connection.environmentId + "/" + threadId;
     }
 
+    // Where the thread's files live on the server host: its worktree when it
+    // has one, the project checkout otherwise. Empty until the shell stream
+    // has delivered the thread.
+    function threadPath(threadId) {
+        const thread = threadMap[threadId];
+        if (!thread)
+            return "";
+        if (typeof thread.worktreePath === "string" && thread.worktreePath.trim() !== "")
+            return thread.worktreePath;
+        const project = projectMap[thread.projectId];
+        return project && typeof project.workspaceRoot === "string"
+            ? project.workspaceRoot : "";
+    }
+
     // Reads nowMs so callers' bindings re-run on the minute tick.
     function relTime(iso) {
         if (!iso)

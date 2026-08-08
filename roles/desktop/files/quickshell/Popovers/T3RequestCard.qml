@@ -93,6 +93,16 @@ Rectangle {
             color: Theme.textMid
         }
 
+        Text {
+            visible: root.isInput && root.question !== null
+                && root.question.multiSelect === true
+            width: parent.width
+            text: "Select one or more options."
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            color: Theme.textDim
+        }
+
         Column {
             visible: root.isInput && root.question !== null
             width: parent.width
@@ -141,7 +151,11 @@ Rectangle {
                         id: marker
                         x: 7
                         anchors.verticalCenter: parent.verticalCenter
-                        text: option.chosen ? "●" : "○"
+                        // Checkbox marks for multi-select, radio marks for
+                        // pick-one — mirrors the reference client's controls.
+                        text: root.question && root.question.multiSelect
+                            ? (option.chosen ? "■" : "□")
+                            : (option.chosen ? "●" : "○")
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.fontCaption
                         color: option.chosen ? Theme.accent : Theme.textDim
@@ -290,21 +304,32 @@ Rectangle {
             }
         }
 
-        Row {
+        // The reference client's four decisions, in its order and wording:
+        // quietest on the left, the primary approval on the right. Flow lets
+        // the long "Always allow" pill wrap in this narrow card.
+        Flow {
             visible: !root.isInput
+            width: parent.width
             spacing: 5
 
             Action {
-                label: root.pending ? "Sending…" : "Allow"
+                label: "Cancel turn"
                 enabled: !root.pending && T3Code.canDispatch
-                tint: Theme.accentFg
-                fill: Theme.accent
                 onTriggered: T3Code.respondApproval(root.threadId,
-                    root.request.requestId, "accept")
+                    root.request.requestId, "cancel")
             }
 
             Action {
-                label: "Allow for session"
+                label: "Decline"
+                enabled: !root.pending && T3Code.canDispatch
+                tint: Theme.redText
+                fill: Theme.redBg
+                onTriggered: T3Code.respondApproval(root.threadId,
+                    root.request.requestId, "decline")
+            }
+
+            Action {
+                label: "Always allow this session"
                 enabled: !root.pending && T3Code.canDispatch
                 tint: Theme.accent
                 fill: Theme.accentBg
@@ -313,12 +338,12 @@ Rectangle {
             }
 
             Action {
-                label: "Deny"
+                label: root.pending ? "Sending…" : "Approve once"
                 enabled: !root.pending && T3Code.canDispatch
-                tint: Theme.redText
-                fill: Theme.redBg
+                tint: Theme.accentFg
+                fill: Theme.accent
                 onTriggered: T3Code.respondApproval(root.threadId,
-                    root.request.requestId, "decline")
+                    root.request.requestId, "accept")
             }
         }
 
