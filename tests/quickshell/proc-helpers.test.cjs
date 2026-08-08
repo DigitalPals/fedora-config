@@ -57,9 +57,9 @@ const IP_JSON = JSON.stringify([{
     operstate: "UP",
     addr_info: [{
         family: "inet",
-        local: "10.10.1.216",
+        local: "192.0.2.216",
         prefixlen: 23,
-        broadcast: "10.10.1.255",
+        broadcast: "192.0.2.255",
         scope: "global",
         dynamic: true,
         label: "wlp0s20f3"
@@ -67,8 +67,8 @@ const IP_JSON = JSON.stringify([{
 }]);
 
 test("the connected device's IPv4 address reads exactly as the jq pipeline did", () => {
-    assert.equal(H.firstIpv4(IP_JSON), "10.10.1.216");
-    assert.equal(H.firstIpv4(IP_JSON + "\n"), "10.10.1.216");
+    assert.equal(H.firstIpv4(IP_JSON), "192.0.2.216");
+    assert.equal(H.firstIpv4(IP_JSON + "\n"), "192.0.2.216");
 });
 
 test("a device with no address yet, and unusable output, both read as no address", () => {
@@ -87,10 +87,10 @@ test("only inet entries count as the address", () => {
         ifname: "wlp0s20f3",
         addr_info: [
             { family: "inet6", local: "fe80::1" },
-            { family: "inet", local: "10.10.1.216" }
+            { family: "inet", local: "192.0.2.216" }
         ]
     }]);
-    assert.equal(H.firstIpv4(mixed), "10.10.1.216");
+    assert.equal(H.firstIpv4(mixed), "192.0.2.216");
 });
 
 // ---- tailscale status --json ---------------------------------------------
