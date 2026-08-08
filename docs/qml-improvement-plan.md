@@ -1760,9 +1760,47 @@ gradually. Strictly sequential; land each WP green before the next.
 > - `tests/t3-contract-snapshot` needed its settle raised from 16s to 24s. A
 >   short settle shows up as `Target not found` (the reload had not finished) or
 >   as empty thread counts, both of which look like a regression and are not.
-### [ ] WP5.6 `T3Git.qml` — git/VCS actions (~2040–2148). Then delete dead
-properties from the façade: `detailActionStates`, `pairHint`, `dayMs`,
-`queuedTurnGraceMs` (grep to confirm still unreferenced).
+### [x] WP5.6 `T3Git.qml` — git/VCS actions, and the dead-property sweep
+
+> Done. `Common/T3Git.qml` (152 lines) owns the repository status card and the
+> server-side commit/push. `T3Code.qml` 641 → **538**.
+> - **It took `detailVcs` and `detailGit` with it**, resolving the inversion
+>   WP5.4 flagged: this file is their only writer, and git reaching across to
+>   set another singleton's properties was the wrong direction. Their lifecycle
+>   is still the detail view's, so `T3Detail` raises `detailReset` and T3Git
+>   clears them — the same signal shape as everywhere else in the phase.
+> - `T3Detail.vcsRefreshWanted` is consumed directly by T3Git now; T3Code no
+>   longer relays it.
+> - All four dead members confirmed unreferenced and removed:
+>   `detailActionStates`, `pairHint`, `dayMs`, `queuedTurnGraceMs`.
+> - Contract snapshot identical, journal clean, leak check clean against both
+>   `T3Code` and `T3Detail`. Exercised live: opening a thread resolves its
+>   worktree (`/home/john/Code/Cybex/manage`), a real `vcs.refreshStatus`
+>   completes, `gitActionApplies("commit_push")` evaluates against the returned
+>   status, and closing the detail view clears the card through the new reset
+>   path. No git command was run against any repository.
+
+---
+
+> **Phase 5 complete.** `Common/T3Code.qml` 2,487 → **538 lines**, now a façade
+> over six singletons: `T3Connection` (265), `T3Rpc` (497), `T3Threads` (320),
+> `T3Detail` (639), `T3Drafts` (677), `T3Git` (152). All 274 call sites across
+> the seven consumer files are untouched.
+>
+> What made it work, for whoever does Phase 6:
+> - **Signals downward-to-upward, never reach-back.** Each new singleton owns
+>   its state and announces; the layer above listens. `T3Connection` raises
+>   `message`/`opened`/`dropped`, `T3Rpc` raises `aborted`, `T3Threads` raises
+>   `snapshotApplied`/`threadUpserted`/`rebuilt`, `T3Detail` raises
+>   `draftMessageConfirmed`/`userInputResolved`/`vcsRefreshWanted`/`detailReset`.
+>   Where a lower layer needs configuration rather than events, it is bound
+>   down (`T3Code` → `T3Drafts` for the server config), not read back up.
+> - **The leak check after every split**, comparing what the new file
+>   references against what only the old one declares, with comments stripped.
+>   It found four leaks in WP5.4 and two in WP5.5 that qmllint did not.
+> - **`tests/run` and a matching contract snapshot are not sufficient.** WP5.4
+>   passed both while its subscription was dead, because a subsystem that is
+>   idle at rest has nothing to differ. Every split has to be exercised.
 
 **Accept per WP:** `tests/run` green; T3 pair/unpair, inbox, thread view,
 composer send, structured input, git actions all verified on a live deploy

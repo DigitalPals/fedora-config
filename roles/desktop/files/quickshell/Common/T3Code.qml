@@ -61,14 +61,12 @@ Singleton {
 
     // Expanded-thread detail (orchestration.subscribeThread). The popover
     // owns one selection, so there is deliberately only one detail stream.
-    readonly property var detailActionStates: T3Rpc.actionStates
 
     // Structured-input drafts live in the singleton rather than the Loader
     // delegate. A rejected response therefore survives closing the popover,
     // selecting another thread, and retrying. Only user-input.resolved removes
     // the matching draft.
     readonly property bool paired: T3Connection.paired
-    readonly property string pairHint: "python3 ~/.config/quickshell/scripts/t3-pair.py '<pairing-url>'"
 
     // ---- rpc / action re-exports -----------------------------------------
     // Common/T3Rpc.qml owns request ids, the in-flight handler table and the
@@ -446,8 +444,8 @@ Singleton {
     readonly property var detailActionablePlan: T3Detail.detailActionablePlan
     readonly property var detailCheckpointSummary: T3Detail.detailCheckpointSummary
     readonly property var detailDiff: T3Detail.detailDiff
-    readonly property var detailVcs: T3Detail.detailVcs
-    readonly property var detailGit: T3Detail.detailGit
+    readonly property var detailVcs: T3Git.detailVcs
+    readonly property var detailGit: T3Git.detailGit
 
     function openDetail(threadId) {
         T3Detail.openDetail(threadId);
@@ -461,117 +459,19 @@ Singleton {
         T3Detail.loadFullThreadDiff(threadId, checkpoint);
     }
 
-    // ---- git actions -----------------------------------------------------
-
-    function threadCwd(threadId) {
-        const thread = T3Threads.threadMap[threadId];
-        return Helpers.resolveThreadCwd(thread, thread ? T3Threads.projectMap[thread.projectId] : null);
-    }
-
-    // Reads T3Detail.detailVcs so QML visibility bindings refresh with the status.
+    // ---- git re-exports ----------------------------------------------------
     function gitActionApplies(action) {
-        return Helpers.gitActionVisible(T3Detail.detailVcs.status, action);
+        return T3Git.gitActionApplies(action);
     }
 
     function refreshVcsStatus(threadId, force) {
-        if (state !== "connected" || !canRead || T3Detail.detailThreadId !== threadId)
-            return;
-        if (force !== true && T3Detail.detailVcs.fetchedAt > 0
-                && Date.now() - T3Detail.detailVcs.fetchedAt < 10000)
-            return;
-        const cwd = threadCwd(threadId);
-        if (cwd === "") {
-            // No worktree and no project root: nothing to show, hide the card.
-            T3Detail.detailVcs = ({ cwd: "", loading: false, error: "", status: null,
-                fetchedAt: Date.now() });
-            return;
-        }
-        T3Detail.detailVcs = Object.assign({}, T3Detail.detailVcs, { cwd: cwd, loading: true, error: "" });
-        T3Rpc.requestOnce("vcs.refreshStatus", { cwd: cwd }, value => {
-            if (T3Detail.detailThreadId !== threadId)
-                return;
-            T3Detail.detailVcs = ({ cwd: cwd, loading: false, error: "",
-                status: Helpers.sanitizeVcsStatus(value), fetchedAt: Date.now() });
-        }, error => {
-            if (T3Detail.detailThreadId !== threadId)
-                return;
-            T3Detail.detailVcs = Object.assign({}, T3Detail.detailVcs, {
-                loading: false, error: error, fetchedAt: Date.now()
-            });
-        }, { fallback: "Repository status unavailable" });
+        T3Git.refreshVcsStatus(threadId, force);
     }
 
-    // action: "commit_push" (commit on the current branch + push — the
-    // default flow) or "push". The commit message is generated server-side.
     function runGitAction(threadId, action) {
-        const key = T3Rpc.actionKey("git", threadId, "");
-        if (!Helpers.canBeginAction(T3Rpc.actionStates, key))
-            return "";
-        if (!canOperate)
-            return T3Rpc.rejectAction(key, "This pairing is read-only", false);
-        if (state !== "connected")
-            return T3Rpc.rejectAction(key, "Not connected", false);
-        const payload = Helpers.buildGitActionPayload({
-            actionId: T3Rpc.genId(), cwd: threadCwd(threadId), action: action });
-        if (!payload)
-            return T3Rpc.rejectAction(key, "No repository folder for this thread", false);
-        T3Rpc.beginAction(key, "", false, gitActionTimeoutMs);
-        T3Detail.detailGit = ({ actionId: payload.actionId, action: action,
-            label: action === "push" ? "Pushing…" : "Committing…",
-            summary: "", prUrl: "", error: "" });
-        // The terminal chunk (action_finished/action_failed) is what
-        // T3Rpc.requestOnce retains; a Failure exit prefers the streamed message.
-        let streamedFailure = "";
-        const finish = fields => {
-            if (T3Detail.detailThreadId === threadId
-                    && T3Detail.detailGit.actionId === payload.actionId)
-                T3Detail.detailGit = Object.assign({ actionId: "", action: "", label: "",
-                    summary: "", prUrl: "", error: "" }, fields);
-            root.refreshVcsStatus(threadId, true);
-        };
-        return T3Rpc.requestOnce("git.runStackedAction", payload, value => {
-            T3Rpc.clearAction(key);
-            const failure = streamedFailure !== "" ? streamedFailure
-                : value && value.kind === "action_finished" ? "" : "Git action failed";
-            if (failure !== "") {
-                finish({ error: failure });
-                return;
-            }
-            const summary = Helpers.gitResultSummary(value.result);
-            finish({ summary: summary.text, prUrl: summary.prUrl });
-        }, error => {
-            const message = streamedFailure !== "" ? streamedFailure : error;
-            T3Rpc.failAction(key, message);
-            finish({ error: message });
-        }, {
-            actionKey: key,
-            timeoutMs: gitActionTimeoutMs,
-            slidingDeadline: true,
-            fallback: "Git action failed",
-            onItem: event => {
-                const failure = Helpers.gitFailureMessage(event);
-                if (failure !== "")
-                    streamedFailure = failure;
-                // Keep the expiry sweep fed while progress is flowing.
-                const current = T3Rpc.actionStates[key];
-                if (current && current.pending === true)
-                    T3Rpc.putActionState(key, Object.assign({}, current,
-                        { startedAt: Date.now() }));
-                if (T3Detail.detailThreadId !== threadId
-                        || T3Detail.detailGit.actionId !== payload.actionId)
-                    return;
-                const label = Helpers.gitProgressLabel(event);
-                if (label !== "")
-                    T3Detail.detailGit = Object.assign({}, T3Detail.detailGit, { label: label });
-            }
-        });
-        // Deliberately not interrupted on detail close/switch: interrupting
-        // could abort a server-side push mid-flight. Late results are no-ops
-        // behind the T3Detail.detailThreadId/actionId guards above.
+        return T3Git.runGitAction(threadId, action);
     }
 
-    // The transport's half of the conversation. T3Connection owns the socket;
-    // this is where its frames become protocol.
     Connections {
         target: T3Detail
 
@@ -583,9 +483,6 @@ Singleton {
             T3Drafts.clearUserInputDraft(threadId, requestId);
         }
 
-        function onVcsRefreshWanted(threadId) {
-            root.refreshVcsStatus(threadId, true);
-        }
     }
 
     Connections {

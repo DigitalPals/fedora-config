@@ -31,6 +31,10 @@ Singleton {
     // actual status fetch (WP5.6 takes it out of T3Code).
     signal vcsRefreshWanted(string threadId)
 
+    // The detail view is switching threads or closing. T3Git clears the
+    // repository card on this; their lifecycle is ours, their state is not.
+    signal detailReset()
+
     // The shell stream carries a fresher session/latest-turn summary than the
     // detail stream while that one is still catching up. T3Code hands it over
     // on every rebuild; a thread we are not showing is simply null.
@@ -63,9 +67,6 @@ Singleton {
     // Repository status for the selected thread (vcs.refreshStatus), fetched
     // per detail open and after git actions; drives which git actions are
     // shown at all. detailGit tracks the one in-flight/last stacked action.
-    property var detailVcs: ({ cwd: "", loading: false, error: "", status: null, fetchedAt: 0 })
-    property var detailGit: ({ actionId: "", action: "", label: "", summary: "",
-        prUrl: "", error: "" })
 
     // Action state is keyed by kind/thread/request. Generic commands clear
     // when T3Rpc.dispatch succeeds; approvals and structured input wait for the
@@ -93,8 +94,7 @@ Singleton {
         detailCheckpointSummary = null;
         detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "", fullText: "",
             truncated: false, totalChars: 0, totalLines: 0 });
-        detailVcs = ({ cwd: "", loading: false, error: "", status: null, fetchedAt: 0 });
-        detailGit = ({ actionId: "", action: "", label: "", summary: "", prUrl: "", error: "" });
+        detailReset();
     }
 
     function historyCompare(left, right) {

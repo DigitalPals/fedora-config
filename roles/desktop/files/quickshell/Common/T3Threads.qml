@@ -50,10 +50,6 @@ Singleton {
     // client's sidebar setting (its default is 3); 0 disables auto-settle.
     property int autoSettleAfterDays: 3
 
-    readonly property int dayMs: Helpers.DAY_MS
-    // A turn.start is adopted by a session within seconds; past this the
-    // message is a failed start, not pending work.
-    readonly property int queuedTurnGraceMs: Helpers.QUEUED_TURN_GRACE_MS
     // Bumped once a minute so settledness and the relative time labels
     // follow the clock — both move without any server event. The working
     // clock ticks independently so a live duration does not rebuild lists.
