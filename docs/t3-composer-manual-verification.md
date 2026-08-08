@@ -48,7 +48,7 @@ select trait and a boolean trait.
 
 ## Automated and runtime checks
 
-- [ ] Run `node --test roles/desktop/files/quickshell/Common/tests/*.test.cjs`.
+- [ ] Run `tests/run` (Node tests plus qmllint over the whole shell).
 - [ ] Reload `quickshell.service` and inspect that invocation's journal for QML
   load failures, syntax errors, binding loops, invalid sizing, and oversized
   buffers.

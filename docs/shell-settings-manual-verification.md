@@ -3,9 +3,9 @@
 The Shell settings window (design v2) makes bar geometry, appearance,
 modules, wallpaper, and system behavior live-configurable, persisted to
 `~/.local/state/quickshell/shell-settings.json`. Automated coverage:
-`node --test roles/desktop/files/quickshell/Common/tests/*.test.cjs` (store merge/clamp
-rules, qmldir completeness, IPC single-declaration, typography lint),
-`tests/qml-lint` (static qmllint error sweep over every shell QML file), and
+`tests/run` — the Node suite (store merge/clamp rules, schema/property
+agreement, qmldir completeness, IPC single-declaration, typography lint) plus
+`tests/qml-lint`, a qmllint sweep over every shell QML file — and
 `tests/verify-xps` (settings IPC liveness). Everything pointer-driven below
 is manual.
 

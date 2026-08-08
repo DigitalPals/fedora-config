@@ -101,3 +101,15 @@ reapply the Ansible configuration. Detailed logs are saved under
 Extra arguments to `bootstrap` are passed to `ansible-playbook`. For `update`,
 use `--full` before Ansible arguments, for example `./update --full --check
 --diff` or `./update --full --tags desktop,dotfiles`.
+
+## Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [docs/quickshell-notes.md](docs/quickshell-notes.md) | Working on the Quickshell shell: how to test it headlessly, the traps, and what has already been decided against |
+| [docs/shell-settings-manual-verification.md](docs/shell-settings-manual-verification.md) | Hand-test checklist for the settings window |
+| [docs/t3-composer-manual-verification.md](docs/t3-composer-manual-verification.md) | Hand-test checklist for the T3 composer |
+| [docs/t3-git-actions-manual-verification.md](docs/t3-git-actions-manual-verification.md) | Hand-test checklist for the T3 git actions |
+
+The automated side is `./verify`, which runs `tests/run` (Node unit tests plus
+a qmllint sweep) before the system checks.

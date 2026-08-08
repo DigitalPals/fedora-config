@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Dump the observable T3Code contract from the running shell, as JSON on stdout.
 #
-# Phase 5 of docs/qml-improvement-plan.md splits Common/T3Code.qml apart behind
-# a façade. The failure mode that split has is specific and nasty: the shell
+# Common/T3Code.qml is a façade over six singletons (T3Connection, T3Rpc,
+# T3Threads, T3Detail, T3Drafts, T3Git). The failure mode that split has is specific and nasty: the shell
 # comes up looking completely normal — connected chip, popover header, thread
 # list — while something behind it is broken. It happened in WP5.1 (every send
 # throwing ReferenceError) and again in WP5.2 (two properties moved but never
