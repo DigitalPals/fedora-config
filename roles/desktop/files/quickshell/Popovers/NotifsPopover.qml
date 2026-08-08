@@ -54,110 +54,50 @@ Surface {
     readonly property var earlierGroups: groups.filter(group =>
         nowMs - group.items[0].arrived >= 3600000)
 
-    // ---- shared card pieces ---------------------------------------------
+    // ---- card wiring ----------------------------------------------------
 
-    component AppIcon: Item {
-        id: iconSlot
-        required property var entry
-        property int iconSize: 28
-        property bool urgent: false
+    // Centre type: this is menubar chrome, so it follows the menu font and
+    // the popover scale. Common/NotifCard.qml draws the anatomy; everything
+    // that differs between a toast and a centre row arrives through here.
+    readonly property var cardStyle: ({
+        face: Theme.fontMenu,
+        header: Theme.fontSecondary,
+        body: Theme.fontSecondary,
+        bodyColor: Theme.textLow,
+        bodyLines: 2,
+        bodyLeading: 1.25,
+        stampFace: Theme.fontMenu,
+        stampSize: Theme.fontCaption,
+        stampCentred: false,
+        trailingHeight: 20,
+        close: Theme.fontHeading,
+        closeColor: Theme.textDim,
+        pill: Theme.fontCaption
+    })
 
-        Image {
-            id: iconImg
-            anchors.centerIn: parent
-            width: iconSlot.iconSize
-            height: iconSlot.iconSize
-            source: Notifs.iconSource(iconSlot.entry)
-            sourceSize: Qt.size(iconSlot.iconSize, iconSlot.iconSize)
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            visible: status === Image.Ready
-        }
+    // A nested card is a row inside an expanded source group: no fill, no
+    // border, tighter padding, and a hairline separating it from the row
+    // above. Its source is already named by the group header, so it drops
+    // the app name and the icon with it.
+    component CentreCard: NotifCard {
+        id: centre
 
-        Text {
-            visible: !iconImg.visible
-            anchors.centerIn: parent
-            text: iconSlot.urgent ? "" : iconSlot.entry.webOrigin ? "" : ""
-            font.family: Theme.fontIcon
-            font.pixelSize: Math.max(Theme.fontCaption, iconSlot.iconSize - 8)
-            color: iconSlot.urgent ? Theme.redText : Theme.accent
-        }
-    }
-
-    component ActionPills: Row {
-        id: pills
-        required property var entry
-        property bool reveal: false
-        readonly property var items: reveal ? Notifs.secondaryActions(entry) : []
-
-        visible: items.length > 0
-        spacing: 6
-
-        Repeater {
-            model: pills.items
-
-            delegate: Rectangle {
-                required property var modelData
-                required property int index
-
-                height: 24
-                width: Math.min(actionText.implicitWidth + 20, 146)
-                radius: 7
-                color: index === 0
-                    ? (actionMouse.containsMouse ? Theme.accentBg : Theme.accentBgSoft)
-                    : (actionMouse.containsMouse ? Theme.hoverFillStrong
-                        : Qt.rgba(1, 1, 1, 0.05))
-                readonly property color foreground: index === 0
-                    ? Theme.accent : Theme.textMid
-
-                Text {
-                    id: actionText
-                    anchors.centerIn: parent
-                    width: parent.width - 16
-                    text: parent.modelData.text
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightMedium
-                    color: parent.foreground
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                }
-
-                MouseArea {
-                    id: actionMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Notifs.invoke(pills.entry, parent.modelData)
-                }
-            }
-        }
-    }
-
-    component NotifCard: Rectangle {
-        id: card
-        required property var entry
-        property int groupCount: 1
-        property bool showApp: true
         property bool nested: false
-        property bool groupUrgent: false
-        signal activated
-        signal closeRequested
 
-        readonly property bool urgent: groupUrgent
-            || entry.urgency === NotificationUrgency.Critical
-        readonly property bool hovered: cardHover.hovered
-        readonly property bool actionable: groupCount > 1 || Notifs.canActivate(entry)
-
-        height: cardContent.implicitHeight + (nested ? 16 : 24)
-        radius: nested ? Theme.rowRadius : 11
-        color: urgent ? Theme.redBgSoft
-            : hovered ? Theme.hoverFill : nested ? "transparent" : Theme.cardFill
-        border.width: nested ? 0 : 1
-        border.color: urgent ? Theme.redBorder : Theme.hairlineSoft
+        style: root.cardStyle
+        nowMs: root.nowMs
+        showIcon: centre.showApp
+        padH: centre.nested ? 10 : 12
+        padV: centre.nested ? 8 : 12
+        radius: centre.nested ? Theme.rowRadius : 11
+        color: centre.urgent ? Theme.redBgSoft
+            : centre.hovered ? Theme.hoverFill
+            : centre.nested ? "transparent" : Theme.cardFill
+        border.width: centre.nested ? 0 : 1
+        border.color: centre.urgent ? Theme.redBorder : Theme.hairlineSoft
 
         Rectangle {
-            visible: card.nested
+            visible: centre.nested
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.leftMargin: 10
@@ -165,140 +105,6 @@ Surface {
             anchors.rightMargin: 10
             height: 1
             color: Theme.hairlineSoft
-        }
-
-        HoverHandler {
-            id: cardHover
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: card.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: {
-                if (card.actionable)
-                    card.activated();
-            }
-        }
-
-        Row {
-            id: cardContent
-            x: card.nested ? 10 : 12
-            y: card.nested ? 8 : 12
-            width: parent.width - x * 2
-            spacing: card.showApp ? 12 : 0
-
-            AppIcon {
-                visible: card.showApp
-                width: 28
-                height: 28
-                entry: card.entry
-                urgent: card.urgent
-            }
-
-            Column {
-                width: cardContent.width - (card.showApp ? 40 : 0)
-                spacing: 5
-
-                Item {
-                    width: parent.width
-                    height: Math.max(cardHeader.implicitHeight, cardTrailing.height)
-
-                    Text {
-                        id: cardHeader
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - cardTrailing.width - 8
-                        text: card.showApp
-                            ? card.entry.displayAppName
-                                + (card.entry.displaySummary
-                                    ? " · " + card.entry.displaySummary : "")
-                            : (card.entry.displaySummary || card.entry.displayAppName)
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
-                        font.weight: Theme.weightSemibold
-                        color: Theme.textHi
-                        elide: Text.ElideRight
-                    }
-
-                    Item {
-                        id: cardTrailing
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: card.groupCount > 1 ? 60 : 32
-                        height: 20
-
-                        Rectangle {
-                            visible: card.groupCount > 1
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: groupCountText.implicitWidth + 12
-                            height: 20
-                            radius: 6
-                            color: Theme.accentBg
-
-                            Text {
-                                id: groupCountText
-                                anchors.centerIn: parent
-                                text: card.groupCount
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontCaption
-                                font.weight: Theme.weightSemibold
-                                font.features: Theme.tabularNumberFeatures
-                                color: Theme.accent
-                            }
-                        }
-
-                        Text {
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: !card.hovered
-                            text: Notifs.timeAgo(card.entry.arrived, root.nowMs)
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightMedium
-                            font.features: Theme.tabularNumberFeatures
-                            color: Theme.textDim
-                        }
-
-                        Text {
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: card.hovered
-                            text: "×"
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontHeading
-                            color: closeMouse.containsMouse ? Theme.textHi : Theme.textDim
-
-                            MouseArea {
-                                id: closeMouse
-                                anchors.fill: parent
-                                anchors.margins: -6
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: card.closeRequested()
-                            }
-                        }
-                    }
-                }
-
-                Text {
-                    visible: text !== ""
-                    width: parent.width
-                    text: card.entry.displayBody || ""
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    color: card.urgent ? Theme.textHi : Theme.textLow
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    lineHeight: 1.25
-                }
-
-                ActionPills {
-                    entry: card.entry
-                    reveal: card.hovered && card.groupCount === 1
-                }
-            }
         }
     }
 
@@ -314,7 +120,7 @@ Surface {
         width: parent.width
         opacity: dim ? 0.7 : 1
 
-        NotifCard {
+        CentreCard {
             visible: !block.expanded
             width: parent.width
             entry: block.newest
@@ -361,7 +167,7 @@ Surface {
                         onClicked: root.toggleApp(block.group.app)
                     }
 
-                    AppIcon {
+                    NotifIcon {
                         anchors.left: parent.left
                         anchors.leftMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
@@ -431,7 +237,7 @@ Surface {
                 Repeater {
                     model: block.group.items
 
-                    delegate: NotifCard {
+                    delegate: CentreCard {
                         required property var modelData
                         width: expandedColumn.width
                         entry: modelData

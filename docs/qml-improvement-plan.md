@@ -1969,11 +1969,64 @@ variants become Theme tokens.
 
 </details>
 
-### [ ] WP6.4 ∥ Notification card unification
+### [x] WP6.4 ∥ Notification card unification
+
+> Done. `Common/NotifCard.qml` (190) + `NotifIcon.qml` (33) + `NotifActions.qml`
+> (62) replace the two copies; the callers lose 444 lines and gain 108. Notes:
+> - **"Same anatomy, ~180 lines each" was right; "the same card" was not.** The
+>   two shared the structure and almost no leaf value: different face, header
+>   and body sizes, body colour and line height, timestamp face/size/alignment,
+>   close glyph size and colour, padding source, body-line cap, pill palette and
+>   width cap. A card taking one property per divergence would have needed ~20
+>   of them, so type and trailing metrics travel as one `style` object — the
+>   `metrics` shape from WP6.2 — and the surface's own chrome (`color`,
+>   `border`, `radius`, `clip`) is set at the call site, because a NotifCard
+>   *is* a Rectangle. Extra children parent into it the ordinary way, which is
+>   how the toast's countdown bar and the centre's nested separator stayed with
+>   their owners.
+> - **Each caller declares its own `style`; Theme carries neither.** The toast
+>   legitimately uses 10/11/17px, below the popover scale's 12px floor, and
+>   `typography.test.cjs` enforces that floor per file — a Theme token would
+>   have moved those literals into a file the floor does not police, and the
+>   fontSans/fontMenu scoping assertions would have needed rewriting. Nothing in
+>   that test changed.
+> - **Pixel-identical, with one deliberate exception.** The notification centre
+>   is 0 differing pixels — collapsed groups, the count pill, the critical card,
+>   and (with hover and expansion forced in the deployed copy) expanded groups,
+>   nested rows, close buttons and action pills. The toast is 0 outside the icon
+>   column; the 197 px there are the fallback glyph, which was hardcoded at 18px
+>   against the centre's `max(fontCaption, iconSize - 8)` = 20. The formula won.
+>   The toast's action pills also adopt the centre's palette: secondary text
+>   `Theme.icon` → `textMid` (the visible one), secondary fill 0.07 → 0.05
+>   alpha, primary resting `accentBg` → `accentBgSoft`. Both fills are under the
+>   8% diff threshold; they show up at 2%.
+> - **`readonly property int contentHeight` cost a pixel.** Card height is text
+>   metrics plus padding and lands on fractions; truncating it made the first
+>   card 1px short and shifted every card below it, which is what the centre's
+>   first diff was showing. It is `real` now. Worth remembering: an `int`
+>   property is a silent floor, and qmllint says nothing.
+> - Verification technique: a throwaway `probe` IpcHandler with `clear()` and a
+>   `hush()` that retires toasts without touching the centre's entries — the
+>   critical toast never expires and otherwise sits on top of the popover in
+>   every screenshot. Hover and group expansion were forced by patching the
+>   deployed copy identically in both trees, which is what made the hover-only
+>   states diffable at all.
+> - New `tests/quickshell/notif-card.test.cjs` (3 tests). The load-bearing one
+>   compares the `card.style.*` keys NotifCard reads against the keys each
+>   caller supplies, in both directions: a `var` object's missing key is
+>   `undefined` at runtime with no parse error and no qmllint warning. All three
+>   were checked against deliberately broken variants.
+
+<details>
+<summary>Original WP6.4 specification</summary>
+
+### WP6.4 ∥ Notification card unification
 `NotificationToasts.qml:94–344` and `NotifsPopover.qml` (~150–330) build the
 same card anatomy twice (~180 lines each; `closeMouse` is char-identical).
 Extract a shared card component (probably `Popovers/NotifCard.qml` or a new
 `Common/` visual dir), parameterized for toast vs list contexts.
+
+</details>
 
 ### [ ] WP6.5 ∥ Settings row scaffolding
 A `SettingsRow` base absorbing `narrow`, `labelWidth`, the 12-line UndoChip

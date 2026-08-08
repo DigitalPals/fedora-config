@@ -24,6 +24,25 @@ PanelWindow {
     readonly property int padH: Settings.notifDensity === "compact" ? 10
         : Settings.notifDensity === "roomy" ? 19 : 14
 
+    // Toast type: an overlay surface, so it stays on the general UI face
+    // rather than the menu font, and it is free of the popover scale's 12px
+    // floor — the timestamp is deliberately small and monospaced.
+    readonly property var cardStyle: ({
+        face: Theme.fontSans,
+        header: Theme.fontCaption,
+        body: Theme.fontCaption,
+        bodyColor: Theme.icon,
+        bodyLines: Settings.notifBodyLines,
+        bodyLeading: 1.15,
+        stampFace: Theme.fontMono,
+        stampSize: 10,
+        stampCentred: true,
+        trailingHeight: 18,
+        close: 17,
+        closeColor: Theme.textLow,
+        pill: 11
+    })
+
     visible: Notifs.toasts.length > 0
     screen: Screens.focused
     anchors {
@@ -99,6 +118,12 @@ PanelWindow {
                 id: slot
                 required property var modelData
 
+                readonly property bool critical: modelData.urgency
+                    === NotificationUrgency.Critical
+                readonly property int total: Notifs.timeoutFor(modelData)
+                readonly property bool showProgress: Settings.notifProgress && !critical
+                property int remaining: Notifs.timeoutFor(modelData)
+
                 width: toastColumn.width
                 implicitHeight: card.height
 
@@ -111,236 +136,66 @@ PanelWindow {
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
 
-                Rectangle {
+                // One continuous countdown instead of a 100ms tick: the
+                // progress bar moves at display rate and the card needs no
+                // repeating timer. Hovering stops the sequence with
+                // `remaining` frozen; unhovering restarts it from the frozen
+                // value with a freshly captured duration.
+                SequentialAnimation {
+                    running: !card.hovered && !slot.critical
+                    ScriptAction {
+                        script: countdown.duration = Math.max(1, slot.remaining)
+                    }
+                    NumberAnimation {
+                        id: countdown
+                        target: slot
+                        property: "remaining"
+                        to: 0
+                    }
+                    ScriptAction {
+                        script: Notifs.hideToast(slot.modelData, true)
+                    }
+                }
+
+                NotifCard {
                     id: card
 
-                    readonly property bool critical: slot.modelData.urgency
-                        === NotificationUrgency.Critical
-                    readonly property bool hovered: cardHover.hovered
-                    readonly property var actions: Notifs.secondaryActions(slot.modelData)
-                    readonly property bool actionable: Notifs.canActivate(slot.modelData)
-                    readonly property int total: Notifs.timeoutFor(slot.modelData)
-                    readonly property bool showProgress: Settings.notifProgress && !critical
-                    property int remaining: Notifs.timeoutFor(slot.modelData)
+                    entry: slot.modelData
+                    style: root.cardStyle
+                    nowMs: root.now
+                    padH: root.padH
+                    padV: root.padV
+                    showIcon: Settings.notifIcons
 
                     width: parent.width
-                    height: cardContent.implicitHeight + root.padV * 2
-                        + (showProgress ? 4 : 0)
+                    height: contentHeight + (slot.showProgress ? 4 : 0)
                     radius: 12
                     clip: true
-                    color: critical ? Theme.redBgSoft
+                    color: slot.critical ? Theme.redBgSoft
                         : hovered ? "#16171d" : Theme.popBg
                     border.width: 1
-                    border.color: critical ? Theme.redBorder
+                    border.color: slot.critical ? Theme.redBorder
                         : hovered ? Qt.rgba(1, 1, 1, 0.14) : Theme.popBorder
 
-                    HoverHandler {
-                        id: cardHover
-                    }
-
-                    // One continuous countdown instead of a 100ms tick: the
-                    // progress bar moves at display rate and the card needs
-                    // no repeating timer. Hovering stops the sequence with
-                    // `remaining` frozen; unhovering restarts it from the
-                    // frozen value with a freshly captured duration.
-                    SequentialAnimation {
-                        running: !card.hovered && !card.critical
-                        ScriptAction {
-                            script: countdown.duration = Math.max(1, card.remaining)
-                        }
-                        NumberAnimation {
-                            id: countdown
-                            target: card
-                            property: "remaining"
-                            to: 0
-                        }
-                        ScriptAction {
-                            script: Notifs.hideToast(slot.modelData, true)
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: card.actionable
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: Notifs.invokeDefault(slot.modelData)
-                    }
-
-                    Row {
-                        id: cardContent
-                        x: root.padH
-                        y: root.padV
-                        width: parent.width - root.padH * 2
-                        spacing: 12
-
-                        Item {
-                            id: iconSlot
-                            visible: Settings.notifIcons
-                            width: 28
-                            height: 28
-
-                            Image {
-                                id: appIcon
-                                anchors.fill: parent
-                                source: Notifs.iconSource(slot.modelData)
-                                sourceSize: Qt.size(28, 28)
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true
-                                visible: status === Image.Ready
-                            }
-
-                            Text {
-                                anchors.centerIn: parent
-                                visible: !appIcon.visible
-                                text: card.critical ? ""
-                                    : slot.modelData.webOrigin ? "" : ""
-                                font.family: Theme.fontIcon
-                                font.pixelSize: 18
-                                color: card.critical ? Theme.redText : Theme.accent
-                            }
-                        }
-
-                        Column {
-                            id: copy
-                            width: cardContent.width - (iconSlot.visible
-                                ? iconSlot.width + cardContent.spacing : 0)
-                            spacing: 5
-
-                            Item {
-                                width: parent.width
-                                height: Math.max(headerText.implicitHeight, trailing.height)
-
-                                Text {
-                                    id: headerText
-                                    anchors.left: parent.left
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - trailing.width - 8
-                                    text: slot.modelData.displayAppName
-                                        + (slot.modelData.displaySummary
-                                            ? " · " + slot.modelData.displaySummary : "")
-                                    font.family: Theme.fontSans
-                                    font.pixelSize: Theme.fontCaption
-                                    font.weight: Theme.weightSemibold
-                                    color: Theme.textHi
-                                    elide: Text.ElideRight
-                                }
-
-                                Item {
-                                    id: trailing
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 32
-                                    height: 18
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        visible: !card.hovered
-                                        text: Notifs.timeAgo(slot.modelData.arrived, root.now)
-                                        font.family: Theme.fontMono
-                                        font.pixelSize: 10
-                                        font.weight: Theme.weightMedium
-                                        color: Theme.textDim
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        visible: card.hovered
-                                        text: "×"
-                                        font.family: Theme.fontSans
-                                        font.pixelSize: 17
-                                        color: closeMouse.containsMouse ? Theme.textHi : Theme.textLow
-
-                                        MouseArea {
-                                            id: closeMouse
-                                            anchors.fill: parent
-                                            anchors.margins: -6
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: Notifs.dismiss(slot.modelData)
-                                        }
-                                    }
-                                }
-                            }
-
-                            Text {
-                                visible: text !== "" && Settings.notifBodyLines > 0
-                                width: parent.width
-                                text: slot.modelData.displayBody || ""
-                                font.family: Theme.fontSans
-                                font.pixelSize: Theme.fontCaption
-                                color: card.critical ? Theme.textHi : Theme.icon
-                                wrapMode: Text.Wrap
-                                maximumLineCount: Math.max(1, Settings.notifBodyLines)
-                                elide: Text.ElideRight
-                                lineHeight: 1.15
-                            }
-
-                            Row {
-                                id: actionsRow
-                                visible: card.hovered && card.actions.length > 0
-                                spacing: 6
-
-                                Repeater {
-                                    model: card.actions
-
-                                    delegate: Rectangle {
-                                        required property var modelData
-                                        required property int index
-
-                                        height: 24
-                                        width: Math.min(actionText.implicitWidth + 20, 160)
-                                        radius: 7
-                                        color: index === 0
-                                            ? (actionMouse.containsMouse
-                                                ? Theme.accentAlpha(0.22)
-                                                : Theme.accentBg)
-                                            : (actionMouse.containsMouse
-                                                ? Theme.hoverFillStrong : Qt.rgba(1, 1, 1, 0.07))
-                                        readonly property color fg: index === 0
-                                            ? Theme.accent : Theme.icon
-
-                                        Text {
-                                            id: actionText
-                                            anchors.centerIn: parent
-                                            width: parent.width - 16
-                                            text: parent.modelData.text
-                                            font.family: Theme.fontSans
-                                            font.pixelSize: 11
-                                            font.weight: Theme.weightMedium
-                                            color: parent.fg
-                                            horizontalAlignment: Text.AlignHCenter
-                                            elide: Text.ElideRight
-                                        }
-
-                                        MouseArea {
-                                            id: actionMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: Notifs.invoke(slot.modelData, parent.modelData)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    onActivated: Notifs.invokeDefault(slot.modelData)
+                    onCloseRequested: Notifs.dismiss(slot.modelData)
 
                     // Timeout progress (design 1c): a thin bar counting down
                     // the toast's remaining time. Freezes with the timer
                     // while hovered.
                     Rectangle {
-                        visible: card.showProgress
+                        visible: slot.showProgress
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         anchors.margins: 1
                         height: 2
-                        color: Qt.rgba(1, 1, 1, 0.07)
+                        color: Theme.activeFill
 
                         Rectangle {
                             height: parent.height
-                            width: card.total > 0
-                                ? parent.width * Math.max(0, Math.min(1, card.remaining / card.total))
+                            width: slot.total > 0
+                                ? parent.width * Math.max(0, Math.min(1, slot.remaining / slot.total))
                                 : 0
                             color: Theme.accent
                         }

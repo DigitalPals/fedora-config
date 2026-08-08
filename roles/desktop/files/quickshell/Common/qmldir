@@ -39,4 +39,7 @@ singleton Tailscale Tailscale.qml
 # import "../Common" for Theme, so unifying them cost no new import anywhere.
 Claim Claim.qml
 HSlider HSlider.qml
+NotifActions NotifActions.qml
+NotifCard NotifCard.qml
+NotifIcon NotifIcon.qml
 Toggle Toggle.qml
