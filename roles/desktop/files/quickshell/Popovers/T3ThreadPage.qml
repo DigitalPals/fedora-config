@@ -102,49 +102,9 @@ Column {
         T3Code.runGitAction(threadId, action);
     }
 
-    component Action: Rectangle {
-        id: action
-        property string label: ""
-        property color tint: Theme.textLow
-        property color fill: Theme.hoverFill
-        signal triggered()
-
-        width: labelText.implicitWidth + 14
-        height: Theme.controlHeight
-        radius: 6
-        color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
-        opacity: enabled ? 1 : 0.4
-        activeFocusOnTab: enabled && visible
-        border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
-
-        Keys.onPressed: event => {
-            if (!action.enabled)
-                return;
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                    || event.key === Qt.Key_Space) {
-                action.triggered();
-                event.accepted = true;
-            }
-        }
-
-        Text {
-            id: labelText
-            anchors.centerIn: parent
-            text: action.label
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            font.weight: Theme.weightSemibold
-            color: action.tint
-        }
-
-        MouseArea {
-            id: actionMouse
-            anchors.fill: parent
-            enabled: action.enabled
-            hoverEnabled: true
-            onClicked: action.triggered()
-        }
+    // Tightest pill: the thread page packs several of these per row.
+    component Action: ActionButton {
+        hPadding: 14
     }
 
     component InfoCard: Rectangle {

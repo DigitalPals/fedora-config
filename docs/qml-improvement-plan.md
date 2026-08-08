@@ -1816,7 +1816,38 @@ reconnect behavior (kill server, watch backoff in journal).
 
 ∥ Mostly parallel; group by directory to avoid contention.
 
-### [ ] WP6.1 ∥ Shared popover primitives
+### [~] WP6.1 ∥ Shared popover primitives — two of five done
+
+> `Popovers/ActionButton.qml` and `Popovers/LinkText.qml` are in. The other
+> three sub-items are untouched; see the accounting below.
+> - **`ActionButton` — the WP says "verbatim ×3"; they were not.** The three
+>   `component Action:` copies had drifted: 18/16/14px side padding, a default
+>   tint of `textLow` or `textMid`, 0.4 vs 0.45 disabled opacity, and three
+>   different `activeFocusOnTab` guards. Padding and tint are properties now;
+>   the opacity and the focus guard were settled on the strictest reading
+>   (`enabled && visible && revealed` — a hidden action must not take Tab).
+>   Each page keeps a local `component Action: ActionButton { … }` with its own
+>   defaults, so **none of the 21 call sites changed**. Verified by rendering
+>   all five variants side by side in an offscreen harness.
+> - **`LinkText`** replaces the four popover footer actions. Only one of the
+>   four set a pointer cursor and only one widened its hit area; both are
+>   standard now. Watch for dropped ids when converting — `T3CodePopover` has a
+>   sibling anchoring against `openClient.left`, and qmllint caught it.
+>
+> **Not done, and why:**
+> - `ListRow` (~250 lines across ~8 sites) is the large one and deserves its own
+>   pass; the rows differ more than the actions did.
+> - The shared scrollbar: only `Settings/SettingsPage.qml` still has one — the
+>   "byte-identical ×3 in T3 pages" the WP cites no longer exist, so there is
+>   nothing to unify until that is re-surveyed.
+> - Header+Toggle ×4 and `DebouncedProcess`: the latter's three real users are
+>   `Weather`, `Usage` and `Tailscale` (not `LauncherView`, which WP1.9 noted
+>   still has the un-fixed variant of the pattern).
+
+<details>
+<summary>Original WP6.1 specification</summary>
+
+### WP6.1 ∥ Shared popover primitives
 - `Popovers/ActionButton.qml` — verbatim T3 action button ×3
   (`T3InboxPage.qml:24–67`, `T3RequestCard.qml:36–79`, `T3ThreadPage.qml:104–147`).
 - `Popovers/ListRow.qml` — the icon/title/trailing row pattern ×~8
@@ -1826,6 +1857,8 @@ reconnect behavior (kill server, watch backoff in journal).
   `Settings/SettingsPage.qml:48–58`).
 - Header+Toggle row ×4; `LinkText` footer action ×4.
 - `DebouncedProcess.qml` extracted from the `LauncherView.qml:240–303` pattern.
+
+</details>
 
 ### [ ] WP6.2 ∥ Unified Toggle/Slider with accessibility
 `Popovers/Toggle.qml` + `Settings/SettingsSwitch.qml` → one parameterized

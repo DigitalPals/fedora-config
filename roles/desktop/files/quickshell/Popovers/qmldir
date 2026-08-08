@@ -2,6 +2,7 @@
 # the engine's implicit directory scan proved unreliable for Settings/,
 # and a directory with a qmldir stops being scanned at all, so every
 # Popovers/*.qml type must be listed. qmldir.test.cjs enforces that.
+ActionButton ActionButton.qml
 AudioPopover AudioPopover.qml
 BatteryPopover BatteryPopover.qml
 BlockMeter BlockMeter.qml
@@ -10,6 +11,7 @@ CalendarPopover CalendarPopover.qml
 ControlCenterPopover ControlCenterPopover.qml
 HDivider HDivider.qml
 HSlider HSlider.qml
+LinkText LinkText.qml
 MediaPopover MediaPopover.qml
 NotifsPopover NotifsPopover.qml
 PopoutPanel PopoutPanel.qml

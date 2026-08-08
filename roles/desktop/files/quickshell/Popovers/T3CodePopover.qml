@@ -362,28 +362,20 @@ Surface {
             }
         }
 
-        Text {
+        LinkText {
             id: openClient
             anchors.right: parent.right
             anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 2
             text: "Open T3 Code"
-            font.family: Theme.fontMenu
+            hitMargin: 3
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightSemibold
-            color: openMouse.containsMouse ? Theme.accentHover : Theme.accent
-
-            MouseArea {
-                id: openMouse
-                anchors.fill: parent
-                anchors.margins: -3
-                hoverEnabled: true
-                onClicked: {
-                    Quickshell.execDetached(["xdg-open", T3Code.host !== ""
-                        ? T3Code.host : "https://app.t3.codes"]);
-                    Popouts.close();
-                }
+            onClicked: {
+                Quickshell.execDetached(["xdg-open", T3Code.host !== ""
+                    ? T3Code.host : "https://app.t3.codes"]);
+                Popouts.close();
             }
         }
     }

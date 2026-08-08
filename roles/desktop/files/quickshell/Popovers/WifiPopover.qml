@@ -255,24 +255,14 @@ Surface {
             color: Theme.textDim
         }
 
-        Text {
+        LinkText {
             anchors.right: parent.right
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Network settings"
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
-            font.weight: Theme.weightMedium
-            color: settingsMouse.containsMouse ? Theme.accentHover : Theme.accent
-
-            MouseArea {
-                id: settingsMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: {
-                    Quickshell.execDetached(["sh", "-c", "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center wifi"]);
-                    Popouts.close();
-                }
+            onClicked: {
+                Quickshell.execDetached(["sh", "-c", "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center wifi"]);
+                Popouts.close();
             }
         }
     }

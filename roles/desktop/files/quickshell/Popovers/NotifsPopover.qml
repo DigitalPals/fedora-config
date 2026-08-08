@@ -486,25 +486,12 @@ Surface {
             }
         }
 
-        Text {
-            visible: Notifs.count > 0
+        LinkText {
             anchors.right: parent.right
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Clear all"
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
-            font.weight: Theme.weightMedium
-            color: clearMouse.containsMouse ? Theme.accentHover : Theme.accent
-
-            MouseArea {
-                id: clearMouse
-                anchors.fill: parent
-                anchors.margins: -4
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: Notifs.clearAll()
-            }
+            onClicked: Notifs.clearAll()
         }
     }
 

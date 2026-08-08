@@ -273,24 +273,14 @@ Surface {
             color: Theme.textDim
         }
 
-        Text {
+        LinkText {
             anchors.right: parent.right
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             text: "Admin console"
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
-            font.weight: Theme.weightMedium
-            color: adminMouse.containsMouse ? Theme.accentHover : Theme.accent
-
-            MouseArea {
-                id: adminMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: {
-                    Quickshell.execDetached(["xdg-open", "https://login.tailscale.com/admin/machines"]);
-                    Popouts.close();
-                }
+            onClicked: {
+                Quickshell.execDetached(["xdg-open", "https://login.tailscale.com/admin/machines"]);
+                Popouts.close();
             }
         }
     }

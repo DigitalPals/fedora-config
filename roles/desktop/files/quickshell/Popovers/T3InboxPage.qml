@@ -22,51 +22,8 @@ Column {
 
     spacing: 5
 
-    component Action: Rectangle {
-        id: action
-        property string label: ""
-        property color tint: Theme.textLow
-        property color fill: Theme.hoverFill
-        property bool revealed: true
-        signal triggered()
-
-        width: labelText.implicitWidth + 18
-        height: Theme.controlHeight
-        radius: 6
-        color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
-        opacity: enabled ? 1 : 0.4
-        activeFocusOnTab: enabled && visible && revealed
-        border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
-
-        Keys.onPressed: event => {
-            if (!action.enabled)
-                return;
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                    || event.key === Qt.Key_Space) {
-                action.triggered();
-                event.accepted = true;
-            }
-        }
-
-        Text {
-            id: labelText
-            anchors.centerIn: parent
-            text: action.label
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            font.weight: Theme.weightSemibold
-            color: action.tint
-        }
-
-        MouseArea {
-            id: actionMouse
-            anchors.fill: parent
-            enabled: action.enabled
-            hoverEnabled: true
-            onClicked: action.triggered()
-        }
-    }
+    // The page's own defaults over the shared pill; call sites override further.
+    component Action: ActionButton {}
 
     component GroupHeader: Item {
         id: group

@@ -34,49 +34,10 @@ Rectangle {
     border.width: 1
     border.color: Theme.amberBorder
 
-    component Action: Rectangle {
-        id: action
-        property string label: ""
-        property color tint: Theme.textMid
-        property color fill: Theme.hoverFill
-        signal triggered()
-
-        width: actionText.implicitWidth + 16
-        height: Theme.controlHeight
-        radius: 6
-        color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
-        opacity: enabled ? 1 : 0.45
-        activeFocusOnTab: enabled
-        border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
-
-        Keys.onPressed: event => {
-            if (!action.enabled)
-                return;
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                    || event.key === Qt.Key_Space) {
-                action.triggered();
-                event.accepted = true;
-            }
-        }
-
-        Text {
-            id: actionText
-            anchors.centerIn: parent
-            text: action.label
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            font.weight: Theme.weightSemibold
-            color: action.tint
-        }
-
-        MouseArea {
-            id: actionMouse
-            anchors.fill: parent
-            enabled: action.enabled
-            hoverEnabled: true
-            onClicked: action.triggered()
-        }
+    // Tighter pill, and a brighter default tint than the other pages.
+    component Action: ActionButton {
+        hPadding: 16
+        tint: Theme.textMid
     }
 
     Column {
