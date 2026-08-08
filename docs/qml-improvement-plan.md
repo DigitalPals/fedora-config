@@ -2223,7 +2223,39 @@ consistently.
 
 </details>
 
-### [ ] WP6.8 ∥ Remaining perf odds and ends
+### [–] WP6.8 ∥ Remaining perf odds and ends — measured, declined
+
+> **Not done, on purpose.** Measured on 2026-08-08 and the premises do not
+> hold. Do not re-open without new numbers.
+> - **The toast countdown item is inert in practice.** It only wastes work
+>   when the progress bar is off, and `notifProgress` defaults to `true`.
+> - **The settings preview animation is already gated** — `running:
+>   Settings.notifProgress && page.visible`. The WP asked for what the code
+>   already does.
+> - **`Notifs.iconSource` is not hot.** With eight notifications: 8 lookups as
+>   the toasts arrive, 24 on opening the centre, 96 by six seconds later as
+>   the toasts retire, and then **flat** — no further calls while the panel
+>   sits open. A memo and a coarser `SystemClock` were written and measured
+>   against the unchanged code over the same 18-second sequence: byte-identical
+>   counts, 8 → 24 → 96 → 96 both ways. Both changes were reverted. The
+>   per-second `SystemClock` in `NotifsPopover` does *not* churn the card
+>   list, which is what the memo was supposed to defend against.
+> - `LauncherView.appScore` runs over 66 installed applications per keystroke;
+>   `Theme.asset` and the `Clock` singleton are tidiness, not performance.
+> - **Method note, learned the hard way:** a counter written from inside a
+>   function that QML calls *from a binding* can feed back into the binding
+>   graph. The first attempt at this used `property int` counters incremented
+>   inside `iconSource` and drove the shell to 171% CPU and 6.6 GB, filling
+>   `/run/user/1000` with a 3.1 GB log and leaving the restarted instance
+>   unable to create its IPC socket. Count in a `.pragma library` script
+>   instead — module scope is not a QML property, so nothing can capture it —
+>   and note that such a script is cached, so changing it needs a service
+>   restart rather than a hot reload.
+
+<details>
+<summary>Original WP6.8 specification</summary>
+
+### WP6.8 ∥ Remaining perf odds and ends
 - Toast countdown (`NotificationToasts.qml:142–156`): when `!showProgress`,
   use a plain `Timer` instead of a refresh-rate `NumberAnimation` with no
   visual consumer.
@@ -2241,6 +2273,8 @@ consistently.
   T3Code, NotificationToasts).
 - `Theme.asset(name, variant)` helper for the 11 hand-built
   `Quickshell.shellDir + "/assets/…"` paths.
+
+</details>
 
 ### [x] WP6.9 Deploy hygiene
 
@@ -2266,6 +2300,13 @@ consistently.
   commit with a tuned `.qmlformat.ini`, after the refactors above settle.
 - **Automatic shell restart on deploy**: Quickshell hot-reloads; a forced
   restart is more disruptive than the problem.
+- **WP6.8's perf items**: measured and declined — see the WP note. Two of the
+  premises were already false in the code and the third (icon lookups) does
+  not reproduce.
+- **WP6.1's `ListRow`, header+toggle ×4 and `DebouncedProcess`**: the rows
+  differ more than the actions did, and after WP6.2/6.4/6.5 the remaining
+  header+toggle rows are four short blocks around a shared `Toggle`. Reopen
+  only if a fifth consumer appears.
 - **QML-level tests via `qmltestrunner-qt6`**: installed and viable, but start
   after Phase 5 when the T3 singletons are small enough to test against a stub
   socket. Candidate first targets: Settings load/merge/save cycle,
