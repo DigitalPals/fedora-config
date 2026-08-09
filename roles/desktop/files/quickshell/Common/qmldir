@@ -21,6 +21,7 @@ singleton T3Detail T3Detail.qml
 singleton T3Drafts T3Drafts.qml
 singleton T3Git T3Git.qml
 singleton T3Threads T3Threads.qml
+singleton GitHub GitHub.qml
 singleton Notifs Notifs.qml
 singleton SysInfo SysInfo.qml
 singleton Osd Osd.qml

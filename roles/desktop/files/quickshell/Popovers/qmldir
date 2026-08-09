@@ -9,6 +9,7 @@ BlockMeter BlockMeter.qml
 BluetoothPopover BluetoothPopover.qml
 CalendarPopover CalendarPopover.qml
 ControlCenterPopover ControlCenterPopover.qml
+GitHubPopover GitHubPopover.qml
 HDivider HDivider.qml
 LinkText LinkText.qml
 MediaPopover MediaPopover.qml

@@ -149,11 +149,14 @@ ShellRoot {
     OsdWindow {}
 
     // Reading a singleton's property is what constructs it. Notifications
-    // must start collecting, usage must start polling and settings must load
-    // from session start rather than from the first popover open.
+    // must start collecting, usage and GitHub must start polling — GitHub
+    // also raises the toasts for watched repositories, which must not wait
+    // for the popover — and settings must load from session start rather than
+    // from the first popover open.
     Component.onCompleted: {
         void Notifs.server;
         void Usage.pollIntervalSecs;
+        void GitHub.pollEnabled;
         void Settings.loaded;
     }
 }

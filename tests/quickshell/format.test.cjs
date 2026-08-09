@@ -76,7 +76,8 @@ test("the idioms Format replaced do not come back", () => {
         "Common/Format.js": "defines them",
         // A .js cannot import another .js the way a QML file can without
         // introducing a second module mechanism for one constant.
-        "Common/T3CodeHelpers.js": "pure helper module, no QML import available"
+        "Common/T3CodeHelpers.js": "pure helper module, no QML import available",
+        "Common/GitHubHelpers.js": "pure helper module, no QML import available"
     };
     for (const rel of qmlAndJs()) {
         if (rel in exempt) continue;

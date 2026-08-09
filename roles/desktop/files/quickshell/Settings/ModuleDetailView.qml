@@ -102,6 +102,7 @@ SettingsPage {
                 case "weather": return weatherOptions;
                 case "t3": return t3Options;
                 case "usage": return usageOptions;
+                case "gh": return ghOptions;
                 case "vol": return volOptions;
                 case "batt": return battOptions;
                 case "bell": return bellOptions;
@@ -374,6 +375,70 @@ SettingsPage {
                 dirty: view.optDirty("critAt")
                 onMoved: value => view.setOpt("critAt", value)
                 onResetRequested: view.resetOpt("critAt")
+            }
+        }
+    }
+
+    Component {
+        id: ghOptions
+
+        Column {
+            spacing: 8
+
+            PickerRow {
+                width: parent.width
+                label: "Badge"
+                model: [
+                    { value: "dot", label: "Dot" },
+                    { value: "count", label: "Count" },
+                    { value: "off", label: "Off" }
+                ]
+                current: view.opts.badge
+                dirty: view.optDirty("badge")
+                onPicked: value => view.setOpt("badge", value)
+                onResetRequested: view.resetOpt("badge")
+            }
+
+            SliderRow {
+                width: parent.width
+                label: "Repos shown"
+                min: 3
+                max: 15
+                step: 1
+                value: view.opts.repos
+                unit: ""
+                dirty: view.optDirty("repos")
+                onMoved: value => view.setOpt("repos", value)
+                onResetRequested: view.resetOpt("repos")
+            }
+
+            SliderRow {
+                width: parent.width
+                label: "Poll every"
+                min: 1
+                max: 30
+                step: 1
+                value: view.opts.pollMins
+                unit: "min"
+                dirty: view.optDirty("pollMins")
+                onMoved: value => view.setOpt("pollMins", value)
+                onResetRequested: view.resetOpt("pollMins")
+            }
+
+            SwitchRow {
+                width: parent.width
+                label: "Toasts"
+                description: "Notify when a watched repo gets new commits"
+                checked: view.opts.toasts
+                dirty: view.optDirty("toasts")
+                onToggled: value => view.setOpt("toasts", value)
+                onResetRequested: view.resetOpt("toasts")
+            }
+
+            // The account card and the watch list: the one block of module
+            // options that is not a value row.
+            GitHubWatchList {
+                width: parent.width
             }
         }
     }

@@ -3,9 +3,12 @@
 
 var VERSION = 3;
 
+// Reads in default layout order: left, then center, then right. The order
+// only decides where an id the settings file has never seen is appended, but
+// keeping the two lists in step is what makes that placement predictable.
 var MODULE_IDS = [
-    "ws", "media", "clock", "weather", "t3", "usage", "vol", "wifi", "batt", "bell",
-    "bt", "idle", "control"
+    "ws", "media", "clock", "weather", "gh", "t3", "usage", "vol", "wifi", "batt",
+    "bell", "bt", "idle", "control"
 ];
 
 var DETAIL_IDS = ["media", "weather", "clock", "t3", "vol", "batt", "usage"];
@@ -25,7 +28,7 @@ function defaultMods() {
         left: [mod("ws", true), mod("media", false)],
         center: [mod("clock", true), mod("weather", true)],
         right: [
-            mod("t3", true), mod("usage", true), mod("vol", true),
+            mod("gh", true), mod("t3", true), mod("usage", true), mod("vol", true),
             mod("wifi", true), mod("batt", true), mod("bell", true),
             mod("bt", false), mod("idle", true), mod("control", true)
         ]
@@ -42,6 +45,7 @@ function defaultModOpts() {
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
         t3: { showLabel: true, pulse: true },
         usage: { claude: true, codex: true, kimi: true, warnAt: 25, critAt: 10 },
+        gh: { badge: "dot", repos: 8, pollMins: 5, toasts: true, watch: [] },
         vol: { step: 5, showPct: true, middleClick: "mute" },
         batt: { showPct: true, warnAt: 20, critAt: 10 },
         bell: { badge: "dot" }
@@ -146,6 +150,39 @@ function detailIn(value) {
     return enumIn(value, DETAIL_POLICIES, "auto");
 }
 
+// The GitHub module's watch list, as *storage*: canonical "owner/repo" only,
+// deduped case-insensitively (GitHub resolves names that way, and both
+// spellings in the list would poll the same repository twice), capped so a
+// hand-edited file cannot turn one poll into hundreds of API calls.
+//
+// Deliberately stricter and simpler than GitHubHelpers.repoSlug, which also
+// accepts a pasted browser URL or an SSH remote. Canonicalising a paste is the
+// settings row's job, at the point of entry; by the time a value reaches this
+// store it is already a slug, and anything else came from a hand edit.
+var MAX_WATCHED_REPOS = 20;
+var REPO_SLUG = /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+$/;
+
+function repoListIn(value, fallback) {
+    if (!Array.isArray(value))
+        return fallback;
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < value.length && out.length < MAX_WATCHED_REPOS; i++) {
+        if (typeof value[i] !== "string")
+            continue;
+        var slug = value[i].trim();
+        if (slug.length > 120 || !REPO_SLUG.test(slug)
+                || slug.split("/")[1] === "." || slug.split("/")[1] === "..")
+            continue;
+        var key = slug.toLowerCase();
+        if (seen[key])
+            continue;
+        seen[key] = true;
+        out.push(slug);
+    }
+    return out;
+}
+
 // Sanitize a persisted module layout: known ids only, first occurrence wins,
 // ids a newer schema knows about but the file does not are appended at their
 // default column's end so shipping a new module never requires migration.
@@ -218,6 +255,13 @@ var MOD_OPT_CHECKS = {
         kimi: boolIn,
         warnAt: function(v, d) { return intIn(v, 10, 50, 5, d); },
         critAt: function(v, d) { return intIn(v, 5, 25, 5, d); }
+    },
+    gh: {
+        badge: function(v, d) { return enumIn(v, ["dot", "count", "off"], d); },
+        repos: function(v, d) { return intIn(v, 3, 15, 1, d); },
+        pollMins: function(v, d) { return intIn(v, 1, 30, 1, d); },
+        toasts: boolIn,
+        watch: repoListIn
     },
     vol: {
         step: function(v, d) { return intIn(v, 1, 10, 1, d); },
@@ -457,6 +501,8 @@ var exported = {
     migrateMods: migrateMods,
     pathIn: pathIn,
     detailIn: detailIn,
+    repoListIn: repoListIn,
+    MAX_WATCHED_REPOS: MAX_WATCHED_REPOS,
     quietRange: quietRange,
     quietActive: quietActive,
     formatMinutes: formatMinutes,

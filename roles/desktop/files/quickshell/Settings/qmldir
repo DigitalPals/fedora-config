@@ -4,6 +4,7 @@
 AppearancePage AppearancePage.qml
 BarLayoutPage BarLayoutPage.qml
 FolderDialog FolderDialog.qml
+GitHubWatchList GitHubWatchList.qml
 ModuleDetailView ModuleDetailView.qml
 ModulesPage ModulesPage.qml
 NotificationsPage NotificationsPage.qml

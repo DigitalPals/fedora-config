@@ -7,6 +7,7 @@ Bell Bell.qml
 Bluetooth Bluetooth.qml
 Clock Clock.qml
 Control Control.qml
+GitHub GitHub.qml
 Idle Idle.qml
 Media Media.qml
 T3 T3.qml

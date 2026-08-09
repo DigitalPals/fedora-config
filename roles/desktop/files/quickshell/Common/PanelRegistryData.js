@@ -36,6 +36,7 @@ var PANELS = [
     { name: "weather", island: "center", moduleId: "weather", source: "Popovers/WeatherPopover.qml" },
     { name: "usage", island: "right", moduleId: "usage", source: "Popovers/UsagePopover.qml" },
     { name: "t3code", island: "right", moduleId: "t3", source: "Popovers/T3CodePopover.qml" },
+    { name: "github", island: "right", moduleId: "gh", source: "Popovers/GitHubPopover.qml" },
     { name: "audio", island: "right", moduleId: "vol", source: "Popovers/AudioPopover.qml" },
     { name: "wifi", island: "right", moduleId: "wifi", source: "Popovers/WifiPopover.qml" },
     { name: "bluetooth", island: "right", moduleId: "bt", source: "Popovers/BluetoothPopover.qml" },

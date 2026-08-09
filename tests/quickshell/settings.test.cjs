@@ -168,7 +168,7 @@ test("T3 Code and grouped model usage are separate reorderable modules", () => {
     const modules = read("Settings/ModulesPage.qml");
     const bar = read("Bar/Bar.qml");
 
-    assert.match(helpers, /"t3", "usage", "vol"/,
+    assert.match(helpers, /"gh", "t3", "usage", "vol"/,
         "fresh layouts should keep the two modules adjacent");
     assert.match(modules, /t3:\s*\{ name: "T3 Code"/);
     assert.match(modules, /usage:\s*\{ name: "Model usage"/);
@@ -251,7 +251,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
 test("schema three adds detail policies and a configurable wallpaper folder", () => {
     const helpers = read("Common/SettingsHelpers.js");
     assert.match(helpers, /var VERSION = 3/);
-    assert.match(helpers, /"t3", "usage", "vol"/);
+    assert.match(helpers, /"gh", "t3", "usage", "vol"/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"top"/);
     assert.match(helpers, /mod\("media", false\)/);

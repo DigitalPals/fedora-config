@@ -37,15 +37,15 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id), ["clock", "weather"]);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["t3", "usage", "vol", "wifi", "batt", "bell", "bt", "idle", "control"]);
+        ["gh", "t3", "usage", "vol", "wifi", "batt", "bell", "bt", "idle", "control"]);
     assert.equal(d.mods.left[1].on, false);
-    assert.equal(d.mods.right[6].on, false);
-    assert.equal(d.mods.right[7].on, true);
+    assert.equal(d.mods.right[7].on, false);
     assert.equal(d.mods.right[8].on, true);
+    assert.equal(d.mods.right[9].on, true);
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "clock", "weather", "t3", "usage", "vol", "batt", "bell"]);
+        ["ws", "media", "clock", "weather", "t3", "usage", "gh", "vol", "batt", "bell"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.media.maxWidth, 220);
     assert.equal(d.modOpts.clock.seconds, false);
@@ -58,6 +58,11 @@ test("defaults carry the design values", () => {
     assert.equal(d.modOpts.vol.middleClick, "mute");
     assert.deepEqual(d.modOpts.batt, { showPct: true, warnAt: 20, critAt: 10 });
     assert.equal(d.modOpts.bell.badge, "dot");
+    assert.deepEqual(d.modOpts.gh,
+        { badge: "dot", repos: 8, pollMins: 5, toasts: true, watch: [] });
+    // A fresh list per call: a shared array would let one edit reach the
+    // defaults every later comparison is made against.
+    assert.notEqual(H.defaultModOpts().gh.watch, H.defaultModOpts().gh.watch);
 });
 
 test("normalizeModOpts drops unknown modules and keys", () => {
@@ -81,10 +86,15 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
         media: { maxWidth: 133, titleFormat: "title" },
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
         usage: { warnAt: 8, critAt: 60, claude: "yes" },
+        gh: { badge: "flag", repos: 99, pollMins: 0, toasts: "sure" },
         vol: { step: 0, middleClick: "detonate" },
         batt: { warnAt: 33, critAt: 3 },
         bell: { badge: "count" }
     });
+    assert.equal(next.gh.badge, "dot");
+    assert.equal(next.gh.repos, 15);
+    assert.equal(next.gh.pollMins, 1);
+    assert.equal(next.gh.toasts, true, "non-boolean falls back to default");
     assert.equal(next.ws.minSlots, 10);
     assert.equal(next.ws.style, "numbers");
     assert.equal(next.media.maxWidth, 140);
@@ -111,6 +121,26 @@ test("weather place rejects control characters and oversized strings", () => {
     assert.equal(H.normalizeModOpts({ weather: { place: "x".repeat(41) } }).weather.place, d);
     assert.equal(H.normalizeModOpts({ weather: { place: "x".repeat(40) } }).weather.place,
         "x".repeat(40));
+});
+
+test("the GitHub watch list stores canonical slugs and nothing else", () => {
+    // Storage is deliberately stricter than the settings field, which accepts
+    // a pasted URL and canonicalises it before it ever reaches this store.
+    // Anything else in the file was hand-written, and each entry costs a poll
+    // an API call — hence the cap.
+    const watch = raw => H.normalizeModOpts({ gh: { watch: raw } }).gh.watch;
+    assert.deepEqual(watch(["hyprwm/Hyprland", "cli/cli"]),
+        ["hyprwm/Hyprland", "cli/cli"]);
+    assert.deepEqual(watch(["hyprwm/Hyprland", "HYPRWM/hyprland"]), ["hyprwm/Hyprland"],
+        "one repository, two spellings, would be polled twice");
+    assert.deepEqual(watch(["https://github.com/cli/cli", "a/b/c", "no-slash",
+        "-bad/owner", "owner/..", 7, null, "a/b"]), ["a/b"]);
+    assert.deepEqual(watch("owner/repo"), [], "a bare string is not a list");
+    assert.deepEqual(watch([]), []);
+    assert.equal(watch(Array.from({ length: 50 }, (_, i) => "o/r" + i)).length,
+        H.MAX_WATCHED_REPOS);
+    assert.deepEqual(H.repoListIn("nope", ["kept/value"]), ["kept/value"],
+        "a non-list keeps whatever was there");
 });
 
 test("merge fills a missing modOpts from defaults and sanitizes a partial one", () => {
@@ -210,7 +240,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.equal(next.left[0].on, false);
     assert.deepEqual(next.center.map(m => m.id), ["clock", "weather"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["t3", "usage", "wifi", "batt", "bell", "bt", "idle", "control"]);
+        ["gh", "t3", "usage", "wifi", "batt", "bell", "bt", "idle", "control"]);
     assert.ok(next.left.some(m => m.id === "media" && m.on === false),
         "appended module keeps its default enable flag");
 });

@@ -321,6 +321,7 @@ PanelWindow {
         ws: "Modules/Workspaces.qml", media: "Modules/Media.qml",
         clock: "Modules/Clock.qml", weather: "Modules/Weather.qml",
         t3: "Modules/T3.qml", usage: "Modules/Usage.qml",
+        gh: "Modules/GitHub.qml",
         vol: "Modules/Volume.qml", wifi: "Modules/Wifi.qml",
         batt: "Modules/Battery.qml", bell: "Modules/Bell.qml",
         bt: "Modules/Bluetooth.qml", idle: "Modules/Idle.qml",

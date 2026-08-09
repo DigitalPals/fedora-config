@@ -19,6 +19,7 @@ Item {
         weather: { name: "Weather", short: "Weather", detail: true },
         t3: { name: "T3 Code", short: "T3", detail: true },
         usage: { name: "Model usage", short: "Usage", detail: true },
+        gh: { name: "GitHub", short: "GH" },
         vol: { name: "Volume", short: "Vol", detail: true },
         wifi: { name: "Wi-Fi", short: "Wi-Fi" },
         batt: { name: "Battery", short: "Batt", tag: "on laptops", detail: true },
