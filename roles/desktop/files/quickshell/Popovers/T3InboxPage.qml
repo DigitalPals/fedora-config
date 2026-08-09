@@ -30,6 +30,9 @@ Column {
         property string label: ""
         property int count: 0
         property color tint: Theme.textLow
+        // Explicit rather than derived from `tint`: the two neutral sections
+        // want the hairline they have always had, not textLow at rule alpha.
+        property color rule: Theme.hairlineSoft
 
         width: parent ? parent.width : 0
         height: Theme.controlHeight
@@ -65,7 +68,7 @@ Column {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             height: 1
-            color: Theme.hairlineSoft
+            color: group.rule
         }
     }
 
@@ -115,6 +118,16 @@ Column {
             : thread.cls === "attention" ? Theme.amber
             : entry.quiet ? Theme.textDim
             : Theme.accent
+        // The row's own chrome, keyed off the same state as the status word so
+        // a row can never read amber on one side and neutral on the other. A
+        // row that wants you is a tinted card; one that is merely busy gets the
+        // rail alone; a quiet one stays flat, or the list stops being a list.
+        readonly property bool flagged: thread.cls === "error" || thread.cls === "attention"
+        readonly property color stateFill: thread.cls === "error" ? Theme.redBgSoft
+            : thread.cls === "attention" ? Theme.amberBgSoft : "transparent"
+        readonly property color stateBorder: thread.cls === "error" ? Theme.redBorder
+            : thread.cls === "attention" ? Theme.amberBorder : "transparent"
+        readonly property bool railed: !entry.quiet || thread.planReady
 
         width: parent.width
         spacing: 3
@@ -124,9 +137,9 @@ Column {
             width: parent.width
             height: Theme.tileHeight
             radius: 9
-            color: rowHover.hovered ? Theme.hoverFill : "transparent"
-            border.width: activeFocus ? 1 : 0
-            border.color: Theme.accent
+            color: entry.stateFill
+            border.width: activeFocus || entry.flagged ? 1 : 0
+            border.color: activeFocus ? Theme.accent : entry.stateBorder
             activeFocusOnTab: true
             Accessible.role: Accessible.Button
             Accessible.name: entry.thread.title
@@ -154,21 +167,64 @@ Column {
                 onClicked: root.threadRequested(entry.thread.id)
             }
 
+            // Hover is its own translucent layer now that `color` carries the
+            // state tint — one Rectangle cannot hold both, and tinting the
+            // hover fill per state would make a flagged row flash on approach.
+            // Declared ahead of the content so it never paints over the title.
+            Rectangle {
+                anchors.fill: parent
+                radius: parent.radius
+                color: rowHover.hovered ? Theme.hoverFill : "transparent"
+
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
+            }
+
+            // State rail. Carries colour on the running and ready rows, which
+            // are too numerous to tint whole but still want to be findable.
+            Rectangle {
+                id: rail
+                property real pulse: 1
+
+                visible: entry.railed
+                x: 3
+                anchors.verticalCenter: parent.verticalCenter
+                width: 3
+                height: parent.height - 18
+                radius: 2
+                color: entry.statusColor
+                // Bound rather than animated directly, so a thread that leaves
+                // "running" mid-fade cannot strand the rail at 0.35.
+                opacity: entry.thread.cls === "running" ? rail.pulse : 1
+
+                SequentialAnimation on pulse {
+                    running: entry.thread.cls === "running"
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.35; duration: 750 }
+                    NumberAnimation { to: 1; duration: 750 }
+                }
+            }
+
             Item {
                 id: glyphSlot
-                x: 8
+                x: 12
                 anchors.verticalCenter: parent.verticalCenter
                 width: 15
                 height: 15
 
+                // A quiet row dims with opacity rather than swapping in the grey
+                // `-dim` asset: most of the list is quiet most of the time, and
+                // the brand marks are the only provider cue a row has once its
+                // status word has gone neutral.
                 Image {
                     visible: entry.glyph !== ""
                     anchors.fill: parent
                     sourceSize: Qt.size(30, 30)
                     fillMode: Image.PreserveAspectFit
-                    source: entry.glyph !== "" ? Quickshell.shellDir + "/assets/" + entry.glyph
-                        + (entry.quiet ? "-dim" : "") + ".svg" : ""
-                    opacity: entry.quiet ? 0.7 : 1
+                    source: entry.glyph !== ""
+                        ? Quickshell.shellDir + "/assets/" + entry.glyph + ".svg" : ""
+                    opacity: entry.quiet ? 0.55 : 1
                 }
 
                 Rectangle {
@@ -178,6 +234,29 @@ Column {
                     height: 7
                     radius: 4
                     color: entry.quiet ? Theme.dotDim : entry.statusColor
+                }
+
+                // State badge over the mark, for the rows worth spotting in a
+                // scan. The ring is the popover's own background, so the dot
+                // separates from whatever artwork sits under it.
+                Rectangle {
+                    visible: entry.glyph !== ""
+                        && (entry.flagged || entry.thread.cls === "running")
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.margins: -2
+                    width: 8
+                    height: 8
+                    radius: 4
+                    color: Theme.popBg
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 6
+                        height: 6
+                        radius: 3
+                        color: entry.statusColor
+                    }
                 }
             }
 
@@ -293,6 +372,10 @@ Column {
                                 Action {
                                     revealed: entry.revealed
                                     label: "↗"
+                                    // The same control on the thread page is
+                                    // accent (T3ThreadPage.qml:445); a grey
+                                    // twin here read as a disabled sibling.
+                                    tint: Theme.accent
                                     onTriggered: {
                                         Quickshell.execDetached(["xdg-open",
                                             T3Code.threadUrl(entry.thread.id)]);
@@ -331,8 +414,9 @@ Column {
 
         Text {
             visible: text !== ""
-            x: 33
-            width: parent.width - 39
+            // Aligned under the title, which the rail pushed 4px right.
+            x: 37
+            width: parent.width - 43
             text: {
                 for (const kind of ["pin", "unpin", "settle", "unsettle", "snooze", "unsnooze"]) {
                     const error = T3Code.actionError(kind, entry.thread.id, "");
@@ -502,6 +586,7 @@ Column {
                     label: "NEEDS YOU"
                     count: root.needsYou.length
                     tint: Theme.amber
+                    rule: Theme.amberBorder
                 }
                 Repeater {
                     model: root.needsYou
@@ -513,6 +598,7 @@ Column {
                     label: "READY TO REVIEW"
                     count: root.readyPlans.length
                     tint: Theme.accent
+                    rule: Theme.accentAlpha(0.3)
                 }
                 Repeater {
                     model: root.readyPlans
