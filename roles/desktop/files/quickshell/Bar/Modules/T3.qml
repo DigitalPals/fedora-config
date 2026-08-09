@@ -17,7 +17,6 @@ BarModule {
 
     T3Chip {
         id: t3Chip
-        barVisible: t3Module.host !== null && t3Module.host.visible && !t3Module.host.hidden
         displayMode: t3Module.compact
             || !Settings.modOpts.t3.showLabel ? 0 : 2
         host: t3Module.host

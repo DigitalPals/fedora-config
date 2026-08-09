@@ -181,6 +181,17 @@ test("T3 Code and grouped model usage are separate reorderable modules", () => {
         "the T3 module must not own the grouped usage popout");
 });
 
+test("the T3 running indicator is a static dot", () => {
+    const chip = read("Bar/T3Chip.qml");
+    const dot = chip.match(/\/\/ Running status:[\s\S]*?\n            Text \{/)?.[0] ?? "";
+
+    assert.match(dot, /visible:\s*root\.busy/);
+    assert.match(dot, /width:\s*5[\s\S]*height:\s*5/);
+    assert.doesNotMatch(dot, /\b(?:Timer|\w+Animation|\w+Animator)\s*\{|opacity:/,
+        "the five-pixel running indicator must remain static");
+    assert.doesNotMatch(chip, /modOpts\.t3\.pulse|heartbeat|pulseOpacity|pulseStartedAt|barVisible/);
+});
+
 test("the full-bar hover fallback resolves the provider before active Usage", () => {
     const bar = read("Bar/Bar.qml");
     const usage = read("Bar/UsageChips.qml");

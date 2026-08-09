@@ -43,7 +43,7 @@ function defaultModOpts() {
         media: { titleFormat: "title-artist", maxWidth: 220 },
         clock: { seconds: false, showDate: true, dateFormat: "ddd dd" },
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
-        t3: { showLabel: true, pulse: true },
+        t3: { showLabel: true },
         usage: { claude: true, codex: true, kimi: true, warnAt: 25, critAt: 10 },
         gh: { badge: "dot", repos: 8, pollMins: 5, toasts: true, watch: [] },
         vol: { step: 5, showPct: true, middleClick: "mute" },
@@ -248,7 +248,7 @@ var MOD_OPT_CHECKS = {
         lon: function(v, d) { return realIn(v, -180, 180, 0.0001, d); },
         pollMins: function(v, d) { return intIn(v, 5, 60, 5, d); }
     },
-    t3: { showLabel: boolIn, pulse: boolIn },
+    t3: { showLabel: boolIn },
     usage: {
         claude: boolIn,
         codex: boolIn,

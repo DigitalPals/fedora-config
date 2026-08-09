@@ -52,6 +52,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.modOpts.clock.dateFormat, "ddd dd");
     assert.deepEqual(d.modOpts.weather,
         { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 });
+    assert.deepEqual(d.modOpts.t3, { showLabel: true });
     assert.equal(d.modOpts.usage.warnAt, 25);
     assert.equal(d.modOpts.usage.critAt, 10);
     assert.equal(d.modOpts.vol.step, 5);
@@ -70,11 +71,13 @@ test("normalizeModOpts drops unknown modules and keys", () => {
         flux: { on: true },
         wifi: { anything: 1 },
         clock: { seconds: true, bogus: "x" },
+        t3: { showLabel: false, pulse: true },
         vol: "not-an-object"
     });
     assert.ok(!("flux" in next) && !("wifi" in next));
     assert.equal(next.clock.seconds, true);
     assert.ok(!("bogus" in next.clock));
+    assert.deepEqual(next.t3, { showLabel: false });
     assert.deepEqual(next.vol, H.defaultModOpts().vol);
     assert.deepEqual(H.normalizeModOpts(null), H.defaultModOpts());
     assert.deepEqual(H.normalizeModOpts("nope"), H.defaultModOpts());

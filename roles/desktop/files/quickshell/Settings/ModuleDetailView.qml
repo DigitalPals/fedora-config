@@ -305,16 +305,6 @@ SettingsPage {
                 onToggled: value => view.setOpt("showLabel", value)
                 onResetRequested: view.resetOpt("showLabel")
             }
-
-            SwitchRow {
-                width: parent.width
-                label: "Running pulse"
-                description: "Pulse the dot while a session runs"
-                checked: view.opts.pulse
-                dirty: view.optDirty("pulse")
-                onToggled: value => view.setOpt("pulse", value)
-                onResetRequested: view.resetOpt("pulse")
-            }
         }
     }
 

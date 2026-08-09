@@ -53,10 +53,6 @@ Item {
 
     property bool held: ownsPanel && host.popoutOpen(panelName)
     property int displayMode: 2
-    // False while the hosting bar is another output's or slid away by
-    // auto-hide: nothing of this chip is on screen, so its pulse must not
-    // drive the compositor.
-    property bool barVisible: true
 
     readonly property bool live: T3Code.state === "connected"
     readonly property bool stressed: live && T3Code.attentionCount > 0
@@ -113,11 +109,9 @@ Item {
                 source: Quickshell.shellDir + "/assets/" + (root.live ? "t3.svg" : "t3-dim.svg")
             }
 
-            // Running pulse: a quiet dot that breathes while agents work.
+            // Running status: a static dot while agents work.
             Rectangle {
                 id: runningDot
-                property real pulseOpacity: 1
-                property double pulseStartedAt: 0
 
                 visible: root.busy
                 anchors.verticalCenter: parent.verticalCenter
@@ -125,27 +119,6 @@ Item {
                 height: 5
                 radius: 3
                 color: Theme.accent
-                opacity: Settings.modOpts.t3.pulse ? pulseOpacity : 1
-
-                // A slow five-pixel pulse does not benefit from driving the
-                // entire Wayland surface at the monitor's 120 Hz refresh rate.
-                // Thirty evenly timed samples per second remain visually
-                // smooth while allowing the compositor to sleep between them.
-                Timer {
-                    interval: 33
-                    repeat: true
-                    running: root.barVisible && runningDot.visible && Settings.modOpts.t3.pulse
-                    // Restarting resets the phase, so the pulse picks up
-                    // cleanly from full opacity whenever the bar returns.
-                    onRunningChanged: {
-                        runningDot.pulseStartedAt = Date.now();
-                        runningDot.pulseOpacity = 1;
-                    }
-                    onTriggered: {
-                        const phase = ((Date.now() - runningDot.pulseStartedAt) % 1800) / 1800;
-                        runningDot.pulseOpacity = 0.625 + 0.375 * Math.cos(phase * Math.PI * 2);
-                    }
-                }
             }
 
             Text {
