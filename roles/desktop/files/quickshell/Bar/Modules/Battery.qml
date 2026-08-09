@@ -17,11 +17,12 @@ BarModule {
         visible: Battery.isLaptop
         // md-battery_high / md-battery_charging_high. The charging
         // glyph carries its own bolt, so nothing is overlaid; it is
-        // also wider, hence the fixed column below — 13.5 is what
-        // the previous Font Awesome glyph laid out at, so the rest
-        // of the cluster keeps its position.
+        // also wider, hence the fixed column below, which keeps the
+        // rest of the cluster still as the two swap. It was tuned as
+        // 13.5 against a 14px icon, and tracks the token from there
+        // so a size change cannot leave the column behind.
         glyph: Battery.pluggedIn ? "󱊦" : "󱊣"
-        glyphWidth: 13.5
+        glyphWidth: Theme.barIconSize - 0.5
         // An empty label also zeroes BarIcon's detailSaving, so
         // fitBar never budgets for a percentage that is never shown.
         label: Settings.modOpts.batt.showPct ? Math.round(Battery.percent) + "%" : ""

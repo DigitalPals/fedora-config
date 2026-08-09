@@ -104,9 +104,11 @@ Item {
 
             Image {
                 anchors.verticalCenter: parent.verticalCenter
-                height: 9
-                width: 15
-                sourceSize: Qt.size(30, 18)
+                // PreserveAspectFit, so the box is a bound rather than a
+                // shape: the 5:3 mark draws 16x9.6 inside it.
+                height: 10
+                width: 16
+                sourceSize: Qt.size(32, 20)
                 fillMode: Image.PreserveAspectFit
                 source: Quickshell.shellDir + "/assets/" + (root.live ? "t3.svg" : "t3-dim.svg")
             }

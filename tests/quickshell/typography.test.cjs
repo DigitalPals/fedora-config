@@ -75,7 +75,7 @@ test("menu typography is OPPO Sans and retains compact macOS-like metrics", () =
         intToken("chipRadius"),
         intToken("barTextSize"),
         intToken("barIconSize"),
-    ], [24, 26, 6, 13, 14]);
+    ], [24, 26, 6, 13, 15]);
     assert.match(theme, /readonly property var tabularNumberFeatures:\s*\(\{\s*"tnum":\s*1\s*\}\)/);
 });
 

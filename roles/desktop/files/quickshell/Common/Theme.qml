@@ -108,7 +108,10 @@ Singleton {
     // Menubar typography stays compact independently of the roomier popover
     // scale. OPPO Sans supplies tabular figures for values that update in place.
     readonly property int barTextSize: 13
-    readonly property int barIconSize: 14
+    // Every glyph module's icon. The chip around it stays chipHeight, so this
+    // only changes the ink; a nerd-font glyph whose ink is unusually small for
+    // its em compensates locally (see Bar/Modules/GitHub.qml).
+    readonly property int barIconSize: 15
     readonly property var tabularNumberFeatures: ({ "tnum": 1 })
 
     // Metrics. Bar geometry is settings-driven; the defaults reproduce the

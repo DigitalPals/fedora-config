@@ -116,9 +116,9 @@ Item {
 
                 Image {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 12
-                    height: 12
-                    sourceSize: Qt.size(24, 24)
+                    width: 13
+                    height: 13
+                    sourceSize: Qt.size(26, 26)
                     source: Quickshell.shellDir + "/assets/claude-dim.svg"
                 }
 
@@ -193,9 +193,9 @@ Item {
 
                     Image {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: chip.modelData === "codex" ? 12 : 11
+                        width: chip.modelData === "codex" ? 13 : 12
                         height: width
-                        sourceSize: Qt.size(24, 24)
+                        sourceSize: Qt.size(26, 26)
                         source: Quickshell.shellDir + "/assets/" + Usage.meta[chip.modelData].icon
                                 + (chip.status === "error" ? "-dim" : "") + ".svg"
                     }
