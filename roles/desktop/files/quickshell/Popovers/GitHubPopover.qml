@@ -3,9 +3,9 @@ import QtQuick
 import "../Common"
 import "../Common/GitHubHelpers.js" as Helpers
 
-// Two-page repository feed: the repositories you can see, newest push first,
-// and one repository's commits. Escape backs out of the commit list before it
-// dismisses the popout, the way the T3 client does.
+// Inbox opens first. Repositories is the existing browser, and Commits is
+// its drill-down. Nothing here mutates GitHub: opening a row only launches its
+// browser URL, while acknowledgement advances local watermarks on close.
 //
 // Unread state is read here but never advanced here: the watermark moves when
 // this panel closes, so the rows you opened it to read stay marked while you
@@ -24,21 +24,29 @@ Surface {
     readonly property int maxBodyHeight: Math.max(220, root.availableHeight
         - root.padding * 2 - headerHeight - footerHeight - dividerHeight)
 
-    property string page: "repos"
+    property string page: "inbox"
     property string selectedSlug: ""
     property string expandedSha: ""
+    property bool settledExpanded: false
 
     // Every relative label on screen is derived from this rather than from
     // Date.now() at binding time, so they all age together and none of them
     // needs its own timer.
     property double now: Date.now()
 
-    readonly property var visibleRepos: GitHub.repos.slice(0, GitHub.opts.repos)
+    readonly property var visibleRepos: Helpers.displayedRepos(GitHub.repos, GitHub.opts.repos)
+    readonly property var inboxRows: GitHub.inboxItems
+    readonly property var inboxSections: Helpers.inboxSections(root.inboxRows)
     readonly property var selectedRepo: GitHub.repos.find(r => r.slug === root.selectedSlug)
         ?? null
     readonly property var commitEntry: GitHub.commitCache[root.selectedSlug] ?? null
     readonly property var commitRows: root.commitEntry ? root.commitEntry.rows : []
     readonly property int newCommitCount: Helpers.newCommits(root.commitRows, GitHub.seenAt)
+
+    function showInbox() {
+        page = "inbox";
+        expandedSha = "";
+    }
 
     function showRepos() {
         page = "repos";
@@ -61,13 +69,67 @@ Surface {
         GitHub.requestStats(root.selectedSlug, sha);
     }
 
-    // Escape goes back to the repository list first; from the list the host
-    // dismisses the popout as usual.
+    // Commits always backs out to Repositories. Either top-level tab lets the
+    // host consume Escape and close the popover.
     function handleEscape(): bool {
-        if (page === "repos")
+        if (page !== "commits")
             return false;
         showRepos();
         return true;
+    }
+
+    function openInbox(row) {
+        if (row && row.url) {
+            GitHub.open(row.url);
+            Popouts.close();
+        }
+    }
+
+    function toneColor(tone) {
+        switch (tone) {
+        case "red": return Theme.red;
+        case "amber": return Theme.amber;
+        case "green": return Theme.connected;
+        case "accent": return Theme.accent;
+        default: return Theme.textDim;
+        }
+    }
+
+    function toneFill(tone) {
+        switch (tone) {
+        case "red": return Theme.redBgSoft;
+        case "amber": return Theme.amberBgSoft;
+        case "accent": return Theme.accentBgSoft;
+        default: return Theme.cardFill;
+        }
+    }
+
+    function inboxStatus(row) {
+        if (row.kind === "run")
+            return Helpers.runStatusLabel(row.status, row.conclusion);
+        if (row.kind === "notification")
+            return "directed";
+        if (row.kind === "discussion")
+            return "new";
+        return row.status || "update";
+    }
+
+    function inboxMeta(row) {
+        const parts = [row.repo];
+        if (row.kind === "run") {
+            if (row.branch)
+                parts.push(row.branch + (row.event ? " / " + row.event : ""));
+            else if (row.event)
+                parts.push(row.event);
+            if (row.actor)
+                parts.push("@" + row.actor);
+            if (row.number > 0)
+                parts.push("#" + row.number);
+        }
+        const when = Helpers.inboxTimeLabel(row, root.now);
+        if (when)
+            parts.push(when);
+        return parts.join(" · ");
     }
 
     // What was last copied, so whichever control did it can confirm — the
@@ -96,6 +158,7 @@ Surface {
     Claim {
         active: root.visible
         onClaimed: {
+            root.showInbox();
             root.now = Date.now();
             GitHub.refreshIfStale(30000);
         }
@@ -164,38 +227,316 @@ Surface {
         color: Theme.textDim
     }
 
+    component TabButton: Rectangle {
+        id: tab
+
+        property string label: ""
+        property string pageName: ""
+        readonly property bool selected: root.page === pageName
+
+        width: tabText.implicitWidth + 22
+        height: Theme.controlHeight
+        radius: 7
+        color: selected ? Theme.accentBg
+            : tabMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+        activeFocusOnTab: visible
+        Accessible.role: Accessible.PageTab
+        Accessible.name: label
+        Accessible.selected: selected
+        Accessible.onPressAction: {
+            if (pageName === "inbox")
+                root.showInbox();
+            else
+                root.showRepos();
+        }
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+                if (tab.pageName === "inbox")
+                    root.showRepos();
+                else
+                    root.showInbox();
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                if (tab.pageName === "inbox")
+                    root.showInbox();
+                else
+                    root.showRepos();
+                event.accepted = true;
+            }
+        }
+
+        Text {
+            id: tabText
+            anchors.centerIn: parent
+            text: tab.label
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            font.weight: tab.selected ? Theme.weightSemibold : Theme.weightRegular
+            color: tab.selected ? Theme.accent : Theme.textLow
+        }
+
+        MouseArea {
+            id: tabMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                tab.forceActiveFocus();
+                if (tab.pageName === "inbox")
+                    root.showInbox();
+                else
+                    root.showRepos();
+            }
+        }
+    }
+
+    component InboxCard: Rectangle {
+        id: inboxCard
+
+        required property var row
+        readonly property bool actionsRevealed: inboxHover.hovered || activeFocus
+            || settleAction.activeFocus
+
+        width: parent ? parent.width - 4 : 0
+        x: 2
+        height: 66
+        radius: Theme.rowRadius
+        color: inboxHover.hovered || activeFocus ? Theme.hoverFillStrong
+            : row.active || row.unread ? root.toneFill(row.tone) : "transparent"
+        border.width: activeFocus ? 1 : 0
+        border.color: root.toneColor(row.tone)
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: row.title + ", " + row.detail + ", "
+            + root.inboxStatus(row)
+        Accessible.description: "Open on GitHub"
+        Accessible.onPressAction: root.openInbox(row)
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                root.openInbox(inboxCard.row);
+                event.accepted = true;
+            }
+        }
+
+        // Unlike MouseArea.containsMouse, the handler remains hovered while
+        // the pointer crosses into the child Settle/Unsettle button.
+        HoverHandler {
+            id: inboxHover
+        }
+
+        // Kept below the inline action in stacking order: settling consumes
+        // only its own click, while every other point still opens GitHub.
+        MouseArea {
+            id: inboxMouse
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                inboxCard.forceActiveFocus();
+                root.openInbox(inboxCard.row);
+            }
+        }
+
+        Rectangle {
+            id: inboxDot
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            y: 12
+            width: 8
+            height: 8
+            radius: 4
+            color: root.toneColor(inboxCard.row.tone)
+        }
+
+        Item {
+            id: inboxSide
+            anchors.right: parent.right
+            anchors.rightMargin: 9
+            y: 6
+            width: inboxCard.actionsRevealed && inboxCard.row.canSettle
+                ? settleAction.width : statusPill.width
+            height: 20
+
+            Rectangle {
+                id: statusPill
+                visible: !inboxCard.actionsRevealed || !inboxCard.row.canSettle
+                anchors.right: parent.right
+                width: statusLabel.implicitWidth + 10
+                height: 20
+                radius: 5
+                color: root.toneFill(inboxCard.row.tone)
+
+                Text {
+                    id: statusLabel
+                    anchors.centerIn: parent
+                    text: root.inboxStatus(inboxCard.row)
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
+                    color: root.toneColor(inboxCard.row.tone)
+                }
+            }
+
+            ActionButton {
+                id: settleAction
+                visible: inboxCard.row.canSettle && inboxCard.actionsRevealed
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                label: inboxCard.row.lifecycle === "settled" ? "Unsettle" : "Settle"
+                tint: Theme.accent
+                fill: Theme.accentBg
+                hPadding: 16
+                revealed: inboxCard.actionsRevealed
+                onTriggered: {
+                    if (inboxCard.row.lifecycle === "settled")
+                        GitHub.unsettleInboxItem(inboxCard.row.key);
+                    else
+                        GitHub.settleInboxItem(inboxCard.row.key);
+                }
+            }
+        }
+
+        Text {
+            anchors.left: inboxDot.right
+            anchors.leftMargin: 9
+            anchors.right: inboxSide.left
+            anchors.rightMargin: 8
+            y: 6
+            text: inboxCard.row.title
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: inboxCard.row.unread || inboxCard.row.active
+                ? Theme.weightSemibold : Theme.weightMedium
+            color: Theme.textHi
+            elide: Text.ElideRight
+        }
+
+        Text {
+            anchors.left: inboxDot.right
+            anchors.leftMargin: 9
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            y: 26
+            text: inboxCard.row.detail
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            color: Theme.textLow
+            elide: Text.ElideRight
+        }
+
+        Text {
+            anchors.left: inboxDot.right
+            anchors.leftMargin: 9
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            y: 46
+            text: root.inboxMeta(inboxCard.row)
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            color: Theme.textDim
+            elide: Text.ElideRight
+        }
+
+    }
+
     // ---- header -----------------------------------------------------------
     Item {
         width: parent.width
         height: root.headerHeight
 
-        // Repository list: the module's own title and when it last looked.
-        Text {
-            visible: root.page === "repos"
-            x: 10
-            anchors.verticalCenter: parent.verticalCenter
-            text: "GitHub"
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
-            font.weight: Theme.weightSemibold
-            color: Theme.textHi
-        }
+        Item {
+            id: topLevelHeader
+            visible: root.page !== "commits"
+            anchors.fill: parent
 
-        Text {
-            visible: root.page === "repos"
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            text: {
-                if (GitHub.polling)
-                    return "checking…";
-                if (GitHub.checkedAt <= 0)
-                    return "";
-                return "checked " + Helpers.agoLabel(GitHub.checkedAt, root.now);
+            Row {
+                id: topTabs
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 3
+
+                TabButton {
+                    label: "Inbox"
+                    pageName: "inbox"
+                }
+
+                TabButton {
+                    label: "Repositories"
+                    pageName: "repos"
+                }
             }
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
-            color: Theme.textDim
+
+            Rectangle {
+                id: refreshButton
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 30
+                height: Theme.controlHeight
+                radius: 6
+                color: refreshMouse.containsMouse || activeFocus
+                    ? Theme.hoverFill : "transparent"
+                border.width: activeFocus ? 1 : 0
+                border.color: Theme.accent
+                activeFocusOnTab: visible
+                Accessible.role: Accessible.Button
+                Accessible.name: "Refresh GitHub repositories and Inbox"
+                Accessible.onPressAction: GitHub.refreshAll()
+
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                            || event.key === Qt.Key_Space) {
+                        GitHub.refreshAll();
+                        event.accepted = true;
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "\uf021" // nf-fa-rotate
+                    font.family: Theme.fontIcon
+                    font.pixelSize: Theme.iconSmall
+                    color: GitHub.polling || GitHub.inboxPolling
+                        ? Theme.accent : Theme.textLow
+                }
+
+                MouseArea {
+                    id: refreshMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        refreshButton.forceActiveFocus();
+                        GitHub.refreshAll();
+                    }
+                }
+            }
+
+            Text {
+                anchors.left: topTabs.right
+                anchors.leftMargin: 6
+                anchors.right: refreshButton.left
+                anchors.rightMargin: 5
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignRight
+                text: {
+                    const busy = root.page === "inbox"
+                        ? GitHub.inboxPolling : GitHub.polling;
+                    const checked = root.page === "inbox"
+                        ? GitHub.inboxCheckedAt : GitHub.checkedAt;
+                    if (busy)
+                        return "checking…";
+                    return checked > 0 ? Helpers.agoLabel(checked, root.now) : "";
+                }
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: Theme.textDim
+                elide: Text.ElideLeft
+            }
         }
 
         // Commit list: back, the repository, and a way out to the browser.
@@ -311,7 +652,8 @@ Surface {
         Loader {
             id: pageLoader
             width: body.width - (body.contentHeight > body.height ? 5 : 0)
-            sourceComponent: root.page === "commits" ? commitsPage : reposPage
+            sourceComponent: root.page === "commits" ? commitsPage
+                : root.page === "repos" ? reposPage : inboxPage
             height: item ? item.implicitHeight : 0
         }
     }
@@ -337,10 +679,16 @@ Surface {
                     return root.commitRows.length + " latest · " + branch
                         + " · click a commit to expand";
                 }
+                if (root.page === "inbox") {
+                    if (GitHub.inboxError !== "")
+                        return "Inbox paused · cached items kept";
+                    return GitHub.pendingInboxCount + " pending · "
+                        + GitHub.settledInboxCount + " settled";
+                }
                 if (GitHub.error !== "")
                     return "feed unavailable";
-                return root.visibleRepos.length + " of " + GitHub.repos.length
-                    + " repos · click a repo for commits";
+                return root.visibleRepos.length
+                    + " recent + watched repos · click a repo for commits";
             }
             elide: Text.ElideRight
             font.family: Theme.fontMenu
@@ -362,6 +710,147 @@ Surface {
         }
     }
 
+    // ---- Inbox ------------------------------------------------------------
+    Component {
+        id: inboxPage
+
+        Column {
+            id: inboxList
+
+            readonly property var failedWorkflows: Object.keys(GitHub.workflowRepoErrors)
+            readonly property var failedEvents: Object.keys(GitHub.eventRepoErrors)
+
+            width: pageLoader.width
+
+            Empty {
+                visible: GitHub.inboxError !== ""
+                text: "Inbox temporarily paused\n" + GitHub.inboxError
+                color: Theme.redText
+            }
+
+            Empty {
+                visible: GitHub.notificationError !== ""
+                text: "Notifications unavailable · " + GitHub.notificationError
+                color: Theme.amber
+            }
+
+            Empty {
+                visible: inboxList.failedWorkflows.length > 0
+                text: "Workflows unavailable for " + inboxList.failedWorkflows.length
+                    + (inboxList.failedWorkflows.length === 1 ? " repository · "
+                        : " repositories · ")
+                    + inboxList.failedWorkflows.slice(0, 3).join(", ")
+                color: Theme.amber
+            }
+
+            Empty {
+                visible: inboxList.failedEvents.length > 0
+                text: "Repository events unavailable for " + inboxList.failedEvents.length
+                    + (inboxList.failedEvents.length === 1 ? " repository · "
+                        : " repositories · ")
+                    + inboxList.failedEvents.slice(0, 3).join(", ")
+                color: Theme.amber
+            }
+
+            Empty {
+                visible: !GitHub.inboxReady && root.inboxRows.length === 0
+                    && GitHub.inboxError === ""
+                text: GitHub.ciReportsEnabled
+                    ? "Loading workflows, notifications, and repository updates…"
+                    : "Loading notifications and repository updates…"
+            }
+
+            Empty {
+                visible: GitHub.inboxReady && root.inboxRows.length === 0
+                    && GitHub.inboxError === "" && GitHub.notificationError === ""
+                text: GitHub.ciReportsEnabled
+                    ? "Inbox is clear"
+                    : "Inbox is clear\nWorkflow reports are disabled in settings"
+            }
+
+            // Active, Attention, Updates, Settled. Only the retained settled
+            // history starts collapsed; every pending entity stays visible.
+            Repeater {
+                model: root.inboxSections
+
+                delegate: Column {
+                    id: inboxSection
+
+                    required property var modelData
+
+                    visible: modelData.rows.length > 0
+                    width: inboxList.width
+
+                    SectionLabel {
+                        visible: inboxSection.modelData.id !== "settled"
+                        width: parent.width
+                        height: visible ? implicitHeight : 0
+                        text: inboxSection.modelData.title.toUpperCase()
+                            + " · " + inboxSection.modelData.rows.length
+                    }
+
+                    Rectangle {
+                        id: settledDrawer
+                        visible: inboxSection.modelData.id === "settled"
+                        width: parent.width
+                        height: visible ? Theme.controlHeight + 4 : 0
+                        radius: 6
+                        color: settledMouse.containsMouse || activeFocus
+                            ? Theme.hoverFill : "transparent"
+                        border.width: activeFocus ? 1 : 0
+                        border.color: Theme.accent
+                        activeFocusOnTab: visible
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Settled, " + inboxSection.modelData.rows.length
+                            + " items, " + (root.settledExpanded ? "expanded" : "collapsed")
+                        Accessible.onPressAction: root.settledExpanded = !root.settledExpanded
+
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Space) {
+                                root.settledExpanded = !root.settledExpanded;
+                                event.accepted = true;
+                            }
+                        }
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 9
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: (root.settledExpanded ? "⌄ " : "› ") + "SETTLED · "
+                                + inboxSection.modelData.rows.length
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightSemibold
+                            color: Theme.textDim
+                        }
+
+                        MouseArea {
+                            id: settledMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                settledDrawer.forceActiveFocus();
+                                root.settledExpanded = !root.settledExpanded;
+                            }
+                        }
+                    }
+
+                    Repeater {
+                        model: inboxSection.modelData.id !== "settled" || root.settledExpanded
+                            ? inboxSection.modelData.rows : []
+
+                        delegate: InboxCard {
+                            required property var modelData
+                            row: modelData
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // ---- repositories -----------------------------------------------------
     Component {
         id: reposPage
@@ -375,6 +864,16 @@ Surface {
                 visible: GitHub.error !== ""
                 text: "GitHub unavailable\n" + GitHub.error
                 color: Theme.redText
+            }
+
+            Empty {
+                visible: Object.keys(GitHub.watchErrors).length > 0
+                text: Object.keys(GitHub.watchErrors).length === 1
+                    ? "1 watched repository is unavailable · "
+                        + Object.keys(GitHub.watchErrors)[0]
+                    : Object.keys(GitHub.watchErrors).length
+                        + " watched repositories are unavailable"
+                color: Theme.amber
             }
 
             Empty {
@@ -432,6 +931,8 @@ Surface {
                     Accessible.role: Accessible.Button
                     Accessible.name: repoRow.modelData.slug
                         + (repoRow.unread ? ", updated" : "")
+                        + (GitHub.watchError(repoRow.modelData.slug) !== ""
+                            ? ", Inbox data unavailable" : "")
                     Accessible.description: "Show commits"
                     Accessible.onPressAction: root.showCommits(repoRow.modelData.slug)
 
@@ -468,6 +969,15 @@ Surface {
                         anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 10
+
+                        Text {
+                            visible: GitHub.watchError(repoRow.modelData.slug) !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "\uf071" // nf-fa-triangle-exclamation
+                            font.family: Theme.fontIcon
+                            font.pixelSize: Theme.iconSmall
+                            color: Theme.amber
+                        }
 
                         Rectangle {
                             visible: repoRow.modelData.watched
@@ -894,5 +1404,5 @@ Surface {
 
     // The host reuses this panel's slot, so navigation is reset here rather
     // than relying on a fresh instance per open.
-    Component.onCompleted: root.showRepos()
+    Component.onCompleted: root.showInbox()
 }

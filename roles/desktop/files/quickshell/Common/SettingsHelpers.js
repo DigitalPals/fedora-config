@@ -45,7 +45,10 @@ function defaultModOpts() {
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
         t3: { showLabel: true },
         usage: { claude: true, codex: true, kimi: true, warnAt: 25, critAt: 10 },
-        gh: { badge: "dot", repos: 8, pollMins: 5, toasts: true, watch: [] },
+        gh: {
+            badge: "dot", repos: 8, pollMins: 5, ciActivity: true,
+            toasts: true, watch: []
+        },
         vol: { step: 5, showPct: true, middleClick: "mute" },
         batt: { showPct: true, warnAt: 20, critAt: 10 },
         bell: { badge: "dot" }
@@ -260,6 +263,7 @@ var MOD_OPT_CHECKS = {
         badge: function(v, d) { return enumIn(v, ["dot", "count", "off"], d); },
         repos: function(v, d) { return intIn(v, 3, 15, 1, d); },
         pollMins: function(v, d) { return intIn(v, 1, 30, 1, d); },
+        ciActivity: boolIn,
         toasts: boolIn,
         watch: repoListIn
     },

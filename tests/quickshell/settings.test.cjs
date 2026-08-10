@@ -104,6 +104,17 @@ test("settings exposes responsive output and keyboard contracts", () => {
         "picker flows need a concrete lane width or every pill wraps");
 });
 
+test("popout height cannot feed back into its own required envelope", () => {
+    const host = read("Bar/IslandPopout.qml");
+    const window = read("Bar/BarPopoutWindow.qml");
+
+    assert.match(window, /implicitHeight:\s*Math\.max\(1, popout\.requiredHeight\)/);
+    assert.doesNotMatch(host, /onHeightChanged:\s*retargetFront\(\)/,
+        "requiredHeight drives native height, so native height cannot retarget requiredHeight");
+    assert.match(host, /onOutputAvailableHeightChanged:\s*retargetFront\(\)/,
+        "screen-height changes still need to recompute the panel envelope");
+});
+
 test("Idle inhibit and Control Center use the reorderable module pipeline", () => {
     const helpers = read("Common/SettingsHelpers.js");
     const modules = read("Settings/ModulesPage.qml");

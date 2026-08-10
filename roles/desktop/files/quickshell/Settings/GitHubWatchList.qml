@@ -16,6 +16,9 @@ Column {
 
     readonly property var watch: Settings.modOpts.gh.watch
     readonly property bool watchDirty: watch.length > 0
+    readonly property int accountRepoCount: GitHub.repos.filter(row => row.account !== false).length
+    readonly property var workflowFailedRepos: Object.keys(GitHub.workflowRepoErrors)
+    readonly property var eventFailedRepos: Object.keys(GitHub.eventRepoErrors)
 
     property string addError: ""
 
@@ -179,7 +182,8 @@ Column {
                     if (!GitHub.ready)
                         return "Reading the gh CLI's login…";
                     const orgs = GitHub.orgCount;
-                    return "Authenticated via gh CLI · " + GitHub.repos.length + " repos"
+                    return "Authenticated via gh CLI · " + root.accountRepoCount
+                        + " account repos"
                         + (orgs > 0 ? " across " + orgs + (orgs === 1 ? " org" : " orgs") : "");
                 }
                 font.family: Theme.fontMenu
@@ -188,6 +192,29 @@ Column {
                 elide: Text.ElideRight
             }
         }
+    }
+
+    Text {
+        visible: GitHub.inboxError !== "" || GitHub.notificationError !== ""
+            || root.workflowFailedRepos.length > 0 || root.eventFailedRepos.length > 0
+        width: parent.width
+        text: {
+            const parts = [];
+            if (GitHub.inboxError !== "")
+                parts.push("Inbox paused: " + GitHub.inboxError);
+            if (GitHub.notificationError !== "")
+                parts.push("Notifications unavailable: " + GitHub.notificationError);
+            if (root.workflowFailedRepos.length > 0)
+                parts.push("Workflows unavailable for " + root.workflowFailedRepos.join(", "));
+            if (root.eventFailedRepos.length > 0)
+                parts.push("Repository events unavailable for "
+                    + root.eventFailedRepos.join(", "));
+            return parts.join("\n");
+        }
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontCaption
+        color: GitHub.inboxError !== "" ? Theme.redText : Theme.amber
+        wrapMode: Text.Wrap
     }
 
     // ---- watched repositories ---------------------------------------------
@@ -300,9 +327,10 @@ Column {
                 id: watchRow
 
                 required property string modelData
+                readonly property string errorText: GitHub.watchError(modelData)
 
                 width: parent.width
-                height: Theme.settingsControlHeight
+                height: errorText !== "" ? 44 : Theme.settingsControlHeight
                 radius: 7
                 color: Theme.cardFill
 
@@ -317,11 +345,12 @@ Column {
                 }
 
                 Text {
+                    id: watchedName
                     anchors.left: parent.left
                     anchors.leftMargin: 8
                     anchors.right: removeButton.left
                     anchors.rightMargin: 6
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: watchRow.errorText !== "" ? 5 : (parent.height - height) / 2
                     // The owner is dim and the name is not, the same split the
                     // popover's repository rows draw.
                     text: "<font color=\"" + Theme.textDim + "\">"
@@ -333,14 +362,30 @@ Column {
                     color: Theme.textMid
                     elide: Text.ElideRight
                 }
+
+                Text {
+                    visible: watchRow.errorText !== ""
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    anchors.right: removeButton.left
+                    anchors.rightMargin: 6
+                    y: 23
+                    text: watchRow.errorText
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.amber
+                    elide: Text.ElideRight
+                }
             }
         }
     }
 
     Text {
         width: parent.width
-        text: "Your account's and org repos always show in the list. Watched repos add "
-            + "outside sources to the feed, the badge and toasts."
+        text: "The configured count applies to recent account and org repositories. "
+            + "Every watched repository is additive to that list and, when enabled, "
+            + "the workflow-report scope. Repository refresh uses the interval above; "
+            + "the Inbox checks repository events and GitHub notifications every minute."
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
         color: Theme.textFaint

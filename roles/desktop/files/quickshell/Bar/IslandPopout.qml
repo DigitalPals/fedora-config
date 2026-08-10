@@ -400,7 +400,11 @@ Item {
             retargetFront();
     }
     onWidthChanged: retargetFront()
-    onHeightChanged: retargetFront()
+    // Native height is the output of requiredHeight. Feeding it back into
+    // retargetFront() lets rememberTargets() rewrite envelopeBodyH while Qt is
+    // evaluating requiredHeight, producing a binding loop and a one-row panel.
+    // Output height is the actual external input that can change panel limits.
+    onOutputAvailableHeightChanged: retargetFront()
     Component.onCompleted: sync()
 
     Timer {

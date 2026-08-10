@@ -37,11 +37,16 @@ Item {
     property int narrowHeight: 52
     property int narrowLabelY: 0
     property int narrowLabelInset: 100
+    // Most rows use the theme's compact label column. A page can reserve more
+    // room for a longer label without changing every settings page or losing
+    // alignment between the rows in that page.
+    property int minimumLabelWidth: 0
 
     signal resetRequested()
 
     readonly property bool narrow: width < Theme.settingsNarrowWidth
-    readonly property int labelWidth: Theme.settingsLabelWidth
+    readonly property int labelWidth: Theme.settingsLabelWidth >= root.minimumLabelWidth
+        ? Theme.settingsLabelWidth : root.minimumLabelWidth
     readonly property int undoWidth: 28
     // The undo column is always reserved, so the chip appearing never shifts
     // the row (design v2). Controls stop here rather than at the row's edge.

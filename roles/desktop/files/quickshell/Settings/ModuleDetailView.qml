@@ -373,10 +373,18 @@ SettingsPage {
         id: ghOptions
 
         Column {
+            id: githubRows
+
+            // "Recent account repos" is intentionally descriptive and wider
+            // than the shared compact label column. Keep this group aligned
+            // while reserving enough room that the label cannot cover a track.
+            readonly property int optionLabelWidth: 156
+
             spacing: 8
 
             PickerRow {
                 width: parent.width
+                minimumLabelWidth: githubRows.optionLabelWidth
                 label: "Badge"
                 model: [
                     { value: "dot", label: "Dot" },
@@ -391,7 +399,8 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Repos shown"
+                minimumLabelWidth: githubRows.optionLabelWidth
+                label: "Recent account repos"
                 min: 3
                 max: 15
                 step: 1
@@ -404,7 +413,8 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Poll every"
+                minimumLabelWidth: githubRows.optionLabelWidth
+                label: "Repo refresh"
                 min: 1
                 max: 30
                 step: 1
@@ -417,8 +427,20 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
+                minimumLabelWidth: githubRows.optionLabelWidth
+                label: "CI reports"
+                description: "Workflow rows in the Inbox for recent and watched repositories"
+                checked: view.opts.ciActivity
+                dirty: view.optDirty("ciActivity")
+                onToggled: value => view.setOpt("ciActivity", value)
+                onResetRequested: view.resetOpt("ciActivity")
+            }
+
+            SwitchRow {
+                width: parent.width
+                minimumLabelWidth: githubRows.optionLabelWidth
                 label: "Toasts"
-                description: "Notify when a watched repo gets new commits"
+                description: "Watched pushes and failed/action-required workflows"
                 checked: view.opts.toasts
                 dirty: view.optDirty("toasts")
                 onToggled: value => view.setOpt("toasts", value)

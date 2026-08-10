@@ -1,8 +1,10 @@
 import QtQuick
 import ".."
 import "../../Common"
+import "../../Common/GitHubHelpers.js" as Helpers
 
-// GitHub repository feed, with the unread badge the Bell already draws.
+// GitHub Inbox and repository feed. Running state is independent from the
+// configurable unread badge, so badge-off still shows live workflows.
 BarModule {
     id: root
 
@@ -31,12 +33,13 @@ BarModule {
             // small one in the cluster. Measured from the font, not eyeballed.
             glyphSize: Theme.barIconSize + 1
             tooltip: {
+                let summary = Helpers.githubTooltip(GitHub.runningCount,
+                    GitHub.pendingInboxCount, GitHub.unreadRepoCount);
                 if (GitHub.error !== "")
-                    return "GitHub · " + GitHub.error;
-                const n = GitHub.unreadCount;
-                if (n === 0)
-                    return "GitHub";
-                return "GitHub · " + n + (n === 1 ? " repo updated" : " repos updated");
+                    summary += " · repositories unavailable";
+                if (GitHub.inboxError !== "")
+                    summary += " · Inbox paused";
+                return summary;
             }
             tooltipAlign: 1
             host: root.host
@@ -47,9 +50,26 @@ BarModule {
             anchorItem: ghModule
         }
 
+        // Running status: a static marker, deliberately not tied to badge
+        // visibility and carrying no pulse/animation.
+        Rectangle {
+            id: runningMarker
+            visible: GitHub.runningCount > 0
+            anchors.left: ghIcon.left
+            anchors.leftMargin: 2
+            anchors.bottom: ghIcon.bottom
+            anchors.bottomMargin: 1
+            width: 5
+            height: 5
+            radius: 3
+            color: Theme.accent
+        }
+
         Rectangle {
             id: ghBadge
             readonly property bool showCount: GitHub.badgeMode === "count"
+            readonly property color tone: GitHub.badgeTone === "red" ? Theme.red
+                : GitHub.badgeTone === "amber" ? Theme.amber : Theme.accent
             visible: GitHub.badgeVisible
             anchors.top: ghIcon.top
             anchors.topMargin: showCount ? -3 : -1
@@ -60,7 +80,7 @@ BarModule {
             radius: height / 2
             // Count mode is a single accent pill ringed in bar color;
             // dot mode keeps the barBg ring + inner dot.
-            color: showCount ? Theme.accent : Theme.barBg
+            color: showCount ? tone : Theme.barBg
             border.width: showCount ? 1 : 0
             border.color: Theme.barBg
 
@@ -70,14 +90,14 @@ BarModule {
                 width: 6
                 height: 6
                 radius: 3
-                color: Theme.accent
+                color: ghBadge.tone
             }
 
             Text {
                 id: badgeCount
                 visible: ghBadge.showCount
                 anchors.centerIn: parent
-                text: GitHub.unreadCount > 99 ? "99+" : GitHub.unreadCount
+                text: GitHub.pendingInboxCount > 99 ? "99+" : GitHub.pendingInboxCount
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
                 font.weight: Theme.weightSemibold

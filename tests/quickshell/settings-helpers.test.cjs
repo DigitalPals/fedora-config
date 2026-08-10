@@ -60,7 +60,7 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.modOpts.batt, { showPct: true, warnAt: 20, critAt: 10 });
     assert.equal(d.modOpts.bell.badge, "dot");
     assert.deepEqual(d.modOpts.gh,
-        { badge: "dot", repos: 8, pollMins: 5, toasts: true, watch: [] });
+        { badge: "dot", repos: 8, pollMins: 5, ciActivity: true, toasts: true, watch: [] });
     // A fresh list per call: a shared array would let one edit reach the
     // defaults every later comparison is made against.
     assert.notEqual(H.defaultModOpts().gh.watch, H.defaultModOpts().gh.watch);
@@ -89,7 +89,10 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
         media: { maxWidth: 133, titleFormat: "title" },
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
         usage: { warnAt: 8, critAt: 60, claude: "yes" },
-        gh: { badge: "flag", repos: 99, pollMins: 0, toasts: "sure" },
+        gh: {
+            badge: "flag", repos: 99, pollMins: 0,
+            ciActivity: "sure", toasts: "sure"
+        },
         vol: { step: 0, middleClick: "detonate" },
         batt: { warnAt: 33, critAt: 3 },
         bell: { badge: "count" }
@@ -97,7 +100,10 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.gh.badge, "dot");
     assert.equal(next.gh.repos, 15);
     assert.equal(next.gh.pollMins, 1);
+    assert.equal(next.gh.ciActivity, true, "non-boolean falls back to default");
     assert.equal(next.gh.toasts, true, "non-boolean falls back to default");
+    assert.equal(H.normalizeModOpts({ gh: { ciActivity: false } }).gh.ciActivity, false,
+        "an explicit CI opt-out survives normalization");
     assert.equal(next.ws.minSlots, 10);
     assert.equal(next.ws.style, "numbers");
     assert.equal(next.media.maxWidth, 140);
