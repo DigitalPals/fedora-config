@@ -61,8 +61,8 @@ Rectangle {
                     && !exists && !focused
                 readonly property color tone: focused ? Theme.accent
                     : urgent ? Theme.red
-                    : root.numbered ? Theme.chipHover
-                    : exists ? Theme.wsDot : Theme.dotDim
+                    : root.numbered ? (exists ? Theme.chipHover : Theme.chip)
+                    : exists ? Theme.wsOccupied : Theme.dotDim
 
                 visible: !hidden
                 width: hidden ? 0
@@ -85,7 +85,8 @@ Rectangle {
 
                 Accessible.role: Accessible.Button
                 Accessible.name: "Workspace " + wsId
-                    + (focused ? ", current" : urgent ? ", urgent" : exists ? "" : ", empty")
+                    + (focused ? ", current" : urgent ? ", urgent"
+                        : exists ? ", occupied" : ", empty")
                 Accessible.onPressAction: Hyprland.dispatch(
                     "hl.dsp.focus({ workspace = " + wsId + " })")
 
@@ -165,7 +166,7 @@ Rectangle {
                     check: wsPointer
                     text: "Workspace " + slot.wsId
                         + (slot.focused ? " · current" : slot.urgent ? " · urgent"
-                            : slot.exists ? "" : " · empty")
+                            : slot.exists ? " · occupied" : " · empty")
                     y: root.height + 12
                     x: (slot.width - width) / 2
                 }

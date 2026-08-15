@@ -85,6 +85,19 @@ test("the two surfaces keep their own type, as typography.test.cjs requires", ()
         "the centre style names a raw text size instead of a Theme token");
 });
 
+test("the toast countdown stays inside the rounded notification card", () => {
+    const toast = read("NotificationToasts.qml");
+
+    assert.match(toast, /height:\s*contentHeight\s*\n/,
+        "the countdown belongs in the card padding, not in extra space below its content");
+    assert.match(toast, /anchors\.leftMargin:\s*card\.padH/);
+    assert.match(toast, /anchors\.rightMargin:\s*card\.padH/);
+    assert.match(toast, /anchors\.bottomMargin:\s*card\.padV\s*\/\s*2/,
+        "the countdown must be inset from the card's curved bottom edge");
+    assert.doesNotMatch(toast, /anchors\.margins:\s*1/,
+        "a nearly edge-to-edge bar escapes the rounded card silhouette");
+});
+
 function keysSuppliedSource(rel) {
     const source = read(rel);
     const start = source.indexOf("readonly property var cardStyle: ({");

@@ -159,7 +159,7 @@ PanelWindow {
                     showIcon: Settings.notifIcons
 
                     width: parent.width
-                    height: contentHeight + (slot.showProgress ? 4 : 0)
+                    height: contentHeight
                     radius: Theme.cardRadius
                     clip: true
                     color: slot.critical ? Theme.redBgSoft
@@ -179,8 +179,11 @@ PanelWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        anchors.margins: 1
+                        anchors.leftMargin: card.padH
+                        anchors.rightMargin: card.padH
+                        anchors.bottomMargin: card.padV / 2
                         height: 2
+                        radius: 1
                         color: Theme.activeFill
 
                         Rectangle {
@@ -188,6 +191,7 @@ PanelWindow {
                             width: slot.total > 0
                                 ? parent.width * Format.clamp01(slot.remaining / slot.total)
                                 : 0
+                            radius: 1
                             color: Theme.accent
                         }
                     }

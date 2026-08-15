@@ -28,7 +28,7 @@ Rectangle {
     signal triggered()
 
     width: labelText.implicitWidth + hPadding
-    height: Theme.controlHeight
+    height: Theme.inlineActionHeight
     radius: 6
     color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
     opacity: enabled ? 1 : 0.4

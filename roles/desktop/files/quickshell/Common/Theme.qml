@@ -63,8 +63,10 @@ Singleton {
         ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.13)
     readonly property color tile: dark
         ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.06)
-    readonly property color wsDot: dark
-        ? Qt.rgba(1, 1, 1, 0.35) : Qt.rgba(28 / 255, 26 / 255, 46 / 255, 0.28)
+    // Occupied workspace pips are functional state, not decorative furniture:
+    // keep them well above dotDim while the focused pip remains uniquely accent.
+    readonly property color wsOccupied: dark
+        ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(28 / 255, 26 / 255, 46 / 255, 0.62)
 
     // Legacy aliases, kept so every popover keeps reading one vocabulary.
     readonly property color hoverFill: chip
@@ -237,6 +239,10 @@ Singleton {
     readonly property int t3MaxWidth: 520
     readonly property int surfacePadding: 14
     readonly property int controlHeight: 46
+    // Inline action pills sit beside copy inside compact cards. They need a
+    // smaller target than standalone header, footer and form controls so a
+    // two-line tile does not grow or clip when its actions are revealed.
+    readonly property int inlineActionHeight: 32
     readonly property int settingsControlHeight: 28
     readonly property int rowHeight: 50
     readonly property int tileHeight: 60

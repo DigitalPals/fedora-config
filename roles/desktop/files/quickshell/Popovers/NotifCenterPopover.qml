@@ -169,6 +169,8 @@ Surface {
             spacing: 12
 
             Row {
+                id: currentWeather
+
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
 
@@ -232,6 +234,8 @@ Surface {
             }
 
             Item {
+                id: weatherDivider
+
                 width: 1
                 height: parent.height - 22
                 anchors.verticalCenter: parent.verticalCenter
@@ -243,10 +247,18 @@ Surface {
             }
 
             Row {
+                id: forecastRow
+
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 11
+                width: parent.width - currentWeather.width - weatherDivider.width
+                    - parent.spacing * 2
+                spacing: 0
+
+                readonly property real dayWidth: width / Math.max(1, forecastRepeater.count)
 
                 Repeater {
+                    id: forecastRepeater
+
                     model: Weather.days.slice(1, 5)
 
                     delegate: Column {
@@ -254,6 +266,7 @@ Surface {
 
                         required property var modelData
 
+                        width: forecastRow.dayWidth
                         spacing: 2
 
                         Text {
@@ -272,7 +285,7 @@ Surface {
                             size: Theme.iconSmall + 2
                             fill: 1
                             symWeight: 400
-                            color: Theme.textMid
+                            color: Weather.glyphColor(forecastDay.modelData.code, true)
                         }
 
                         Text {
