@@ -28,6 +28,11 @@ bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/
 bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-debian-shell"))
 bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("qs ipc call launcher toggle"))
 bind(mainMod .. " + comma", hl.dsp.exec_cmd("qs ipc call settings toggle"))
+-- Shell surfaces the menubar also opens by click. Documented in the shell's
+-- own cheatsheet (Common/Session.qml), which is what Super+K raises.
+bind(mainMod .. " + N", hl.dsp.exec_cmd("qs ipc call popouts toggle notifications"))
+bind(mainMod .. " + A", hl.dsp.exec_cmd("qs ipc call popouts toggle control"))
+bind(mainMod .. " + K", hl.dsp.exec_cmd("qs ipc call session keys"))
 bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus --new-window"))
 bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
 bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(browser .. " --incognito"))
@@ -73,6 +78,7 @@ bind(mainMod .. " + grave", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot regi
 bind(mainMod .. " + SHIFT + grave", hl.dsp.exec_cmd(home .. "/.local/bin/screen-record"))
 bind("Print", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot region"))
 bind("SHIFT + Print", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot fullscreen"))
+bind(mainMod .. " + SHIFT + O", hl.dsp.exec_cmd(home .. "/.local/bin/screen-ocr"))
 
 bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
 bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"), { locked = true, repeating = true })

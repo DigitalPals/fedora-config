@@ -1,22 +1,28 @@
 import QtQuick
-import ".."
 import "../../Common"
 
-// Wi-Fi status.
+// Wi-Fi, inside the status pill. Dimmed rather than hidden while the radio is
+// off or unassociated: an absent icon says nothing, a faded one says the radio
+// is there and idle.
 BarModule {
     id: root
 
     moduleId: "wifi"
 
-    BarIcon {
-        id: wifiIcon
+    Sym {
+        anchors.verticalCenter: parent.verticalCenter
+        name: !WifiState.enabled ? "wifi_off"
+            : !WifiState.connected ? "wifi_find"
+            : WifiState.signal >= 66 ? "wifi"
+            : WifiState.signal >= 33 ? "network_wifi_2_bar"
+            : "network_wifi_1_bar"
+        size: Theme.barIconSize
+        fill: 1
+        color: Theme.textHi
+        opacity: WifiState.enabled && WifiState.connected ? 1 : 0.35
 
-        host: root.host
-        panelName: "wifi"
-        isle: root.isle
-        glyph: ""
-        idleColor: WifiState.enabled ? (WifiState.connected ? Theme.icon : Theme.textLow) : Theme.textFaint
-        tooltip: WifiState.connected ? "Wi-Fi · " + WifiState.name : "Wi-Fi"
-        tooltipAlign: 1
+        Behavior on opacity {
+            NumberAnimation { duration: Theme.chipFadeDuration }
+        }
     }
 }

@@ -1,14 +1,13 @@
 import QtQuick
 import ".."
 
-// Workspace pips.
+// Workspace pager.
 BarModule {
     id: root
 
     moduleId: "ws"
 
     Workspaces {
-        property string isle: "left"
         host: root.host
     }
 }

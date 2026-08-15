@@ -128,6 +128,7 @@ Singleton {
     readonly property var snoozedThreads: T3Threads.snoozedThreads
     readonly property var settledThreads: T3Threads.settledThreads
     readonly property int runningCount: T3Threads.runningCount
+    readonly property int monitoringCount: T3Threads.monitoringCount
     readonly property int attentionCount: T3Threads.attentionCount
     readonly property int doneCount: T3Threads.doneCount
     readonly property bool shellReady: T3Threads.shellReady
@@ -474,6 +475,7 @@ Singleton {
     readonly property string detailError: T3Detail.detailError
     readonly property var detailMessages: T3Detail.detailMessages
     readonly property var detailSession: T3Detail.detailSession
+    readonly property int detailLiveAgentCount: T3Detail.detailLiveAgentCount
     readonly property var detailApprovals: T3Detail.detailApprovals
     readonly property var detailPendingInputs: T3Detail.detailPendingInputs
     readonly property var detailLatestActivity: T3Detail.detailLatestActivity

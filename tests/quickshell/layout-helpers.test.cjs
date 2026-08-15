@@ -32,7 +32,7 @@ test("wide measured layouts remain detailed and centered", () => {
 test("measured fitting compacts auto detail before prefer-detail", () => {
     const result = H.fitBar({
         width: 800, gutter: 8,
-        widths: { left: 260, center: 220, right: 310 },
+        widths: { left: 300, center: 220, right: 310 },
         entries: [
             { id: "media", col: "left", saving: 60, policy: "prefer" },
             { id: "weather", col: "center", saving: 30, policy: "auto" },
@@ -40,7 +40,7 @@ test("measured fitting compacts auto detail before prefer-detail", () => {
             { id: "t3", col: "right", saving: 60, policy: "auto" }
         ]
     });
-    assert.deepEqual(result.compact.slice(0, 2), ["weather", "clock"]);
+    assert.deepEqual(result.compact, ["t3", "weather", "clock"]);
     assert.equal(result.compact.includes("media"), false);
     assert.equal(result.fits, true);
 });
@@ -64,22 +64,21 @@ test("forced compact modules stay present and the center shifts last", () => {
 });
 
 test("all-auto detail follows the documented compaction order", () => {
-    const entries = [
-        { id: "usage", col: "right", saving: 20, policy: "auto" },
-        { id: "batt", col: "right", saving: 20, policy: "auto" },
-        { id: "vol", col: "right", saving: 20, policy: "auto" },
-        { id: "t3", col: "right", saving: 20, policy: "auto" },
-        { id: "clock", col: "center", saving: 20, policy: "auto" },
-        { id: "weather", col: "center", saving: 20, policy: "auto" },
-        { id: "media", col: "left", saving: 20, policy: "auto" }
-    ];
+    const entries = H.COMPACT_ORDER.map(id => ({
+        id,
+        col: id === "media" ? "left"
+            : id === "clock" || id === "weather" ? "center" : "right",
+        saving: 20,
+        policy: "auto"
+    }));
     const result = H.fitBar({
         width: 800, gutter: 8,
-        widths: { left: 390, center: 300, right: 390 },
+        widths: { left: 390, center: 300, right: 460 },
         entries
     });
     assert.deepEqual(result.compact, H.COMPACT_ORDER);
-    assert.equal(entries.length, 7, "fitting changes detail, not module enablement");
+    assert.equal(entries.length, H.COMPACT_ORDER.length,
+        "fitting changes detail, not module enablement");
 });
 
 test("high resolution wheel deltas emit only accumulated steps", () => {

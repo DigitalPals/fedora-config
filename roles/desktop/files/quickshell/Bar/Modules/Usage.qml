@@ -4,42 +4,37 @@ import "../../Common"
 
 // Grouped per-provider model usage chips.
 BarModule {
-    id: usageModule
+    id: root
 
     moduleId: "usage"
-    spacing: 1
     detailSaving: usageChips.detailSaving
 
-    Divider {
-        visible: usageModule.dividerBefore
-    }
-
-    // Keep one anchor for the grouped provider module: changing
-    // Claude/Codex/Kimi content must not slide the panel.
+    // One popout anchor for the whole group: changing Claude/Codex/Kimi
+    // content must not slide the panel out from under the pointer.
     UsageChips {
         id: usageChips
-        host: usageModule.host
+        host: root.host
         panelName: "usage"
-        isle: usageModule.isle
-        displayMode: usageModule.compact ? 0 : 2
+        isle: root.isle
+        anchorItem: root.groupAnchor ?? usageChips
+        displayMode: root.compact ? 0 : 2
         onChipClicked: key => {
-            if (usageModule.host.popoutOpen("usage") && Usage.selected === key) {
+            if (root.host.popoutOpen("usage") && Usage.selected === key) {
                 Popouts.close();
             } else {
                 Usage.selected = key;
-                Popouts.openPanel("usage", usageModule.isle,
-                    usageModule.host.anchorOf(usageChips));
+                Popouts.openPanel("usage", root.isle,
+                    root.host.anchorOf(usageChips.anchorItem));
             }
         }
+        // Usage joins the bar-wide latched menu session while retaining its
+        // per-provider selection. Selecting first means a switch from another
+        // panel presents the right provider on its first rendered frame.
         onChipEntered: key => {
-            if (Popouts.open)
-                Usage.selected = key;
-            usageModule.host.hoverOpen("usage", usageModule.isle, usageChips);
+            if (!Popouts.open)
+                return;
+            Usage.selected = key;
+            root.host.hoverPopout("usage", root.isle, usageChips.anchorItem);
         }
-        onChipExited: usageModule.host.cancelHover("usage")
-    }
-
-    Divider {
-        visible: usageModule.dividerAfter
     }
 }

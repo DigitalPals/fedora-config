@@ -1,49 +1,43 @@
 import QtQuick
 import "../Common"
 
-// A content chip in a bar cluster: the same hover/held pill BarIcon draws for
-// glyph modules, but wrapping arbitrary content instead of glyph + label.
-// The two are deliberately the same shape — same height, radius, fill states
-// and fade — so a chip and an icon sitting next to each other agree.
+// A content chip in the bar: the same pill BarIcon draws for glyph modules,
+// wrapping arbitrary content instead of glyph + label. The two are
+// deliberately the same shape — same height, radius, fill ladder and fade —
+// so a chip and an icon sitting next to each other agree.
 //
 // Like BarIcon, this knows nothing about the bar: it reports pointer events as
 // signals and takes `held` as a property, so the module wires it to
-// barWindow.hoverOpen/togglePopout at the use site. Content binds its own
-// colours off `held` and `hovered`.
+// barWindow.togglePopout at the use site. Content binds its own colours off
+// `held` and `hovered`.
 Rectangle {
     id: root
 
-    default property alias content: inner.data
+    default property alias content: content.data
 
     // ---- panel wiring -----------------------------------------------------
     // Setting panelName makes this the bar's anchor for that popout and drives
-    // registration, the held state, hover-switching and click from the one
-    // name. `host` is typed rather than duck-typed, so a typo in any of those
-    // calls is a lint error naming the member, not a silent no-op.
-    //
-    // `isle` is the column the module actually sits in — the user can move
-    // modules between columns, so it is assigned by the bar's ModuleSlot and
-    // is not the registry's default island.
-    //
-    // `host` is required even for a chip that owns no panel: BarTooltip
-    // dismisses itself against the bar-wide pointer state, so leaving it null
-    // is what strands a tooltip on screen after a missed exit event.
+    // registration, the held state and the opening click from the one name.
+    // `host` is typed rather than duck-typed, so a typo in any of those calls
+    // is a lint error naming the member, not a silent no-op.
     required property Bar host
     property string panelName: ""
     property string isle: ""
 
     // The item whose rectangle the popout hangs under. Defaults to this one;
-    // the bell overrides it with its wrapper, whose height is the full bar
-    // row rather than the icon's, so the popout keeps its exact anchor.
+    // a grouped chip overrides it with the group pill.
     property Item anchorItem: root
 
     readonly property bool ownsPanel: panelName !== "" && host !== null
 
-    // The bar assigns `host` from its slot's onLoaded, which runs after this
-    // object is constructed — so registering only in Component.onCompleted
-    // would run against a null host and silently never happen. Registration
-    // is idempotent, so doing both is safe and covers either order.
     onOwnsPanelChanged: {
+        if (ownsPanel)
+            host.registerPanel(panelName, anchorItem);
+    }
+
+    // A grouped module learns which pill it sits in only after the bar has
+    // loaded it, so the anchor can move once, from this chip to its group.
+    onAnchorItemChanged: {
         if (ownsPanel)
             host.registerPanel(panelName, anchorItem);
     }
@@ -58,13 +52,23 @@ Rectangle {
             host.unregisterPanel(panelName, anchorItem);
     }
 
-    // Padding either side of the content. 7 matches BarIcon's optical inset
-    // for text-led chips; the weather chip runs one tighter because its
-    // leading glyph already carries side bearing.
-    property real hPadding: 7
-    property real spacing: 6
-    // The module's popout is expanded below it (design t5).
+    // "pill" for a chip that draws its own background, "inner" for one sitting
+    // inside a group's background — a step shorter, and transparent at rest so
+    // the group reads as one shape with a lit segment rather than as a strip
+    // of chips.
+    property string shape: "pill"
+    readonly property bool inner: shape === "inner"
+    property real pillHeight: inner ? Theme.chipInnerHeight : Theme.chipHeight
+
+    property real hPadding: 12
+    property real spacing: 8
+    property real leftPadding: hPadding
+    property real rightPadding: hPadding
+    property color restFill: inner ? "transparent" : Theme.chip
+    property color hoverFill: Theme.chipHover
+    // The module's popout is expanded below it.
     property bool held: ownsPanel && host.popoutOpen(panelName)
+    property bool pressFeedback: true
     property string tooltip: ""
     property int tooltipAlign: 0
 
@@ -81,29 +85,44 @@ Rectangle {
         hovered: mouse.containsMouse
     }
 
-    function hoverIn() {
-        if (ownsPanel)
-            host.hoverOpen(panelName, isle, anchorItem);
-        entered();
-    }
-
     signal clicked()
     signal entered()
     signal exited()
 
-    implicitHeight: Theme.chipHeight
-    implicitWidth: inner.implicitWidth + hPadding * 2
-    radius: Theme.chipRadius
-    color: held ? Theme.hoverFillStrong : root.hovered ? Theme.hoverFill : "transparent"
-    anchors.verticalCenter: parent.verticalCenter
+    implicitHeight: pillHeight
+    implicitWidth: content.implicitWidth + leftPadding + rightPadding
+    radius: Theme.pillRadius
+    color: held ? Theme.chipHover : root.hovered ? hoverFill : restFill
+    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+    scale: pressFeedback && mouse.pressed ? 0.96 : 1
+
+    Behavior on scale {
+        NumberAnimation {
+            duration: Theme.pressDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
+        }
+    }
 
     Behavior on color {
         ColorAnimation { duration: Theme.chipFadeDuration }
     }
 
+    // The media chip unfolds its transport under the pointer and the T3 chip
+    // swaps between a count and a word; both change width in place, and both
+    // should glide rather than jump.
+    Behavior on implicitWidth {
+        NumberAnimation {
+            duration: Theme.expandDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
+        }
+    }
+
     Row {
-        id: inner
-        anchors.centerIn: parent
+        id: content
+        anchors.verticalCenter: parent.verticalCenter
+        x: root.leftPadding
         spacing: root.spacing
     }
 
@@ -112,15 +131,18 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onEntered: root.hoverIn()
-        // A newly mapped layer surface can cost Qt the next enter event;
-        // motion over the chip still re-arms the bar's hover switch.
-        onPositionChanged: root.hoverIn()
-        onExited: {
+        onEntered: {
             if (root.ownsPanel)
-                root.host.cancelHover(root.panelName);
-            root.exited();
+                root.host.hoverPopout(root.panelName, root.isle, root.anchorItem);
+            root.entered();
         }
+        // See BarIcon: motion is the first recovery path, and hoverPopout is a
+        // no-op for the panel that is already current.
+        onPositionChanged: {
+            if (root.ownsPanel)
+                root.host.hoverPopout(root.panelName, root.isle, root.anchorItem);
+        }
+        onExited: root.exited()
         onClicked: {
             if (root.ownsPanel)
                 root.host.togglePopout(root.panelName, root.isle, root.anchorItem);
@@ -132,7 +154,7 @@ Rectangle {
         check: pointer
         text: root.tooltip
         align: root.tooltipAlign
-        y: root.height + 6
+        y: root.height + 8
         x: align < 0 ? 0 : align > 0 ? root.width - width : (root.width - width) / 2
     }
 }

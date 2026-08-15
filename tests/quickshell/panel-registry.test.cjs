@@ -15,9 +15,23 @@ function read(relative) {
 // in Bar/Modules/*.qml now, while the slot that drives it is in Bar.qml.
 function barSources() {
     const dir = path.join(shellDir, "Bar", "Modules");
-    return [read("Bar/Bar.qml"),
+    return [read("Bar/Bar.qml"), read("Bar/Cluster.qml"),
             ...fs.readdirSync(dir).filter(f => f.endsWith(".qml"))
                 .map(f => fs.readFileSync(path.join(dir, f), "utf8"))].join("\n");
+}
+
+// Every panel name the bar claims: a module's own `panelName: "x"`, plus the
+// two the cluster's group pills open, which come from a named map rather than
+// from a module because the pill is furniture the modules sit inside.
+function claimedPanels() {
+    const bar = barSources();
+    const groupMap = read("Bar/Cluster.qml")
+        .match(/groupPanels:\s*\(\{([\s\S]*?)\}\)/)?.[1] ?? "";
+    assert.ok(groupMap.trim() !== "", "Cluster.qml no longer maps groups to panels");
+    return new Set([
+        ...[...bar.matchAll(/panelName:\s*"([a-z0-9]+)"/g)].map(m => m[1]),
+        ...[...groupMap.matchAll(/"([a-z0-9]+)"/g)].map(m => m[1])
+    ]);
 }
 
 // The whole point of the registry: these assertions are what used to be a
@@ -73,20 +87,17 @@ test("every panel the bar claims is a registry panel", () => {
     // Modules declare ownership as `panelName: "x"` on a BarIcon/BarChip/
     // T3Chip/UsageChips; the primitive turns that into the registerPanel
     // call, the held state and the hover/click wiring.
-    const bar = barSources();
-    const registered = [...bar.matchAll(/panelName:\s*"([a-z0-9]+)"/g)].map(m => m[1]);
+    const registered = [...claimedPanels()];
     assert.ok(registered.length > 0, "no panelName declarations found — did Bar/Modules/ move?");
     const names = new Set(R.names());
     for (const name of registered)
-        assert.ok(names.has(name), `Bar.qml registers "${name}", which is not in the registry`);
+        assert.ok(names.has(name), `the bar registers "${name}", which is not in the registry`);
 });
 
 test("a bar module that owns a panel registers it under the registry's name", () => {
     // The pairing that actually breaks: cmpClock opens "calendar", not
     // "clock". A moduleId pointing at the wrong panel is invisible otherwise.
-    const bar = barSources();
-    const registered = new Set(
-        [...bar.matchAll(/panelName:\s*"([a-z0-9]+)"/g)].map(m => m[1]));
+    const registered = claimedPanels();
     for (const panel of R.PANELS) {
         if (panel.moduleId === "")
             continue;
@@ -98,8 +109,15 @@ test("a bar module that owns a panel registers it under the registry's name", ()
 test("panels no module owns are exactly the ones the bar sweep must skip", () => {
     // The Tailscale bug in one assertion: an ownerless panel left in the
     // sweep gets closed by any unrelated module change.
+    // The redesign added to this set on purpose. `control` is opened by the
+    // status pill, which is furniture the status modules fill in rather than a
+    // module of its own; the four detail panels behind it and the two the
+    // notification centre absorbed are now reachable only from IPC or from
+    // inside another panel. None of them can be closed by a module going away,
+    // so none of them may be swept.
     assert.deepEqual(R.PANELS.filter(p => R.ownerless(p.name)).map(p => p.name).sort(),
-        ["settings", "tailscale"]);
+        ["audio", "battery", "bluetooth", "calendar", "control", "settings",
+         "tailscale", "weather", "wifi"]);
 });
 
 test("only settings carries the behaviour flags", () => {
@@ -114,7 +132,7 @@ test("only settings carries the behaviour flags", () => {
 test("no consumer still hardcodes a panel name it should ask the registry for", () => {
     // Guards the substitution this WP made: these files used to test
     // `Popouts.currentName === "settings"` directly.
-    for (const file of ["shell.qml", "Bar/Bar.qml", "Bar/IslandPopout.qml",
+    for (const file of ["shell.qml", "Bar/Bar.qml", "Bar/PopoutHost.qml",
                         "Bar/BarPopoutWindow.qml"]) {
         // Line by line, so a failure names the offending line rather than
         // dumping the whole file into the assertion diff.
@@ -126,7 +144,8 @@ test("no consumer still hardcodes a panel name it should ask the registry for", 
 });
 
 test("lookups answer for unknown panels instead of throwing", () => {
-    // Popouts.openPanel() and the IPC handler both accept arbitrary strings.
+    // The IPC boundary accepts arbitrary strings; registry lookups themselves
+    // remain total so every caller can decide how to handle one.
     assert.equal(R.byName("nope"), null);
     assert.equal(R.island("nope"), "right");
     assert.equal(R.moduleFor("nope"), "");
@@ -136,6 +155,15 @@ test("lookups answer for unknown panels instead of throwing", () => {
     assert.equal(R.fillsBody("nope"), false);
     assert.equal(R.persistsAcrossHosts("nope"), false);
     assert.equal(R.ownerless("nope"), true);
+});
+
+test("the IPC boundary rejects unknown names before mapping a ghost surface", () => {
+    const popouts = read("Common/Popouts.qml");
+    const openPanel = popouts.match(/function openPanel\([\s\S]*?\n    \}/)?.[0] ?? "";
+
+    assert.match(openPanel, /PanelRegistry\.byName\(name\) === null/);
+    assert.ok(openPanel.indexOf("PanelRegistry.byName(name)") < openPanel.indexOf("open = true"),
+        "validation must happen before the layer surface is asked to map");
 });
 
 test("the derived maps cover every panel", () => {
@@ -152,7 +180,7 @@ test("the derived maps cover every panel", () => {
 
 test("panelName is what actually drives the panel wiring", () => {
     // Otherwise the assertions above would pass against a dead property.
-    for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/T3Chip.qml",
+    for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml",
                         "Bar/UsageChips.qml"]) {
         const src = read(file);
         assert.match(src, /property string panelName/, `${file} must accept panelName`);
@@ -165,23 +193,17 @@ test("panelName is what actually drives the panel wiring", () => {
 });
 
 test("a primitive that registers a panel also opens it", () => {
-    // The half that registration does not cover: the bar's hover switch is
-    // gated on a popout already being open, so a chip whose own click and
-    // hover are unwired looks dead until some other module is opened first.
-    // T3Chip shipped that way once — it registered, derived held, and did
-    // nothing when clicked.
+    // The half that registration does not cover: a chip whose own click is
+    // unwired looks dead. T3Chip shipped that way once — it registered,
+    // derived held, and did nothing when clicked.
     //
     // UsageChips is the exception, and the test below pins it as the only
     // one: its per-provider clicks select a provider or close, which the
     // generic toggle cannot express, so Usage.qml wires those at the module.
-    for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/T3Chip.qml"]) {
+    for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml"]) {
         const src = read(file);
         assert.match(src, /host\.togglePopout\(\s*(root\.)?panelName/,
             `${file} registers a panel but never toggles it on click`);
-        assert.match(src, /host\.hoverOpen\(\s*(root\.)?panelName/,
-            `${file} must join the bar's hover switch`);
-        assert.match(src, /host\.cancelHover\(\s*(root\.)?panelName/,
-            `${file} must disarm the hover switch on exit`);
     }
 });
 
@@ -193,15 +215,43 @@ test("no bar module hand-wires a panel the primitive already owns", () => {
         assert.doesNotMatch(bar, new RegExp(`barWindow\\.${call}\\(`),
             `Bar.qml still hand-wires ${call}; panelName should drive it`);
     }
-    // Modules reach the bar as `host` now, so count there rather than on the
-    // old outer id. Two sites, both in Usage: its chips are per-provider
-    // hover targets under one popout anchor.
-    const dir = path.join(shellDir, "Bar", "Modules");
-    const hoverSites = fs.readdirSync(dir).filter(f => f.endsWith(".qml"))
-        .flatMap(f => [...fs.readFileSync(path.join(dir, f), "utf8")
-            .matchAll(/host\.(hoverOpen|cancelHover)\(/g)].map(() => f));
-    assert.deepEqual(hoverSites, ["Usage.qml", "Usage.qml"],
-        "only the usage module's bespoke per-provider hover should remain");
+});
+
+test("menu hover switching is latched behind an open popout", () => {
+    const host = read("Bar/Bar.qml");
+    const icon = read("Bar/BarIcon.qml");
+    const chip = read("Bar/BarChip.qml");
+    const cluster = read("Bar/Cluster.qml");
+
+    // Merely crossing the bar must remain inert. Once a click has opened any
+    // popout, entering another owner morphs the existing surface immediately.
+    assert.match(host,
+        /function hoverPopout\([^)]*\) \{\s*if \(!Popouts\.open\)\s*return false;/,
+        "closed-bar hover must not start a menu session");
+    assert.match(host,
+        /if \(Popouts\.currentName !== name\)\s*Popouts\.openPanel\(name, isle, anchorOf\(item\)\)/,
+        "an open menu session must switch to the hovered panel");
+
+    for (const [file, src] of [["BarIcon.qml", icon], ["BarChip.qml", chip]]) {
+        assert.match(src, /onEntered:[\s\S]{0,180}?host\.hoverPopout\(root\.panelName/,
+            `${file} does not switch the latched menu on enter`);
+        assert.match(src, /onPositionChanged:[\s\S]{0,180}?host\.hoverPopout\(root\.panelName/,
+            `${file} cannot recover an enter lost while mapping a layer surface`);
+    }
+    assert.match(cluster,
+        /onEntered:\s*root\.host\.hoverPopout\(group\.panelName, root\.col, pill\)/,
+        "group-owned status and centre menus must join hover switching");
+    assert.match(cluster,
+        /onPositionChanged:\s*root\.host\.hoverPopout\(group\.panelName, root\.col, pill\)/);
+
+    // A newly mapped layer surface can cost every child target its next event;
+    // the full-bar handler must independently hit-test the panel registry.
+    assert.match(host,
+        /function hoverPanelAt\(position\)[\s\S]*Object\.keys\(panelAnchors\)/,
+        "the bar-wide fallback must inspect every registered panel anchor");
+    assert.match(host,
+        /onPointChanged:[\s\S]{0,260}?barWindow\.hoverPanelAt\(scenePoint\)/,
+        "full-bar pointer motion must drive the fallback hit test");
 });
 
 // Text at the immediate level of a QML block, with nested objects removed, so
@@ -257,7 +307,13 @@ test("every bar primitive that draws a hover state is fully wired", () => {
             .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, '""')
             .replace(/\/\/[^\n]*/g, "");
         const types = Object.keys(REQUIRED_WIRING).join("|");
+        // The first type declaration in a file is its root: a file rooted at
+        // BarChip is a new kind of chip, and its `host` is set where it is
+        // used, not where it is defined.
+        const rootStart = src.search(/^[A-Z]\w*\s*\{/m);
         for (const match of src.matchAll(new RegExp(`\\b(${types})\\s*\\{`, "g"))) {
+            if (match.index === rootStart)
+                continue;
             const start = match.index + match[0].length - 1;
             let depth = 0;
             let end = start;
@@ -280,23 +336,68 @@ test("every bar primitive that draws a hover state is fully wired", () => {
         "an unwired hover state cannot clear itself after a missed exit");
 });
 
-test("every bar chip is transparent at rest", () => {
-    // One ladder for all of them: transparent at rest, Theme.hoverFill under
-    // the pointer, Theme.hoverFillStrong while the popout is open. The T3 and
-    // usage provider chips used to rest on hoverFill instead, which beside the
-    // transparent glyph buttons read as a chip stuck in its hover state —
-    // reported as exactly that. Their own offline chip already did it this way.
+test("nothing in the bar binds visibility to another item's visibility", () => {
+    // `visible` reads back *effective* visibility — the item's own flag ANDed
+    // with its parents' — so `visible: child.visible` makes an item depend on
+    // itself and latch at false. It looks right for as long as the child starts
+    // visible, which is exactly why it shipped: only the modules that turn on
+    // later (a track starts, updates appear, a tray icon registers) went
+    // missing. Bind to the condition instead, and name it if two things need
+    // it — a sibling's `visible` is not a latch today but becomes one the
+    // moment the tree is rearranged.
+    const offenders = [];
+    for (const file of barQmlFiles()) {
+        fs.readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+            if (/^\s*visible:\s*\w+\.visible\s*$/.test(line))
+                offenders.push(`${path.relative(shellDir, file)}:${index + 1}`);
+        });
+    }
+    assert.deepEqual(offenders, []);
+});
+
+test("only the bar decides whether a module is on screen", () => {
+    // The dividers between grouped modules and the pill around them both read
+    // `autoRule`, so a module that hides itself for its own reasons leaves a
+    // separator with nothing beside it and a pill with nothing inside it.
+    const bar = read("Bar/Bar.qml");
+    const rule = bar.match(/function autoRule\(id\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.ok(rule !== "", "the bar must still own the auto-rules");
+    for (const id of ["media", "weather", "bt", "batt", "updates", "tray"])
+        assert.match(rule, new RegExp(`case "${id}":`), `autoRule says nothing about ${id}`);
+
+    const dir = path.join(shellDir, "Bar", "Modules");
+    const offenders = [];
+    for (const name of fs.readdirSync(dir).filter(f => f.endsWith(".qml"))) {
+        const source = fs.readFileSync(path.join(dir, name), "utf8");
+        // Top-level `visible:` on the module root, which is what would fight
+        // the slot. A `visible:` on something inside it is that thing's own
+        // business — a label hidden while compacted, a badge with no count.
+        for (const line of topLevel(source).split("\n")) {
+            if (/^\s*visible:/.test(line))
+                offenders.push(`${name}: ${line.trim()}`);
+        }
+    }
+    assert.deepEqual(offenders, [],
+        "a module that hides itself disagrees with the divider beside it");
+});
+
+test("no bar chip rests on the fill it hovers to", () => {
+    // One ladder for all of them: `restFill` at rest, Theme.chipHover under the
+    // pointer, and the same hover fill while the popout is open. A chip resting
+    // on the hover value looks permanently hovered — the T3 and usage provider
+    // chips shipped that way once and were reported as exactly that.
     const offenders = [];
     for (const file of barQmlFiles()) {
         const lines = fs.readFileSync(file, "utf8").split("\n");
         lines.forEach((line, index) => {
             // The last arm of a colour expression is the resting value.
-            if (/^\s*:?\s*Theme\.hoverFill\s*$/.test(line))
+            if (/^\s*:?\s*Theme\.chipHover\s*$/.test(line)
+                    && !/\?/.test(lines[index]))
                 offenders.push(`${path.relative(shellDir, file)}:${index + 1}`);
         });
     }
     assert.deepEqual(offenders, [],
-        "a chip resting on hoverFill looks permanently hovered");
+        "a chip resting on the hover fill looks permanently hovered");
 });
 
 test("nothing in the bar draws a hover state straight off a MouseArea", () => {

@@ -9,8 +9,10 @@ BarPopoutWindow BarPopoutWindow.qml
 BarTooltip BarTooltip.qml
 Cluster Cluster.qml
 Divider Divider.qml
-IslandPopout IslandPopout.qml
+ModuleSlot ModuleSlot.qml
 PointerCheck PointerCheck.qml
+PopoutHost PopoutHost.qml
+RecordingChip RecordingChip.qml
 T3Chip T3Chip.qml
 UsageChips UsageChips.qml
 Workspaces Workspaces.qml

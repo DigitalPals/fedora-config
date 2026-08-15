@@ -9,7 +9,15 @@ hl.config({
   cursor = { no_hardware_cursors = false },
   decoration = {
     rounding = 10,
-    blur = { enabled = true, size = 3, passes = 1 },
+    -- The shell is glass now: every menubar and panel surface is a
+    -- translucent tint over whatever is behind it, and without a real blur
+    -- behind them they read as smeared plastic. Three passes at this radius
+    -- is the point where the wallpaper stops being legible through the bar;
+    -- vibrancy stands in for the design's saturate(1.7).
+    blur = {
+      enabled = true, size = 6, passes = 3, new_optimizations = true,
+      vibrancy = 0.25, noise = 0.012,
+    },
     shadow = { enabled = true, range = 4, render_power = 3, color = "rgba(1a1a1aee)" },
   },
   animations = { enabled = true },
@@ -40,8 +48,28 @@ hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "default
 -- instantaneous so the menubar itself never replays a layer animation.
 hl.layer_rule({
   name = "quickshell-no-animation",
-  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|wallpaper)$]] },
+  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|power|shortcuts|wallpaper)$]] },
   no_anim = true,
+})
+
+-- Blur behind the glass. The wallpaper layer is deliberately absent: it is
+-- opaque and at the bottom, so blurring it would only cost a pass.
+--
+-- Blur is applied per pixel of the *surface*, and each of these spans more
+-- than the shape it draws: the menubar's layer runs past the slab to leave room
+-- for tooltips, a panel's runs past the card. Anything drawn into that margin
+-- gets blurred along with the shape, at the full size of the layer — which is
+-- why none of these surfaces carries a drop shadow any more. Glass over a real
+-- blur already reads as floating; a shadow into the margin read as a haze band.
+--
+-- So ignore_alpha only has to skip pixels nothing was drawn on. Every surface
+-- that must blur is well clear of it: the menubar's glass is 0.52, a panel's
+-- 0.72, the full-screen scrims 0.42.
+hl.layer_rule({
+  name = "quickshell-blur",
+  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|power|shortcuts)$]] },
+  blur = true,
+  ignore_alpha = 0.1,
 })
 
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })

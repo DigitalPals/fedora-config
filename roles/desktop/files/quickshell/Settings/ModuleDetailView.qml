@@ -105,7 +105,8 @@ SettingsPage {
                 case "gh": return ghOptions;
                 case "vol": return volOptions;
                 case "batt": return battOptions;
-                case "bell": return bellOptions;
+                case "updates": return updatesOptions;
+                case "tray": return trayOptions;
                 default: return null;
                 }
             }
@@ -544,23 +545,57 @@ SettingsPage {
     }
 
     Component {
-        id: bellOptions
+        id: updatesOptions
 
         Column {
             spacing: 8
 
-            PickerRow {
+            SliderRow {
                 width: parent.width
-                label: "Badge"
-                model: [
-                    { value: "dot", label: "Dot" },
-                    { value: "count", label: "Count" },
-                    { value: "off", label: "Off" }
-                ]
-                current: view.opts.badge
-                dirty: view.optDirty("badge")
-                onPicked: value => view.setOpt("badge", value)
-                onResetRequested: view.resetOpt("badge")
+                label: "Check every"
+                min: 10
+                max: 240
+                step: 10
+                value: view.opts.pollMins
+                unit: " min"
+                dirty: view.optDirty("pollMins")
+                onMoved: value => view.setOpt("pollMins", value)
+                onResetRequested: view.resetOpt("pollMins")
+            }
+
+            SwitchRow {
+                width: parent.width
+                label: "Include Flatpak"
+                checked: view.opts.flatpak
+                dirty: view.optDirty("flatpak")
+                onToggled: value => view.setOpt("flatpak", value)
+                onResetRequested: view.resetOpt("flatpak")
+            }
+
+            SwitchRow {
+                width: parent.width
+                label: "Notify when updates appear"
+                checked: view.opts.notify
+                dirty: view.optDirty("notify")
+                onToggled: value => view.setOpt("notify", value)
+                onResetRequested: view.resetOpt("notify")
+            }
+        }
+    }
+
+    Component {
+        id: trayOptions
+
+        Column {
+            spacing: 8
+
+            SwitchRow {
+                width: parent.width
+                label: "Start expanded"
+                checked: view.opts.expanded
+                dirty: view.optDirty("expanded")
+                onToggled: value => view.setOpt("expanded", value)
+                onResetRequested: view.resetOpt("expanded")
             }
         }
     }

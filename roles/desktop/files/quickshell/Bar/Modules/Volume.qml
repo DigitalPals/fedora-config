@@ -1,32 +1,47 @@
 import QtQuick
-import ".."
 import "../../Common"
 
-// Output volume: glyph, optional percent, wheel to adjust.
+// Output volume, inside the status pill. The wheel adjusts it; the pill's own
+// click opens the Control Center, where the slider lives.
 BarModule {
     id: root
 
     moduleId: "vol"
+    spacing: 4
+    detailSaving: Settings.modOpts.vol.showPct ? percentLabel.implicitWidth + spacing : 0
 
-    BarIcon {
-        id: audioIcon
+    Sym {
+        anchors.verticalCenter: parent.verticalCenter
+        name: Audio.muted || Audio.volume === 0 ? "volume_off"
+            : Audio.volume < 50 ? "volume_down" : "volume_up"
+        size: Theme.barIconSize
+        fill: 1
+        color: Audio.muted ? Theme.redText : Theme.textHi
+    }
 
-        host: root.host
-        panelName: "audio"
-        isle: root.isle
-        glyph: Audio.muted || Audio.volume === 0 ? "" : Audio.volume < 50 ? "" : ""
-        label: Settings.modOpts.vol.showPct ? Audio.volume + "%" : ""
-        compact: root.compact
-        alert: Audio.muted
-        tooltip: "Audio " + Audio.volume + "%"
-            + (Audio.muted ? " · muted" : "")
-            + " · wheel volume"
-            + (Settings.modOpts.vol.middleClick === "mute" ? " · middle mute" : "")
-        tooltipAlign: 1
-        onMiddleClicked: {
-            if (Settings.modOpts.vol.middleClick === "mute")
-                Audio.toggleMuted();
+    Text {
+        id: percentLabel
+        visible: Settings.modOpts.vol.showPct && !root.compact
+        anchors.verticalCenter: parent.verticalCenter
+        text: Audio.volume + "%"
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontCaption
+        font.weight: Theme.weightBold
+        font.features: Theme.tabularNumberFeatures
+        color: Audio.muted ? Theme.redText : Theme.textMid
+    }
+
+    // A handler rather than a MouseArea: it takes the wheel without also
+    // taking the click that belongs to the pill this sits inside.
+    WheelHandler {
+        target: null
+        onWheel: event => {
+            const delta = event.angleDelta.y !== 0
+                ? event.angleDelta.y : event.pixelDelta.y * 8;
+            if (delta === 0)
+                return;
+            const steps = delta > 0 ? 1 : -1;
+            Audio.stepVolume(steps * (Settings.modOpts.vol.step / 100));
         }
-        onWheeled: steps => Audio.stepVolume(steps * (Settings.modOpts.vol.step / 100))
     }
 }

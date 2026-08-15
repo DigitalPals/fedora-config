@@ -5,27 +5,33 @@ import ".."
 //
 // It exists to make the bar's contract with its modules a real one. The
 // ModuleSlot that loads these used to reach into `Loader.item` and ask
-// `"isle" in item` before assigning — duck-typing that no tool could check,
-// and the source of the last `missing-property` warning on the bar side. With
-// a shared base the slot can assert `item as BarModule` and every one of
+// `"isle" in item` before assigning — duck-typing that no tool could check.
+// With a shared base the slot can assert `item as BarModule` and every one of
 // these becomes a typed property access.
 //
-// A Row rather than an Item: seven of the thirteen modules already were one
-// so they could sit their content between dividers, and a Row of a single
-// child lays out exactly as that child did alone.
+// A Row rather than an Item: several modules lay content out in one, and a Row
+// of a single child lays out exactly as that child did alone.
 Row {
     id: root
 
     // ---- assigned by the bar --------------------------------------------
     // The window this module belongs to. Modules reach the bar through this
-    // rather than an outer id, because they are separate files now.
+    // rather than an outer id, because they are separate files.
     property Bar host: null
     // The column the module actually landed in — the user can move modules
     // between columns, so this is not the panel's default island.
     property string isle: "right"
-    // Whether a visible module sits before/after this one in the same column.
-    property bool dividerBefore: false
-    property bool dividerAfter: false
+
+    // The shared pill this module was placed inside, or null when it draws
+    // its own. A module that owns a panel hangs it under this rather than
+    // under its own glyph, so the panel lines up with the shape that was
+    // clicked.
+    property Item groupAnchor: null
+
+    // False when the group around this module owns the pointer: the status
+    // pill and the centre pill are single buttons, so the modules inside them
+    // must not put a second target on top of one.
+    property bool interactive: true
 
     // Which module this is, as named in Settings.mods. Drives `compact`, and
     // saves every module repeating its own id at the call site.
@@ -42,5 +48,6 @@ Row {
     // fit pass reads it to decide what to compact; 0 means nothing to give.
     property real detailSaving: 0
 
+    spacing: 0
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 }

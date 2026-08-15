@@ -2,25 +2,19 @@ import QtQuick
 import ".."
 import "../../Common"
 
-// T3 Code status chip.
+// T3 Code status chip, inside the right cluster's chip group.
 BarModule {
-    id: t3Module
+    id: root
 
     moduleId: "t3"
-    spacing: 1
-    detailSaving: Settings.modOpts.t3.showLabel
-        ? t3Chip.detailSaving : 0
-
-    Divider {
-        visible: t3Module.dividerBefore
-    }
+    detailSaving: Settings.modOpts.t3.showLabel ? t3Chip.detailSaving : 0
 
     T3Chip {
         id: t3Chip
-        displayMode: t3Module.compact
-            || !Settings.modOpts.t3.showLabel ? 0 : 2
-        host: t3Module.host
+        displayMode: root.compact || !Settings.modOpts.t3.showLabel ? 0 : 2
+        host: root.host
         panelName: "t3code"
-        isle: t3Module.isle
+        isle: root.isle
+        anchorItem: root.groupAnchor ?? t3Chip
     }
 }

@@ -86,36 +86,37 @@ Singleton {
         return "—";
     }
 
-    // Nerd Font weather set (nf-weather, U+E30x–U+E37x). Clear and lightly
-    // clouded skies get a day/night variant; everything else reads the same
-    // either way.
-    function glyph(code, day) {
+    // Material Symbols ligature for a WMO code, for anything drawn with
+    // Common/Sym.qml. Kept in the same code order as glyph() and glyphColor()
+    // below, so a mark, its Nerd Font twin and its tint cannot disagree about
+    // what the sky is doing.
+    function symbol(code, day) {
         if (code < 0)
-            return ""; // na
+            return "cloud_off";
         if (code === 0)
-            return day ? "" : ""; // day_sunny / night_clear
+            return day ? "clear_day" : "bedtime";
         if (code === 1 || code === 2)
-            return day ? "" : ""; // day_cloudy / night_alt_cloudy
+            return day ? "partly_cloudy_day" : "partly_cloudy_night";
         if (code === 3)
-            return ""; // cloudy
+            return "cloud";
         if (code === 45 || code === 48)
-            return ""; // fog
+            return "foggy";
         if (code >= 51 && code <= 57)
-            return ""; // sprinkle
+            return "rainy_light";
         if (code >= 61 && code <= 67)
-            return ""; // rain
+            return "rainy";
         if (code >= 71 && code <= 77)
-            return ""; // snow
+            return "weather_snowy";
         if (code >= 80 && code <= 82)
-            return ""; // showers
+            return "rainy_heavy";
         if (code === 85 || code === 86)
-            return ""; // snow
+            return "weather_snowy";
         if (code >= 95)
-            return ""; // thunderstorm
-        return "";
+            return "thunderstorm";
+        return "cloud";
     }
 
-    // Kept in the same code order as glyph() so an icon and its tint never
+    // Kept in the same code order as symbol() so a mark and its tint never
     // disagree about what the sky is doing.
     function glyphColor(code, day) {
         if (code < 0)

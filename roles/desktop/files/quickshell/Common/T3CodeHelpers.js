@@ -60,6 +60,132 @@ function formatWorkingTimerLabel(elapsedMs) {
         ? minutes + "m " + remainingSeconds + "s" : minutes + "m";
 }
 
+// T3 Code's detail stream persists task lifecycle activities rather than a
+// ready-made agent count. Fold just the liveness part of its agent-panel
+// model: membership is stamped once with agentKind="agent", later rows inherit
+// it, terminal rows are idempotent, and an explicit running update may
+// reactivate a reusable agent identity. Background shells and watch tasks do
+// not belong in the count.
+function liveAgentCount(activities, sessionLive) {
+    var agents = Object.create(null);
+    var terminal = function(status) {
+        return status === "completed" || status === "failed" || status === "cancelled"
+            || status === "interrupted";
+    };
+    var active = function(status) {
+        return status === "pending" || status === "running" || status === "waiting";
+    };
+    var knownStatus = function(value) {
+        switch (value) {
+        case "pending":
+        case "running":
+        case "waiting":
+        case "idle":
+        case "completed":
+        case "failed":
+        case "cancelled":
+        case "interrupted":
+            return value;
+        default:
+            return "";
+        }
+    };
+    var applyStatus = function(agent, status) {
+        if (status === "" || terminal(agent.status) && terminal(status))
+            return;
+        agent.status = status;
+    };
+    var values = Array.isArray(activities) ? activities : [];
+    for (var i = 0; i < values.length; i++) {
+        var activity = values[i];
+        if (!activity || typeof activity !== "object"
+                || !activity.payload || typeof activity.payload !== "object")
+            continue;
+        var payload = activity.payload;
+        var taskId = typeof payload.taskId === "string" ? payload.taskId.trim() : "";
+        if (taskId === "")
+            continue;
+        var agent = agents[taskId];
+        var existed = agent !== undefined;
+        // Classification is sticky. Terminal/progress rows routinely omit the
+        // marker, but an unseen unmarked task is an ordinary background job.
+        if (!existed && payload.agentKind !== "agent")
+            continue;
+        if (!existed) {
+            agent = {
+                id: taskId,
+                status: "pending",
+                kind: payload.taskType === "local_workflow" ? "workflow" : "agent",
+                parentAgentId: typeof payload.parentAgentId === "string"
+                    ? payload.parentAgentId : ""
+            };
+            agents[taskId] = agent;
+        } else {
+            if (payload.taskType === "local_workflow")
+                agent.kind = "workflow";
+            if (typeof payload.parentAgentId === "string" && payload.parentAgentId !== "")
+                agent.parentAgentId = payload.parentAgentId;
+        }
+
+        switch (activity.kind) {
+        case "task.started":
+            // A late start only fills membership; it cannot reopen a terminal
+            // or waiting agent. Idle is explicitly resumable.
+            if (!existed || agent.status === "idle")
+                applyStatus(agent, "running");
+            break;
+        case "task.progress": {
+            var progressStatus = knownStatus(payload.status);
+            if (progressStatus !== "")
+                applyStatus(agent, progressStatus);
+            else if ((payload.usageSnapshot !== true || !existed)
+                    && !terminal(agent.status) && agent.status !== "idle")
+                applyStatus(agent, "running");
+            break;
+        }
+        case "task.updated":
+            applyStatus(agent, knownStatus(payload.status));
+            break;
+        case "task.completed":
+            if (!terminal(agent.status)) {
+                var completedStatus = payload.status === "failed" ? "failed"
+                    : payload.status === "stopped" ? "interrupted" : "completed";
+                applyStatus(agent, completedStatus);
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    // A settled workflow coordinator implies that members missing their own
+    // terminal row are no longer live either.
+    var ids = Object.keys(agents);
+    for (var coordinatorIndex = 0; coordinatorIndex < ids.length; coordinatorIndex++) {
+        var coordinator = agents[ids[coordinatorIndex]];
+        if (coordinator.kind !== "workflow" || !terminal(coordinator.status))
+            continue;
+        for (var memberIndex = 0; memberIndex < ids.length; memberIndex++) {
+            var member = agents[ids[memberIndex]];
+            if (member.parentAgentId === coordinator.id && active(member.status))
+                member.status = coordinator.status === "completed" ? "completed" : "interrupted";
+        }
+    }
+    if (sessionLive === false) {
+        for (var stoppedIndex = 0; stoppedIndex < ids.length; stoppedIndex++) {
+            var stopped = agents[ids[stoppedIndex]];
+            if (active(stopped.status))
+                stopped.status = "interrupted";
+        }
+    }
+    var count = 0;
+    for (var countIndex = 0; countIndex < ids.length; countIndex++) {
+        if (active(agents[ids[countIndex]].status))
+            count++;
+    }
+    return count;
+}
+
 function lastActivityMs(thread) {
     var turn = thread && thread.latestTurn ? thread.latestTurn : null;
     var stamps = [thread ? thread.latestUserMessageAt : null,
@@ -150,6 +276,14 @@ function threadClass(thread) {
         return "running";
     if (sessionStatus === "error" || turnStatus === "error")
         return "error";
+    // Native background work can outlive the foreground turn. The shell
+    // summary carries that separately because the session is already ready
+    // and the latest turn already completed by then. A session failure wins
+    // above so stale liveness never hides something that needs attention.
+    if (thread.backgroundLiveness === "working")
+        return "running";
+    if (thread.backgroundLiveness === "monitoring")
+        return "monitoring";
     if (turnStatus === "completed")
         return "done";
     return "idle";
@@ -182,6 +316,8 @@ function projectThread(thread, projectMap, nowMs, lifecycle) {
         ? thread.modelSelection : {};
     var sessionStatus = thread.session && typeof thread.session.status === "string"
         ? thread.session.status : "";
+    var turnStatus = thread.latestTurn && typeof thread.latestTurn.state === "string"
+        ? thread.latestTurn.state : "";
     return {
         id: thread.id,
         projectId: thread.projectId,
@@ -201,6 +337,11 @@ function projectThread(thread, projectMap, nowMs, lifecycle) {
         pendingInput: thread.hasPendingUserInput === true,
         planReady: thread.hasActionableProposedPlan === true,
         sessionStatus: sessionStatus,
+        foregroundWorking: sessionStatus === "starting" || sessionStatus === "running"
+            || turnStatus === "running",
+        backgroundLiveness: thread.backgroundLiveness === "working"
+                || thread.backgroundLiveness === "monitoring"
+            ? thread.backgroundLiveness : null,
         workingStartedAt: cls === "running" ? resolveWorkingStartedAt(thread) : null,
         canPrompt: lifecycle === "active" && canPrompt(thread, nowMs),
         canLifecycle: canOperateLifecycle(thread, nowMs),
@@ -225,12 +366,15 @@ function classifyThreads(threadMap, projectMap, nowMs, autoSettleAfterDays) {
     var snoozed = [];
     var settled = [];
     var runningCount = 0;
+    var monitoringCount = 0;
     var attentionCount = 0;
     var doneCount = 0;
-    var rank = { attention: 0, error: 1, running: 2, done: 3, idle: 4 };
+    var rank = { attention: 0, error: 1, running: 2, monitoring: 3, done: 4, idle: 5 };
     var countClass = function(cls) {
         if (cls === "running")
             runningCount++;
+        else if (cls === "monitoring")
+            monitoringCount++;
         else if (cls === "attention" || cls === "error")
             attentionCount++;
         else if (cls === "done")
@@ -287,6 +431,7 @@ function classifyThreads(threadMap, projectMap, nowMs, autoSettleAfterDays) {
         snoozed: snoozed,
         settled: settled,
         runningCount: runningCount,
+        monitoringCount: monitoringCount,
         attentionCount: attentionCount,
         doneCount: doneCount
     };
@@ -1308,6 +1453,7 @@ var exported = {
     resolveWorkingStartedAt: resolveWorkingStartedAt,
     formatWorkingDurationLabel: formatWorkingDurationLabel,
     formatWorkingTimerLabel: formatWorkingTimerLabel,
+    liveAgentCount: liveAgentCount,
     lastActivityMs: lastActivityMs,
     hasQueuedTurnStart: hasQueuedTurnStart,
     isEffectivelySettled: isEffectivelySettled,

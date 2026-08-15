@@ -61,7 +61,7 @@ Surface {
             spacing: 2
 
             Repeater {
-                model: [{ g: "\uf053", d: -1 }, { g: "\uf054", d: 1 }]
+                model: [{ g: "chevron_left", d: -1 }, { g: "chevron_right", d: 1 }]
 
                 delegate: Rectangle {
                     required property var modelData
@@ -70,11 +70,10 @@ Surface {
                     radius: 6
                     color: navMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
 
-                    Text {
+                    Sym {
                         anchors.centerIn: parent
-                        text: parent.modelData.g
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.fontCaption
+                        name: parent.modelData.g
+                        size: Theme.fontCaption
                         color: navMouse.containsMouse ? Theme.textHi : Theme.textLow
                     }
 

@@ -311,7 +311,7 @@ SettingsPage {
 
             SettingsAction {
                 text: "Send test notification"
-                glyph: ""
+                glyph: "notifications"
                 onTriggered: page.sendTest()
             }
 

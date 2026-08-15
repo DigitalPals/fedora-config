@@ -157,11 +157,10 @@ Surface {
                 radius: 6
                 color: refreshMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
 
-                Text {
+                Sym {
                     anchors.centerIn: parent
-                    text: ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontSecondary
+                    name: "refresh"
+                    size: Theme.fontSecondary
                     color: refreshMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
 
@@ -223,12 +222,11 @@ Surface {
             width: parent.width - 24
             spacing: 10
 
-            Text {
+            Sym {
                 width: 18
                 horizontalAlignment: Text.AlignHCenter
-                text: ""
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontBody
+                name: "warning"
+                size: Theme.fontBody
                 color: Theme.redText
             }
 

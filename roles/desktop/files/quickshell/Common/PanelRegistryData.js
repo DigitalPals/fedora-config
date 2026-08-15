@@ -30,18 +30,32 @@
 //                        being dismissed with the old one
 
 var PANELS = [
-    { name: "control", island: "right", moduleId: "control", source: "Popovers/ControlCenterPopover.qml" },
-    { name: "calendar", island: "center", moduleId: "clock", source: "Popovers/CalendarPopover.qml" },
+    // The status pill — the volume/Wi-Fi/Bluetooth/battery glyphs sharing one
+    // rounded background — is what opens the Control Center, so no single
+    // module owns it. It is furniture the status modules fill in, not a
+    // module of its own, which is why this panel is ownerless.
+    { name: "control", island: "right", moduleId: "", source: "Popovers/ControlCenterPopover.qml" },
+
+    // The centre pill (clock, date, weather) is the notification centre's
+    // trigger, and that panel carries the calendar and the forecast with it.
+    { name: "notifications", island: "center", moduleId: "clock", source: "Popovers/NotifCenterPopover.qml" },
+
     { name: "media", island: "left", moduleId: "media", source: "Popovers/MediaPopover.qml" },
-    { name: "weather", island: "center", moduleId: "weather", source: "Popovers/WeatherPopover.qml" },
     { name: "usage", island: "right", moduleId: "usage", source: "Popovers/UsagePopover.qml" },
     { name: "t3code", island: "right", moduleId: "t3", source: "Popovers/T3CodePopover.qml" },
     { name: "github", island: "right", moduleId: "gh", source: "Popovers/GitHubPopover.qml" },
-    { name: "audio", island: "right", moduleId: "vol", source: "Popovers/AudioPopover.qml" },
-    { name: "wifi", island: "right", moduleId: "wifi", source: "Popovers/WifiPopover.qml" },
-    { name: "bluetooth", island: "right", moduleId: "bt", source: "Popovers/BluetoothPopover.qml" },
-    { name: "battery", island: "right", moduleId: "batt", source: "Popovers/BatteryPopover.qml" },
-    { name: "notifications", island: "right", moduleId: "bell", source: "Popovers/NotifsPopover.qml" },
+    { name: "updates", island: "right", moduleId: "updates", source: "Popovers/UpdatesPopover.qml" },
+
+    // Reachable from IPC and from inside the Control Center, which is where
+    // the redesign moved audio, Wi-Fi, Bluetooth and battery detail. Kept as
+    // standalone panels so `qs ipc call popouts toggle wifi` still works and
+    // so a keybind can go straight to one.
+    { name: "calendar", island: "center", moduleId: "", source: "Popovers/CalendarPopover.qml" },
+    { name: "weather", island: "center", moduleId: "", source: "Popovers/WeatherPopover.qml" },
+    { name: "audio", island: "right", moduleId: "", source: "Popovers/AudioPopover.qml" },
+    { name: "wifi", island: "right", moduleId: "", source: "Popovers/WifiPopover.qml" },
+    { name: "bluetooth", island: "right", moduleId: "", source: "Popovers/BluetoothPopover.qml" },
+    { name: "battery", island: "right", moduleId: "", source: "Popovers/BatteryPopover.qml" },
 
     // Opened from the Control Center tile, not from a bar module of its own.
     { name: "tailscale", island: "right", moduleId: "", source: "Popovers/TailscalePopover.qml" },
@@ -59,11 +73,13 @@ var PANELS = [
     }
 ];
 
-// Bar modules that own no panel: they either have no detail view (ws, idle)
-// or are decoration. Listed so the test can insist the module-id space and
-// the panel space account for each other completely, rather than silently
-// tolerating a typo'd moduleId.
-var PANEL_LESS_MODULES = ["ws", "idle"];
+// Bar modules that own no panel of their own. `ws` has no detail view;
+// `weather` rides inside the centre pill, whose panel the clock owns; `tray`
+// opens each item's own menu; and the four status modules are glyphs inside
+// the pill that opens the Control Center. Listed so the test can insist the
+// module-id space and the panel space account for each other completely,
+// rather than silently tolerating a typo'd moduleId.
+var PANEL_LESS_MODULES = ["ws", "weather", "tray", "vol", "wifi", "bt", "batt"];
 
 var SETTINGS = "settings";
 

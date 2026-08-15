@@ -1,10 +1,15 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "../Common"
 
-// Model Usage bar module: one mini chip per provider (brand mark +
-// min-remaining %). Each chip is its own hover/click target and opens
-// that provider's usage view (design 1d: per-provider popovers).
+// Model usage: one mini chip per provider (brand mark + minimum remaining).
+//
+// Each chip is its own hover and click target but they share a single popout
+// anchor, so moving the pointer across them swaps the panel's contents without
+// moving the panel. That is why this keeps its own panel wiring instead of
+// inheriting BarChip's: the generic toggle cannot express "select a provider,
+// or close if it was already the one showing".
 Item {
     id: root
 
@@ -14,33 +19,34 @@ Item {
     property Bar host: null
     property string panelName: ""
     property string isle: ""
+    property Item anchorItem: root
 
     readonly property bool ownsPanel: panelName !== "" && host !== null
 
-    // The bar assigns `host` from its slot's onLoaded, which runs after this
-    // object is constructed — so registering only in Component.onCompleted
-    // would run against a null host and silently never happen. Registration
-    // is idempotent, so doing both is safe and covers either order.
     onOwnsPanelChanged: {
         if (ownsPanel)
-            host.registerPanel(panelName, root);
+            host.registerPanel(panelName, anchorItem);
+    }
+
+    onAnchorItemChanged: {
+        if (ownsPanel)
+            host.registerPanel(panelName, anchorItem);
     }
 
     Component.onCompleted: {
         if (ownsPanel)
-            host.registerPanel(panelName, root);
+            host.registerPanel(panelName, anchorItem);
     }
 
     Component.onDestruction: {
         if (ownsPanel)
-            host.unregisterPanel(panelName, root);
+            host.unregisterPanel(panelName, anchorItem);
     }
 
     signal chipClicked(string key)
     signal chipEntered(string key)
-    signal chipExited(string key)
 
-    // The usage popout is expanded below this module (t5 open-state).
+    // The usage popout is expanded below this module.
     property bool held: ownsPanel && host.popoutOpen(panelName)
     property int displayMode: 2
 
@@ -51,14 +57,14 @@ Item {
         const p = Usage.provider(k);
         if (!p)
             return false;
-        // Providers that were never signed in stay out of the bar; their
-        // tab in the popover still shows the sign-in hint.
+        // Providers that were never signed in stay out of the bar; their tab
+        // in the popover still shows the sign-in hint.
         return p.status === "ok" || p.kind !== "nocreds";
     })
     readonly property bool empty: availableKeys.length === 0
     readonly property real detailSaving: {
         if (empty)
-            return emptyText.implicitWidth + 6;
+            return emptyText.implicitWidth + 5;
         let total = 0;
         for (let i = 0; i < providerRepeater.count; i++) {
             const item = providerRepeater.itemAt(i);
@@ -68,10 +74,9 @@ Item {
         return total;
     }
 
-    // The bar-level HoverHandler reports scene coordinates even when mapping
-    // the popout window prevents one of the chip MouseAreas from receiving a
-    // fresh enter event. Resolve that point to the provider delegate here so
-    // the grouped module can still switch between provider views reliably.
+    // The bar-wide hover fallback reports scene coordinates when mapping the
+    // popout costs a provider MouseArea its enter event. Resolve that point to
+    // a provider here while the delegates and their keys are still together.
     function providerAtScenePoint(scenePoint) {
         const children = row.children;
         for (let i = 0; i < children.length; i++) {
@@ -87,14 +92,14 @@ Item {
         return "";
     }
 
-    implicitHeight: Theme.chipHeight
+    implicitHeight: Theme.chipInnerHeight
     implicitWidth: row.implicitWidth
-    anchors.verticalCenter: parent.verticalCenter
+    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     Row {
         id: row
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 3
+        spacing: 0
 
         // Offline / loading state
         Rectangle {
@@ -103,22 +108,27 @@ Item {
             property string providerKey: "claude"
 
             visible: root.empty
-            height: Theme.chipHeight
-            width: emptyRow.implicitWidth + 12
-            radius: Theme.chipRadius
-            color: root.held ? Theme.hoverFillStrong : emptyPointer.over ? Theme.hoverFill : "transparent"
+            height: Theme.chipInnerHeight
+            width: emptyRow.implicitWidth + 14
+            radius: Theme.pillRadius
+            color: root.held ? Theme.chipHover
+                : emptyPointer.over ? Theme.chipHover : "transparent"
             anchors.verticalCenter: parent.verticalCenter
+
+            Behavior on color {
+                ColorAnimation { duration: Theme.chipFadeDuration }
+            }
 
             Row {
                 id: emptyRow
                 anchors.centerIn: parent
-                spacing: 6
+                spacing: 4
 
                 Image {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 13
-                    height: 13
-                    sourceSize: Qt.size(26, 26)
+                    width: 12
+                    height: 12
+                    sourceSize: Qt.size(24, 24)
                     source: Quickshell.shellDir + "/assets/claude-dim.svg"
                 }
 
@@ -130,10 +140,10 @@ Item {
                     // fetcher reports perfectly well; "unavailable" is the
                     // fetcher itself having failed, which it cannot.
                     text: Usage.loading && !Usage.anyOk ? "Models…"
-                        : Usage.fetchError !== "" ? "Models unavailable"
-                        : "Models offline"
+                        : Usage.fetchError !== "" ? "unavailable" : "offline"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barTextSize
+                    font.pixelSize: Theme.barLabelSize
+                    font.weight: Theme.weightBold
                     color: Usage.fetchError !== "" ? Theme.redText : Theme.textFaint
                 }
             }
@@ -152,7 +162,6 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.chipEntered("claude")
                 onPositionChanged: root.chipEntered("claude")
-                onExited: root.chipExited("claude")
                 onClicked: root.chipClicked("claude")
             }
         }
@@ -171,25 +180,37 @@ Item {
                 readonly property bool stressed: status === "warn" || status === "crit"
                 // This provider's view is expanded below the bar.
                 readonly property bool current: root.held && Usage.selected === modelData
-                readonly property real detailSaving: usageText.implicitWidth + 5
+                readonly property real detailSaving: usageText.implicitWidth + 4
 
-                height: Theme.chipHeight
-                width: chipRow.implicitWidth + 12
-                radius: Theme.chipRadius
-                // Same ladder as the offline chip above and every other chip:
-                // transparent at rest, light under the pointer, strong while
-                // this provider's view is the one expanded below.
+                height: Theme.chipInnerHeight
+                width: chipRow.implicitWidth + 14
+                radius: Theme.pillRadius
+                // A quota in trouble colours its own chip; everything else
+                // rests transparent inside the group and lights on hover.
                 color: status === "crit" ? Theme.redBg
-                     : status === "warn" ? Theme.amberBg
-                     : current ? Theme.hoverFillStrong
-                     : chipPointer.over ? Theme.hoverFill
-                     : "transparent"
+                    : status === "warn" ? Theme.amberBg
+                    : current ? Theme.chipHover
+                    : chipPointer.over ? Theme.chipHover
+                    : "transparent"
                 anchors.verticalCenter: parent.verticalCenter
+                scale: chipMouse.pressed ? 0.95 : 1
+
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
+
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Theme.pressDuration
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.springCurve
+                    }
+                }
 
                 Row {
                     id: chipRow
                     anchors.centerIn: parent
-                    spacing: 5
+                    spacing: 4
 
                     Image {
                         anchors.verticalCenter: parent.verticalCenter
@@ -197,22 +218,23 @@ Item {
                         height: width
                         sourceSize: Qt.size(26, 26)
                         source: Quickshell.shellDir + "/assets/" + Usage.meta[chip.modelData].icon
-                                + (chip.status === "error" ? "-dim" : "") + ".svg"
+                            + (chip.status === "error" ? "-dim" : "") + ".svg"
                     }
 
                     Text {
                         id: usageText
                         visible: root.displayMode > 0
                         anchors.verticalCenter: parent.verticalCenter
-                        text: chip.status === "error" || chip.remaining < 0 ? "--%" : chip.remaining + "%"
+                        text: chip.status === "error" || chip.remaining < 0
+                            ? "--%" : chip.remaining + "%"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.barTextSize
-                        font.weight: chip.stressed || chip.status === "error" ? Theme.weightSemibold : Theme.weightMedium
+                        font.pixelSize: Theme.barLabelSize
+                        font.weight: Theme.weightHeavy
                         font.features: Theme.tabularNumberFeatures
                         color: chip.status === "crit" ? Theme.redText
-                             : chip.status === "warn" ? Theme.amber
-                             : chip.status === "error" ? Theme.redText
-                             : Theme.textMid
+                            : chip.status === "warn" ? Theme.amber
+                            : chip.status === "error" ? Theme.redText
+                            : Theme.textMid
                     }
                 }
 
@@ -230,7 +252,6 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     onEntered: root.chipEntered(chip.modelData)
                     onPositionChanged: root.chipEntered(chip.modelData)
-                    onExited: root.chipExited(chip.modelData)
                     onClicked: root.chipClicked(chip.modelData)
                 }
 
@@ -240,7 +261,7 @@ Item {
                         + (chip.status === "error" || chip.remaining < 0
                             ? "unavailable" : chip.remaining + "% remaining")
                     align: 1
-                    y: chip.height + 6
+                    y: chip.height + 11
                     x: chip.width - width
                 }
             }

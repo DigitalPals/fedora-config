@@ -7,6 +7,9 @@ OUTPUT_DIR="$HOME/Videos/Screen Recordings"
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/screen-record"
 PID_FILE="$STATE_DIR/wf-recorder.pid"
 OUTPUT_FILE_STATE="$STATE_DIR/output-file"
+# Epoch seconds the current recording began. The menubar's recording chip
+# reads it so its elapsed clock survives a shell reload mid-recording.
+STARTED_AT_STATE="$STATE_DIR/started-at"
 LOG_FILE="$STATE_DIR/wf-recorder.log"
 
 mkdir -p "$OUTPUT_DIR" "$STATE_DIR"
@@ -30,7 +33,7 @@ stop_recording() {
   pid="$(cat "$PID_FILE" 2>/dev/null || true)"
 
   if ! [[ "$pid" =~ ^[0-9]+$ ]] || [ "$(process_name "$pid")" != "wf-recorder" ]; then
-    rm -f "$PID_FILE" "$OUTPUT_FILE_STATE"
+    rm -f "$PID_FILE" "$OUTPUT_FILE_STATE" "$STARTED_AT_STATE"
     return 1
   fi
 
@@ -52,7 +55,7 @@ stop_recording() {
     notify "Screen Recording" "Stopped recording"
   fi
 
-  rm -f "$PID_FILE" "$OUTPUT_FILE_STATE"
+  rm -f "$PID_FILE" "$OUTPUT_FILE_STATE" "$STARTED_AT_STATE"
   exit 0
 }
 
@@ -112,12 +115,15 @@ RECORD_PID=$!
 sleep 0.2
 
 if ! kill -0 "$RECORD_PID" 2>/dev/null; then
-  rm -f "$PID_FILE" "$OUTPUT_FILE_STATE"
+  rm -f "$PID_FILE" "$OUTPUT_FILE_STATE" "$STARTED_AT_STATE"
   notify "Screen Recording" "Failed to start recording"
   exit 1
 fi
 
-printf '%s\n' "$RECORD_PID" > "$PID_FILE"
 printf '%s\n' "$OUTPUT_FILE" > "$OUTPUT_FILE_STATE"
+date +%s > "$STARTED_AT_STATE"
+# The PID is the ready marker watched by the shell. Publish it last so a
+# newly active recording can never be observed without its output and clock.
+printf '%s\n' "$RECORD_PID" > "$PID_FILE"
 
 notify "Screen Recording" "Recording selected area. Press Super+Shift+~ to stop."

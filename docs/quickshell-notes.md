@@ -146,7 +146,7 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
 - **Quickshell emits no `exited` at all when a binary cannot be launched** —
   only the falling edge of `running`. Anything reading exit status must handle
   a never-started process; `Common/ProcHelpers.js` has the sentinel.
-- **Popout lifetime**: `IslandPopout` latches the Control Center, so it is
+- **Popout lifetime**: `PopoutHost` latches the Control Center, so it is
   constructed once and never destroyed. Anything refcounted must key on
   `visible` via `Common/Claim.qml`, not on construction or destruction.
 - **Idle CPU is not measurable with `top` on a machine in use** — sampling the
@@ -166,6 +166,14 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
   anything gated on `containsMouse` needs a human hand on the mouse. What is
   testable without one: pin the raw hover state to `true` in the deployed copy
   and check what the bar-wide validation does with it.
+- **Binding an item's visibility to a descendant's `visible` latches it at
+  false.** `visible` reads back *effective* visibility — the item's own flag
+  ANDed with its parents' — so a wrapper written as `visible: child.visible`
+  depends on itself and can never leave false. It looks correct as long as the
+  child starts visible, which is why it survived review: only modules that turn
+  on *later* (a track starts playing, updates appear, a tray icon registers)
+  stayed missing. Bind to the underlying condition instead — `Loader.active`,
+  not `Loader.visible`.
 - **A defaulted property that a safety check depends on will eventually be
   left unset.** `BarIcon.host` looked like panel wiring, so the idle module —
   which owns no panel — never set it, and `BarTooltip` silently fell back to
@@ -181,7 +189,9 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
   the shared controls both other directories draw (`Toggle`, `HSlider`,
   `NotifCard`, `NotifIcon`, `NotifActions`).
 - `Bar/` — the menubar, the popout host, and 13 modules under `Bar/Modules/`
-  sharing a `BarModule` base.
+  sharing a `BarModule` base. `Cluster.qml` is what turns a run of adjacent
+  modules into one shared pill (see `LayoutHelpers.groupModules`); `Bar.qml`
+  owns the furniture at either end and the fit pass.
 - `Popovers/` — panel contents, all built on `PopoutPanel` / `Surface`.
 - `Settings/` — the settings window; rows build on `Settings/SettingsRow.qml`.
 - `tests/quickshell/` — Node tests. `shell.cjs` locates the source tree;
@@ -192,13 +202,61 @@ its value, dirty state, commit and undo from the base, and per-surface styling
 travels as a single `var` object (`Theme.switchRow`, a card's `style`) rather
 than as a dozen properties.
 
+## The glass menubar
+
+The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project
+`facd7f56`) replaced an opaque bar and its bar-fused popouts with translucent
+glass and detached panels. What that added, and what it needs:
+
+- **Two pinned fonts.** `Urbanist` is the menu face and `Material Symbols
+  Rounded` is every icon. Both install from
+  `inventory/group_vars/all.yml → pinned_font_files`. **Qt reads the font
+  database once at startup**, so a freshly installed face needs
+  `systemctl --user restart quickshell.service`, not a hot reload — a missing
+  icon font renders each ligature as its own name in plain text.
+- **Icons are ligatures, not codepoints.** `Sym { name: "wifi" }` draws the
+  word "wifi" shaped into one mark. A name the face does not carry is not a
+  blank box, it is the word — invisible to qmllint.
+  `tests/quickshell/material-symbols.test.cjs` reads the installed TTF's `post`
+  table and checks every name the shell draws.
+- **Blur is the compositor's.** `roles/desktop/files/looknfeel.lua` carries a
+  `layer_rule` matching the `qs-*` namespaces; without it the glass reads as
+  flat grey plastic.
+- **Nothing that floats over the desktop may draw a drop shadow.** Blur is
+  applied per pixel of the *surface*, and every one of these layers is larger
+  than the shape it draws — the menubar's runs past the slab to leave room for
+  tooltips, a panel's runs past the card. Anything painted into that margin is
+  blurred with the shape, at the full size of the layer, so a shadow does not
+  read as a shadow: it reads as a haze band the height of the whole surface.
+  Both the design's `0 20px 50px` shadows shipped that way and both were
+  reported. Raising `ignore_alpha` only trims the falloff — the shadow is at
+  full strength directly under the shape, which is exactly the band you can
+  see. Glass over a real blur already reads as floating; the hairline border
+  and the rim highlight do the rest. Glows *inside* a surface (the focused
+  workspace pip, the T3 running dot) are fine — they composite over the glass,
+  not into the margin.
+- **A surface that still draws `Theme.popBg` is not glass.** That token is the
+  opaque *reference* the contrast test measures against; nothing should paint
+  it. `Theme.glass` / `glassStrong` / `glassMenu` are the real surfaces.
+- **One spring.** `Theme.springCurve` is the design's overshooting bezier, and
+  everything that moves or resizes uses it. Colour and opacity never spring —
+  an overshooting fade reads as a flicker — so they use the ease curves.
+- **The schema migrated to 4.** `SettingsHelpers.adoptRedesign` gives a v3
+  settings file the new geometry for every key the user never moved, and leaves
+  the ones they did. Three modules were retired into other surfaces (`bell`
+  into the centre pill, `idle` into the Control Center, `control` into the
+  status pill).
+
 ## Already decided against — do not pick these up
 
 - **qmlformat one-shot reformat**: most files would churn and the tool fights
   the deliberate hand-wrapped style. Revisit only as a dedicated commit with a
   tuned `.qmlformat.ini`.
-- **Automatic shell restart on deploy**: Quickshell hot-reloads; a forced
-  restart is more disruptive than the problem it solves.
+- **Automatic shell restart on config deploy**: Quickshell hot-reloads; a
+  forced restart is more disruptive than the problem it solves. Installing a
+  new shell font is the narrow exception: Qt does not add a newly cached face
+  to an already-running process, so the apps role `try-restart`s Quickshell
+  after a font install and leaves an inactive service alone.
 - **The remaining perf items** (toast countdown timer, memoising
   `Notifs.iconSource`, a `Clock` singleton, a launcher token index): measured
   2026-08-08 and declined. Two premises were already false in the code, and the

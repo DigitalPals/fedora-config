@@ -5,7 +5,7 @@ import Quickshell.Wayland
 import "../Common"
 import "../Common/PanelRegistryData.js" as PanelRegistry
 
-// Popouts use their own layer surface. Their content and native height may
+// Panels use their own layer surface. Their content and native height may
 // change while switching modules, but the menubar's surface remains stable.
 PanelWindow {
     id: root
@@ -31,6 +31,15 @@ PanelWindow {
     color: "transparent"
 
     mask: Region { item: popout.maskItem }
+    // surfaceH stays at the largest panel height until close, preventing a
+    // second layer-shell configure after a shorter morph. Tell Hyprland which
+    // part actually has non-zero alpha so the transparent remainder does not
+    // enlarge the compositor's blur pass.
+    // The Quickshell 0.2.1 qmltypes omit this attached property's Region type.
+    // qmllint disable missing-type
+    HyprlandWindow.visibleMask: visualRegion
+    // qmllint enable missing-type
+    Region { id: visualRegion; item: popout.visualItem }
 
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: root.visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
@@ -47,7 +56,7 @@ PanelWindow {
         }
     }
 
-    IslandPopout {
+    PopoutHost {
         id: popout
         width: root.bar.width
         height: root.implicitHeight

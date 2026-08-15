@@ -81,16 +81,17 @@ var PLAYBACK_STATE = {
     Paused: 2
 };
 
-// Nerd Font marks: fa-spotify, fa-firefox, fa-chrome, fa-edge,
-// fa-youtube-play, fa-video-camera, fa-music.
+// Material Symbols ligatures. The set carries no brand marks, so a player is
+// identified by what it is doing rather than by whose logo it wears: a browser
+// gets the globe, a video player the film mark, everything else the note.
 var PLAYER_GLYPH = {
-    spotify: "",
-    firefox: "",
-    chromium: "",
-    edge: "",
-    youtube: "",
-    video: "",
-    generic: ""
+    spotify: "graphic_eq",
+    firefox: "public",
+    chromium: "public",
+    edge: "public",
+    youtube: "smart_display",
+    video: "movie",
+    generic: "music_note"
 };
 
 // Which mark a player gets in the bar chip and in the popover's source

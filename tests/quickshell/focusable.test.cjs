@@ -56,7 +56,9 @@ function ownerBlock(lines, at) {
 const CURSOR_EXEMPT = {
     "Bar/Bar.qml": "a right-button-only context area covering the whole bar",
     "LauncherWindow.qml": "the click-outside-to-dismiss backdrop over the whole screen",
-    "OsdWindow.qml": "a wheel handler; nothing in the OSD is clickable"
+    "OsdWindow.qml": "a wheel handler; nothing in the OSD is clickable",
+    "PowerMenu.qml": "the click-outside-to-dismiss scrim behind the session buttons",
+    "ShortcutsOverlay.qml": "the click-outside-to-dismiss scrim behind the sheet"
 };
 
 // Focus that exists so the keyboard can scroll, on a surface that draws no

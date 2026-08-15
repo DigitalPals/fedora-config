@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Effects
 import Quickshell
 import Quickshell.Services.Notifications
 import Quickshell.Wayland
@@ -128,15 +127,6 @@ PanelWindow {
                 width: toastColumn.width
                 implicitHeight: card.height
 
-                RectangularShadow {
-                    anchors.fill: card
-                    radius: card.radius
-                    blur: 32
-                    spread: 0
-                    offset.y: 12
-                    color: Qt.rgba(0, 0, 0, 0.5)
-                }
-
                 // One continuous countdown instead of a 100ms tick: the
                 // progress bar moves at display rate and the card needs no
                 // repeating timer. Hovering stops the sequence with
@@ -170,10 +160,10 @@ PanelWindow {
 
                     width: parent.width
                     height: contentHeight + (slot.showProgress ? 4 : 0)
-                    radius: 12
+                    radius: Theme.cardRadius
                     clip: true
                     color: slot.critical ? Theme.redBgSoft
-                        : hovered ? "#16171d" : Theme.popBg
+                        : hovered ? Theme.glassMenu : Theme.glassStrong
                     border.width: 1
                     border.color: slot.critical ? Theme.redBorder
                         : hovered ? Qt.rgba(1, 1, 1, 0.14) : Theme.popBorder

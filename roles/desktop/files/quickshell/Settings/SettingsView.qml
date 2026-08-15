@@ -30,22 +30,22 @@ PopoutPanel {
     focus: true
 
     readonly property var navItems: [
-        { id: "appearance", group: "SHELL", label: "Appearance", glyph: "",
+        { id: "appearance", group: "SHELL", label: "Appearance", glyph: "palette",
             title: "Appearance", description: "Shape, typography, and shell accent",
             keywords: "bar height corner radius menu font accent color hue wallpaper theme" },
-        { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "",
+        { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "image",
             title: "Wallpaper", description: "Desktop image and automatic rotation",
             keywords: "desktop image background picture folder shuffle rotation" },
-        { id: "bar", group: "SHELL", label: "Bar layout", glyph: "",
+        { id: "bar", group: "SHELL", label: "Bar layout", glyph: "space_dashboard",
             title: "Bar layout", description: "Position, spacing, and monitor behavior",
             keywords: "position top bottom floating gap auto hide exclusive monitor" },
-        { id: "modules", group: "SHELL", label: "Modules", glyph: "",
+        { id: "modules", group: "SHELL", label: "Modules", glyph: "widgets",
             title: "Modules", description: "Choose and arrange the bar’s contents",
             keywords: "clock weather media workspaces volume wifi battery bluetooth arrange order" },
-        { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "",
+        { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",
             title: "Notifications", description: "Toasts, quiet hours, and the notification center",
             keywords: "toast do not disturb dnd quiet hours duration position density icons timeout progress body preview test" },
-        { id: "system", group: "SYSTEM", label: "System", glyph: "",
+        { id: "system", group: "SYSTEM", label: "System", glyph: "settings",
             title: "System", description: "Formats, night light, OSD, and storage",
             keywords: "clock format temperature unit scroll speed night light warmth osd poll usage config reset" }
     ]
@@ -154,16 +154,15 @@ PopoutPanel {
             }
         }
 
-        Text {
+        Sym {
             id: navIcon
             anchors.left: parent.left
             anchors.leftMargin: root.compactNav ? 0 : 11
             anchors.verticalCenter: parent.verticalCenter
             width: root.compactNav ? parent.width : 20
             horizontalAlignment: Text.AlignHCenter
-            text: navItem.modelData.glyph
-            font.family: Theme.fontIcon
-            font.pixelSize: Theme.iconMedium
+            name: navItem.modelData.glyph
+            size: Theme.iconMedium
             color: navItem.current ? Theme.accent : Theme.icon
         }
 
@@ -291,14 +290,13 @@ PopoutPanel {
                 border.width: searchInput.activeFocus ? 1 : 0
                 border.color: Theme.accent
 
-                Text {
+                Sym {
                     id: searchGlyph
                     anchors.left: parent.left
                     anchors.leftMargin: 9
                     anchors.verticalCenter: parent.verticalCenter
-                    text: ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.iconSmall
+                    name: "search"
+                    size: Theme.iconSmall
                     color: Theme.textFaint
                 }
 

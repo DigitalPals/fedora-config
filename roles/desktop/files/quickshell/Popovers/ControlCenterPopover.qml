@@ -1,20 +1,22 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import Quickshell.Services.UPower
 import "../Common"
 
-// Control Center v2 (design 1f): DMS-style density — compact toggle
-// grid, blocked volume/brightness meters, CPU/RAM/temp stats, capture
-// actions, and a quiet session footer.
+// Control Center ("QuickShell Menubar" redesign): two big radio tiles with
+// in-place detail chevrons, a row of round quick toggles, the power-profile
+// segmented pill, the design's filled brightness and volume sliders, the
+// capture actions, the system stat cards, and the shell-settings footer.
 Surface {
     id: root
 
-    implicitWidth: Theme.popWideWidth
+    implicitWidth: Theme.popWidth
     padding: Theme.surfacePadding
-    spacing: 8
+    spacing: 12
 
-    readonly property string lockCmd: "hyprlock --config " + Quickshell.env("HOME") + "/.config/hypr/hyprlock.conf --immediate-render --no-fade-in"
     readonly property string binDir: Quickshell.env("HOME") + "/.local/bin/"
+    readonly property var btConnected: BluetoothState.devices.filter(d => d.connected)
 
     // The stat cards and the Tailscale tile are live only while this panel
     // is on screen, so it says so rather than the singletons guessing from
@@ -36,59 +38,33 @@ Surface {
         Popouts.close();
     }
 
-    // Compact quick-toggle tile: stacked icon + label, brand-lit when on.
-    component Tile: Rectangle {
+    // Big radio tile: round icon, name and status line, and a chevron that
+    // morphs the surface to the detail view in place.
+    component BigTile: Rectangle {
         id: tile
 
         property string glyph: ""
-        property string iconSource: ""
         property string title
+        property string sub
         property bool on: false
-        property bool chevron: false
         signal toggled
         signal expanded
 
-        width: (root.width - 2 * root.padding - 12) / 3
+        width: (root.width - 2 * root.padding - 10) / 2
         height: Theme.tileHeight
-        radius: Theme.rowRadius
-        color: tile.on ? (tileMouse.containsMouse ? Theme.accentBg : Theme.accentBgSoft)
-             : (tileMouse.containsMouse ? Theme.hoverFill : Theme.cardFill)
+        radius: Theme.cardRadius
+        color: tile.on ? Theme.accentSoft : Theme.tile
+        scale: tileMouse.pressed ? 0.97 : 1
 
-        Column {
-            anchors.centerIn: parent
-            spacing: 4
+        Behavior on color {
+            ColorAnimation { duration: Theme.surfaceDuration }
+        }
 
-            Item {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 16
-                height: 16
-
-                Text {
-                    visible: tile.glyph !== ""
-                    anchors.centerIn: parent
-                    text: tile.glyph
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontBody
-                    color: tile.on ? Theme.accent : Theme.textFaint
-                }
-
-                Image {
-                    visible: tile.iconSource !== ""
-                    anchors.centerIn: parent
-                    width: 13
-                    height: 13
-                    sourceSize: Qt.size(26, 26)
-                    source: tile.iconSource
-                }
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: tile.title
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                font.weight: Theme.weightMedium
-                color: tile.on ? Theme.textHi : Theme.textLow
+        Behavior on scale {
+            NumberAnimation {
+                duration: Theme.pressDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
             }
         }
 
@@ -99,37 +75,82 @@ Surface {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: Qt.PointingHandCursor
             onClicked: mouse => {
-                if (mouse.button === Qt.RightButton && tile.chevron)
+                if (mouse.button === Qt.RightButton)
                     tile.expanded();
                 else
                     tile.toggled();
             }
         }
 
-        // Corner chevron: morphs the surface to the detail view in place.
         Rectangle {
-            visible: tile.chevron
-            anchors.top: parent.top
-            anchors.right: parent.right
-            anchors.topMargin: 3
-            anchors.rightMargin: 3
-            width: 16
-            height: 16
-            radius: 5
-            color: chevMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+            x: 11
+            anchors.verticalCenter: parent.verticalCenter
+            width: 38
+            height: 38
+            radius: 19
+            color: tile.on ? Theme.accent : Theme.chipHover
+
+            Behavior on color {
+                ColorAnimation { duration: Theme.surfaceDuration }
+            }
+
+            Sym {
+                anchors.centerIn: parent
+                name: tile.glyph
+                size: 19
+                fill: tile.on ? 1 : 0
+                color: tile.on ? Theme.textOnAccent : Theme.textMid
+            }
+        }
+
+        Column {
+            x: 60
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - x - 32
+            spacing: 1
 
             Text {
+                width: parent.width
+                text: tile.title
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
+                font.weight: Theme.weightBold
+                color: Theme.textHi
+                elide: Text.ElideRight
+            }
+
+            Text {
+                width: parent.width
+                text: tile.sub
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontTiny
+                font.weight: Theme.weightSemibold
+                color: Theme.textMid
+                elide: Text.ElideRight
+            }
+        }
+
+        Rectangle {
+            anchors.right: parent.right
+            anchors.rightMargin: 6
+            anchors.verticalCenter: parent.verticalCenter
+            width: 24
+            height: 24
+            radius: 12
+            color: chevMouse.containsMouse ? Theme.chipHover : "transparent"
+
+            Sym {
                 anchors.centerIn: parent
-                text: ""
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontCaption
-                color: chevMouse.containsMouse ? Theme.textHi : tile.on ? Theme.textLow : Theme.textFaint
+                name: "chevron_right"
+                size: Theme.fontBody
+                symWeight: 600
+                color: chevMouse.containsMouse ? Theme.textHi : Theme.textFaint
             }
 
             MouseArea {
                 id: chevMouse
                 anchors.fill: parent
-                anchors.margins: -3
+                anchors.margins: -4
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: tile.expanded()
@@ -137,68 +158,98 @@ Surface {
         }
     }
 
-    // Small labelled meter row for the sliders card.
-    component MeterRow: Column {
-        id: meterRow
+    // Round quick toggle: a 46px circle that lights on the accent, with its
+    // label underneath. Right-click opens the detail view where one exists.
+    component RoundToggle: Item {
+        id: toggle
 
-        property string glyph
-        property string label
-        property int percent: 0
-        property bool ready: true
-        signal moved(real value)
+        property string glyph: ""
+        property string iconSource: ""
+        property string title
+        property bool on: false
+        property bool detail: false
+        signal toggled
+        signal expanded
 
-        width: parent.width
-        spacing: 6
-        opacity: ready ? 1 : 0.4
+        width: (root.width - 2 * root.padding - 4 * 8) / 5
+        height: circle.height + 7 + toggleLabel.implicitHeight + 8
 
-        Item {
-            width: parent.width
-            height: Math.max(meterGlyph.implicitHeight, meterLabel.implicitHeight,
-                meterValue.implicitHeight)
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.rowRadius
+            color: toggleMouse.containsMouse ? Theme.chip : "transparent"
 
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 6
-
-                Text {
-                    id: meterGlyph
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: meterRow.glyph
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontBody
-                    color: Theme.textLow
-                }
-
-                Text {
-                    id: meterLabel
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: meterRow.label
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightSemibold
-                    font.letterSpacing: 0.6
-                    color: Theme.textDim
-                }
-            }
-
-            Text {
-                id: meterValue
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: meterRow.percent >= 0 ? meterRow.percent + "%" : "--"
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSecondary
-                font.weight: Theme.weightSemibold
-                color: Theme.textMid
+            Behavior on color {
+                ColorAnimation { duration: Theme.chipFadeDuration }
             }
         }
 
-        BlockMeter {
-            width: parent.width
-            height: 10
-            interactive: meterRow.ready
-            value: Math.max(0, meterRow.percent) / 100
-            onMoved: v => meterRow.moved(v)
+        Rectangle {
+            id: circle
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 4
+            width: 46
+            height: 46
+            radius: 23
+            color: toggle.on ? Theme.accent : Theme.tile
+            scale: toggleMouse.pressed ? 0.92 : 1
+
+            Behavior on color {
+                ColorAnimation { duration: Theme.surfaceDuration }
+            }
+
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Theme.pressDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.springCurve
+                }
+            }
+
+            Sym {
+                visible: toggle.glyph !== ""
+                anchors.centerIn: parent
+                name: toggle.glyph
+                size: Theme.iconLarge
+                fill: toggle.on ? 1 : 0
+                color: toggle.on ? Theme.textOnAccent : Theme.textMid
+            }
+
+            Image {
+                visible: toggle.iconSource !== ""
+                anchors.centerIn: parent
+                width: 20
+                height: 20
+                sourceSize: Qt.size(40, 40)
+                source: toggle.iconSource
+            }
+        }
+
+        Text {
+            id: toggleLabel
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: circle.bottom
+            anchors.topMargin: 7
+            text: toggle.title
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontMicro
+            font.weight: Theme.weightBold
+            font.letterSpacing: 0.2
+            color: Theme.textLow
+        }
+
+        MouseArea {
+            id: toggleMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: Qt.PointingHandCursor
+            onClicked: mouse => {
+                if (mouse.button === Qt.RightButton && toggle.detail)
+                    toggle.expanded();
+                else
+                    toggle.toggled();
+            }
         }
     }
 
@@ -214,7 +265,7 @@ Surface {
 
         width: (root.width - 2 * root.padding - 12) / 3
         height: statCol.implicitHeight + 18
-        radius: 10
+        radius: Theme.rowRadius
         color: Theme.cardFill
 
         Column {
@@ -252,94 +303,260 @@ Surface {
         }
     }
 
-    // ---- Quick toggles -------------------------------------------------
-    Grid {
-        columns: 3
-        columnSpacing: 6
-        rowSpacing: 6
+    // ---- Radio tiles -----------------------------------------------------
+    Row {
         width: parent.width
+        spacing: 10
 
-        Tile {
-            glyph: ""
-            title: "Wi-Fi"
+        BigTile {
+            glyph: "wifi"
+            title: "Internet"
+            sub: !WifiState.enabled ? "Off" : WifiState.connected ? WifiState.name : "On"
             on: WifiState.enabled
-            chevron: true
             onToggled: WifiState.setEnabled(!WifiState.enabled)
             onExpanded: Popouts.openPanel("wifi", "right")
         }
 
-        Tile {
-            glyph: ""
+        BigTile {
+            glyph: "bluetooth"
             title: "Bluetooth"
-            on: BluetoothState.enabled
-            chevron: true
-            onToggled: {
-                BluetoothState.toggle();
+            sub: {
+                if (!BluetoothState.enabled)
+                    return "Off";
+                if (root.btConnected.length === 0)
+                    return "On";
+                return root.btConnected[0].deviceName
+                    + (root.btConnected.length > 1 ? " +" + (root.btConnected.length - 1) : "");
             }
+            on: BluetoothState.enabled
+            onToggled: BluetoothState.toggle()
             onExpanded: Popouts.openPanel("bluetooth", "right")
         }
+    }
 
-        Tile {
-            iconSource: Quickshell.shellDir + "/assets/tailscale" + (Tailscale.running ? "" : "-dim") + ".svg"
-            title: "Tailscale"
-            on: Tailscale.running
-            chevron: true
-            onToggled: Tailscale.toggle()
-            onExpanded: Popouts.openPanel("tailscale", "right")
+    // ---- Quick toggles ---------------------------------------------------
+    Row {
+        width: parent.width
+        spacing: 8
+
+        RoundToggle {
+            glyph: "dark_mode"
+            title: "Dark mode"
+            on: Theme.dark
+            onToggled: Settings.themeMode = Theme.dark ? "light" : "dark"
         }
 
-        Tile {
-            glyph: ""
+        RoundToggle {
+            glyph: "do_not_disturb_on"
+            title: "Focus"
+            on: Notifs.dnd
+            onToggled: Notifs.setDnd(!Notifs.dnd)
+        }
+
+        RoundToggle {
+            glyph: "nightlight"
+            title: "Night light"
+            on: SysInfo.nightLight
+            onToggled: SysInfo.nightLight = !SysInfo.nightLight
+        }
+
+        RoundToggle {
+            glyph: "coffee"
             title: "Idle inhibit"
             on: SysInfo.idleInhibited
             onToggled: SysInfo.idleInhibited = !SysInfo.idleInhibited
         }
 
-        Tile {
-            glyph: ""
-            title: "Do not disturb"
-            on: Notifs.dnd
-            onToggled: Notifs.setDnd(!Notifs.dnd)
-        }
-
-        Tile {
-            glyph: ""
-            title: "Night light"
-            on: SysInfo.nightLight
-            onToggled: SysInfo.nightLight = !SysInfo.nightLight
+        RoundToggle {
+            iconSource: Quickshell.shellDir + "/assets/tailscale" + (Tailscale.running ? "" : "-dim") + ".svg"
+            title: "Tailscale"
+            on: Tailscale.running
+            detail: true
+            onToggled: Tailscale.toggle()
+            onExpanded: Popouts.openPanel("tailscale", "right")
         }
     }
 
-    // ---- Volume / brightness meters -------------------------------------
+    // ---- Power profile ---------------------------------------------------
+    // Only where there is a profile daemon to talk to: on a machine without
+    // power-profiles-daemon this row would be three buttons that do nothing.
     Rectangle {
+        visible: PowerProfiles.hasPerformanceProfile
         width: parent.width
-        height: metersCol.implicitHeight + 24
-        radius: 10
-        color: Theme.cardFill
+        height: Theme.controlHeight
+        radius: height / 2
+        color: Theme.tile
 
-        Column {
-            id: metersCol
-            x: 12
-            y: 12
-            width: parent.width - 24
-            spacing: 11
+        Behavior on color {
+            ColorAnimation { duration: Theme.surfaceDuration }
+        }
 
-            MeterRow {
-                glyph: ""
-                label: "VOLUME"
-                percent: Audio.ready ? Audio.volume : -1
-                ready: Audio.ready
-                onMoved: v => {
-                    Audio.setVolume(v);
+        Row {
+            id: modeRow
+            anchors.fill: parent
+            anchors.margins: 5
+            spacing: 4
+
+            Repeater {
+                model: [
+                    { profile: PowerProfile.PowerSaver, glyph: "eco", label: "Saver" },
+                    { profile: PowerProfile.Balanced, glyph: "balance", label: "Balanced" },
+                    { profile: PowerProfile.Performance, glyph: "speed", label: "Performance" }
+                ]
+
+                delegate: Rectangle {
+                    id: mode
+
+                    required property var modelData
+                    readonly property bool current: PowerProfiles.profile === modelData.profile
+
+                    width: (modeRow.width - modeRow.spacing * 2) / 3
+                    height: modeRow.height
+                    radius: height / 2
+                    color: current ? Theme.accent
+                        : modeMouse.containsMouse ? Theme.chipHover : "transparent"
+
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
+                    }
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Sym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: mode.modelData.glyph
+                            size: Theme.iconSmall + 2
+                            fill: mode.current ? 1 : 0
+                            color: mode.current ? Theme.textOnAccent : Theme.textFaint
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: mode.modelData.label
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Theme.weightHeavy
+                            font.letterSpacing: 0.2
+                            color: mode.current ? Theme.textOnAccent : Theme.textFaint
+                        }
+                    }
+
+                    MouseArea {
+                        id: modeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: PowerProfiles.profile = mode.modelData.profile
+                    }
                 }
             }
+        }
+    }
 
-            MeterRow {
-                glyph: ""
-                label: "BRIGHTNESS"
-                percent: SysInfo.brightness
-                ready: SysInfo.brightness >= 0
-                onMoved: v => SysInfo.setBrightness(v * 100)
+    // ---- Brightness / volume ---------------------------------------------
+    FillSlider {
+        width: parent.width
+        glyph: "sunny"
+        accessibleName: "Brightness"
+        value: Math.max(0, SysInfo.brightness) / 100
+        ready: SysInfo.brightness >= 0
+        label: (SysInfo.brightness >= 0 ? SysInfo.brightness : "--") + "%"
+        onMoved: v => SysInfo.setBrightness(v * 100)
+    }
+
+    FillSlider {
+        width: parent.width
+        glyph: Audio.muted || Audio.level === 0 ? "volume_off"
+            : Audio.level < 0.5 ? "volume_down" : "volume_up"
+        glyphIsButton: true
+        accessibleName: "Volume"
+        value: Audio.muted ? 0 : Audio.level
+        ready: Audio.ready
+        label: Math.round((Audio.muted ? 0 : Audio.level) * 100) + "%"
+        onMoved: v => {
+            if (Audio.muted)
+                Audio.toggleMuted();
+            Audio.setVolume(v);
+        }
+        onGlyphClicked: Audio.toggleMuted()
+    }
+
+    // ---- Capture actions -------------------------------------------------
+    Row {
+        width: parent.width
+        spacing: 8
+
+        Repeater {
+            model: [
+                { glyph: "photo_camera", label: "Screenshot", cmd: root.binDir + "screenshot region" },
+                { glyph: "", label: "", cmd: "" },
+                { glyph: "document_scanner", label: "OCR", cmd: root.binDir + "screen-ocr" }
+            ]
+
+            delegate: Rectangle {
+                id: action
+
+                required property var modelData
+                required property int index
+                // The middle slot is the recorder, which reflects its
+                // singleton's state rather than firing a script blindly.
+                readonly property bool isRecord: index === 1
+                readonly property bool recording: isRecord && Recorder.active
+
+                width: (root.width - 2 * root.padding - 16) / 3
+                height: 38
+                radius: 19
+                color: recording ? Theme.redBg
+                    : actionMouse.containsMouse ? Theme.chipHover : Theme.tile
+
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 7
+
+                    Sym {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: action.isRecord
+                            ? (action.recording ? "stop_circle" : "radio_button_checked")
+                            : action.modelData.glyph
+                        size: Theme.iconSmall + 2
+                        color: action.recording ? Theme.redText
+                            : action.isRecord ? Theme.red
+                            : actionMouse.containsMouse ? Theme.textHi : Theme.textMid
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: action.isRecord
+                            ? (action.recording ? "Stop" : "Record")
+                            : action.modelData.label
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontTiny
+                        font.weight: Theme.weightHeavy
+                        color: action.recording ? Theme.redText
+                            : actionMouse.containsMouse ? Theme.textHi : Theme.textMid
+                    }
+                }
+
+                MouseArea {
+                    id: actionMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (action.isRecord) {
+                            Recorder.toggle();
+                            Popouts.close();
+                        } else {
+                            root.run(action.modelData.cmd);
+                        }
+                    }
+                }
             }
         }
     }
@@ -372,145 +589,90 @@ Surface {
         }
     }
 
-    // ---- Capture actions ---------------------------------------------------
-    Grid {
-        columns: 3
-        columnSpacing: 6
-        rowSpacing: 6
+    // ---- Footer ----------------------------------------------------------
+    Row {
         width: parent.width
+        spacing: 6
 
-        Repeater {
-            model: [
-                { glyph: "", tone: Theme.icon, label: "Screenshot", cmd: root.binDir + "screenshot region" },
-                { glyph: "", tone: Theme.red, label: "Record", cmd: root.binDir + "screen-record" },
-                { glyph: "", tone: Theme.icon, label: "OCR", cmd: root.binDir + "screen-ocr" }
-            ]
+        Rectangle {
+            width: parent.width - 36 - parent.spacing
+            height: 36
+            radius: 14
+            color: settingsMouse.containsMouse ? Theme.chip : "transparent"
 
-            delegate: Rectangle {
-                id: action
-
-                required property var modelData
-
-                width: (root.width - 2 * root.padding - 12) / 3
-                height: Theme.controlHeight
-                radius: 8
-                color: actionMouse.containsMouse ? Theme.hoverFillStrong : Theme.hoverFill
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 6
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: action.modelData.glyph
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.fontBody
-                        color: action.modelData.tone
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: action.modelData.label
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
-                        font.weight: Theme.weightMedium
-                        color: Theme.textMid
-                    }
-                }
-
-                MouseArea {
-                    id: actionMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.run(action.modelData.cmd)
-                }
+            Behavior on color {
+                ColorAnimation { duration: Theme.chipFadeDuration }
             }
-        }
-    }
 
-    HDivider {}
-
-    // ---- Session footer ------------------------------------------------------
-    Item {
-        width: parent.width
-        height: Theme.controlHeight
-
-        Text {
-            x: 6
-            anchors.verticalCenter: parent.verticalCenter
-            text: SysInfo.user + " @ " + SysInfo.host
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            color: Theme.textLow
-        }
-
-        Row {
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
-
-            // Shell settings gear (design v2) — opens the settings window,
-            // which closes this popout on its way in.
             Rectangle {
+                x: 5
+                anchors.verticalCenter: parent.verticalCenter
                 width: 26
-                height: Theme.controlHeight
-                radius: 6
-                color: gearMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+                height: 26
+                radius: 13
+                color: Theme.chip
 
-                Text {
+                Sym {
                     anchors.centerIn: parent
-                    text: "" // gear
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontBody
-                    color: gearMouse.containsMouse ? Theme.textHi : Theme.textLow
-                }
-
-                MouseArea {
-                    id: gearMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Settings.showPanel()
+                    name: "settings" // gear
+                    size: Theme.fontBody
+                    symWeight: 600
+                    color: settingsMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
             }
 
-            Repeater {
-                model: [
-                    { glyph: "", tip: "Lock", danger: false, cmd: root.lockCmd },
-                    { glyph: "", tip: "Suspend", danger: false, cmd: "systemctl suspend" },
-                    { glyph: "", tip: "Reboot", danger: false, cmd: "systemctl reboot" },
-                    { glyph: "", tip: "Shut down", danger: true, cmd: "systemctl poweroff" }
-                ]
+            Text {
+                x: 40
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Shell settings"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontTiny
+                font.weight: Theme.weightBold
+                color: settingsMouse.containsMouse ? Theme.textHi : Theme.textLow
+            }
 
-                delegate: Rectangle {
-                    id: sess
+            Sym {
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                name: "chevron_right"
+                size: Theme.fontBody
+                symWeight: 600
+                color: Theme.textFaint
+            }
 
-                    required property var modelData
+            MouseArea {
+                id: settingsMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Settings.showPanel()
+            }
+        }
 
-                    width: 26
-                    height: Theme.controlHeight
-                    radius: 6
-                    color: sessMouse.containsMouse
-                        ? (sess.modelData.danger ? Theme.redBg : Theme.hoverFillStrong)
-                        : "transparent"
+        Rectangle {
+            width: 36
+            height: 36
+            radius: 14
+            color: keysMouse.containsMouse ? Theme.chip : "transparent"
 
-                    Text {
-                        anchors.centerIn: parent
-                        text: sess.modelData.glyph
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.fontBody
-                        color: sess.modelData.danger ? Theme.redText : sessMouse.containsMouse ? Theme.textHi : Theme.textLow
-                    }
+            Behavior on color {
+                ColorAnimation { duration: Theme.chipFadeDuration }
+            }
 
-                    MouseArea {
-                        id: sessMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.run(sess.modelData.cmd)
-                    }
-                }
+            Sym {
+                anchors.centerIn: parent
+                name: "keyboard"
+                size: Theme.iconMedium
+                color: keysMouse.containsMouse ? Theme.textHi : Theme.textLow
+            }
+
+            MouseArea {
+                id: keysMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Session.openKeys()
             }
         }
     }

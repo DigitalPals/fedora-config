@@ -5,8 +5,8 @@ import "T3CodeHelpers.js" as Helpers
 import "Format.js" as Format
 
 // What the shell knows about threads: the raw maps the server streams in, the
-// classification that turns them into "running / needs attention / done /
-// settled / snoozed", the projections the inbox lists, and the desktop
+// classification that turns them into "running / monitoring / needs attention
+// / done / settled / snoozed", the projections the inbox lists, and the desktop
 // notification raised when a thread changes class.
 //
 // This is what Bar/T3Chip.qml and T3InboxPage actually read. It holds no
@@ -42,6 +42,7 @@ Singleton {
     property var snoozedThreads: []
     property var settledThreads: []
     property int runningCount: 0
+    property int monitoringCount: 0
     property int attentionCount: 0
     property int doneCount: 0
     property int settledCount: 0
@@ -92,8 +93,8 @@ Singleton {
         return Helpers.isEffectivelySnoozed(t, now);
     }
 
-    // "attention" | "running" | "error" | "done" | "idle". Only ever asked
-    // of active threads — settledness is decided before this runs.
+    // "attention" | "running" | "monitoring" | "error" | "done" | "idle".
+    // Only ever asked of active threads — settledness is decided first.
     function threadClass(t) {
         return Helpers.threadClass(t);
     }
@@ -200,6 +201,7 @@ Singleton {
         snoozedThreads = projection.snoozed;
         settledThreads = projection.settled;
         runningCount = projection.runningCount;
+        monitoringCount = projection.monitoringCount;
         attentionCount = projection.attentionCount;
         doneCount = projection.doneCount;
         settledCount = projection.settled.length;
@@ -274,9 +276,11 @@ Singleton {
         let what;
         if (th.cls === "attention")
             what = th.pendingApprovals ? "waiting for approval" : "has a question";
-        else if (th.cls === "error" && (prev === "running" || prev === "attention"))
+        else if (th.cls === "error" && (prev === "running" || prev === "monitoring"
+                || prev === "attention"))
             what = "failed";
-        else if (th.cls === "done" && (prev === "running" || prev === "attention"))
+        else if (th.cls === "done" && (prev === "running" || prev === "monitoring"
+                || prev === "attention"))
             what = "finished";
         else
             return;

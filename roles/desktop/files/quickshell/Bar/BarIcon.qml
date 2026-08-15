@@ -2,16 +2,20 @@ import QtQuick
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 
-// A glyph button in a bar cluster: nerd-font icon, optional compact label,
-// optional accent (active) or red (alert) pill state.
+// A glyph button in the bar: one Material Symbols mark, an optional value
+// beside it, and the pill that lights under the pointer.
+//
+// Four shapes, because the design uses four; see `shape` below. What they
+// have in common is the fill ladder — rest, hover, held, active — and the
+// press that springs back, so any two of them side by side agree.
 Rectangle {
     id: root
 
     // ---- panel wiring -----------------------------------------------------
     // Setting panelName makes this the bar's anchor for that popout and drives
-    // registration, the held state, hover-switching and click from the one
-    // name. `host` is typed rather than duck-typed, so a typo in any of those
-    // calls is a lint error naming the member, not a silent no-op.
+    // registration, the held state and the opening click from the one name.
+    // `host` is typed rather than duck-typed, so a typo in any of those calls
+    // is a lint error naming the member, not a silent no-op.
     //
     // `isle` is the column the module actually sits in — the user can move
     // modules between columns, so it is assigned by the bar's ModuleSlot and
@@ -25,8 +29,8 @@ Rectangle {
     property string isle: ""
 
     // The item whose rectangle the popout hangs under. Defaults to this one;
-    // the bell overrides it with its wrapper, whose height is the full bar
-    // row rather than the icon's, so the popout keeps its exact anchor.
+    // a grouped module overrides it with the group pill, so the panel hangs
+    // under the shape the user actually clicked.
     property Item anchorItem: root
 
     readonly property bool ownsPanel: panelName !== "" && host !== null
@@ -36,6 +40,15 @@ Rectangle {
     // would run against a null host and silently never happen. Registration
     // is idempotent, so doing both is safe and covers either order.
     onOwnsPanelChanged: {
+        if (ownsPanel)
+            host.registerPanel(panelName, anchorItem);
+    }
+
+    // A grouped module learns which pill it sits in only after the bar has
+    // loaded it, so the anchor can move once, from this chip to its group.
+    // Re-registering under the same name replaces the entry rather than
+    // adding one.
+    onAnchorItemChanged: {
         if (ownsPanel)
             host.registerPanel(panelName, anchorItem);
     }
@@ -50,24 +63,49 @@ Rectangle {
             host.unregisterPanel(panelName, anchorItem);
     }
 
+    // ---- shape ------------------------------------------------------------
+    // "pill"  a chip that draws its own background
+    // "inner" a chip inside a group's background: a step shorter, transparent
+    //         at rest, so the group reads as one shape with a lit segment
+    // "round" the circular buttons at either end of the bar
+    // "bare"  a glyph inside a pill the group owns: no fill of its own, and no
+    //         hover of its own either, because the pill lights instead
+    property string shape: "pill"
+    readonly property bool bare: shape === "bare"
+    readonly property bool inner: shape === "inner"
+    readonly property bool round: shape === "round"
+    property real pillHeight: round ? Theme.roundButton
+        : inner ? Theme.chipInnerHeight : Theme.chipHeight
+
+    // Material Symbols ligature name, e.g. "wifi".
     property string glyph
     property real glyphSize: Theme.barIconSize
-    // Fixed column for the glyph. The right cluster is right-anchored, so
-    // a module that changes width slides every module beside it: pin the
-    // width for icons that differ between states. 0 sizes to the glyph.
+    // Fixed column for the glyph. The right cluster is right-anchored, so a
+    // module that changes width slides every module beside it: pin the width
+    // for icons that differ between states. 0 sizes to the glyph.
     property real glyphWidth: 0
+    property real glyphFill: active || alert ? 1 : 0
+    property real glyphWeight: 500
     property string label: ""
     property bool compact: false
-    property real labelSize: Theme.barTextSize
+    property int labelSize: Theme.barLabelSize
+    property int labelWeight: Theme.weightHeavy
     property bool active: false
-    // Subtle open-state: the module's popout is expanded below it (t5).
+    // The module's popout is expanded below it.
     property bool held: ownsPanel && host.popoutOpen(panelName)
     property bool alert: false
     property color idleColor: Theme.icon
     property color hoverColor: Theme.textHi
-    property int hPadding: 6
+    property color labelColor: fg
+    property real hPadding: label === "" || compact ? 8 : 11
+    property real contentSpacing: 5
     property string tooltip: ""
     property int tooltipAlign: 0
+    // What the pill rests on. Solo chips rest on the visible chip fill; a
+    // glyph inside a group pill rests on nothing so the group reads as one
+    // shape.
+    property color restFill: bare || inner ? "transparent" : Theme.chip
+
     signal clicked(real mouseX)
     signal middleClicked
     signal wheeled(int steps)
@@ -75,16 +113,12 @@ Rectangle {
     signal exited
 
     property real wheelAccumulator: 0
-    readonly property real detailSaving: label === "" ? 0 : labelText.implicitWidth + 4
+    readonly property real detailSaving: label === "" ? 0
+        : labelText.implicitWidth + contentSpacing
 
-    // Validated rather than the MouseArea's own state: the raw value survives a
-    // missed exit event, which leaves the pill lit with no event left to clear
-    // it. The tooltip below reads the same check, so the two always agree.
-    //
-    // `containsMouse` rather than a flag set from onEntered/onExited, which is
-    // what this used to be: that flag was never re-armed by onPositionChanged,
-    // so the missed *enter* the handler below compensates for left the pill
-    // unlit while the pointer moved across it — the same bug the other way up.
+    // Validated rather than the MouseArea's own state: the raw value survives
+    // a missed exit event, which leaves the pill lit with no event left to
+    // clear it. The tooltip below reads the same check, so the two agree.
     readonly property bool hovered: pointer.over
 
     PointerCheck {
@@ -94,25 +128,52 @@ Rectangle {
         hovered: mouse.containsMouse
     }
 
-    readonly property color fg: active ? Theme.accentFg : alert ? Theme.redText : held || root.hovered ? hoverColor : idleColor
+    readonly property color fg: active ? Theme.accentFg
+        : alert ? Theme.redText
+        : held || root.hovered ? hoverColor : idleColor
 
-    implicitHeight: Theme.chipHeight
-    implicitWidth: inner.implicitWidth + hPadding * 2
-    radius: Theme.chipRadius
-    color: active ? Theme.accent : alert ? Theme.redBg : held ? Theme.hoverFillStrong : root.hovered ? Theme.hoverFill : "transparent"
-    anchors.verticalCenter: parent.verticalCenter
+    implicitHeight: pillHeight
+    implicitWidth: round ? Theme.roundButton : content.implicitWidth + hPadding * 2
+    radius: Theme.pillRadius
+    color: active ? Theme.accent
+        : alert ? Theme.redBg
+        : held ? Theme.chipHover
+        : root.hovered && !bare ? Theme.chipHover : restFill
+    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+
+    // Press feedback. The design scales a round button harder than a chip;
+    // both spring back, which is what makes a click feel answered rather than
+    // merely registered.
+    scale: mouse.pressed ? (round ? 0.88 : 0.95) : 1
+
+    Behavior on scale {
+        NumberAnimation {
+            duration: Theme.pressDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
+        }
+    }
 
     Behavior on color {
         ColorAnimation { duration: Theme.chipFadeDuration }
     }
 
-    Row {
-        id: inner
-        anchors.centerIn: parent
-        spacing: 4
+    Behavior on implicitWidth {
+        enabled: !root.round
+        NumberAnimation {
+            duration: Theme.expandDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
+        }
+    }
 
-        // The column is pinned on the wrapper, never on the Text: these
-        // glyphs' ink overflows their advance box, so giving the Text an
+    Row {
+        id: content
+        anchors.centerIn: parent
+        spacing: root.contentSpacing
+
+        // The column is pinned on the wrapper, never on the Text: several of
+        // these marks overflow their advance box, so giving the Text an
         // explicit width shifts what it draws.
         Item {
             visible: root.glyph !== ""
@@ -120,17 +181,14 @@ Rectangle {
             width: root.glyphWidth > 0 ? root.glyphWidth : glyphText.implicitWidth
             height: glyphText.implicitHeight
 
-            Text {
+            Sym {
                 id: glyphText
                 anchors.centerIn: parent
-                text: root.glyph
-                font.family: Theme.fontIcon
-                font.pixelSize: root.glyphSize
+                name: root.glyph
+                size: root.glyphSize
+                fill: root.glyphFill
+                symWeight: root.glyphWeight
                 color: root.fg
-
-                Behavior on color {
-                    ColorAnimation { duration: Theme.chipFadeDuration }
-                }
             }
         }
 
@@ -141,9 +199,9 @@ Rectangle {
             text: root.label
             font.family: Theme.fontMenu
             font.pixelSize: root.labelSize
-            font.weight: root.alert ? Theme.weightSemibold : Theme.weightMedium
+            font.weight: root.labelWeight
             font.features: Theme.tabularNumberFeatures
-            color: root.alert ? Theme.redText : root.fg
+            color: root.alert ? Theme.redText : root.labelColor
 
             Behavior on color {
                 ColorAnimation { duration: Theme.chipFadeDuration }
@@ -159,21 +217,17 @@ Rectangle {
         cursorShape: Qt.PointingHandCursor
         onEntered: {
             if (root.ownsPanel)
-                root.host.hoverOpen(root.panelName, root.isle, root.anchorItem);
+                root.host.hoverPopout(root.panelName, root.isle, root.anchorItem);
             root.entered();
         }
-        // A newly mapped layer surface can cost Qt the next enter event;
-        // motion over the icon still re-arms the bar's hover switch.
+        // Pointer motion gives the latched switch another idempotent chance;
+        // Bar's full-surface handler is the final fallback if this child loses
+        // both events while the detached popout is being mapped.
         onPositionChanged: {
             if (root.ownsPanel)
-                root.host.hoverOpen(root.panelName, root.isle, root.anchorItem);
-            root.entered();
+                root.host.hoverPopout(root.panelName, root.isle, root.anchorItem);
         }
-        onExited: {
-            if (root.ownsPanel)
-                root.host.cancelHover(root.panelName);
-            root.exited();
-        }
+        onExited: root.exited()
         onClicked: mouse => {
             if (mouse.button === Qt.MiddleButton) {
                 root.middleClicked();
@@ -198,7 +252,7 @@ Rectangle {
         check: pointer
         text: root.tooltip
         align: root.tooltipAlign
-        y: root.height + 6
+        y: root.height + 8
         x: align < 0 ? 0 : align > 0 ? root.width - width : (root.width - width) / 2
     }
 }

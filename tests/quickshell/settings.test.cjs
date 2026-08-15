@@ -34,7 +34,7 @@ test("settings is a connected center popout rather than a modal window", () => {
     assert.doesNotMatch(shell, /SettingsWindow\s*\{/);
 
     // These used to be matched as literal text in Popouts.qml and
-    // IslandPopout.qml. Both derive from the registry now, so the registry is
+    // PopoutHost.qml. Both derive from the registry now, so the registry is
     // where the claim belongs — and asserting it here rather than on rendered
     // source means reformatting those maps cannot fail this test.
     const panel = registry.byName(registry.SETTINGS);
@@ -48,23 +48,29 @@ test("settings is a connected center popout rather than a modal window", () => {
         /Popouts\.openPanel\(PanelRegistry\.SETTINGS,[\s\S]{0,80}?Qt\.rect\(0,\s*0,\s*0,\s*0\)\)/);
 });
 
-test("edge join shortens the mirrored connector without adding a corner cap", () => {
-    const host = read("Bar/IslandPopout.qml");
-    const mirrored = host.match(/Item \{\s*id: mirrorFrame[\s\S]*?\/\/ The layer-shell input mask/)?.[0] ?? "";
+test("the panel card grows out of its trigger and never out of thin air", () => {
+    const host = read("Bar/PopoutHost.qml");
 
-    assert.match(host, /LayoutHelpers\.edgeFlareRadii/);
-    assert.match(host, /leftFlareRadius:[\s\S]*?edgeFlares\.left \* bloomProgress/);
-    assert.match(host, /rightFlareRadius:[\s\S]*?edgeFlares\.right \* bloomProgress/);
-    assert.match(mirrored, /host\.rightFlareRadius/);
-    assert.match(mirrored, /host\.leftFlareRadius/);
-    assert.doesNotMatch(mirrored, /host\.edgeJoin !== null/);
-    assert.match(mirrored, /Shape \{/);
-    assert.match(mirrored, /yScale: host\.bottomBar \? -1 : 1/);
+    // The scale origin is the trigger's own centre, clamped inside the card:
+    // an origin outside the shape reads as the card sliding rather than
+    // growing, which is the whole difference between the two.
+    assert.match(host, /originX:\s*clamp\(anchor\.x \+ anchor\.width \/ 2 - bodyX/);
+    assert.match(host, /Scale \{[\s\S]*?origin\.x: host\.originX/);
+    assert.match(host, /origin\.y: host\.bottomBar \? card\.height : 0/,
+        "a bottom bar grows the card upward, from its own lower edge");
+    // Transform springs, opacity eases: an overshooting fade reads as a flicker.
+    assert.match(host, /bezierCurve: host\.closing \? Theme\.easeInCurve : Theme\.springCurve/);
+    assert.match(host, /bodyTop:\s*barBottom \+ Theme\.popGap/,
+        "the card hangs a fixed gap below the bar");
+    // The mask has to come from real geometry, not from the animating card.
+    const mask = host.match(/Item \{\s*id: hitRegion[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.ok(mask !== "", "the popout host must still publish an input region");
+    assert.doesNotMatch(mask, /transform|scale:/);
 });
 
 test("settings exposes responsive output and keyboard contracts", () => {
     const view = read("Settings/SettingsView.qml");
-    const host = read("Bar/IslandPopout.qml");
+    const host = read("Bar/PopoutHost.qml");
     const modules = read("Settings/ModulesPage.qml");
     const picker = read("Settings/PickerRow.qml");
 
@@ -88,11 +94,11 @@ test("settings exposes responsive output and keyboard contracts", () => {
     assert.match(host, /panel\.availableHeight = /);
     assert.doesNotMatch(host, /!== undefined/,
         "the panel contract must not be probed for at runtime any more");
-    // Which panels fill the body is a registry flag now, not a name test.
-    assert.match(host, /fillBody:\s*PanelRegistry\.fillsBody\(host\.slotAName\)/);
-    // Settings lays out once at its target size and is revealed by the
-    // animating clip; binding it to the clip would relayout every frame.
-    assert.match(host, /width:\s*fillBody \? Math\.max\(1, host\.targetBodyW\) : implicitWidth/);
+    // Every panel lays out once at its own implicit size and is revealed by
+    // the animating card; binding one to the card would relayout the whole
+    // tree on every morph frame.
+    assert.match(host, /width:\s*Math\.max\(1, implicitWidth\)/);
+    assert.match(host, /height:\s*Math\.max\(1, implicitHeight\)/);
     assert.doesNotMatch(host, /width:\s*fillBody \? parent\.width/,
         "the settings surface must not track the animating clip size");
     assert.match(host, /nameFor\(frontSlot\) !== Popouts\.currentName/,
@@ -105,7 +111,7 @@ test("settings exposes responsive output and keyboard contracts", () => {
 });
 
 test("popout height cannot feed back into its own required envelope", () => {
-    const host = read("Bar/IslandPopout.qml");
+    const host = read("Bar/PopoutHost.qml");
     const window = read("Bar/BarPopoutWindow.qml");
 
     assert.match(window, /implicitHeight:\s*Math\.max\(1, popout\.requiredHeight\)/);
@@ -113,65 +119,62 @@ test("popout height cannot feed back into its own required envelope", () => {
         "requiredHeight drives native height, so native height cannot retarget requiredHeight");
     assert.match(host, /onOutputAvailableHeightChanged:\s*retargetFront\(\)/,
         "screen-height changes still need to recompute the panel envelope");
+    // The envelope reads a stable surfaceH, never the animating renderedH:
+    // tracking the morph per frame resizes the blurred Wayland surface on
+    // every animation frame, while shrinking after the morph produces one
+    // conspicuous compositor reconfigure after the card has already settled.
+    assert.match(host, /requiredHeight:\s*presented\s*\?\s*bodyTop \+ Math\.max\(1, surfaceH\)/,
+        "the surface envelope must come from the settled height");
+    assert.match(host, /surfaceH = Math\.max\(surfaceH, geometry\.bodyH\)/,
+        "the surface must grow to the morph's target before the springs start");
+    assert.doesNotMatch(host, /surfaceH\s*=\s*(?:host\.)?targetH/,
+        "the mapped surface must not shrink after a shorter panel settles");
+    assert.doesNotMatch(host, /id:\s*settleTimer/,
+        "a post-animation timer must not trigger a second layer-shell configure");
+    assert.match(host, /host\.presented = false;\s*host\.surfaceH = 0;/,
+        "the surface envelope resets only after the close animation unmaps it");
+    assert.match(window, /HyprlandWindow\.visibleMask:\s*visualRegion/,
+        "the stable envelope must not enlarge Hyprland's blur pass");
+    // The input mask holds still too — it binds to the morph's target, so the
+    // compositor hears about it once per switch instead of once per frame.
+    assert.match(host, /id: hitRegion[\s\S]{0,80}?x: host\.targetX/,
+        "the input region must not follow the animating rendered geometry");
 });
 
-test("Idle inhibit and Control Center use the reorderable module pipeline", () => {
+test("the tray and the updates chip use the reorderable module pipeline", () => {
     const helpers = read("Common/SettingsHelpers.js");
     const modules = read("Settings/ModulesPage.qml");
     const bar = read("Bar/Bar.qml");
 
-    assert.match(helpers, /"idle", "control"/);
-    assert.match(modules, /idle:\s*\{ name: "Idle inhibit"/);
-    assert.match(modules, /control:\s*\{ name: "Control Center"/);
+    assert.match(helpers, /"updates", "gh"/);
+    assert.match(helpers, /"usage", "tray"/);
+    assert.match(modules, /updates:\s*\{ name: "Updates"/);
+    assert.match(modules, /tray:\s*\{ name: "System tray"/);
     assert.doesNotMatch(modules, /pinnedTail|text:\s*"pinned"/);
-    // The modules are files now; the bar maps ids to their sources.
-    assert.match(bar, /idle:\s*"Modules\/Idle\.qml"/);
-    assert.match(bar, /control:\s*"Modules\/Control\.qml"/);
-    assert.match(read("Bar/Modules/Control.qml"), /panelName:\s*"control"/);
-    assert.match(read("Bar/Modules/Idle.qml"), /SysInfo\.idleInhibited = !SysInfo\.idleInhibited/);
-    assert.doesNotMatch(bar, /togglePopout\("control", "right"/);
+    // The modules are files; the bar maps ids to their sources.
+    assert.match(bar, /updates:\s*"Modules\/Updates\.qml"/);
+    assert.match(bar, /tray:\s*"Modules\/Tray\.qml"/);
+    assert.match(read("Bar/Modules/Updates.qml"), /panelName:\s*"updates"/);
+    // Both hide when empty, but a failed/retrying update check must remain
+    // reachable so its error and manual retry cannot disappear with the chip.
+    assert.match(bar, /case "updates": return Updates\.total > 0 \|\| Updates\.error !== ""/);
+    assert.match(bar, /case "tray": return SystemTray\.items\.values\.length > 0;/);
 });
 
-test("an open Settings panel preserves menubar hover switching", () => {
+test("the three modules the redesign absorbed leave nothing behind", () => {
+    const helpers = read("Common/SettingsHelpers.js");
+    const modules = read("Settings/ModulesPage.qml");
     const bar = read("Bar/Bar.qml");
-    const icon = read("Bar/BarIcon.qml");
-    const chip = read("Bar/BarChip.qml");
-    const t3 = read("Bar/T3Chip.qml");
-    const usage = read("Bar/UsageChips.qml");
-    const hoverOpen = bar.match(/function hoverOpen\([\s\S]*?\n    \}/)?.[0] ?? "";
 
-    assert.match(hoverOpen, /!Popouts\.open \|\| Popouts\.currentName === name/);
-    assert.match(hoverOpen, /pendingHoverName === name/,
-        "pointer motion must not keep restarting the hover-switch delay");
-    assert.doesNotMatch(hoverOpen, /currentName === "settings"/,
-        "Settings must not disarm the click-once, hover-between-modules interaction");
-    assert.match(bar, /onPointChanged:[\s\S]*?barWindow\.hoverPanelAt\(scenePoint\)/,
-        "the full-bar handler must route hover motion around stale MouseArea enter state");
-    // The scan reads cached rects now; the mapping itself moved into
-    // anchorRects(), which is what Object.keys(panelAnchors) drives.
-    assert.match(bar, /function hoverPanelAt\(position\)[\s\S]*anchorRects\(\)/);
-    assert.match(bar, /function anchorRects\(\)[\s\S]*Object\.keys\(panelAnchors\)/);
-    // A stale rect sends hover to the wrong module, so every way the
-    // layout can move must drop the cache.
-    for (const site of [/function registerPanel[\s\S]{0,120}?invalidateAnchorRects\(\)/,
-                        /function unregisterPanel[\s\S]{0,160}?invalidateAnchorRects\(\)/,
-                        /function recomputeFit\(\) \{\s*invalidateAnchorRects\(\)/,
-                        // Folded into the handler that already restarts the fit
-                        // pass — a second onWidthChanged on the same object is a
-                        // load failure, which duplicate-handlers.test.cjs guards.
-                        /onWidthChanged: \{[\s\S]{0,300}?invalidateAnchorRects\(\)/,
-                        /onCenterShiftChanged: invalidateAnchorRects\(\)/])
-        assert.match(bar, site, `anchor cache invalidation missing: ${site}`);
-    // Every type that owns a module hover surface. Bar.qml is not one of
-    // them any more — the clock, media and weather chips it used to build
-    // inline are BarChips now, and BarChip carries the recovery for all
-    // three. Bar.qml's own full-bar fallback is asserted above.
-    for (const source of [icon, chip, t3, usage])
-        assert.match(source,
-            /onPositionChanged:[\s\S]{0,200}?(hoverOpen|hoverIn|entered|chipEntered)/,
-            "module hover must recover when a mapped popout costs Qt an enter event");
-    assert.doesNotMatch(bar, /MouseArea\s*\{[^}]*hoverEnabled[^}]*onEntered:\s*barWindow\.hoverOpen/,
-        "bar modules should hover through BarIcon/BarChip, not their own MouseArea");
+    for (const [id, file] of [["bell", "Bell"], ["idle", "Idle"], ["control", "Control"]]) {
+        assert.ok(!fs.existsSync(path.join(shellDir, `Bar/Modules/${file}.qml`)),
+            `Bar/Modules/${file}.qml is still on disk`);
+        assert.doesNotMatch(bar, new RegExp(`${id}:\\s*"Modules/`),
+            `the bar still maps a source for ${id}`);
+        assert.doesNotMatch(modules, new RegExp(`^\\s*${id}:\\s*\\{ name:`, "m"),
+            `the settings module list still names ${id}`);
+    }
+    assert.match(helpers, /RETIRED_MODULE_IDS = \["bell", "idle", "control"\]/);
 });
 
 test("T3 Code and grouped model usage are separate reorderable modules", () => {
@@ -179,7 +182,7 @@ test("T3 Code and grouped model usage are separate reorderable modules", () => {
     const modules = read("Settings/ModulesPage.qml");
     const bar = read("Bar/Bar.qml");
 
-    assert.match(helpers, /"gh", "t3", "usage", "vol"/,
+    assert.match(helpers, /"gh", "t3", "usage"/,
         "fresh layouts should keep the two modules adjacent");
     assert.match(modules, /t3:\s*\{ name: "T3 Code"/);
     assert.match(modules, /usage:\s*\{ name: "Model usage"/);
@@ -194,32 +197,38 @@ test("T3 Code and grouped model usage are separate reorderable modules", () => {
 
 test("the T3 running indicator is a static dot", () => {
     const chip = read("Bar/T3Chip.qml");
-    const dot = chip.match(/\/\/ Running status:[\s\S]*?\n            Text \{/)?.[0] ?? "";
+    const dot = chip.match(/\/\/ Live work:[\s\S]*?\n    Text \{/)?.[0] ?? "";
 
-    assert.match(dot, /visible:\s*root\.busy/);
+    assert.ok(dot !== "", "the T3 chip must still mark live work");
+    assert.match(dot, /width:\s*root\.busy \? 5 : 0/);
     assert.match(dot, /width:\s*5[\s\S]*height:\s*5/);
-    assert.doesNotMatch(dot, /\b(?:Timer|\w+Animation|\w+Animator)\s*\{|opacity:/,
-        "the five-pixel running indicator must remain static");
+    assert.doesNotMatch(dot, /\b(?:Timer|SequentialAnimation|PropertyAnimation)\s*\{/,
+        "the five-pixel running indicator must not pulse");
     assert.doesNotMatch(chip, /modOpts\.t3\.pulse|heartbeat|pulseOpacity|pulseStartedAt|barVisible/);
 });
 
-test("the full-bar hover fallback resolves the provider before active Usage", () => {
+test("usage chip hover joins the latched menu session", () => {
     const bar = read("Bar/Bar.qml");
-    const usage = read("Bar/UsageChips.qml");
-    const hoverAt = bar.match(/function hoverPanelAt\(position\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    const usage = read("Bar/Modules/Usage.qml");
+    const chips = read("Bar/UsageChips.qml");
 
-    assert.match(usage, /function providerAtScenePoint\(scenePoint\)/);
-    assert.match(usage, /mapFromItem\(null, scenePoint\.x, scenePoint\.y\)/,
-        "provider hit-testing must use the same scene coordinates as bar anchors");
-    assert.match(hoverAt, /providerAtScenePoint\(position\)/);
-    assert.ok(hoverAt.indexOf("providerAtScenePoint(position)")
-            < hoverAt.indexOf('Popouts.currentName === "usage"'),
-        "provider selection must happen before treating Usage as the active panel");
-    assert.match(hoverAt, /Usage\.selected = provider/);
-    assert.match(bar, /interval:\s*120/,
-        "switching from a different popout should retain the standard delay");
-    assert.match(read("Bar/Modules/Usage.qml"),
-        /Popouts\.openPanel\("usage", usageModule\.isle,[\s\S]*?anchorOf\(usageChips\)\)/,
+    // A closed bar remains inert. Once any popout was clicked open, hovering a
+    // provider selects it and morphs the current view to Usage in place.
+    assert.match(usage,
+        /onChipEntered:\s*key => \{\s*if \(!Popouts\.open\)\s*return;\s*Usage\.selected = key;\s*root\.host\.hoverPopout\("usage", root\.isle, usageChips\.anchorItem\);/,
+        "provider hover must be gated by, and participate in, the open menu session");
+    // Mapping the popout surface can cost Qt an enter event; motion over a
+    // chip still re-delivers the provider.
+    assert.match(chips, /onPositionChanged:[\s\S]{0,60}?chipEntered/);
+    assert.match(chips, /function providerAtScenePoint\(scenePoint\)/,
+        "the bar-wide fallback needs provider-level hit testing");
+    const fallback = bar.match(/function hoverPanelAt\(position\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(fallback, /providerAtScenePoint\(position\)/);
+    assert.ok(fallback.indexOf("providerAtScenePoint(position)")
+            < fallback.indexOf("Object.keys(panelAnchors)"),
+        "provider selection must happen before generic Usage hit testing");
+    assert.match(usage,
+        /Popouts\.openPanel\("usage", root\.isle,[\s\S]*?anchorOf\(usageChips\.anchorItem\)\)/,
         "all providers should retain the grouped UsageChips anchor");
 });
 
@@ -244,7 +253,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "tooltips must be disarmed when a popout surface maps or unmaps");
     assert.match(bar, /readonly property bool tooltipPointerInside:\s*barHover\.hovered/);
     assert.match(bar,
-        /barWindow\.tooltipPointerPosition = scenePoint/,
+        /const scenePoint = hoverLayer\.mapToItem[\s\S]{0,120}?barWindow\.tooltipPointerPosition = scenePoint/,
         "the full-bar handler must publish pointer motion for tooltip validation");
     // The hover check lives in one shared object now, so a chip's fill and the
     // tooltip hanging under it cannot disagree about whether the pointer is
@@ -270,16 +279,23 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema three adds detail policies and a configurable wallpaper folder", () => {
+test("schema four carries the glass menubar's defaults and its migration", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 3/);
-    assert.match(helpers, /"gh", "t3", "usage", "vol"/);
+    assert.match(helpers, /var VERSION = 4/);
+    assert.match(helpers, /"updates", "gh", "t3", "usage", "tray"/);
     assert.match(helpers, /warmth:\s*3400/);
-    assert.match(helpers, /osd:\s*"top"/);
-    assert.match(helpers, /mod\("media", false\)/);
+    assert.match(helpers, /osd:\s*"bottom"/);
+    assert.match(helpers, /themeMode:\s*"dark"/);
+    assert.match(helpers, /barHeight:\s*46/);
+    assert.match(helpers, /barRadius:\s*23/);
+    assert.match(helpers, /mod\("media", true\)/);
     assert.match(helpers, /mod\("bt", false\)/);
     assert.match(helpers, /wallDir:\s*"~\/Pictures\/Wallpapers"/);
     assert.match(helpers, /DETAIL_POLICIES/);
+    // A settings file written by the previous schema must adopt the redesign
+    // wherever the user never chose otherwise, or the redesign never appears.
+    assert.match(helpers, /function adoptRedesign\(parsed\)/);
+    assert.match(helpers, /V3_DEFAULTS = \{[\s\S]*?barHeight: 30/);
 });
 
 test("settings improvements expose fitting, embedded folders, undo, and shortcut", () => {
@@ -322,7 +338,7 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     // through SettingsRow, so assert it where it is rather than where it
     // was — the rows below check that they still inherit the base.
     assert.match(theme,
-        /readonly property int settingsLabelWidth:\s*Settings\.font === "mono" \? 122 : 90/);
+        /readonly property int settingsLabelWidth:\s*Settings\.font === "mono" \? 122 : 96/);
     assert.match(base, /readonly property int labelWidth:\s*Theme\.settingsLabelWidth/);
     for (const row of ["SliderRow", "PickerRow", "SwitchRow", "SettingsTextRow"])
         assert.match(read(`Settings/${row}.qml`), /^SettingsRow \{$/m,

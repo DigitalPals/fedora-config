@@ -54,12 +54,11 @@ Surface {
             Row {
                 spacing: 6
 
-                Text {
+                Sym {
                     visible: Battery.charging
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "\uf0e7"
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontSecondary
+                    name: "bolt"
+                    size: Theme.fontSecondary
                     color: Theme.accent
                 }
 

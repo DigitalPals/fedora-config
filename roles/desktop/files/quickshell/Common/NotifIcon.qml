@@ -22,12 +22,11 @@ Item {
         visible: status === Image.Ready
     }
 
-    Text {
+    Sym {
         anchors.centerIn: parent
         visible: !image.visible
-        text: root.urgent ? "" : root.entry.webOrigin ? "" : ""
-        font.family: Theme.fontIcon
-        font.pixelSize: Math.max(Theme.fontCaption, root.iconSize - 8)
+        name: root.urgent ? "warning" : root.entry.webOrigin ? "public" : "notifications"
+        size: Math.max(Theme.fontCaption, root.iconSize - 8)
         color: root.urgent ? Theme.redText : Theme.accent
     }
 }

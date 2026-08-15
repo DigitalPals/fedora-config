@@ -41,13 +41,12 @@ Surface {
         bottomPadding: 6
         spacing: 10
 
-        Text {
+        Sym {
             anchors.verticalCenter: parent.verticalCenter
             width: 18
             horizontalAlignment: Text.AlignHCenter
-            text: Audio.muted ? "\uf026" : "\uf028"
-            font.family: Theme.fontIcon
-            font.pixelSize: Theme.fontBody
+            name: Audio.muted ? "volume_off" : "volume_up"
+            size: Theme.fontBody
             color: Theme.textMid
 
             MouseArea {
@@ -95,13 +94,12 @@ Surface {
             x: 10
             spacing: 10
 
-            Text {
+            Sym {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 18
                 horizontalAlignment: Text.AlignHCenter
-                text: root.devicesOpen ? "\uf077" : "\uf078"
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontCaption
+                name: root.devicesOpen ? "expand_less" : "expand_more"
+                size: Theme.fontCaption
                 color: discMouse.containsMouse ? Theme.textHi : Theme.textDim
             }
 
@@ -150,13 +148,12 @@ Surface {
                     x: 10
                     spacing: 10
 
-                    Text {
+                    Sym {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 18
                         horizontalAlignment: Text.AlignHCenter
-                        text: sink.isDefault ? "\uf00c" : ""
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.fontBody
+                        name: sink.isDefault ? "check" : ""
+                        size: Theme.fontBody
                         color: Theme.accent
                     }
 
@@ -204,11 +201,10 @@ Surface {
             radius: 6
             color: Audio.sourceMuted ? Theme.redBg : "transparent"
 
-            Text {
+            Sym {
                 anchors.centerIn: parent
-                text: Audio.sourceMuted ? "\uf131" : "\uf130"
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontBody
+                name: Audio.sourceMuted ? "mic_off" : "mic"
+                size: Theme.fontBody
                 color: Audio.sourceMuted ? Theme.redText : Theme.textMid
             }
 

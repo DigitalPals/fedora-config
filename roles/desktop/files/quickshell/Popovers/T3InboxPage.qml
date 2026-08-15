@@ -16,7 +16,7 @@ Column {
     readonly property var readyPlans: T3Code.threads.filter(thread =>
         thread.planReady && thread.cls !== "attention" && thread.cls !== "error")
     readonly property var runningThreads: T3Code.threads.filter(thread =>
-        thread.cls === "running" && !thread.planReady)
+        (thread.cls === "running" || thread.cls === "monitoring") && !thread.planReady)
     readonly property var quietThreads: T3Code.threads.filter(thread =>
         (thread.cls === "done" || thread.cls === "idle") && !thread.planReady)
 
@@ -104,6 +104,8 @@ Column {
             }
             if (thread.planReady)
                 return "plan ready";
+            if (thread.cls === "monitoring")
+                return "monitoring";
             if (thread.cls === "running") {
                 const timer = T3Code.workingTimerLabel(thread.workingStartedAt);
                 return timer !== "" ? "working " + timer : "working…";
@@ -241,14 +243,17 @@ Column {
                 // separates from whatever artwork sits under it.
                 Rectangle {
                     visible: entry.glyph !== ""
-                        && (entry.flagged || entry.thread.cls === "running")
+                        && (entry.flagged || entry.thread.cls === "running"
+                            || entry.thread.cls === "monitoring")
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     anchors.margins: -2
                     width: 8
                     height: 8
                     radius: 4
-                    color: Theme.popBg
+                    // Punches the status dot out of the card behind it, so it
+                    // takes the card's own glass rather than an opaque disc.
+                    color: Theme.glassStrong
 
                     Rectangle {
                         anchors.centerIn: parent

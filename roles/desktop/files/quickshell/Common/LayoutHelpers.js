@@ -1,6 +1,38 @@
 // Pure geometry/input helpers shared by QML and Node tests.
 
-var COMPACT_ORDER = ["media", "weather", "clock", "t3", "vol", "batt", "usage"];
+// Which module gives up its detail text first when the bar runs out of room.
+// Mirrors the design's two breakpoints: the counts and labels in the right
+// cluster go at the first one, the weather segment and the media title at the
+// second, and the clock's own date only as a last resort.
+var COMPACT_ORDER = ["media", "updates", "t3", "usage", "gh", "weather",
+    "clock", "vol", "batt"];
+
+// Consecutive modules that draw the same way share one rounded background:
+// the T3/usage/GitHub chips sit in a single group pill, and the volume,
+// Wi-Fi, Bluetooth and battery glyphs sit in the status pill that opens the
+// Control Center. "solo" modules bring their own pill and never merge, so two
+// of them in a row stay two pills.
+//
+// Grouping is by adjacency, not by kind: moving a module between others in
+// the settings window splits or joins the pill exactly where it was dropped,
+// which is the only behaviour that matches what the drag preview showed.
+function groupModules(entries, groupOf) {
+    var out = [];
+    (entries || []).forEach(function(entry, index) {
+        var kind = typeof groupOf === "function" ? groupOf(entry.id) : "solo";
+        var last = out.length > 0 ? out[out.length - 1] : null;
+        if (last && last.kind === kind && kind !== "solo") {
+            last.items.push({ entry: entry, index: index, at: last.items.length });
+            return;
+        }
+        out.push({
+            kind: kind,
+            key: kind + ":" + index,
+            items: [{ entry: entry, index: index, at: 0 }]
+        });
+    });
+    return out;
+}
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -127,6 +159,7 @@ function edgeFlareRadii(options) {
 
 var exported = {
     COMPACT_ORDER: COMPACT_ORDER,
+    groupModules: groupModules,
     stackedDropIndex: stackedDropIndex,
     fitBar: fitBar,
     accumulateWheel: accumulateWheel,

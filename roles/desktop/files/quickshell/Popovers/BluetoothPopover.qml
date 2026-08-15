@@ -80,26 +80,25 @@ Surface {
                 x: 10
                 spacing: 10
 
-                Text {
+                Sym {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 18
                     horizontalAlignment: Text.AlignHCenter
-                    text: {
+                    name: {
                         const icon = dev.modelData.icon || "";
                         if (icon.includes("headset") || icon.includes("headphone") || icon.includes("audio"))
-                            return "\uf025";
+                            return "headphones";
                         if (icon.includes("input-gaming"))
-                            return "\uf11b";
+                            return "sports_esports";
                         if (icon.includes("mouse"))
-                            return "\uf245";
+                            return "mouse";
                         if (icon.includes("keyboard"))
-                            return "\uf11c";
+                            return "keyboard";
                         if (icon.includes("phone"))
-                            return "\uf10b";
-                        return "\uf293";
+                            return "devices";
+                        return "bluetooth";
                     }
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontBody
+                    size: Theme.fontBody
                     color: dev.modelData.connected ? Theme.accent : Theme.textMid
                 }
 

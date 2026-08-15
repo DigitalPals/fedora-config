@@ -24,12 +24,11 @@ Surface {
             y: 6
             spacing: 10
 
-            Text {
+            Sym {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 4
-                text: Weather.glyph(Weather.code, Weather.isDay)
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontDisplay
+                name: Weather.symbol(Weather.code, Weather.isDay)
+                size: Theme.fontDisplay
                 color: Weather.glyphColor(Weather.code, Weather.isDay)
             }
 
@@ -102,13 +101,12 @@ Surface {
 
                     // Daily codes summarise a whole day, so always the day
                     // variant of the icon.
-                    Text {
+                    Sym {
                         id: dayGlyph
                         x: 34
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Weather.glyph(dayRow.modelData.code, true)
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.fontBody
+                        name: Weather.symbol(dayRow.modelData.code, true)
+                        size: Theme.fontBody
                         color: Weather.glyphColor(dayRow.modelData.code, true)
                     }
 

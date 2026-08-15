@@ -91,6 +91,24 @@ SettingsPage {
         }
 
         SectionHeader {
+            label: "THEME"
+            dirty: Settings.themeMode !== Settings.defaults.themeMode
+            onResetRequested: Settings.resetKeys(["themeMode"])
+        }
+
+        PickerRow {
+            width: parent.width
+            label: "Mode"
+            settingKey: "themeMode"
+            caption: "glass tint, text and hairlines"
+            captionMono: false
+            model: [
+                { value: "dark", label: "Dark" },
+                { value: "light", label: "Light" }
+            ]
+        }
+
+        SectionHeader {
             label: "BAR"
         }
 
@@ -98,8 +116,8 @@ SettingsPage {
             width: parent.width
             label: "Height"
             settingKey: "barHeight"
-            min: 24
-            max: 44
+            min: 28
+            max: 60
             step: 1
             unit: "px"
         }
@@ -109,7 +127,7 @@ SettingsPage {
             label: "Corner radius"
             settingKey: "barRadius"
             min: 0
-            max: 16
+            max: 30
             step: 1
             unit: "px"
             dimmed: !Settings.floating
@@ -120,9 +138,9 @@ SettingsPage {
             pillHeight: 22
             padH: 9
             model: [
-                { value: 26, label: "Compact 26" },
-                { value: 30, label: "Default 30" },
-                { value: 36, label: "Roomy 36" }
+                { value: 38, label: "Compact 38" },
+                { value: 46, label: "Default 46" },
+                { value: 54, label: "Roomy 54" }
             ]
             current: Settings.barHeight
             onPicked: value => Settings.set("barHeight", value)

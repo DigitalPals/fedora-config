@@ -1,36 +1,62 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 3;
+var VERSION = 4;
 
 // Reads in default layout order: left, then center, then right. The order
 // only decides where an id the settings file has never seen is appended, but
 // keeping the two lists in step is what makes that placement predictable.
+//
+// Schema 4 (the glass menubar) retired three ids. `bell` folded into the
+// centre clock — that button is the notification centre now; `idle` became a
+// Control Center toggle whose state shows as a coffee mark inside the clock;
+// and `control` became the status pill itself, so a separate trigger for it
+// would open the panel the pill already owns.
 var MODULE_IDS = [
-    "ws", "media", "clock", "weather", "gh", "t3", "usage", "vol", "wifi", "batt",
-    "bell", "bt", "idle", "control"
+    "ws", "media", "clock", "weather", "updates", "gh", "t3", "usage", "tray",
+    "vol", "wifi", "bt", "batt"
 ];
 
-var DETAIL_IDS = ["media", "weather", "clock", "t3", "vol", "batt", "usage"];
+var RETIRED_MODULE_IDS = ["bell", "idle", "control"];
+
+var DETAIL_IDS = ["media", "weather", "clock", "t3", "usage", "gh", "updates",
+    "vol", "batt"];
 var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
 var FONT_CHOICES = [
+    { id: "urbanist", label: "Urbanist", family: "Urbanist" },
     { id: "oppo", label: "OPPO Sans 4.0", family: "OPPO Sans 4.0" },
     { id: "plex", label: "IBM Plex Sans", family: "IBM Plex Sans" },
     { id: "mono", label: "JetBrains Mono", family: "JetBrains Mono" }
 ];
+
+var FONT_IDS = FONT_CHOICES.map(function(choice) { return choice.id; });
+
+// How a module draws itself in the bar, which is also how the bar groups a
+// run of them. `chip` modules share one rounded background and are separated
+// by hairlines; `status` modules are bare glyphs inside the pill that opens
+// the Control Center; `solo` modules bring their own pill.
+var MODULE_GROUPS = {
+    ws: "solo", media: "solo", clock: "center", weather: "center",
+    updates: "solo", gh: "chip", t3: "chip", usage: "chip", tray: "solo",
+    vol: "status", wifi: "status", bt: "status", batt: "status"
+};
+
+function moduleGroup(id) {
+    return MODULE_GROUPS[id] || "solo";
+}
 
 function defaultMods() {
     function mod(id, on) {
         return { id: id, on: on, detail: "auto" };
     }
     return {
-        left: [mod("ws", true), mod("media", false)],
+        left: [mod("ws", true), mod("media", true)],
         center: [mod("clock", true), mod("weather", true)],
         right: [
-            mod("gh", true), mod("t3", true), mod("usage", true), mod("vol", true),
-            mod("wifi", true), mod("batt", true), mod("bell", true),
-            mod("bt", false), mod("idle", true), mod("control", true)
+            mod("updates", true), mod("gh", true), mod("t3", true),
+            mod("usage", true), mod("tray", true), mod("vol", true),
+            mod("wifi", true), mod("bt", false), mod("batt", true)
         ]
     };
 }
@@ -39,9 +65,9 @@ function defaultMods() {
 // here (wifi, bt, idle, control) have no options and get no settings cog.
 function defaultModOpts() {
     return {
-        ws: { minSlots: 5, hideEmpty: false, style: "numbers" },
-        media: { titleFormat: "title-artist", maxWidth: 220 },
-        clock: { seconds: false, showDate: true, dateFormat: "ddd dd" },
+        ws: { minSlots: 5, hideEmpty: false, style: "dots" },
+        media: { titleFormat: "title-artist", maxWidth: 180 },
+        clock: { seconds: false, showDate: true, dateFormat: "ddd d MMM" },
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
         t3: { showLabel: true },
         usage: { claude: true, codex: true, kimi: true, warnAt: 25, critAt: 10 },
@@ -49,9 +75,10 @@ function defaultModOpts() {
             badge: "dot", repos: 8, pollMins: 5, ciActivity: true,
             toasts: true, watch: []
         },
+        updates: { pollMins: 30, flatpak: true, notify: true },
+        tray: { expanded: false },
         vol: { step: 5, showPct: true, middleClick: "mute" },
-        batt: { showPct: true, warnAt: 20, critAt: 10 },
-        bell: { badge: "dot" }
+        batt: { showPct: true, warnAt: 20, critAt: 10 }
     };
 }
 
@@ -60,21 +87,22 @@ function defaults() {
         wall: "snow-capped-mountains-with-full-moon-lo.jpg",
         wallDir: "~/Pictures/Wallpapers",
         shuffle: "Off",
-        barHeight: 30,
-        barRadius: 9,
-        font: "oppo",
-        accent: "#9ecbeb",
+        themeMode: "dark",
+        barHeight: 46,
+        barRadius: 23,
+        font: "urbanist",
+        accent: "#5e9bff",
         accentWall: false,
         position: "top",
         floating: true,
-        gap: 8,
+        gap: 10,
         autoHide: false,
         exclusive: true,
         monitor: "All",
         clock24: true,
         unit: "c",
         warmth: 3400,
-        osd: "top",
+        osd: "bottom",
         pollMax: 300,
         scrollFactor: 1.0,
         notifDnd: false,
@@ -267,6 +295,12 @@ var MOD_OPT_CHECKS = {
         toasts: boolIn,
         watch: repoListIn
     },
+    updates: {
+        pollMins: function(v, d) { return intIn(v, 10, 240, 10, d); },
+        flatpak: boolIn,
+        notify: boolIn
+    },
+    tray: { expanded: boolIn },
     vol: {
         step: function(v, d) { return intIn(v, 1, 10, 1, d); },
         showPct: boolIn,
@@ -276,9 +310,6 @@ var MOD_OPT_CHECKS = {
         showPct: boolIn,
         warnAt: function(v, d) { return intIn(v, 10, 40, 5, d); },
         critAt: function(v, d) { return intIn(v, 5, 20, 5, d); }
-    },
-    bell: {
-        badge: function(v, d) { return enumIn(v, ["dot", "count", "off"], d); }
     }
 };
 
@@ -342,22 +373,65 @@ function migrateMods(raw, sourceVersion) {
     return normalizeMods(migrated);
 }
 
-function merge(parsed) {
+// Schema 4 is the glass menubar: a taller bar, full-radius corners, a wider
+// floating gap and the design's accent. A settings file written by schema 3
+// carries the old geometry for every one of those keys, so loading it as-is
+// would silently keep the previous design's proportions.
+//
+// Only values the user never moved are adopted — a key still holding its
+// schema-3 default takes the schema-4 one, anything else is theirs and stays.
+var V3_DEFAULTS = {
+    barHeight: 30, barRadius: 9, gap: 8, accent: "#9ecbeb", font: "oppo",
+    osd: "top"
+};
+
+var V3_MOD_OPT_DEFAULTS = {
+    ws: { style: "numbers" },
+    media: { maxWidth: 220 },
+    clock: { dateFormat: "ddd dd" }
+};
+
+function adoptRedesign(parsed) {
+    if (!parsed || typeof parsed !== "object"
+            || (typeof parsed.v === "number" && parsed.v >= VERSION))
+        return parsed;
+    var next = clone(parsed);
+    Object.keys(V3_DEFAULTS).forEach(function(key) {
+        if (next[key] === V3_DEFAULTS[key])
+            delete next[key];
+    });
+    if (next.modOpts && typeof next.modOpts === "object") {
+        Object.keys(V3_MOD_OPT_DEFAULTS).forEach(function(id) {
+            var entry = next.modOpts[id];
+            if (!entry || typeof entry !== "object")
+                return;
+            Object.keys(V3_MOD_OPT_DEFAULTS[id]).forEach(function(key) {
+                if (entry[key] === V3_MOD_OPT_DEFAULTS[id][key])
+                    delete entry[key];
+            });
+        });
+    }
+    return next;
+}
+
+function merge(raw) {
     var d = defaults();
-    if (!parsed || typeof parsed !== "object")
+    if (!raw || typeof raw !== "object")
         return d;
+    var parsed = adoptRedesign(raw);
     return {
         wall: nameIn(parsed.wall, d.wall),
         wallDir: pathIn(parsed.wallDir, d.wallDir),
         shuffle: enumIn(parsed.shuffle, ["Off", "15m", "1h", "1d"], d.shuffle),
-        barHeight: intIn(parsed.barHeight, 24, 44, 1, d.barHeight),
-        barRadius: intIn(parsed.barRadius, 0, 16, 1, d.barRadius),
-        font: enumIn(parsed.font, ["oppo", "plex", "mono"], d.font),
+        themeMode: enumIn(parsed.themeMode, ["dark", "light"], d.themeMode),
+        barHeight: intIn(parsed.barHeight, 28, 60, 1, d.barHeight),
+        barRadius: intIn(parsed.barRadius, 0, 30, 1, d.barRadius),
+        font: enumIn(parsed.font, FONT_IDS, d.font),
         accent: hexIn(parsed.accent, d.accent),
         accentWall: boolIn(parsed.accentWall, d.accentWall),
         position: enumIn(parsed.position, ["top", "bottom"], d.position),
         floating: boolIn(parsed.floating, d.floating),
-        gap: intIn(parsed.gap, 4, 20, 1, d.gap),
+        gap: intIn(parsed.gap, 4, 24, 1, d.gap),
         autoHide: boolIn(parsed.autoHide, d.autoHide),
         exclusive: boolIn(parsed.exclusive, d.exclusive),
         monitor: nameIn(parsed.monitor, d.monitor),
@@ -493,10 +567,15 @@ function parse(text) {
 }
 
 var exported = {
+    VERSION: VERSION,
     MODULE_IDS: MODULE_IDS,
+    RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
+    MODULE_GROUPS: MODULE_GROUPS,
+    moduleGroup: moduleGroup,
     DETAIL_IDS: DETAIL_IDS,
     DETAIL_POLICIES: DETAIL_POLICIES,
     FONT_CHOICES: FONT_CHOICES,
+    FONT_IDS: FONT_IDS,
     defaults: defaults,
     defaultMods: defaultMods,
     defaultModOpts: defaultModOpts,

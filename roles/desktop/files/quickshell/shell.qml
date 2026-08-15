@@ -52,6 +52,28 @@ ShellRoot {
         }
     }
 
+    // The two shell-wide overlays, so the compositor can bind them directly
+    // rather than the shell having to own a keybind.
+    IpcHandler {
+        target: "session"
+
+        function power(): void {
+            Session.toggleMenu();
+        }
+
+        function keys(): void {
+            Session.toggleKeys();
+        }
+
+        function lock(): void {
+            Session.lock();
+        }
+
+        function close(): void {
+            Session.closeAll();
+        }
+    }
+
     // A popout belongs to the bar that spawned it; when focus moves to
     // another output that bar goes away, so dismiss the panel with it.
     Connections {
@@ -147,6 +169,8 @@ ShellRoot {
     LauncherWindow {}
     NotificationToasts {}
     OsdWindow {}
+    PowerMenu {}
+    ShortcutsOverlay {}
 
     // Reading a singleton's property is what constructs it. Notifications
     // must start collecting, usage and GitHub must start polling — GitHub
@@ -158,5 +182,7 @@ ShellRoot {
         void Usage.pollIntervalSecs;
         void GitHub.pollEnabled;
         void Settings.loaded;
+        void Updates.total;
+        void Recorder.active;
     }
 }

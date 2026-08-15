@@ -19,14 +19,13 @@ Item {
         weather: { name: "Weather", short: "Weather", detail: true },
         t3: { name: "T3 Code", short: "T3", detail: true },
         usage: { name: "Model usage", short: "Usage", detail: true },
-        gh: { name: "GitHub", short: "GH" },
-        vol: { name: "Volume", short: "Vol", detail: true },
-        wifi: { name: "Wi-Fi", short: "Wi-Fi" },
-        batt: { name: "Battery", short: "Batt", tag: "on laptops", detail: true },
-        bell: { name: "Notifications", short: "Bell" },
+        gh: { name: "GitHub", short: "GH", detail: true },
+        updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true },
+        tray: { name: "System tray", short: "Tray", tag: "when populated" },
+        vol: { name: "Volume", short: "Vol", tag: "status pill", detail: true },
+        wifi: { name: "Wi-Fi", short: "Wi-Fi", tag: "status pill" },
         bt: { name: "Bluetooth", short: "BT", tag: "when connected" },
-        idle: { name: "Idle inhibit", short: "Idle" },
-        control: { name: "Control Center", short: "CC" }
+        batt: { name: "Battery", short: "Batt", tag: "on laptops", detail: true }
     })
 
     // ---- drag state -------------------------------------------------------
@@ -400,11 +399,10 @@ Item {
                 || JSON.stringify(Settings.modOpts[row.modelData.id])
                     !== JSON.stringify(Settings.defaults.modOpts[row.modelData.id])
 
-            Text {
+            Sym {
                 anchors.centerIn: parent
-                text: "\u{F0493}"
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.iconSmall
+                name: "\u{F0493}"
+                size: Theme.iconSmall
                 color: cogButton.optsDirty ? Theme.accent : Theme.textDim
             }
 

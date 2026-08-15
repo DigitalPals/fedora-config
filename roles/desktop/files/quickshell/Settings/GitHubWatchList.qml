@@ -108,14 +108,13 @@ Column {
         radius: Theme.rowRadius
         color: Theme.cardFill
 
-        Text {
+        Sym {
             id: markGlyph
             anchors.left: parent.left
             anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            text: "\uf09b" // nf-fa-github
-            font.family: Theme.fontIcon
-            font.pixelSize: Theme.iconMedium
+            name: "code" // nf-fa-github
+            size: Theme.iconMedium
             color: Theme.icon
         }
 

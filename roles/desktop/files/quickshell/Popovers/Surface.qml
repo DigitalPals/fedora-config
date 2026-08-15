@@ -1,9 +1,12 @@
 import QtQuick
-import QtQuick.Effects
 import "../Common"
 
-// Shared popover surface: semantic width, 14px radius, hairline border,
-// soft 48px shadow, and a comfortable inner gutter.
+// Shared popover surface: semantic width, the card's radius, a hairline
+// border, a soft shadow and a comfortable inner gutter.
+//
+// The popout host normally paints the card itself and clears `drawBackground`,
+// so what this contributes there is the layout and the padding. The background
+// below is for a panel drawn anywhere else.
 PopoutPanel {
     id: root
 
@@ -14,24 +17,18 @@ PopoutPanel {
     implicitWidth: Theme.popWidth
     implicitHeight: column.implicitHeight + padding * 2
 
-    RectangularShadow {
-        visible: root.drawBackground
-        anchors.fill: bg
-        radius: bg.radius
-        blur: 48
-        spread: 0
-        offset.y: 16
-        color: Qt.rgba(0, 0, 0, 0.55)
-    }
-
     Rectangle {
         id: bg
         visible: root.drawBackground
         anchors.fill: parent
         radius: Theme.popRadius
-        color: Theme.popBg
+        color: Theme.glassStrong
         border.width: 1
-        border.color: Theme.popBorder
+        border.color: Theme.stroke
+
+        Behavior on color {
+            ColorAnimation { duration: Theme.surfaceDuration }
+        }
     }
 
     Column {
@@ -39,5 +36,6 @@ PopoutPanel {
         x: root.padding
         y: root.padding
         width: parent.width - root.padding * 2
+        spacing: 10
     }
 }

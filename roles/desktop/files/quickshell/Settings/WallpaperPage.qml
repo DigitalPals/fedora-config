@@ -148,11 +148,10 @@ Item {
                     anchors.centerIn: parent
                     spacing: 4
 
-                    Text {
+                    Sym {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: ""
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.fontSecondary
+                        name: "shuffle"
+                        size: Theme.fontSecondary
                         color: Theme.textLow
                     }
                     Text {
@@ -300,14 +299,14 @@ Item {
             SettingsAction {
                 height: 24
                 text: "Choose folder"
-                glyph: ""
+                glyph: "folder"
                 Accessible.name: "Choose wallpaper folder"
                 onTriggered: folderDialog.openAt(Settings.wallDir)
             }
             SettingsAction {
                 height: 24
                 text: "Open"
-                glyph: ""
+                glyph: "folder_open"
                 Accessible.name: "Open wallpaper folder"
                 onTriggered: Quickshell.execDetached(["xdg-open", Wallpaper.dir])
             }

@@ -57,7 +57,7 @@ Controls.Dialog {
 
     background: Rectangle {
         radius: Theme.popRadius
-        color: Theme.popBg
+        color: Theme.glassMenu
         border.width: 1
         border.color: Theme.popBorder
     }
@@ -104,7 +104,7 @@ Controls.Dialog {
                 anchors.left: parent.left
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                text: "  Parent folder"
+                text: "arrow_upward  Parent folder"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
                 color: Theme.textMid
@@ -183,7 +183,7 @@ Controls.Dialog {
                     anchors.left: parent.left
                     anchors.leftMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "  " + folderRow.fileName
+                    text: "folder  " + folderRow.fileName
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontCaption
                     color: folderRow.selected ? Theme.textHi : Theme.textMid

@@ -311,11 +311,10 @@ Surface {
             anchors.centerIn: parent
             spacing: 6
 
-            Text {
+            Sym {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: ""
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.iconLarge
+                name: "notifications"
+                size: Theme.iconLarge
                 color: Theme.textFaint
             }
 

@@ -1,22 +1,22 @@
 import QtQuick
-import ".."
 import "../../Common"
 
-// Bluetooth; shown only while a device is connected (auto-rule).
+// Bluetooth, inside the status pill. The bar's auto-rule keeps it off screen
+// unless something is actually connected.
 BarModule {
     id: root
 
     moduleId: "bt"
 
-    BarIcon {
-        id: btIcon
+    Sym {
+        anchors.verticalCenter: parent.verticalCenter
+        name: BluetoothState.enabled ? "bluetooth" : "bluetooth_disabled"
+        size: Theme.barIconSize
+        color: Theme.textHi
+        opacity: BluetoothState.connected ? 1 : 0.35
 
-        host: root.host
-        panelName: "bluetooth"
-        isle: root.isle
-        visible: BluetoothState.connected
-        glyph: ""
-        tooltip: "Bluetooth connected"
-        tooltipAlign: 1
+        Behavior on opacity {
+            NumberAnimation { duration: Theme.chipFadeDuration }
+        }
     }
 }

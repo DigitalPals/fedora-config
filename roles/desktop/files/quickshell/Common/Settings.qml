@@ -30,6 +30,7 @@ Singleton {
     property string wall: defaults.wall
     property string wallDir: defaults.wallDir
     property string shuffle: defaults.shuffle
+    property string themeMode: defaults.themeMode
     property int barHeight: defaults.barHeight
     property int barRadius: defaults.barRadius
     property string font: defaults.font
@@ -95,7 +96,8 @@ Singleton {
     // One dirty/reset key list per settings page (grouped-rail design 1c).
     readonly property var sectionKeys: ({
         wallpaper: ["wall", "wallDir", "shuffle"],
-        appearance: ["barHeight", "barRadius", "font", "accent", "accentWall"],
+        appearance: ["themeMode", "barHeight", "barRadius", "font", "accent",
+            "accentWall"],
         bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
         modules: ["mods", "modOpts"],
         notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",

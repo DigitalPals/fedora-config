@@ -6,20 +6,21 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(d.barHeight, 30);
-    assert.equal(d.barRadius, 9);
-    assert.equal(d.font, "oppo");
-    assert.equal(d.accent, "#9ecbeb");
+    assert.equal(d.themeMode, "dark");
+    assert.equal(d.barHeight, 46);
+    assert.equal(d.barRadius, 23);
+    assert.equal(d.font, "urbanist");
+    assert.equal(d.accent, "#5e9bff");
     assert.equal(d.position, "top");
     assert.equal(d.floating, true);
-    assert.equal(d.gap, 8);
+    assert.equal(d.gap, 10);
     assert.equal(d.autoHide, false);
     assert.equal(d.exclusive, true);
     assert.equal(d.monitor, "All");
     assert.equal(d.clock24, true);
     assert.equal(d.unit, "c");
     assert.equal(d.warmth, 3400);
-    assert.equal(d.osd, "top");
+    assert.equal(d.osd, "bottom");
     assert.equal(d.pollMax, 300);
     assert.equal(d.scrollFactor, 1.0);
     assert.equal(d.shuffle, "Off");
@@ -37,19 +38,24 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id), ["clock", "weather"]);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["gh", "t3", "usage", "vol", "wifi", "batt", "bell", "bt", "idle", "control"]);
-    assert.equal(d.mods.left[1].on, false);
-    assert.equal(d.mods.right[7].on, false);
-    assert.equal(d.mods.right[8].on, true);
-    assert.equal(d.mods.right[9].on, true);
+        ["updates", "gh", "t3", "usage", "tray", "vol", "wifi", "bt", "batt"]);
+    assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
+    assert.equal(d.mods.right.find(m => m.id === "bt").on, false,
+        "Bluetooth is opt-in; its auto-rule already hides it when nothing is connected");
+    assert.equal(d.mods.right.find(m => m.id === "tray").on, true);
+    assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "clock", "weather", "t3", "usage", "gh", "vol", "batt", "bell"]);
+        ["ws", "media", "clock", "weather", "t3", "usage", "gh", "updates",
+         "tray", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
-    assert.equal(d.modOpts.media.maxWidth, 220);
+    assert.equal(d.modOpts.ws.style, "dots");
+    assert.equal(d.modOpts.media.maxWidth, 180);
     assert.equal(d.modOpts.clock.seconds, false);
-    assert.equal(d.modOpts.clock.dateFormat, "ddd dd");
+    assert.equal(d.modOpts.clock.dateFormat, "ddd d MMM");
+    assert.deepEqual(d.modOpts.updates, { pollMins: 30, flatpak: true, notify: true });
+    assert.deepEqual(d.modOpts.tray, { expanded: false });
     assert.deepEqual(d.modOpts.weather,
         { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 });
     assert.deepEqual(d.modOpts.t3, { showLabel: true });
@@ -58,7 +64,6 @@ test("defaults carry the design values", () => {
     assert.equal(d.modOpts.vol.step, 5);
     assert.equal(d.modOpts.vol.middleClick, "mute");
     assert.deepEqual(d.modOpts.batt, { showPct: true, warnAt: 20, critAt: 10 });
-    assert.equal(d.modOpts.bell.badge, "dot");
     assert.deepEqual(d.modOpts.gh,
         { badge: "dot", repos: 8, pollMins: 5, ciActivity: true, toasts: true, watch: [] });
     // A fresh list per call: a shared array would let one edit reach the
@@ -95,7 +100,8 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
         },
         vol: { step: 0, middleClick: "detonate" },
         batt: { warnAt: 33, critAt: 3 },
-        bell: { badge: "count" }
+        updates: { pollMins: 5, flatpak: "sure" },
+        tray: { expanded: true }
     });
     assert.equal(next.gh.badge, "dot");
     assert.equal(next.gh.repos, 15);
@@ -105,7 +111,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(H.normalizeModOpts({ gh: { ciActivity: false } }).gh.ciActivity, false,
         "an explicit CI opt-out survives normalization");
     assert.equal(next.ws.minSlots, 10);
-    assert.equal(next.ws.style, "numbers");
+    assert.equal(next.ws.style, "dots");
     assert.equal(next.media.maxWidth, 140);
     assert.equal(next.media.titleFormat, "title");
     assert.equal(next.weather.lat, 90, "out-of-range latitude clamps like other numerics");
@@ -119,7 +125,9 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.vol.middleClick, "mute");
     assert.equal(next.batt.warnAt, 35, "snaps to step 5");
     assert.equal(next.batt.critAt, 5);
-    assert.equal(next.bell.badge, "count");
+    assert.equal(next.updates.pollMins, 10, "clamps to the shortest useful interval");
+    assert.equal(next.updates.flatpak, true, "non-boolean falls back to default");
+    assert.equal(next.tray.expanded, true);
 });
 
 test("weather place rejects control characters and oversized strings", () => {
@@ -161,11 +169,11 @@ test("merge fills a missing modOpts from defaults and sanitizes a partial one", 
 });
 
 test("merge over a partial object fills the rest from defaults", () => {
-    const merged = H.merge({ barHeight: 36, unit: "f" });
+    const merged = H.merge({ v: H.VERSION, barHeight: 36, unit: "f" });
     assert.equal(merged.barHeight, 36);
     assert.equal(merged.unit, "f");
-    assert.equal(merged.barRadius, 9);
-    assert.equal(merged.accent, "#9ecbeb");
+    assert.equal(merged.barRadius, 23);
+    assert.equal(merged.accent, "#5e9bff");
     assert.ok(!("v" in merged));
     assert.ok(!("bogus" in H.merge({ bogus: 1 })));
 });
@@ -190,22 +198,22 @@ test("parse separates an absent settings file from an unreadable one", () => {
 });
 
 test("parse returns the settings object unchanged when it is readable", () => {
-    const result = H.parse('{"v":3,"barHeight":36}');
+    const result = H.parse('{"v":4,"barHeight":36}');
     assert.equal(result.status, "ok");
-    assert.deepEqual(result.value, { v: 3, barHeight: 36 });
+    assert.deepEqual(result.value, { v: 4, barHeight: 36 });
     assert.equal(H.merge(result.value).barHeight, 36);
 
     // A truncated file must not merge as if it were the settings it came from.
-    const truncated = H.parse('{"v":3,"barHeight":36');
+    const truncated = H.parse('{"v":4,"barHeight":36');
     assert.equal(truncated.status, "corrupt");
     assert.deepEqual(H.merge(truncated.value), H.defaults());
 });
 
 test("merge clamps and snaps numeric ranges", () => {
-    assert.equal(H.merge({ barHeight: 99 }).barHeight, 44);
-    assert.equal(H.merge({ barHeight: 10 }).barHeight, 24);
-    assert.equal(H.merge({ barHeight: 30.6 }).barHeight, 31);
-    assert.equal(H.merge({ barHeight: "30" }).barHeight, 30);
+    assert.equal(H.merge({ barHeight: 99 }).barHeight, 60);
+    assert.equal(H.merge({ barHeight: 10 }).barHeight, 28);
+    assert.equal(H.merge({ barHeight: 45.6 }).barHeight, 46);
+    assert.equal(H.merge({ barHeight: "30" }).barHeight, 46);
     assert.equal(H.merge({ gap: 1 }).gap, 4);
     assert.equal(H.merge({ barRadius: -3 }).barRadius, 0);
     assert.equal(H.merge({ warmth: 3333 }).warmth, 3350);
@@ -218,10 +226,13 @@ test("merge clamps and snaps numeric ranges", () => {
 });
 
 test("merge falls back on invalid enums, colors and names", () => {
-    assert.equal(H.merge({ font: "comic-sans" }).font, "oppo");
+    assert.equal(H.merge({ font: "comic-sans" }).font, "urbanist");
+    assert.equal(H.merge({ v: H.VERSION, font: "oppo" }).font, "oppo",
+        "the previous menu face stays selectable");
+    assert.equal(H.merge({ themeMode: "sepia" }).themeMode, "dark");
     assert.equal(H.merge({ position: "left" }).position, "top");
     assert.equal(H.merge({ pollMax: 120 }).pollMax, 300);
-    assert.equal(H.merge({ accent: "red" }).accent, "#9ecbeb");
+    assert.equal(H.merge({ accent: "red" }).accent, "#5e9bff");
     assert.equal(H.merge({ accent: "#a992e0" }).accent, "#a992e0");
     assert.equal(H.merge({ wall: "../../etc/passwd" }).wall, H.defaults().wall);
     assert.equal(H.merge({ wall: "" }).wall, H.defaults().wall);
@@ -249,26 +260,76 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.equal(next.left[0].on, false);
     assert.deepEqual(next.center.map(m => m.id), ["clock", "weather"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["gh", "t3", "usage", "wifi", "batt", "bell", "bt", "idle", "control"]);
-    assert.ok(next.left.some(m => m.id === "media" && m.on === false),
+        ["updates", "gh", "t3", "usage", "tray", "wifi", "bt", "batt"]);
+    assert.ok(next.right.some(m => m.id === "bt" && m.on === false),
         "appended module keeps its default enable flag");
 });
 
 test("normalizeMods falls back to the default flag for a non-boolean", () => {
-    const next = H.normalizeMods({ left: [{ id: "media", on: "yes" }], center: [], right: [] });
+    const next = H.normalizeMods({ left: [{ id: "bt", on: "yes" }], center: [], right: [] });
     assert.equal(next.left[0].on, false);
 });
 
-test("Idle inhibit and Control Center persist in any module column", () => {
+test("a schema-3 file adopts the redesign only where it was left untouched", () => {
+    // The glass menubar changed the bar's proportions, and a settings file
+    // written by the previous schema carries the old ones for every key. A
+    // value the user never moved takes the new default; one they did is theirs.
+    const untouched = H.merge({
+        v: 3, barHeight: 30, barRadius: 9, gap: 8, accent: "#9ecbeb",
+        font: "oppo", osd: "top",
+        modOpts: { ws: { style: "numbers" }, media: { maxWidth: 220 } }
+    });
+    assert.equal(untouched.barHeight, 46);
+    assert.equal(untouched.barRadius, 23);
+    assert.equal(untouched.gap, 10);
+    assert.equal(untouched.accent, "#5e9bff");
+    assert.equal(untouched.font, "urbanist");
+    assert.equal(untouched.osd, "bottom");
+    assert.equal(untouched.modOpts.ws.style, "dots");
+    assert.equal(untouched.modOpts.media.maxWidth, 180);
+
+    const chosen = H.merge({
+        v: 3, barHeight: 36, accent: "#a992e0", font: "mono",
+        modOpts: { ws: { style: "dots" }, media: { maxWidth: 300 } }
+    });
+    assert.equal(chosen.barHeight, 36);
+    assert.equal(chosen.accent, "#a992e0");
+    assert.equal(chosen.font, "mono");
+    assert.equal(chosen.modOpts.media.maxWidth, 300);
+
+    // A current-schema file is never rewritten, even where it matches an old
+    // default exactly.
+    const current = H.merge({ v: H.VERSION, barHeight: 30, accent: "#9ecbeb" });
+    assert.equal(current.barHeight, 30);
+    assert.equal(current.accent, "#9ecbeb");
+});
+
+test("the tray and the updates chip persist in any module column", () => {
     const raw = H.defaultMods();
-    raw.right = raw.right.filter(m => m.id !== "idle" && m.id !== "control");
-    raw.left.unshift({ id: "control", on: true });
-    raw.center.push({ id: "idle", on: true });
+    raw.right = raw.right.filter(m => m.id !== "tray" && m.id !== "updates");
+    raw.left.unshift({ id: "updates", on: true });
+    raw.center.push({ id: "tray", on: true });
 
     const next = H.normalizeMods(raw);
-    assert.equal(next.left[0].id, "control");
-    assert.equal(next.center.at(-1).id, "idle");
-    assert.ok(!next.right.some(m => m.id === "idle" || m.id === "control"));
+    assert.equal(next.left[0].id, "updates");
+    assert.equal(next.center.at(-1).id, "tray");
+    assert.ok(!next.right.some(m => m.id === "tray" || m.id === "updates"));
+});
+
+test("schema 4 retires the three modules the redesign absorbed", () => {
+    // The bell folded into the centre pill, idle inhibit into the Control
+    // Center, and the Control Center trigger into the status pill. A settings
+    // file naming any of them must not resurrect it.
+    for (const id of H.RETIRED_MODULE_IDS)
+        assert.ok(!H.MODULE_IDS.includes(id), `${id} is still a module`);
+    const next = H.normalizeMods({
+        left: H.RETIRED_MODULE_IDS.map(id => ({ id, on: true })),
+        center: [], right: []
+    });
+    const all = [...next.left, ...next.center, ...next.right].map(m => m.id);
+    for (const id of H.RETIRED_MODULE_IDS)
+        assert.ok(!all.includes(id), `${id} survived normalization`);
+    assert.deepEqual([...all].sort(), [...H.MODULE_IDS].sort());
 });
 
 test("version one layouts insert usage after t3 with its column and enabled state", () => {
@@ -334,7 +395,7 @@ test("version two normalization preserves usage independently and uniquely", () 
 test("serialize is stable, versioned, and round-trips through merge", () => {
     const d = H.defaults();
     const text = H.serialize(d);
-    assert.match(text, /^\{\n  "v": 3,\n  "wall":/);
+    assert.match(text, new RegExp(`^\\{\\n  "v": ${H.VERSION},\\n  "wall":`));
     assert.ok(text.endsWith("\n"));
     const reparsed = H.merge(H.parse(text));
     assert.equal(H.serialize(reparsed), text);

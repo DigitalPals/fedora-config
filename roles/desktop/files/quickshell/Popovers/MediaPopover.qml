@@ -67,11 +67,10 @@ Surface {
                 anchors.centerIn: parent
                 spacing: 7
 
-                Text {
+                Sym {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: StatusHelpers.playerGlyph(root.player)
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontBody
+                    name: StatusHelpers.playerGlyph(root.player)
+                    size: Theme.fontBody
                     color: srcMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
 
@@ -84,12 +83,11 @@ Surface {
                     color: srcMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
 
-                Text {
+                Sym {
                     visible: root.players.length > 1
                     anchors.verticalCenter: parent.verticalCenter
-                    text: ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontCaption
+                    name: "chevron_right"
+                    size: Theme.fontCaption
                     color: srcMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
             }
@@ -135,12 +133,11 @@ Surface {
             }
         }
 
-        Text {
+        Sym {
             visible: !root.hasArt
             anchors.centerIn: parent
-            text: ""
-            font.family: Theme.fontIcon
-            font.pixelSize: Theme.fontHero
+            name: "music_note"
+            size: Theme.fontHero
             color: Qt.rgba(1, 1, 1, 0.35)
         }
 
@@ -281,11 +278,10 @@ Surface {
                 color: shuffleMouse.containsMouse ? Theme.hoverFill : "transparent"
                 opacity: root.player && root.player.shuffleSupported ? 1 : 0.4
 
-                Text {
+                Sym {
                     anchors.centerIn: parent
-                    text: ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontSecondary
+                    name: "shuffle"
+                    size: Theme.fontSecondary
                     color: root.player && root.player.shuffle ? Theme.accent : shuffleMouse.containsMouse ? Theme.textHi : Theme.textDim
                 }
 
@@ -307,11 +303,10 @@ Surface {
                 color: prevMouse.containsMouse ? Theme.hoverFill : "transparent"
                 opacity: root.player && root.player.canGoPrevious ? 1 : 0.4
 
-                Text {
+                Sym {
                     anchors.centerIn: parent
-                    text: ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontBody
+                    name: "skip_previous"
+                    size: Theme.fontBody
                     color: prevMouse.containsMouse ? Theme.textHi : Theme.textMid
                 }
 
@@ -332,11 +327,10 @@ Surface {
                 radius: 22
                 color: playMouse.containsMouse ? Theme.accentHover : Theme.accent
 
-                Text {
+                Sym {
                     anchors.centerIn: parent
-                    text: root.player && root.player.isPlaying ? "" : ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontHeading
+                    name: root.player && root.player.isPlaying ? "pause" : "play_arrow"
+                    size: Theme.fontHeading
                     color: Theme.accentFg
                 }
 
@@ -358,11 +352,10 @@ Surface {
                 color: nextMouse.containsMouse ? Theme.hoverFill : "transparent"
                 opacity: root.player && root.player.canGoNext ? 1 : 0.4
 
-                Text {
+                Sym {
                     anchors.centerIn: parent
-                    text: ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontBody
+                    name: "skip_next"
+                    size: Theme.fontBody
                     color: nextMouse.containsMouse ? Theme.textHi : Theme.textMid
                 }
 
@@ -384,11 +377,10 @@ Surface {
                 color: loopMouse.containsMouse ? Theme.hoverFill : "transparent"
                 opacity: root.player && root.player.loopSupported ? 1 : 0.4
 
-                Text {
+                Sym {
                     anchors.centerIn: parent
-                    text: root.player && root.player.loopState === MprisLoopState.Track ? "" : ""
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontSecondary
+                    name: root.player && root.player.loopState === MprisLoopState.Track ? "repeat" : "repeat"
+                    size: Theme.fontSecondary
                     color: root.player && root.player.loopState !== MprisLoopState.None ? Theme.accent : loopMouse.containsMouse ? Theme.textHi : Theme.textDim
                 }
 

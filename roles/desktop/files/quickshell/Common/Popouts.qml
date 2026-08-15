@@ -31,6 +31,13 @@ Singleton {
     readonly property var defaultIsland: PanelRegistry.islandMap()
 
     function openPanel(name, isle, anchor) {
+        // IPC accepts an arbitrary string. Mapping a one-pixel focus-grabbing
+        // layer for an unknown name leaves an invisible ghost surface because
+        // the host has no component to present.
+        if (PanelRegistry.byName(name) === null) {
+            console.warn("Ignoring unknown popout:", name);
+            return;
+        }
         island = isle ?? defaultIsland[name] ?? "right";
         // Callers with no module to point at — the IPC handler, or one
         // popover morphing into another — keep the surface where it is

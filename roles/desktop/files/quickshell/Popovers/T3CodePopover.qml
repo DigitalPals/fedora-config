@@ -173,6 +173,8 @@ Surface {
                     const environment = T3Code.environmentLabel !== ""
                         ? T3Code.environmentLabel : "connected";
                     return environment + " · " + T3Code.runningCount + " running · "
+                        + (T3Code.monitoringCount > 0
+                            ? T3Code.monitoringCount + " monitoring · " : "")
                         + T3Code.attentionCount + " waiting"
                         + (T3Code.readOnly ? " · read-only" : "");
                 }

@@ -495,11 +495,10 @@ Surface {
                     }
                 }
 
-                Text {
+                Sym {
                     anchors.centerIn: parent
-                    text: "\uf021" // nf-fa-rotate
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.iconSmall
+                    name: "refresh" // nf-fa-rotate
+                    size: Theme.iconSmall
                     color: GitHub.polling || GitHub.inboxPolling
                         ? Theme.accent : Theme.textLow
                 }
@@ -596,12 +595,11 @@ Surface {
                 }
             }
 
-            Text {
+            Sym {
                 anchors.centerIn: parent
                 // nf-fa-check / nf-fa-copy
-                text: copyRepoLink.confirmed ? "\uf00c" : "\uf0c5"
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.iconSmall
+                name: copyRepoLink.confirmed ? "check" : "content_copy"
+                size: Theme.iconSmall
                 color: copyRepoLink.confirmed ? Theme.accent
                     : copyMouse.containsMouse ? Theme.textMid : Theme.textLow
             }
@@ -782,9 +780,12 @@ Surface {
                     width: inboxList.width
 
                     SectionLabel {
+                        // No explicit height: the Column already drops an
+                        // invisible child, and reading `implicitHeight` back
+                        // into `height` on a Text is a binding loop — one the
+                        // machine check greps the journal for.
                         visible: inboxSection.modelData.id !== "settled"
                         width: parent.width
-                        height: visible ? implicitHeight : 0
                         text: inboxSection.modelData.title.toUpperCase()
                             + " · " + inboxSection.modelData.rows.length
                     }
@@ -970,12 +971,11 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 10
 
-                        Text {
+                        Sym {
                             visible: GitHub.watchError(repoRow.modelData.slug) !== ""
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "\uf071" // nf-fa-triangle-exclamation
-                            font.family: Theme.fontIcon
-                            font.pixelSize: Theme.iconSmall
+                            name: "warning" // nf-fa-triangle-exclamation
+                            size: Theme.iconSmall
                             color: Theme.amber
                         }
 
@@ -999,12 +999,11 @@ Surface {
                             }
                         }
 
-                        Text {
+                        Sym {
                             visible: repoRow.modelData.isPrivate
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "\uf023" // nf-fa-lock
-                            font.family: Theme.fontIcon
-                            font.pixelSize: Theme.iconSmall
+                            name: "lock" // nf-fa-lock
+                            size: Theme.iconSmall
                             color: Theme.textDim
                         }
                     }

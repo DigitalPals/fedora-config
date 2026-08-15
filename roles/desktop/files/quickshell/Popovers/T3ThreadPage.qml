@@ -21,7 +21,16 @@ Column {
 
     readonly property var thread: T3Code.projectedThread(threadId)
     readonly property var history: T3Code.historyPage(T3Code.detailMessages, visibleMessages)
+    readonly property bool backgroundWorking: thread !== null && thread.cls === "running"
+        && !thread.foregroundWorking && thread.backgroundLiveness === "working"
     readonly property bool working: thread !== null && thread.cls === "running"
+        && !backgroundWorking
+    readonly property bool monitoring: thread !== null && thread.cls === "monitoring"
+    readonly property int liveAgentCount: backgroundWorking ? T3Code.detailLiveAgentCount : 0
+    readonly property string backgroundStatus: monitoring ? "Monitoring in the background"
+        : liveAgentCount > 0 ? liveAgentCount + " "
+            + (liveAgentCount === 1 ? "agent" : "agents") + " working in the background"
+        : "Background work running"
     readonly property string workingTime: working
         ? T3Code.workingTimerLabel(thread.workingStartedAt) : ""
     readonly property bool hasRequests: thread !== null && (thread.pendingApprovals || thread.pendingInput
@@ -710,7 +719,8 @@ Column {
         width: parent.width
         height: {
             const room = root.maxHeight - header.height - composer.implicitHeight
-                - gitFeedback.height - composerError.implicitHeight - 18;
+                - gitFeedback.height - backgroundBanner.height
+                - composerError.implicitHeight - 18;
             return Math.max(140, Math.min(room, timeline.implicitHeight));
         }
 
@@ -778,13 +788,16 @@ Column {
                         spacing: 7
 
                         Rectangle {
+                            property real pulse: 1
+
                             anchors.verticalCenter: parent.verticalCenter
                             width: 6
                             height: 6
                             radius: 3
                             color: Theme.accent
+                            opacity: pulse
 
-                            SequentialAnimation on opacity {
+                            SequentialAnimation on pulse {
                                 running: root.working
                                 loops: Animation.Infinite
                                 NumberAnimation { to: 0.3; duration: 750 }
@@ -804,7 +817,8 @@ Column {
                 }
 
                 Text {
-                    visible: !root.working && !T3Code.detailLoading
+                    visible: !root.working && !root.backgroundWorking && !root.monitoring
+                        && !T3Code.detailLoading
                         && T3Code.detailMessages.length === 0
                     width: parent.width
                     topPadding: 10
@@ -1145,6 +1159,65 @@ Column {
             radius: 1
             color: Theme.textFaint
             opacity: flick.moving ? 0.8 : 0.4
+        }
+    }
+
+    Rectangle {
+        id: backgroundBanner
+
+        visible: root.backgroundWorking || root.monitoring
+        width: parent.width
+        height: visible ? Theme.controlHeight + 8 : 0
+        radius: 9
+        color: Theme.cardFill
+        border.width: 1
+        border.color: Theme.hairlineSoft
+
+        Rectangle {
+            property real pulse: 1
+
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            width: 6
+            height: 6
+            radius: 3
+            color: Theme.accent
+            opacity: root.backgroundWorking ? pulse : 1
+
+            SequentialAnimation on pulse {
+                running: root.backgroundWorking
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.3; duration: 750 }
+                NumberAnimation { to: 1; duration: 750 }
+            }
+        }
+
+        Action {
+            id: stopBackgroundButton
+
+            anchors.right: parent.right
+            anchors.rightMargin: 5
+            anchors.verticalCenter: parent.verticalCenter
+            label: T3Code.actionPending("session-stop", root.threadId, "")
+                ? "Stopping…" : "Stop"
+            enabled: T3Code.canDispatch
+                && !T3Code.actionPending("session-stop", root.threadId, "")
+            onTriggered: T3Code.stopSession(root.threadId)
+        }
+
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 28
+            anchors.right: stopBackgroundButton.left
+            anchors.rightMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.backgroundStatus
+            elide: Text.ElideRight
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightMedium
+            color: Theme.textMid
         }
     }
 

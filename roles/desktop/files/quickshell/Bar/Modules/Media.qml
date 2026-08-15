@@ -1,64 +1,195 @@
 import QtQuick
+import Quickshell.Services.Mpris
 import ".."
 import "../../Common"
 
-// Now-playing chip; hidden unless a player reports a track.
-    BarModule {
-        id: mediaModule
+// Now-playing chip: the player's mark, the track, and a transport that
+// unfolds under the pointer.
+//
+// The controls are not a second chip beside the title — they grow out of the
+// same pill, from zero width, which is why the chip's width springs. Hidden,
+// they take no space and no clicks; the fold is the whole affordance.
+BarModule {
+    id: root
 
     moduleId: "media"
-        spacing: 2
-        detailSaving: mediaTitle.implicitWidth > 0
-            ? Math.min(mediaTitle.implicitWidth, Settings.modOpts.media.maxWidth) + 6 : 0
+    detailSaving: trackTitle.implicitWidth > 0
+        ? Math.min(trackTitle.implicitWidth, Settings.modOpts.media.maxWidth) + 9 : 0
 
-        Divider {
-            visible: mediaModule.dividerBefore
+    readonly property var player: Media.player
+    readonly property bool playing: player !== null
+        && player.playbackState === MprisPlaybackState.Playing
+
+    // A borderless round button inside the chip. It swallows the click so the
+    // chip underneath does not also open the media panel.
+    component TransportButton: Item {
+        id: button
+
+        // Taken rather than reached for: an inline component has its own
+        // scope, and the bar's pointer state has to arrive through it.
+        required property Bar host
+        property string glyph
+        property color tone: Theme.textMid
+        property color hoverTone: Theme.textHi
+        signal triggered
+
+        // A MouseArea on a layer surface can miss its exit, and a tint bound
+        // to that stale state has nothing left to clear it.
+        readonly property bool hovered: buttonPointer.over
+
+        width: 24
+        height: 24
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        opacity: enabled ? 1 : 0.35
+        scale: buttonMouse.pressed ? 0.84 : 1
+
+        Behavior on scale {
+            NumberAnimation {
+                duration: Theme.pressDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
+            }
         }
 
-BarChip {
-    id: mediaChip
-    visible: Media.hasTrack
-    host: mediaModule.host
-    panelName: "media"
-    isle: mediaModule.isle
-    tooltip: Media.player ? Media.player.trackTitle : "Media"
+        Sym {
+            anchors.centerIn: parent
+            name: button.glyph
+            size: Theme.iconMedium
+            fill: 1
+            color: button.hovered ? button.hoverTone : button.tone
+        }
 
-    Text {
-        anchors.verticalCenter: parent.verticalCenter
-        text: Media.glyph
-        font.family: Theme.fontIcon
-        font.pixelSize: Theme.barIconSize
-        color: mediaChip.held || mediaChip.hovered ? Theme.textHi : Theme.icon
+        PointerCheck {
+            id: buttonPointer
+            host: button.host
+            target: button
+            hovered: buttonMouse.containsMouse
+        }
 
-        Behavior on color {
-            ColorAnimation { duration: Theme.chipFadeDuration }
+        MouseArea {
+            id: buttonMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            enabled: button.enabled
+            cursorShape: Qt.PointingHandCursor
+            onClicked: button.triggered()
         }
     }
 
-    Text {
-        id: mediaTitle
-        visible: !mediaModule.compact
-        anchors.verticalCenter: parent.verticalCenter
-        text: {
-            if (!Media.player)
-                return "";
-            const format = Settings.modOpts.media.titleFormat;
-            const artist = Media.player.trackArtist;
-            const title = Media.player.trackTitle;
-            if (format === "title" || !artist)
-                return title;
-            return format === "artist-title"
-                ? artist + " — " + title : title + " — " + artist;
-        }
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.barTextSize
-        color: mediaChip.held || mediaChip.hovered ? Theme.textHi : Theme.textMid
-        elide: Text.ElideRight
-        width: Math.min(implicitWidth, Settings.modOpts.media.maxWidth)
+    BarChip {
+        id: mediaChip
 
-        Behavior on color {
-            ColorAnimation { duration: Theme.chipFadeDuration }
+        readonly property bool showControls: hovered || held
+
+        host: root.host
+        panelName: "media"
+        isle: root.isle
+        anchorItem: root.groupAnchor ?? mediaChip
+        leftPadding: 5
+        rightPadding: showControls ? 5 : 12
+        spacing: 9
+        tooltip: root.player
+            ? root.player.trackTitle + (root.player.trackArtist !== ""
+                ? " · " + root.player.trackArtist : "")
+            : "Media"
+        tooltipAlign: -1
+
+        // The player's mark, in its own tinted disc.
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: 24
+            height: 24
+            radius: 12
+            color: Theme.chipHover
+
+            Sym {
+                anchors.centerIn: parent
+                name: root.playing ? "graphic_eq" : "music_note"
+                size: Theme.iconSmall + 1
+                fill: 1
+                color: root.playing ? Theme.accent : Theme.textMid
+            }
+        }
+
+        Text {
+            id: trackTitle
+            visible: !root.compact
+            anchors.verticalCenter: parent.verticalCenter
+            text: {
+                if (!root.player)
+                    return "";
+                const format = Settings.modOpts.media.titleFormat;
+                const artist = root.player.trackArtist;
+                const title = root.player.trackTitle;
+                if (format === "title" || !artist)
+                    return title;
+                return format === "artist-title"
+                    ? artist + " · " + title : title + " · " + artist;
+            }
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemibold
+            color: mediaChip.held || mediaChip.hovered ? Theme.textHi : Theme.textMid
+            elide: Text.ElideRight
+            width: Math.min(implicitWidth, Settings.modOpts.media.maxWidth)
+
+            Behavior on color {
+                ColorAnimation { duration: Theme.chipFadeDuration }
+            }
+        }
+
+        // The transport. Clipped to a width that springs from zero, so the
+        // buttons slide out of the chip rather than popping into it.
+        Item {
+            anchors.verticalCenter: parent.verticalCenter
+            width: mediaChip.showControls ? controls.implicitWidth : 0
+            height: 24
+            clip: true
+            opacity: mediaChip.showControls ? 1 : 0
+
+            Behavior on width {
+                NumberAnimation {
+                    duration: Theme.expandDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.springCurve
+                }
+            }
+
+            Behavior on opacity {
+                NumberAnimation { duration: Theme.chipFadeDuration }
+            }
+
+            Row {
+                id: controls
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+
+                TransportButton {
+                    host: root.host
+                    glyph: "skip_previous"
+                    tone: Theme.textMid
+                    enabled: root.player !== null && root.player.canGoPrevious
+                    onTriggered: root.player.previous()
+                }
+
+                TransportButton {
+                    host: root.host
+                    glyph: root.playing ? "pause" : "play_arrow"
+                    tone: Theme.textHi
+                    hoverTone: Theme.accent
+                    enabled: root.player !== null && root.player.canTogglePlaying
+                    onTriggered: root.player.togglePlaying()
+                }
+
+                TransportButton {
+                    host: root.host
+                    glyph: "skip_next"
+                    tone: Theme.textMid
+                    enabled: root.player !== null && root.player.canGoNext
+                    onTriggered: root.player.next()
+                }
+            }
         }
     }
 }
-    }

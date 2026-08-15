@@ -1,9 +1,8 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Effects
 import Quickshell
+import Quickshell.Services.SystemTray
 import Quickshell.Wayland
-import "Modules"
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 import "../Common/PanelRegistryData.js" as PanelRegistry
@@ -19,6 +18,20 @@ PanelWindow {
     }
     property var compactIds: []
     property real centerShift: 0
+    // What the centre pill is actually drawn at. The fit pass moves
+    // `centerShift` in one step when a module appears or the bar is resized;
+    // routing it through a second property lets the pill glide there, and a
+    // Behavior cannot be attached to a grouped anchor property directly.
+    property real animatedCenterShift: centerShift
+
+    Behavior on animatedCenterShift {
+        enabled: barWindow.animationsReady
+        NumberAnimation {
+            duration: Theme.expandDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
+        }
+    }
     // Shared pointer truth for tooltips. Individual MouseAreas can miss an
     // exit when the pointer leaves this layer surface, while the full-window
     // handler below still reports that the bar itself is no longer hovered.
@@ -31,19 +44,30 @@ PanelWindow {
     // with the configured gap on either position.
     readonly property real barY: Settings.position === "top"
         ? Theme.barTopMargin : height - Theme.barTopMargin - Theme.barHeight
-    // Balanced spacing: with Hyprland's gaps_out (10) on top of the
-    // exclusive zone, windows end up exactly barTopMargin below the bar's
-    // inner edge — the same gap as outside it. The -2 is tuned for the
-    // floating gap; attached bars reserve their exact height. Auto-hide and
-    // "reserve space" off both drop the zone entirely.
+    // Balanced spacing: with Hyprland's gaps_out on top of the exclusive
+    // zone, windows end up exactly barTopMargin below the bar's inner edge —
+    // the same gap as outside it. Auto-hide and "reserve space" off both drop
+    // the zone entirely.
     exclusiveZone: Settings.autoHide || !Settings.exclusive ? 0
         : Theme.barTopMargin + Theme.barHeight - (Settings.floating ? 2 : 0)
     color: "transparent"
 
+    // Geometry animations stay off until the bar has laid itself out once, so
+    // the first frame is the finished bar rather than a pill growing out of
+    // nothing on every shell start.
+    property bool animationsReady: false
+
+    Timer {
+        id: settleTimer
+        interval: 240
+        running: true
+        onTriggered: barWindow.animationsReady = true
+    }
+
     // ---- auto-hide ----------------------------------------------------
     // The window stays mapped; only the content slides away and the input
     // mask shrinks to a thin reveal strip at the screen edge, so clicks
-    // pass through the vacated area (design v2 Auto-hide).
+    // pass through the vacated area.
     property bool revealed: true
     readonly property bool hidden: Settings.autoHide && !revealed && !Popouts.open
     property real hideShift: hidden
@@ -52,8 +76,9 @@ PanelWindow {
 
     Behavior on hideShift {
         NumberAnimation {
-            duration: 200
-            easing.type: Easing.OutCubic
+            duration: Theme.expandDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
         }
     }
 
@@ -115,34 +140,30 @@ PanelWindow {
         enabled: SysInfo.idleInhibited && barWindow.visible
     }
 
-    // Audio, WifiState, BluetoothState, Battery and Media own the service
-    // objects now; this window is a consumer like any popover. That matters
-    // most for audio: the tracker that used to live here was instantiated
-    // once per output.
-
     function popoutOpen(name) {
         return Popouts.open && Popouts.currentName === name;
     }
 
     // Published in window coordinates for the independent popout layer.
-    // Keeping the menu in another Wayland surface prevents its Loader and
+    // Keeping the panels in another Wayland surface prevents their Loader and
     // height changes from resizing/remapping the menubar itself.
     // The y here is deliberately position-independent: it encodes the
-    // island's distance from the bar's fused screen edge, which is what the
-    // popout geometry consumes — IslandPopout mirrors itself for bottom bars.
+    // section's distance from the bar's anchored screen edge, which is what
+    // the popout geometry consumes — PopoutHost mirrors itself for bottom bars.
     readonly property rect leftIslandRect: Qt.rect(
         Theme.barSideMargin, Theme.barTopMargin,
-        leftCluster.width, leftCluster.height)
+        leftSection.width + Theme.barPadding, Theme.barHeight)
     readonly property rect centerIslandRect: Qt.rect(
         Math.round((barWindow.width - centerCluster.width) / 2), Theme.barTopMargin,
-        centerCluster.width, centerCluster.height)
+        Math.max(1, centerCluster.width), Theme.barHeight)
     readonly property rect rightIslandRect: Qt.rect(
-        barWindow.width - Theme.barSideMargin - rightCluster.width, Theme.barTopMargin,
-        rightCluster.width, rightCluster.height)
+        barWindow.width - Theme.barSideMargin - rightSection.width - Theme.barPadding,
+        Theme.barTopMargin,
+        rightSection.width + Theme.barPadding, Theme.barHeight)
 
-    // Where a module sits, in the window coordinates the popout layer
-    // uses: its panel hangs under the module itself rather than under the
-    // section the module happens to live in.
+    // Where a module sits, in the window coordinates the popout layer uses:
+    // its panel hangs under the module itself rather than under the section
+    // the module happens to live in.
     function anchorOf(item) {
         const p = item.mapToItem(null, 0, 0);
         return Qt.rect(p.x, p.y, item.width, item.height);
@@ -155,86 +176,93 @@ PanelWindow {
 
     function registerPanel(name, item) {
         panelAnchors[name] = item;
-        invalidateAnchorRects();
     }
 
     function unregisterPanel(name, item) {
-        if (panelAnchors[name] === item) {
+        if (panelAnchors[name] === item)
             delete panelAnchors[name];
-            invalidateAnchorRects();
-        }
     }
 
-    // ---- anchor rect cache -------------------------------------------
-    // hoverPanelAt runs on every pointer motion while a popout is open, and
-    // mapped each registered module to window coordinates each time. The rects
-    // only move when the layout does, so they are computed once per layout and
-    // reused until something can have shifted them.
+    // Whether a module is on screen at all, beyond the user having enabled it:
+    // media only while something is playing, Bluetooth only when connected,
+    // battery only on laptops, weather once there is either a forecast or a
+    // reason there is not, and the two modules that are their own reason to
+    // exist — the updates chip and the tray — only while they have something
+    // to show.
     //
-    // Auto-hide is deliberately not an invalidation source: `hidden` requires
-    // !Popouts.open, and hoverPanelAt returns early unless a popout is open, so
-    // the slide can never be in progress while this cache is being read.
-    property var cachedAnchorRects: null
-
-    function invalidateAnchorRects() {
-        cachedAnchorRects = null;
-    }
-
-    function anchorRects() {
-        if (cachedAnchorRects !== null)
-            return cachedAnchorRects;
-        const out = [];
-        for (const name of Object.keys(panelAnchors)) {
-            const item = panelAnchors[name];
-            if (!item || !item.visible || item.width <= 0 || item.height <= 0)
-                continue;
-            out.push({ name: name, item: item, rect: anchorOf(item) });
-        }
-        cachedAnchorRects = out;
-        return out;
-    }
-
-    onCenterShiftChanged: invalidateAnchorRects()
-
-    // The design's standing auto-rules: Media only while playing, Bluetooth
-    // only when connected, Battery only on laptops (design v2 Modules page).
+    // Every such rule belongs here and nowhere else. The bar's dividers and its
+    // group pills read the same function, so a module that hid itself by some
+    // other means would leave a separator with nothing on one side of it and a
+    // pill with nothing inside it.
     function autoRule(id) {
         switch (id) {
         case "media": return Media.hasTrack;
+        case "weather": return Weather.ready || Weather.offline;
         case "bt": return BluetoothState.connected;
         case "batt": return Battery.isLaptop;
+        case "updates": return Updates.total > 0 || Updates.error !== ""
+            || (Updates.ran && Updates.busy);
+        case "tray": return SystemTray.items.values.length > 0;
         default: return true;
         }
     }
 
-    function anyVisibleBefore(list, index) {
-        for (let i = 0; i < index; i++) {
-            if (list[i].on && autoRule(list[i].id))
-                return true;
-        }
-        return false;
-    }
-
-    function anyVisibleAfter(list, index) {
-        for (let i = index + 1; i < list.length; i++) {
-            if (list[i].on && autoRule(list[i].id))
-                return true;
-        }
-        return false;
+    function moduleShown(entry) {
+        return !!entry && entry.on === true && autoRule(entry.id);
     }
 
     function moduleCompact(id) {
         return compactIds.indexOf(id) !== -1;
     }
 
-    function measuredSlots(repeater) {
+    // What the status pill says when hovered — it stands in for four modules
+    // that no longer have tooltips of their own.
+    readonly property string statusSummary: {
+        const parts = [];
+        if (WifiState.enabled && WifiState.connected)
+            parts.push("Wi-Fi " + WifiState.name);
+        else if (WifiState.enabled)
+            parts.push("Wi-Fi off-network");
+        if (BluetoothState.connected)
+            parts.push("Bluetooth connected");
+        parts.push("Volume " + Audio.volume + "%" + (Audio.muted ? " (muted)" : ""));
+        if (Battery.isLaptop)
+            parts.push("Battery " + Math.round(Battery.percent) + "%");
+        return parts.join(" · ");
+    }
+
+    // ---- fit pass ------------------------------------------------------
+    // Live ModuleSlots, keyed by module id. The clusters nest their slots
+    // inside group pills, so the fit pass registers them here on the way in
+    // rather than trying to walk two levels of Repeater back out.
+    property var slotRegistry: ({})
+
+    function registerSlot(id, slot) {
+        slotRegistry[id] = slot;
+        scheduleFit();
+    }
+
+    function unregisterSlot(id, slot) {
+        if (slotRegistry[id] === slot) {
+            delete slotRegistry[id];
+            scheduleFit();
+        }
+    }
+
+    function scheduleFit() {
+        fitTimer.restart();
+    }
+
+    // Every module that has detail text to give up, with what giving it up
+    // would save and which column it would save it in.
+    function measuredSlots() {
         const entries = [];
-        for (let i = 0; i < repeater.count; i++) {
-            const slot = repeater.itemAt(i);
+        for (const id of Object.keys(slotRegistry)) {
+            const slot = slotRegistry[id];
             if (!slot || !slot.active || slot.detailSaving <= 0)
                 continue;
             entries.push({
-                id: slot.modelData.id,
+                id: id,
                 col: slot.col,
                 saving: slot.detailSaving,
                 policy: slot.modelData.detail ?? "auto"
@@ -243,28 +271,28 @@ PanelWindow {
         return entries;
     }
 
-    function reconstructedWidth(cluster, repeater) {
-        let result = cluster.width;
-        const slots = measuredSlots(repeater);
-        for (const entry of slots) {
-            if (moduleCompact(entry.id))
+    // The width a section would occupy with nothing compacted, which is what
+    // the fit pass has to reason about — otherwise a module that has already
+    // given up its label reads as small enough and never gets it back.
+    function reconstructedWidth(width, col, entries) {
+        let result = width;
+        for (const entry of entries) {
+            if (entry.col === col && moduleCompact(entry.id))
                 result += entry.saving;
         }
         return result;
     }
 
     function recomputeFit() {
-        invalidateAnchorRects();
-        const entries = measuredSlots(leftRepeater)
-            .concat(measuredSlots(centerRepeater), measuredSlots(rightRepeater));
+        const entries = measuredSlots();
         const result = LayoutHelpers.fitBar({
             width: width,
-            sideMargin: Theme.barSideMargin,
+            sideMargin: Theme.barSideMargin + Theme.barPadding,
             gutter: safetyGutter,
             widths: {
-                left: reconstructedWidth(leftCluster, leftRepeater),
-                center: reconstructedWidth(centerCluster, centerRepeater),
-                right: reconstructedWidth(rightCluster, rightRepeater)
+                left: reconstructedWidth(leftSection.width, "left", entries),
+                center: reconstructedWidth(centerCluster.width, "center", entries),
+                right: reconstructedWidth(rightSection.width, "right", entries)
             },
             entries: entries
         });
@@ -273,13 +301,7 @@ PanelWindow {
         centerShift = result.centerOffset;
     }
 
-    onWidthChanged: {
-        // Ahead of the fit pass, which also invalidates: fitTimer has a zero
-        // interval but still lands a turn later, and a motion event in
-        // between would read rects from the old width.
-        invalidateAnchorRects();
-        fitTimer.restart();
-    }
+    onWidthChanged: fitTimer.restart()
 
     Timer {
         id: fitTimer
@@ -302,8 +324,8 @@ PanelWindow {
             // Every output runs this handler, but only the mapped bar holds
             // the modules the open popout hangs under; the others would see
             // an empty panelAnchors and close someone else's panel.
-            // A panel no module owns (settings, tailscale) can never fail
-            // this sweep honestly: moduleForPanel() is always null for it.
+            // A panel no module owns (settings, control, tailscale) can never
+            // fail this sweep honestly: moduleForPanel() is always null for it.
             if (!barWindow.visible || !Popouts.open
                 || PanelRegistry.ownerless(Popouts.currentName))
                 return;
@@ -315,55 +337,17 @@ PanelWindow {
     }
 
     // Module id -> its file. The modules live in Bar/Modules/ and share a
-    // BarModule base, which is what lets the slot below hold them as a type
+    // BarModule base, which is what lets ModuleSlot hold them as a type
     // rather than duck-typing its way through Loader.item.
     readonly property var moduleSources: ({
         ws: "Modules/Workspaces.qml", media: "Modules/Media.qml",
         clock: "Modules/Clock.qml", weather: "Modules/Weather.qml",
         t3: "Modules/T3.qml", usage: "Modules/Usage.qml",
-        gh: "Modules/GitHub.qml",
+        gh: "Modules/GitHub.qml", updates: "Modules/Updates.qml",
+        tray: "Modules/Tray.qml",
         vol: "Modules/Volume.qml", wifi: "Modules/Wifi.qml",
-        batt: "Modules/Battery.qml", bell: "Modules/Bell.qml",
-        bt: "Modules/Bluetooth.qml", idle: "Modules/Idle.qml",
-        control: "Modules/Control.qml"
+        batt: "Modules/Battery.qml", bt: "Modules/Bluetooth.qml"
     })
-
-    // One slot per configured module: loads the module's component when the
-    // module is enabled and its auto-rule allows it, and hands composites
-    // their island plus divider context.
-    component ModuleSlot: Loader {
-        id: slot
-
-        required property var modelData
-        required property int index
-        property string col: "left"
-        property var colList: []
-        // `as` gives qmllint a typed handle on what the Loader built, so the
-        // module contract below is checked rather than duck-typed.
-        readonly property BarModule mod: item as BarModule
-        readonly property real detailSaving: mod ? mod.detailSaving : 0
-
-        anchors.verticalCenter: parent.verticalCenter
-        // Every output carries a bar, but only the mapped one is visible;
-        // the others must not instantiate a full set of modules (and their
-        // timers) behind an unmapped surface.
-        active: barWindow.visible && modelData.on && barWindow.autoRule(modelData.id)
-        visible: active
-        source: barWindow.moduleSources[slot.modelData.id] ?? ""
-        onLoaded: {
-            if (slot.mod) {
-                slot.mod.host = barWindow;
-                slot.mod.isle = slot.col;
-                slot.mod.dividerBefore = Qt.binding(() =>
-                    barWindow.anyVisibleBefore(slot.colList, slot.index));
-                slot.mod.dividerAfter = Qt.binding(() =>
-                    barWindow.anyVisibleAfter(slot.colList, slot.index));
-            }
-            fitTimer.restart();
-        }
-        onWidthChanged: fitTimer.restart()
-        onDetailSavingChanged: fitTimer.restart()
-    }
 
     function sameAnchor(a, b) {
         return Math.abs(a.x - b.x) < 0.5
@@ -376,94 +360,61 @@ PanelWindow {
         Popouts.toggle(name, isle, anchorOf(item));
     }
 
-    // Hover-to-open (caelestia): once a popout is open, hovering another
-    // module switches straight to its popout — no click needed until the
-    // popout is dismissed again.
-    function hoverOpen(name, isle, item) {
-        if (!Popouts.open || Popouts.currentName === name)
-            return;
-        // Mapping the separate popout surface can make Qt miss the next
-        // MouseArea enter transition. Hover motion calls this too, so keep
-        // an existing candidate armed rather than restarting its delay.
-        if (pendingHoverName === name)
-            return;
-        pendingHoverName = name;
-        pendingHoverIsland = isle;
-        pendingHoverAnchor = anchorOf(item);
-        hoverSwitch.restart();
+    // Desktop-menu semantics: a click latches the menu session open, then
+    // crossing another menu-bearing item switches the existing surface in
+    // place. Hovering a closed bar remains inert; the focus grab closes the
+    // session on the next click outside it.
+    function hoverPopout(name, isle, item) {
+        if (!Popouts.open)
+            return false;
+        if (Popouts.currentName !== name)
+            Popouts.openPanel(name, isle, anchorOf(item));
+        return true;
     }
 
-    function cancelHover(name) {
-        if (pendingHoverName !== name)
-            return;
-        hoverSwitch.stop();
-        pendingHoverName = "";
+    function itemContainsPoint(item, position) {
+        if (!item || !item.visible || item.width <= 0 || item.height <= 0)
+            return false;
+        const local = item.mapFromItem(null, position.x, position.y);
+        return local.x >= 0 && local.x <= item.width
+            && local.y >= 0 && local.y <= item.height;
     }
 
-    // The full-bar HoverHandler continues receiving pointer motion when a
-    // second layer surface maps. Resolve that position back to registered
-    // module anchors so switching does not depend on a MouseArea re-enter.
+    // Mapping the detached layer surface can prevent a child MouseArea from
+    // receiving its next enter or motion event. The bar-wide HoverHandler
+    // keeps receiving pointer motion, so resolve its scene point against the
+    // same registered anchors as a reliable second path.
     function hoverPanelAt(position) {
         if (!Popouts.open)
             return;
 
-        // Usage is registered as one stable popout anchor, but its providers
-        // remain separate hover targets. Recover the provider before the
-        // generic active-panel check so moving across an already-open Usage
-        // module updates its content without moving the popout.
+        // Usage owns one panel anchor but several provider targets. Resolve
+        // the provider first; treating the whole group as a generic anchor
+        // would open the right panel with whichever provider was selected last.
         const usageItem = panelAnchors.usage;
         if (usageItem && usageItem.visible
                 && usageItem.providerAtScenePoint !== undefined) {
             const provider = usageItem.providerAtScenePoint(position);
             if (provider !== "") {
                 Usage.selected = provider;
-                if (Popouts.currentName === "usage") {
-                    if (pendingHoverName !== "")
-                        cancelHover(pendingHoverName);
-                } else {
-                    hoverOpen("usage", usageItem.isle ?? Popouts.defaultIsland.usage,
-                        usageItem);
-                }
+                hoverPopout("usage",
+                    usageItem.isle || Popouts.defaultIsland.usage, usageItem);
                 return;
             }
         }
 
-        for (const entry of anchorRects()) {
-            const rect = entry.rect;
-            if (position.x < rect.x || position.x > rect.x + rect.width
-                    || position.y < rect.y || position.y > rect.y + rect.height)
+        for (const name of Object.keys(panelAnchors)) {
+            const item = panelAnchors[name];
+            if (!itemContainsPoint(item, position))
                 continue;
-            if (Popouts.currentName === entry.name) {
-                if (pendingHoverName !== "")
-                    cancelHover(pendingHoverName);
-            } else {
-                hoverOpen(entry.name,
-                    entry.item.isle ?? Popouts.defaultIsland[entry.name], entry.item);
-            }
+            hoverPopout(name, item.isle || Popouts.defaultIsland[name], item);
             return;
-        }
-        if (pendingHoverName !== "")
-            cancelHover(pendingHoverName);
-    }
-
-    property string pendingHoverName: ""
-    property string pendingHoverIsland: ""
-    property rect pendingHoverAnchor: Qt.rect(0, 0, 0, 0)
-
-    Timer {
-        id: hoverSwitch
-        interval: 120
-        onTriggered: {
-            if (barWindow.pendingHoverName !== "" && Popouts.open)
-                Popouts.openPanel(barWindow.pendingHoverName, barWindow.pendingHoverIsland,
-                    barWindow.pendingHoverAnchor);
-            barWindow.pendingHoverName = "";
         }
     }
 
     // IPC opens and transitions initiated inside a popout do not carry a new
     // module rectangle. The visible bar resolves every named module again so
-    // the tab and panel always travel together, even when an old anchor is
+    // the panel always travels with its trigger, even when an old anchor is
     // still present from the previous view.
     Connections {
         target: Popouts
@@ -540,10 +491,13 @@ PanelWindow {
         }
     }
 
-    // One continuous menubar slab behind all three sections, rendered
-    // beneath the popout surfaces so its shadow never falls on an open
-    // panel.
+    // ---- the slab ------------------------------------------------------
+    // One continuous pane of glass. The compositor supplies the blur behind
+    // it (see the layer rules in roles/desktop/files/looknfeel.lua); this
+    // draws the tint, the rim light along the top edge, and the shadow that
+    // lifts it off the wallpaper.
     Item {
+        id: slabLayer
         x: Theme.barSideMargin
         y: barWindow.barY
         width: parent.width - 2 * Theme.barSideMargin
@@ -553,28 +507,53 @@ PanelWindow {
             y: barWindow.hideShift
         }
 
-        RectangularShadow {
-            anchors.fill: barSlab
-            radius: Theme.clusterRadius
-            blur: 16
-            spread: 0
-            offset.y: 4
-            color: Qt.rgba(0, 0, 0, 0.35)
-        }
-
         Rectangle {
             id: barSlab
-            width: parent.width
-            height: Theme.barHeight
+            anchors.fill: parent
             radius: Theme.clusterRadius
-            color: Theme.barBg
+            color: Theme.glass
+            border.width: 1
+            border.color: Theme.stroke
+
+            Behavior on color {
+                ColorAnimation { duration: Theme.surfaceDuration }
+            }
+
+            Behavior on radius {
+                enabled: barWindow.animationsReady
+                NumberAnimation {
+                    duration: Theme.surfaceDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.springCurve
+                }
+            }
+
+            // The inset highlight along the top edge. Clipped to its own upper
+            // half so the rim follows the corners and then stops: unclipped it
+            // closes into a ring and reads as a second border.
+            Item {
+                x: 1
+                y: 1
+                width: parent.width - 2
+                height: Math.max(1, Theme.clusterRadius)
+                clip: true
+
+                Rectangle {
+                    width: parent.width
+                    height: Math.max(2, Theme.clusterRadius * 2)
+                    radius: Math.max(0, Theme.clusterRadius - 1)
+                    color: "transparent"
+                    border.width: 1
+                    border.color: Theme.strokeHi
+                }
+            }
         }
 
-        // Right-click anywhere on the slab opens Shell settings (design v2).
-        // Module mouse areas only accept the left button, so right-clicks
-        // fall through the layout layer to this area.
+        // Right-click anywhere on the slab opens Shell settings. Module mouse
+        // areas only accept the left button, so right-clicks fall through the
+        // layout layer to this area.
         MouseArea {
-            anchors.fill: barSlab
+            anchors.fill: parent
             acceptedButtons: Qt.RightButton
             onClicked: Settings.togglePanel()
         }
@@ -583,6 +562,7 @@ PanelWindow {
     // ---- layout ------------------------------------------------------
 
     Item {
+        id: contentFrame
         x: Theme.barSideMargin
         y: barWindow.barY
         width: parent.width - 2 * Theme.barSideMargin
@@ -592,63 +572,80 @@ PanelWindow {
             y: barWindow.hideShift
         }
 
-        // LEFT — workspaces + media
-        Cluster {
-            id: leftCluster
+        // LEFT — the launcher, then workspaces and media.
+        Row {
+            id: leftSection
             anchors.left: parent.left
-            padding: 5
-            spacing: 2
-            onWidthChanged: fitTimer.restart()
+            anchors.leftMargin: Theme.barPadding
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
 
-            Repeater {
-                id: leftRepeater
-                model: Settings.mods.left
-                delegate: ModuleSlot { col: "left"; colList: Settings.mods.left }
+            BarIcon {
+                host: barWindow
+                shape: "round"
+                glyph: "apps"
+                glyphSize: Theme.iconMedium + 1
+                glyphWeight: 500
+                idleColor: Theme.textMid
+                restFill: Launcher.open ? Theme.chipHover : Theme.chip
+                tooltip: "Apps  ·  Super Space"
+                tooltipAlign: -1
+                onClicked: Launcher.toggle()
             }
 
-}
+            Cluster {
+                id: leftCluster
+                host: barWindow
+                col: "left"
+                model: Settings.mods.left
+                onImplicitWidthChanged: barWindow.scheduleFit()
+            }
+        }
 
-        // CENTER — clock + weather
+        // CENTER — clock, date and weather in one pill.
         Cluster {
             id: centerCluster
+            host: barWindow
+            col: "center"
+            model: Settings.mods.center
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.horizontalCenterOffset: barWindow.centerShift
-            padding: 5
-            spacing: 3
-            onWidthChanged: fitTimer.restart()
+            anchors.horizontalCenterOffset: barWindow.animatedCenterShift
+            anchors.verticalCenter: parent.verticalCenter
+            onImplicitWidthChanged: barWindow.scheduleFit()
+        }
 
-            Repeater {
-                id: centerRepeater
-                model: Settings.mods.center
-                delegate: ModuleSlot { col: "center"; colList: Settings.mods.center }
-            }
-
-}
-
-        // RIGHT — the default home for model usage, audio, and status modules
-        Cluster {
-            id: rightCluster
+        // RIGHT — recording, then the configured modules, then power.
+        Row {
+            id: rightSection
             anchors.right: parent.right
-            padding: 6
-            spacing: 1
-            onWidthChanged: fitTimer.restart()
+            anchors.rightMargin: Theme.barPadding
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
 
-            Repeater {
-                id: rightRepeater
-                model: Settings.mods.right
-                delegate: ModuleSlot { col: "right"; colList: Settings.mods.right }
+            RecordingChip {
+                host: barWindow
             }
 
-}
-    }
+            Cluster {
+                id: rightCluster
+                host: barWindow
+                col: "right"
+                model: Settings.mods.right
+                onImplicitWidthChanged: barWindow.scheduleFit()
+            }
 
-    // Only the clock module reads this, and that module exists only while
-    // this bar is the mapped one. Re-enabling resyncs `date` in the same
-    // turn, so a bar taking over from another output never shows a stale
-    // time.
-    SystemClock {
-        id: clock
-        enabled: barWindow.visible
-        precision: Settings.modOpts.clock.seconds ? SystemClock.Seconds : SystemClock.Minutes
+            BarIcon {
+                host: barWindow
+                shape: "round"
+                glyph: "power_settings_new"
+                glyphSize: Theme.iconMedium
+                glyphWeight: 600
+                idleColor: Theme.textMid
+                hoverColor: Theme.redText
+                tooltip: "Power"
+                tooltipAlign: 1
+                onClicked: Session.openMenu()
+            }
+        }
     }
 }

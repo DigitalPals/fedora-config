@@ -1,6 +1,9 @@
 import QtQuick
 import "../Common"
 
+// The hover tip under a bar module: the same glass a panel is made of, at
+// panel density, so it reads as a very small popover rather than a system
+// tooltip pasted over the shell.
 Item {
     id: root
 
@@ -25,15 +28,30 @@ Item {
     // hover-driven appearance eases.
     visible: text !== "" && !Popouts.open && opacity > 0.01
 
+    // Rises the last few pixels into place as it fades in — the same
+    // vocabulary as a panel arriving, at a tenth of the distance.
+    transform: [
+        Translate {
+            y: root.ready ? 0 : (Settings.position === "bottom" ? 4 : -4)
+
+            Behavior on y {
+                NumberAnimation {
+                    duration: Theme.chipFadeDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.springCurve
+                }
+            }
+        },
+        // Call sites place the tip 8px below their module (y: parent.height +
+        // 8); with a bottom bar this shifts it to 8px above instead.
+        Translate {
+            y: Settings.position === "bottom" && root.parent
+                ? -(root.height + root.parent.height + 16) : 0
+        }
+    ]
+
     Behavior on opacity {
         NumberAnimation { duration: Theme.chipFadeDuration; easing.type: Easing.OutCubic }
-    }
-
-    // Call sites place the tip 6px below their module (y: parent.height + 6);
-    // with a bottom bar this shifts it to 6px above instead.
-    transform: Translate {
-        y: Settings.position === "bottom" && root.parent
-            ? -(root.height + root.parent.height + 12) : 0
     }
 
     onActiveHoverChanged: {
@@ -66,19 +84,20 @@ Item {
 
     Rectangle {
         id: tip
-        implicitWidth: label.implicitWidth + 14
+        implicitWidth: label.implicitWidth + 20
         implicitHeight: Theme.tooltipHeight
-        radius: 6
-        color: Theme.popBg
+        radius: height / 2
+        color: Theme.glassMenu
         border.width: 1
-        border.color: Theme.popBorder
+        border.color: Theme.stroke
 
         Text {
             id: label
             anchors.centerIn: parent
             text: root.text
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.fontTiny
+            font.weight: Theme.weightSemibold
             color: Theme.textMid
         }
     }

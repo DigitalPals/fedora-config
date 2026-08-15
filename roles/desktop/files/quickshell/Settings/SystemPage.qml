@@ -159,7 +159,7 @@ SettingsPage {
 
                 SettingsAction {
                     text: "Open"
-                    glyph: ""
+                    glyph: "open_in_new"
                     onTriggered: page.openConfig()
                 }
 

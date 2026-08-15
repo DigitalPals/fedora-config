@@ -118,7 +118,7 @@ test("Inbox cards open GitHub and expose local hover/focus settlement actions", 
 
 test("the bar separates live workflows from persistent Inbox badges", () => {
     const source = read("Bar/Modules/GitHub.qml");
-    const marker = source.match(/\/\/ Running status:[\s\S]*?\n        Rectangle \{\s*id: ghBadge/)?.[0] ?? "";
+    const marker = source.match(/\/\/ Running status:[\s\S]*?Rectangle \{\s*id: badge/)?.[0] ?? "";
     assert.match(marker, /visible:\s*GitHub\.runningCount > 0/);
     assert.match(marker, /width:\s*5[\s\S]*height:\s*5/);
     assert.doesNotMatch(marker, /Animation|Animator|Timer|opacity:/);

@@ -1,111 +1,174 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import Quickshell.Hyprland
 import "../Common"
 
-Row {
+// The workspace pager: a pill of pips, the focused one stretched into a lozenge
+// and lit with the accent.
+//
+// The stretch is the whole idea — the focused workspace is not a differently
+// coloured dot, it is a wider one, so the pager reads at a glance from the far
+// side of the screen. Width springs; colour and glow cross-fade.
+Rectangle {
     id: root
 
     // Only to hand the bar's pointer state to the tooltips below.
     property Bar host: null
 
-    spacing: 2
-    anchors.verticalCenter: parent.verticalCenter
-
+    readonly property bool numbered: Settings.modOpts.ws.style === "numbers"
     readonly property int slots: Math.max(Settings.modOpts.ws.minSlots,
         ...Hyprland.workspaces.values.map(w => w.id))
 
-    Repeater {
-        model: root.slots
+    implicitWidth: pips.implicitWidth + 24
+    implicitHeight: 30
+    radius: Theme.pillRadius
+    color: Theme.chip
+    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
-        delegate: Item {
-            id: slot
+    Behavior on color {
+        ColorAnimation { duration: Theme.surfaceDuration }
+    }
 
-            required property int index
-            readonly property int wsId: index + 1
-            readonly property var ws: Hyprland.workspaces.values.find(w => w.id === wsId) ?? null
-            readonly property bool exists: ws !== null
-            readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === wsId
-            readonly property bool urgent: exists && ws.urgent
-            readonly property bool hidden: Settings.modOpts.ws.hideEmpty && !exists && !focused
-            // Only workspaces that actually exist get a numbered chip;
-            // empty slots stay compact dots. Dots style keeps everything
-            // a dot, with the focused workspace picked out in accent.
-            readonly property bool showNumber: exists && Settings.modOpts.ws.style === "numbers"
+    Behavior on implicitWidth {
+        enabled: root.host !== null && root.host.animationsReady
+        NumberAnimation {
+            duration: Theme.expandDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
+        }
+    }
 
-            visible: !hidden
-            width: hidden ? 0 : showNumber ? (focused ? 28 : Theme.chipHeight) : 20
-            height: Theme.chipHeight
+    Row {
+        id: pips
+        anchors.centerIn: parent
+        spacing: 7
 
-            Behavior on width {
-                NumberAnimation { duration: Theme.chipFadeDuration; easing.type: Easing.OutCubic }
-            }
-            anchors.verticalCenter: parent.verticalCenter
-            Accessible.role: Accessible.Button
-            Accessible.name: "Workspace " + wsId
-                + (focused ? ", current" : urgent ? ", urgent" : exists ? "" : ", empty")
-            Accessible.onPressAction: Hyprland.dispatch(
-                "hl.dsp.focus({ workspace = " + wsId + " })")
+        Repeater {
+            model: root.slots
 
-            Rectangle {
-                visible: slot.showNumber
-                anchors.fill: parent
-                radius: Theme.chipRadius
-                color: slot.focused ? Theme.accent : slot.urgent ? Theme.redBg : wsPointer.over ? Theme.hoverFill : "transparent"
+            delegate: Item {
+                id: slot
 
-                Behavior on color {
-                    ColorAnimation { duration: Theme.chipFadeDuration }
+                required property int index
+                readonly property int wsId: index + 1
+                readonly property var ws: Hyprland.workspaces.values.find(w => w.id === wsId) ?? null
+                readonly property bool exists: ws !== null
+                readonly property bool focused: Hyprland.focusedWorkspace !== null
+                    && Hyprland.focusedWorkspace.id === wsId
+                readonly property bool urgent: exists && ws.urgent
+                readonly property bool hidden: Settings.modOpts.ws.hideEmpty
+                    && !exists && !focused
+                readonly property color tone: focused ? Theme.accent
+                    : urgent ? Theme.red
+                    : root.numbered ? Theme.chipHover
+                    : exists ? Theme.wsDot : Theme.dotDim
+
+                visible: !hidden
+                width: hidden ? 0
+                    : root.numbered ? (focused ? 26 : 18)
+                    : (focused ? 30 : 10)
+                height: root.numbered ? 18 : 10
+                anchors.verticalCenter: parent.verticalCenter
+
+                Behavior on width {
+                    NumberAnimation {
+                        duration: Theme.expandDuration + 50
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.springCurve
+                    }
                 }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: slot.wsId
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barTextSize
-                    font.weight: slot.focused || slot.urgent ? Theme.weightSemibold : Theme.weightMedium
-                    font.features: Theme.tabularNumberFeatures
-                    color: slot.focused ? Theme.accentFg : slot.urgent ? Theme.redText : wsPointer.over ? Theme.textHi : Theme.textLow
+                Behavior on height {
+                    NumberAnimation { duration: Theme.chipFadeDuration + 100 }
+                }
+
+                Accessible.role: Accessible.Button
+                Accessible.name: "Workspace " + wsId
+                    + (focused ? ", current" : urgent ? ", urgent" : exists ? "" : ", empty")
+                Accessible.onPressAction: Hyprland.dispatch(
+                    "hl.dsp.focus({ workspace = " + wsId + " })")
+
+                // The focused pip carries a soft bloom of its own colour, which
+                // is what stops the accent lozenge reading as a flat sticker.
+                RectangularShadow {
+                    anchors.fill: pip
+                    radius: pip.radius
+                    blur: 10
+                    spread: 0
+                    color: slot.focused ? Theme.accentGlow : "transparent"
 
                     Behavior on color {
                         ColorAnimation { duration: Theme.chipFadeDuration }
                     }
                 }
-            }
 
-            Rectangle {
-                visible: !slot.showNumber
-                anchors.centerIn: parent
-                width: slot.focused ? 6 : 4
-                height: width
-                radius: width / 2
-                color: slot.focused ? Theme.accent
-                    : slot.urgent ? Theme.red
-                    : slot.exists ? Theme.textLow : Theme.dotDim
-            }
+                Rectangle {
+                    id: pip
+                    anchors.fill: parent
+                    radius: Theme.pillRadius
+                    color: slot.tone
+                    // Pips answer a press before the compositor has switched,
+                    // and grow a little under the pointer so an eight-pixel
+                    // target still feels like one.
+                    scale: wsMouse.pressed ? 0.86
+                        : wsPointer.over ? (root.numbered ? 1.12 : 1.18) : 1
 
-            PointerCheck {
-                id: wsPointer
-                host: root.host
-                target: slot
-                hovered: wsMouse.containsMouse
-            }
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
+                    }
 
-            MouseArea {
-                id: wsMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                // This Hyprland build speaks the Lua IPC dialect: raw
-                // dispatch text is evaluated as `hl.dispatch(<text>)`.
-                onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + slot.wsId + " })")
-            }
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Theme.pressDuration
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.springCurve
+                        }
+                    }
 
-            BarTooltip {
-                check: wsPointer
-                text: "Workspace " + slot.wsId
-                    + (slot.focused ? " · current" : slot.urgent ? " · urgent" : slot.exists ? "" : " · empty")
-                y: slot.height + 6
-                x: (slot.width - width) / 2
+                    Text {
+                        visible: root.numbered
+                        anchors.centerIn: parent
+                        text: slot.wsId
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Theme.weightHeavy
+                        font.features: Theme.tabularNumberFeatures
+                        color: slot.focused ? Theme.textOnAccent
+                            : slot.urgent ? Theme.textOnAccent
+                            : slot.exists ? Theme.textMid : Theme.textFaint
+
+                        Behavior on color {
+                            ColorAnimation { duration: Theme.chipFadeDuration }
+                        }
+                    }
+                }
+
+                PointerCheck {
+                    id: wsPointer
+                    host: root.host
+                    target: slot
+                    hovered: wsMouse.containsMouse
+                }
+
+                MouseArea {
+                    id: wsMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    // This Hyprland build speaks the Lua IPC dialect: raw
+                    // dispatch text is evaluated as `hl.dispatch(<text>)`.
+                    onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + slot.wsId + " })")
+                }
+
+                BarTooltip {
+                    check: wsPointer
+                    text: "Workspace " + slot.wsId
+                        + (slot.focused ? " · current" : slot.urgent ? " · urgent"
+                            : slot.exists ? "" : " · empty")
+                    y: root.height + 12
+                    x: (slot.width - width) / 2
+                }
             }
         }
     }

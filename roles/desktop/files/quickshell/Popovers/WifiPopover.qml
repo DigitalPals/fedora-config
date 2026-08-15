@@ -102,13 +102,12 @@ Surface {
             x: 10
             spacing: 10
 
-            Text {
+            Sym {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 18
                 horizontalAlignment: Text.AlignHCenter
-                text: "\uf1eb"
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontBody
+                name: "wifi"
+                size: Theme.fontBody
                 color: Theme.accent
             }
 
@@ -148,13 +147,12 @@ Surface {
             }
         }
 
-        Text {
+        Sym {
             anchors.right: parent.right
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            text: "\uf013"
-            font.family: Theme.fontIcon
-            font.pixelSize: Theme.fontSecondary
+            name: "settings"
+            size: Theme.fontSecondary
             color: gearMouse.containsMouse ? Theme.textHi : Theme.textDim
 
             MouseArea {
@@ -203,13 +201,12 @@ Surface {
                 x: 10
                 spacing: 10
 
-                Text {
+                Sym {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 18
                     horizontalAlignment: Text.AlignHCenter
-                    text: "\uf1eb"
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fontBody
+                    name: "wifi"
+                    size: Theme.fontBody
                     color: Theme.textMid
                     opacity: 0.35 + 0.65 * Math.min(1, Math.max(0, StatusHelpers.signalPercent(net.modelData.signalStrength)) / 100)
                 }
@@ -225,14 +222,13 @@ Surface {
                 }
             }
 
-            Text {
+            Sym {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 visible: net.modelData.security !== WifiSecurityType.None
-                text: "\uf023"
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontCaption
+                name: "lock"
+                size: Theme.fontCaption
                 color: Theme.textDim
             }
 

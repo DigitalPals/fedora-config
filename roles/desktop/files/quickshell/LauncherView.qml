@@ -8,12 +8,17 @@ import "Popovers"
 
 // Eight-result launcher with explicit prefix modes:
 // / files, > shell command, = calculator, @ web, $ windows.
+//
+// Visual shape from the "QuickShell Menubar" design: a recessed search tile,
+// 48px result rows with a 32px icon, the selected row lifted on the accent,
+// and a hairline footer carrying the count and the key hints.
 Surface {
     id: root
 
-    implicitWidth: 600
+    implicitWidth: 560
 
     readonly property int maxResults: 8
+    readonly property int rowHeight: 48
     property int selected: 0
     readonly property string query: search.text
     readonly property string mode: ["/", ">", "=", "@", "$"].includes(query.charAt(0)) ? query.charAt(0) : ""
@@ -26,6 +31,22 @@ Surface {
     property bool calcLoading: false
     property string calcError: ""
 
+    // Rows stagger in once per open, not on every keystroke: `entered` drops
+    // with the panel hidden, and the timer raises it a beat after the open so
+    // the existing delegates replay their entrance.
+    property bool entered: false
+
+    Timer {
+        id: enterTimer
+        interval: 30
+        onTriggered: root.entered = true
+    }
+
+    Component.onCompleted: {
+        if (Launcher.open)
+            enterTimer.restart();
+    }
+
     // The instance survives across opens, so each open must restore the
     // fresh state a create-per-open Loader used to provide implicitly.
     // Clearing the query also clears results and errors via onQueryChanged.
@@ -37,6 +58,8 @@ Surface {
                 return;
             search.text = "";
             root.selected = 0;
+            root.entered = false;
+            enterTimer.restart();
             search.forceActiveFocus();
         }
     }
@@ -66,6 +89,8 @@ Surface {
         }
         return match < 0 ? match : match + Launcher.usageBoost(app);
     }
+
+    readonly property int appTotal: DesktopEntries.applications.values.filter(app => !app.noDisplay).length
 
     readonly property var appRows: {
         if (mode !== "")
@@ -183,8 +208,8 @@ Surface {
         return (value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    function highlight(value) {
-        if (term === "")
+    function highlight(value, muted) {
+        if (term === "" || muted)
             return esc(value);
         const index = (value || "").toLowerCase().indexOf(term.toLowerCase());
         if (index < 0)
@@ -194,21 +219,22 @@ Surface {
             + esc(value.slice(index + term.length));
     }
 
-    function titleFor(row) {
+    // `muted` suppresses the accent match highlight — on the selected row the
+    // accent is the background.
+    function titleFor(row, muted) {
         switch (row.kind) {
-        case "app": return highlight(row.app.name);
-        case "file": return highlight(row.path.split("/").pop());
+        case "app": return highlight(row.app.name, muted);
+        case "file": return highlight(row.path.split("/").pop(), muted);
         case "command": return "Run <font face=\"" + Theme.fontMono + "\">" + esc(row.command) + "</font>";
         case "calc": return esc(row.result);
         case "web": return "Search DuckDuckGo for “" + esc(row.query) + "”";
-        case "window": return highlight(row.win.title || "Untitled window");
+        case "window": return highlight(row.win.title || "Untitled window", muted);
         }
         return "";
     }
 
     function subtitleFor(row) {
         switch (row.kind) {
-        case "app": return row.app.genericName || row.app.comment || "Application";
         case "file": return row.path;
         case "command": return "Explicit shell command";
         case "calc": return "Press Enter to copy result";
@@ -222,7 +248,28 @@ Surface {
     }
 
     function glyphFor(kind) {
-        return ({ file: "\uf07b", command: "\uf120", calc: "\uf1ec", web: "\uf0ac", window: "\uf2d0" })[kind] || "\uf135";
+        return ({ file: "folder", command: "terminal", calc: "calculate", web: "public", window: "web_asset" })[kind] || "rocket_launch";
+    }
+
+    readonly property var modeMeta: ({
+        "/": { label: "FILES", enter: "open" },
+        ">": { label: "RUN", enter: "run" },
+        "=": { label: "CALC", enter: "copy" },
+        "@": { label: "WEB", enter: "search" },
+        "$": { label: "WINDOWS", enter: "focus" }
+    })
+
+    readonly property string footerLeft: {
+        switch (mode) {
+        case "/": return fileLoading ? "fd · searching" : "fd · " + rows.length + " results";
+        case ">": return "runs with sh -c";
+        case "=": return "libqalculate";
+        case "@": return "duckduckgo.com";
+        case "$": return rows.length + (rows.length === 1 ? " window" : " windows");
+        }
+        if (term === "")
+            return "/ files · > command · = calculate · @ web · $ windows";
+        return rows.length + " of " + appTotal + " apps";
     }
 
     Timer {
@@ -303,77 +350,111 @@ Surface {
         }
     }
 
+    // ---- Search tile -----------------------------------------------------
     Rectangle {
         width: parent.width
-        height: 44
-        radius: 10
-        color: Theme.hoverFill
+        height: 48
+        radius: 22
+        color: Theme.tile
 
-        Row {
+        Behavior on color {
+            ColorAnimation { duration: Theme.surfaceDuration }
+        }
+
+        Sym {
+            id: searchGlyph
+            x: 16
             anchors.verticalCenter: parent.verticalCenter
-            x: 12
-            spacing: 10
+            name: root.mode === "" ? "search" : root.glyphFor(({ "/": "file", ">": "command", "=": "calc", "@": "web", "$": "window" })[root.mode])
+            size: 18
+            color: Theme.textDim
+        }
+
+        TextInput {
+            id: search
+            anchors.verticalCenter: parent.verticalCenter
+            x: 44
+            width: parent.width - x - (modeChip.visible ? modeChip.width + 24 : 16)
+            font.family: Theme.fontSans
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightSemibold
+            color: Theme.textHi
+            clip: true
+            focus: true
 
             Text {
+                visible: search.text === ""
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.mode === "" ? "\uf002" : root.glyphFor(({ "/": "file", ">": "command", "=": "calc", "@": "web", "$": "window" })[root.mode])
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontBody
-                color: Theme.textLow
+                text: "Search apps"
+                font: search.font
+                color: Theme.textDim
             }
 
-            TextInput {
-                id: search
-                anchors.verticalCenter: parent.verticalCenter
-                width: root.width - 72
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Escape) {
+                    Launcher.close();
+                    event.accepted = true;
+                } else if (event.modifiers & Qt.AltModifier && event.key >= Qt.Key_1 && event.key <= Qt.Key_8) {
+                    root.activate(root.rows[event.key - Qt.Key_1]);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.activate(root.rows[root.selected]);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
+                    root.selected = Math.min(root.rows.length - 1, root.selected + 1);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Up) {
+                    root.selected = Math.max(0, root.selected - 1);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Home) {
+                    root.selected = 0;
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_End) {
+                    root.selected = Math.max(0, root.rows.length - 1);
+                    event.accepted = true;
+                }
+            }
+        }
+
+        // Active prefix mode, as the design draws its tab pill; clicking it
+        // drops back to app search while keeping the typed term.
+        Rectangle {
+            id: modeChip
+            visible: root.mode !== ""
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: modeLabel.implicitWidth + 20
+            height: 22
+            radius: Theme.pillRadius
+            color: modeMouse.containsMouse ? Theme.hoverFillStrong : Theme.chipHover
+
+            Text {
+                id: modeLabel
+                anchors.centerIn: parent
+                text: root.mode !== "" ? root.modeMeta[root.mode].label : ""
                 font.family: Theme.fontSans
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.fontMicro
+                font.weight: Theme.weightHeavy
+                font.letterSpacing: 0.5
                 color: Theme.textHi
-                clip: true
-                focus: true
+            }
 
-                Text {
-                    visible: search.text === ""
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Search applications…"
-                    font: search.font
-                    color: Theme.textDim
-                }
-
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Escape) {
-                        Launcher.close();
-                        event.accepted = true;
-                    } else if (event.modifiers & Qt.AltModifier && event.key >= Qt.Key_1 && event.key <= Qt.Key_8) {
-                        root.activate(root.rows[event.key - Qt.Key_1]);
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        root.activate(root.rows[root.selected]);
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
-                        root.selected = Math.min(root.rows.length - 1, root.selected + 1);
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Up) {
-                        root.selected = Math.max(0, root.selected - 1);
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Home) {
-                        root.selected = 0;
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_End) {
-                        root.selected = Math.max(0, root.rows.length - 1);
-                        event.accepted = true;
-                    }
-                }
+            MouseArea {
+                id: modeMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: search.text = root.term
             }
         }
     }
 
-    Item { width: 1; height: 8 }
-
+    // ---- Results ---------------------------------------------------------
     ListView {
         id: resultList
         width: parent.width
-        height: Math.min(root.maxResults, root.rows.length) * 52
+        height: Math.min(root.maxResults, root.rows.length) * root.rowHeight
         interactive: false
         model: root.rows
 
@@ -383,76 +464,127 @@ Surface {
             required property var modelData
             required property int index
             readonly property bool isSelected: index === root.selected
+            readonly property string subtitle: root.subtitleFor(modelData)
+            readonly property int enterDelay: root.entered
+                ? 40 + Math.min(index, Theme.staggerMax) * Theme.staggerStep : 0
 
             width: resultList.width
-            height: 52
-            radius: 10
-            color: isSelected ? Theme.activeFill : rowMouse.containsMouse ? Theme.hoverFill : "transparent"
+            height: root.rowHeight
+            radius: Theme.rowRadius
+            color: isSelected ? Theme.accent : "transparent"
+
+            Behavior on color {
+                ColorAnimation { duration: Theme.chipFadeDuration }
+            }
+
+            opacity: root.entered ? 1 : 0
+
+            Behavior on opacity {
+                SequentialAnimation {
+                    PauseAnimation { duration: resultRow.enterDelay }
+                    NumberAnimation {
+                        duration: Theme.panelFadeDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
+            transform: Translate {
+                y: root.entered ? 0 : 10
+
+                Behavior on y {
+                    SequentialAnimation {
+                        PauseAnimation { duration: resultRow.enterDelay }
+                        NumberAnimation {
+                            duration: Theme.expandDuration
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Theme.springCurve
+                        }
+                    }
+                }
+            }
 
             Item {
-                x: 12
+                x: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: 24
-                height: 24
+                width: 32
+                height: 32
 
                 Image {
                     anchors.fill: parent
                     visible: resultRow.modelData.kind === "app" && source !== ""
                     source: resultRow.modelData.kind === "app" ? Quickshell.iconPath(resultRow.modelData.app.icon, true) : ""
-                    sourceSize: Qt.size(24, 24)
+                    sourceSize: Qt.size(64, 64)
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                 }
 
-                Text {
-                    anchors.centerIn: parent
+                Rectangle {
                     visible: resultRow.modelData.kind !== "app"
-                    text: root.glyphFor(resultRow.modelData.kind)
-                    font.family: Theme.fontIcon
-                    font.pixelSize: 15
-                    color: resultRow.isSelected ? Theme.textHi : Theme.textMid
+                    anchors.fill: parent
+                    radius: 10
+                    color: Theme.chip
+
+                    Sym {
+                        anchors.centerIn: parent
+                        name: root.glyphFor(resultRow.modelData.kind)
+                        size: Theme.iconMedium
+                        color: resultRow.isSelected ? Theme.textOnAccent : Theme.textMid
+                    }
                 }
             }
 
             Column {
-                x: 48
+                x: 54
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 104
+                width: parent.width - x - 46
                 spacing: 1
 
                 Text {
                     width: parent.width
                     textFormat: Text.StyledText
-                    text: root.titleFor(resultRow.modelData)
+                    text: root.titleFor(resultRow.modelData, resultRow.isSelected)
                     font.family: Theme.fontSans
                     font.pixelSize: Theme.fontSecondary
-                    font.weight: Theme.weightMedium
-                    color: resultRow.isSelected ? Theme.textHi : Theme.textMid
+                    font.weight: Theme.weightBold
+                    color: resultRow.isSelected ? Theme.textOnAccent : Theme.textHi
                     elide: Text.ElideRight
                 }
 
                 Text {
+                    visible: resultRow.subtitle !== ""
                     width: parent.width
-                    text: root.subtitleFor(resultRow.modelData)
+                    text: resultRow.subtitle
                     font.family: Theme.fontSans
-                    font.pixelSize: 11
-                    color: resultRow.isSelected ? Theme.textLow : Theme.textDim
+                    font.pixelSize: Theme.fontMicro
+                    font.weight: Theme.weightSemibold
+                    color: resultRow.isSelected ? Qt.rgba(1, 1, 1, 0.78) : Theme.textDim
                     elide: Text.ElideMiddle
                 }
             }
 
-            Text {
+            Rectangle {
+                visible: resultRow.isSelected
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: resultRow.isSelected ? "↵" : "alt+" + (resultRow.index + 1)
-                font.family: Theme.fontMono
-                font.pixelSize: 11
-                color: resultRow.isSelected ? Theme.textDim : Theme.textFaint
+                width: enterGlyph.implicitWidth + 12
+                height: 18
+                radius: 6
+                color: Qt.rgba(1, 1, 1, 0.22)
+
+                Text {
+                    id: enterGlyph
+                    anchors.centerIn: parent
+                    text: "↵"
+                    font.family: Theme.fontSans
+                    font.pixelSize: Theme.fontMicro
+                    font.weight: Theme.weightHeavy
+                    color: Theme.textOnAccent
+                }
             }
 
             MouseArea {
-                id: rowMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
@@ -462,56 +594,90 @@ Surface {
         }
     }
 
-    Text {
+    // ---- Empty state -----------------------------------------------------
+    Column {
         visible: root.rows.length === 0
         width: parent.width
-        topPadding: 14
-        bottomPadding: 14
-        horizontalAlignment: Text.AlignHCenter
-        text: {
-            if (root.mode === "/" && root.term.length < 2)
-                return "Type at least two characters to search files";
-            if (root.fileLoading || root.calcLoading)
-                return "Searching…";
-            if (root.fileError !== "")
-                return "File search failed: " + root.fileError;
-            if (root.calcError !== "")
-                return "Calculation failed: " + root.calcError;
-            if (root.mode === ">")
-                return "Enter a shell command";
-            if (root.mode === "@")
-                return "Enter a web query";
-            return "No matching results";
+        topPadding: 18
+        bottomPadding: 12
+        spacing: 6
+
+        Sym {
+            anchors.horizontalCenter: parent.horizontalCenter
+            name: "search_off"
+            size: Theme.iconLarge + 2
+            color: Theme.textDim
         }
-        font.family: Theme.fontSans
-        font.pixelSize: 11
-        color: root.fileError !== "" || root.calcError !== "" ? Theme.redText : Theme.textDim
-        elide: Text.ElideRight
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 40
+            horizontalAlignment: Text.AlignHCenter
+            text: {
+                if (root.mode === "/" && root.term.length < 2)
+                    return "Type at least two characters to search files";
+                if (root.fileLoading || root.calcLoading)
+                    return "Searching…";
+                if (root.fileError !== "")
+                    return "File search failed: " + root.fileError;
+                if (root.calcError !== "")
+                    return "Calculation failed: " + root.calcError;
+                if (root.mode === ">")
+                    return "Enter a shell command";
+                if (root.mode === "@")
+                    return "Enter a web query";
+                return "No matching results";
+            }
+            font.family: Theme.fontSans
+            font.pixelSize: Theme.fontTiny
+            font.weight: Theme.weightBold
+            color: root.fileError !== "" || root.calcError !== "" ? Theme.redText : Theme.textDim
+            elide: Text.ElideRight
+        }
     }
 
     HDivider {}
 
+    // ---- Footer ----------------------------------------------------------
     Item {
         width: parent.width
-        height: 28
+        height: 20
 
         Text {
-            x: 10
+            x: 8
             anchors.verticalCenter: parent.verticalCenter
-            text: "/ files · > command · = calculate · @ web · $ windows"
+            width: parent.width - hints.width - 32
+            text: root.footerLeft
             font.family: Theme.fontSans
-            font.pixelSize: 10
+            font.pixelSize: Theme.fontMicro
+            font.weight: Theme.weightBold
             color: Theme.textDim
+            elide: Text.ElideRight
         }
 
-        Text {
+        Row {
+            id: hints
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            text: "↑↓ · ↵ · esc"
-            font.family: Theme.fontMono
-            font.pixelSize: 10
-            color: Theme.textDim
+            spacing: 12
+
+            Repeater {
+                model: [
+                    "↑↓ select",
+                    "↵ " + (root.mode === "" ? "launch" : root.modeMeta[root.mode].enter),
+                    "esc close"
+                ]
+
+                delegate: Text {
+                    required property string modelData
+                    text: modelData
+                    font.family: Theme.fontSans
+                    font.pixelSize: Theme.fontMicro
+                    font.weight: Theme.weightBold
+                    color: Theme.textDim
+                }
+            }
         }
     }
 }

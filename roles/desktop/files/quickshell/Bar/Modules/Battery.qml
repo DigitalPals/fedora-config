@@ -1,37 +1,61 @@
 import QtQuick
-import ".."
 import "../../Common"
 
-// Battery; shown only on laptops (auto-rule).
+// Battery, inside the status pill; shown only on laptops (auto-rule).
+//
+// The mark is Material's vertical battery turned on its side, which is how the
+// design draws it, and it fills with the charge so the glyph itself carries
+// the reading before the percentage does.
 BarModule {
     id: root
 
     moduleId: "batt"
+    spacing: 4
+    detailSaving: Settings.modOpts.batt.showPct ? percentLabel.implicitWidth + spacing : 0
 
-    BarIcon {
-        id: batteryIcon
+    readonly property int level: Math.round(Battery.percent)
+    readonly property bool critical: !Battery.pluggedIn
+        && level <= Settings.modOpts.batt.critAt
+    readonly property bool low: !Battery.pluggedIn
+        && level <= Settings.modOpts.batt.warnAt
 
-        host: root.host
-        panelName: "battery"
-        isle: root.isle
-        visible: Battery.isLaptop
-        // md-battery_high / md-battery_charging_high. The charging
-        // glyph carries its own bolt, so nothing is overlaid; it is
-        // also wider, hence the fixed column below, which keeps the
-        // rest of the cluster still as the two swap. It was tuned as
-        // 13.5 against a 14px icon, and tracks the token from there
-        // so a size change cannot leave the column behind.
-        glyph: Battery.pluggedIn ? "󱊦" : "󱊣"
-        glyphWidth: Theme.barIconSize - 0.5
-        // An empty label also zeroes BarIcon's detailSaving, so
-        // fitBar never budgets for a percentage that is never shown.
-        label: Settings.modOpts.batt.showPct ? Math.round(Battery.percent) + "%" : ""
-        compact: root.compact
-        alert: !Battery.pluggedIn && Battery.percent <= Settings.modOpts.batt.critAt
-        idleColor: Battery.pluggedIn ? Theme.accent : Battery.percent <= Settings.modOpts.batt.warnAt ? Theme.amber : Theme.icon
-        tooltip: "Battery " + Math.round(Battery.percent) + "%"
-            + (Battery.state === "charging" ? " · charging"
-                : Battery.state === "full" ? " · fully charged" : "")
-        tooltipAlign: 1
+    Item {
+        anchors.verticalCenter: parent.verticalCenter
+        // A fixed column: the charging mark is wider than the plain one, and
+        // the right cluster is right-anchored, so an unpinned swap would slide
+        // every module beside it.
+        width: Theme.barIconSize + 2
+        height: Theme.barIconSize + 2
+
+        Sym {
+            anchors.centerIn: parent
+            name: Battery.charging ? "battery_charging_full"
+                : root.critical ? "battery_alert"
+                : root.level >= 95 ? "battery_full"
+                : root.level >= 80 ? "battery_6_bar"
+                : root.level >= 65 ? "battery_5_bar"
+                : root.level >= 50 ? "battery_4_bar"
+                : root.level >= 35 ? "battery_3_bar"
+                : root.level >= 20 ? "battery_2_bar"
+                : "battery_1_bar"
+            size: Theme.barIconSize
+            fill: 1
+            rotation: 90
+            color: root.critical ? Theme.redText
+                : root.low ? Theme.amber
+                : Battery.pluggedIn ? Theme.accent : Theme.textHi
+        }
+    }
+
+    Text {
+        id: percentLabel
+        visible: Settings.modOpts.batt.showPct && !root.compact
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.level + "%"
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontCaption
+        font.weight: Theme.weightBold
+        font.features: Theme.tabularNumberFeatures
+        color: root.critical ? Theme.redText : root.low ? Theme.amber : Theme.textMid
     }
 }

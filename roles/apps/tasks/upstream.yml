@@ -80,13 +80,60 @@
   when: not ansible_check_mode
   tags: [fonts]
 
+- name: Create pinned single-file font directories
+  ansible.builtin.file:
+    path: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ pinned_font_files }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version }}"
+  tags: [fonts]
+
+# Upstream publishes these as bare variable TTFs rather than archives, so they
+# land straight in the font directory. The checksum is what pins them; the URL
+# already names a commit, so a moved tag cannot change what installs.
+- name: Install pinned single-file fonts
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/{{ item.filename }}"
+    checksum: "{{ item.checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: apps_pinned_font_file_install
+  loop: "{{ pinned_font_files }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version }}"
+  when: not ansible_check_mode
+  tags: [fonts]
+
+- name: Install pinned single-file font licenses
+  ansible.builtin.get_url:
+    url: "{{ item.license_url }}"
+    dest: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/{{ item.license_filename }}"
+    checksum: "{{ item.license_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ pinned_font_files }}"
+  loop_control:
+    label: "{{ item.name }} license"
+  when: not ansible_check_mode
+  tags: [fonts]
+
 - name: Refresh font cache after pinned font installs
   ansible.builtin.command: fc-cache -f
   changed_when: true
+  notify: Restart Quickshell after installing fonts
   when:
     - not ansible_check_mode
-    - apps_pinned_font_install.results | default([])
-      | selectattr('changed', 'defined') | selectattr('changed') | list | length > 0
+    - (apps_pinned_font_install.results | default([])
+       | selectattr('changed', 'defined') | selectattr('changed') | list | length > 0)
+      or (apps_pinned_font_file_install.results | default([])
+       | selectattr('changed', 'defined') | selectattr('changed') | list | length > 0)
   tags: [fonts]
 
 - name: Remove retired Walker and Elephant installations and caches

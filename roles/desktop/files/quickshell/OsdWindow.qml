@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import "Common"
@@ -66,39 +65,33 @@ PanelWindow {
         }
     }
 
-    RectangularShadow {
-        anchors.fill: pill
-        opacity: pill.opacity
-        radius: pill.radius
-        blur: 32
-        spread: 0
-        offset.y: 12
-        color: Qt.rgba(0, 0, 0, 0.5)
-    }
-
     Rectangle {
         id: pill
 
         x: root.pad
-        y: root.pad + (Osd.active ? 0 : root.atTop ? -10 : 10)
+        y: root.pad + (Osd.active ? 0 : root.atTop ? -16 : 16)
         opacity: Osd.active ? 1 : 0
         implicitWidth: row.implicitWidth + 28
-        implicitHeight: 40
-        radius: 12
-        color: Theme.popBg
+        implicitHeight: 46
+        radius: height / 2
+        color: Theme.glassStrong
         border.width: 1
         border.color: root.muted ? Theme.redBorder : Theme.popBorder
 
         Behavior on opacity {
             NumberAnimation {
-                duration: 180
+                duration: Theme.panelFadeDuration
+                easing.type: Easing.OutCubic
             }
         }
 
+        // Springs in from the screen edge it sits against, like every other
+        // surface the shell raises.
         Behavior on y {
             NumberAnimation {
-                duration: 180
-                easing.type: Easing.OutCubic
+                duration: Theme.panelMotionDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
             }
         }
 
@@ -108,15 +101,14 @@ PanelWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 11
 
-            Text {
+            Sym {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 18
                 horizontalAlignment: Text.AlignHCenter
-                text: root.volumeKind
-                    ? (root.muted || root.value === 0 ? "" : root.value < 0.5 ? "" : "")
-                    : ""
-                font.family: Theme.fontIcon
-                font.pixelSize: Theme.fontBody
+                name: root.volumeKind
+                    ? (root.muted || root.value === 0 ? "volume_off" : root.value < 0.5 ? "volume_down" : "volume_up")
+                    : "light_mode"
+                size: Theme.fontBody
                 color: root.muted ? Theme.redText : Theme.textHi
             }
 

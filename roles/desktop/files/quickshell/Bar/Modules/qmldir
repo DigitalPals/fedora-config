@@ -3,14 +3,13 @@
 # Bar/Modules/*.qml type must be listed. qmldir.test.cjs enforces that.
 BarModule BarModule.qml
 Battery Battery.qml
-Bell Bell.qml
 Bluetooth Bluetooth.qml
 Clock Clock.qml
-Control Control.qml
 GitHub GitHub.qml
-Idle Idle.qml
 Media Media.qml
 T3 T3.qml
+Tray Tray.qml
+Updates Updates.qml
 Usage Usage.qml
 Volume Volume.qml
 Weather Weather.qml

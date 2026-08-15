@@ -19,6 +19,7 @@ function thread(overrides = {}) {
         latestTurn: null,
         latestUserMessageAt: null,
         session: null,
+        backgroundLiveness: null,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
         hasActionableProposedPlan: false,
@@ -205,6 +206,68 @@ test("working duration labels match inbox and conversation precision", () => {
     assert.equal(H.formatWorkingTimerLabel(90_000), "1m 30s");
     assert.equal(H.formatWorkingTimerLabel(60 * 60_000), "1h");
     assert.equal(H.formatWorkingTimerLabel(-1_000), "0s");
+});
+
+test("live agent count ignores background jobs and follows tolerant task transitions", () => {
+    const event = (kind, taskId, payload = {}) => ({
+        kind, createdAt: "2026-08-03T11:00:00.000Z",
+        payload: { taskId, ...payload },
+    });
+    const activities = [
+        event("task.started", "shell", { agentKind: "background", taskType: "local_bash" }),
+        event("task.started", "one", { agentKind: "agent", taskType: "local_agent" }),
+        event("task.started", "two", { agentKind: "agent", taskType: "local_agent" }),
+        event("task.started", "three", { agentKind: "agent", taskType: "local_agent" }),
+        event("task.started", "four", { agentKind: "agent", taskType: "local_agent" }),
+        event("task.started", "five", { agentKind: "agent", taskType: "local_agent" }),
+    ];
+    assert.equal(H.liveAgentCount(activities, true), 5);
+
+    const transitions = activities.concat([
+        // Later rows inherit the original membership marker.
+        event("task.completed", "one", { status: "completed" }),
+        event("task.updated", "two", { status: "waiting" }),
+        event("task.progress", "three", { status: "idle" }),
+        // A duplicate/late start cannot reopen a terminal task.
+        event("task.started", "one", { agentKind: "agent" }),
+    ]);
+    assert.equal(H.liveAgentCount(transitions, true), 3);
+    assert.equal(H.liveAgentCount(transitions.concat([
+        // Explicit status changes do reactivate reusable identities.
+        event("task.updated", "one", { status: "running" }),
+    ]), true), 4);
+    assert.equal(H.liveAgentCount(activities, false), 0);
+});
+
+test("background liveness outranks a completed turn but not a session failure", () => {
+    const completedTurn = { state: "completed", requestedAt: "2026-08-03T10:00:00.000Z",
+        startedAt: "2026-08-03T10:00:00.000Z",
+        completedAt: "2026-08-03T11:00:00.000Z" };
+    const map = {
+        working: thread({ id: "working", latestTurn: completedTurn,
+            session: { status: "ready", updatedAt: "2026-08-03T11:00:00.000Z" },
+            backgroundLiveness: "working" }),
+        monitoring: thread({ id: "monitoring", latestTurn: completedTurn,
+            session: { status: "ready", updatedAt: "2026-08-03T11:00:00.000Z" },
+            backgroundLiveness: "monitoring" }),
+        failed: thread({ id: "failed", latestTurn: completedTurn,
+            session: { status: "error", updatedAt: "2026-08-03T11:00:00.000Z" },
+            backgroundLiveness: "working" }),
+    };
+    const result = H.classifyThreads(map, {}, NOW, 3);
+    assert.deepEqual(result.active.map((value) => [value.id, value.cls]), [
+        ["failed", "error"], ["working", "running"], ["monitoring", "monitoring"],
+    ]);
+    assert.deepEqual({ running: result.runningCount, monitoring: result.monitoringCount,
+        attention: result.attentionCount, done: result.doneCount },
+        { running: 1, monitoring: 1, attention: 1, done: 0 });
+    assert.equal(result.active.find((value) => value.id === "working").backgroundLiveness,
+        "working");
+    assert.equal(result.active.find((value) => value.id === "working").foregroundWorking,
+        false);
+    // Background work outlives the foreground turn, so the upstream client
+    // still permits another prompt or an explicit lifecycle action here.
+    assert.equal(H.canOperateLifecycle(map.working, NOW), true);
 });
 
 test("running and awaiting-user threads cannot settle or snooze", () => {
