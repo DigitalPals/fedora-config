@@ -27,7 +27,7 @@ BarModule {
         implicitWidth: layout.implicitWidth + 8
         implicitHeight: Theme.chipHeight
         radius: Theme.pillRadius
-        color: Theme.chip
+        color: Theme.barChip
         anchors.verticalCenter: parent.verticalCenter
 
         Behavior on color {
@@ -52,7 +52,7 @@ BarModule {
                     name: "chevron_left"
                     size: Theme.iconMedium
                     symWeight: 600
-                    color: chevronPointer.over || root.expanded ? Theme.textHi : Theme.textFaint
+                    color: chevronPointer.over || root.expanded ? Theme.barTextHi : Theme.barTextFaint
                     rotation: root.expanded ? 180 : 0
 
                     Behavior on rotation {
@@ -126,7 +126,7 @@ BarModule {
                             width: 26
                             height: 26
                             radius: Theme.pillRadius
-                            color: itemPointer.over ? Theme.chipHover : "transparent"
+                            color: itemPointer.over ? Theme.barChipHover : "transparent"
                             scale: itemMouse.pressed ? 0.88 : 1
 
                             Behavior on color {

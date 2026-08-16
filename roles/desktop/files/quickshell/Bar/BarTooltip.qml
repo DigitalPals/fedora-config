@@ -87,7 +87,7 @@ Item {
         implicitWidth: label.implicitWidth + 20
         implicitHeight: Theme.tooltipHeight
         radius: height / 2
-        color: Theme.glassMenu
+        color: Theme.surfaceMenu
         border.width: 1
         border.color: Theme.stroke
 

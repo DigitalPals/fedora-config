@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import "../Common"
 
@@ -111,8 +112,8 @@ Item {
             height: Theme.chipInnerHeight
             width: emptyRow.implicitWidth + 14
             radius: Theme.pillRadius
-            color: root.held ? Theme.chipHover
-                : emptyPointer.over ? Theme.chipHover : "transparent"
+            color: root.held ? Theme.barChipHover
+                : emptyPointer.over ? Theme.barChipHover : "transparent"
             anchors.verticalCenter: parent.verticalCenter
 
             Behavior on color {
@@ -129,7 +130,13 @@ Item {
                     width: 12
                     height: 12
                     sourceSize: Qt.size(24, 24)
-                    source: Quickshell.shellDir + "/assets/claude-dim.svg"
+                    source: Quickshell.shellDir + "/assets/claude.svg"
+                    opacity: 0.52
+                    layer.enabled: true
+                    layer.effect: MultiEffect {
+                        colorization: 1
+                        colorizationColor: Theme.barIcon
+                    }
                 }
 
                 Text {
@@ -144,7 +151,7 @@ Item {
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.barLabelSize
                     font.weight: Theme.weightBold
-                    color: Usage.fetchError !== "" ? Theme.redText : Theme.textFaint
+                    color: Usage.fetchError !== "" ? Theme.barRedText : Theme.barTextFaint
                 }
             }
 
@@ -187,10 +194,10 @@ Item {
                 radius: Theme.pillRadius
                 // A quota in trouble colours its own chip; everything else
                 // rests transparent inside the group and lights on hover.
-                color: status === "crit" ? Theme.redBg
-                    : status === "warn" ? Theme.amberBg
-                    : current ? Theme.chipHover
-                    : chipPointer.over ? Theme.chipHover
+                color: status === "crit" ? Theme.barRedBg
+                    : status === "warn" ? Theme.barAmberBg
+                    : current ? Theme.barChipHover
+                    : chipPointer.over ? Theme.barChipHover
                     : "transparent"
                 anchors.verticalCenter: parent.verticalCenter
                 scale: chipMouse.pressed ? 0.95 : 1
@@ -217,8 +224,14 @@ Item {
                         width: chip.modelData === "codex" ? 13 : 12
                         height: width
                         sourceSize: Qt.size(26, 26)
-                        source: Quickshell.shellDir + "/assets/" + Usage.meta[chip.modelData].icon
-                            + (chip.status === "error" ? "-dim" : "") + ".svg"
+                        source: Quickshell.shellDir + "/assets/"
+                            + Usage.meta[chip.modelData].icon + ".svg"
+                        opacity: chip.status === "error" ? 0.52 : 0.92
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            colorization: 1
+                            colorizationColor: Theme.barIcon
+                        }
                     }
 
                     Text {
@@ -231,10 +244,10 @@ Item {
                         font.pixelSize: Theme.barLabelSize
                         font.weight: Theme.weightHeavy
                         font.features: Theme.tabularNumberFeatures
-                        color: chip.status === "crit" ? Theme.redText
-                            : chip.status === "warn" ? Theme.amber
-                            : chip.status === "error" ? Theme.redText
-                            : Theme.textMid
+                        color: chip.status === "crit" ? Theme.barRedText
+                            : chip.status === "warn" ? Theme.barAmber
+                            : chip.status === "error" ? Theme.barRedText
+                            : Theme.barTextMid
                     }
                 }
 

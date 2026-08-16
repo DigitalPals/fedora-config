@@ -140,6 +140,30 @@ Singleton {
         return Theme.textDim;
     }
 
+    // The menubar can use a fixed/custom colour independent of the shell's
+    // light/dark palette, so its weather mark needs the parallel bar tones.
+    function barGlyphColor(code, day) {
+        if (code < 0)
+            return Theme.barTextDim;
+        if (code <= 2)
+            return day ? Theme.barWxSun : Theme.barWxMoon;
+        if (code === 3)
+            return Theme.barWxCloud;
+        if (code === 45 || code === 48)
+            return Theme.barWxFog;
+        if (code >= 51 && code <= 67)
+            return Theme.barWxRain;
+        if (code >= 71 && code <= 77)
+            return Theme.barWxSnow;
+        if (code >= 80 && code <= 82)
+            return Theme.barWxRain;
+        if (code === 85 || code === 86)
+            return Theme.barWxSnow;
+        if (code >= 95)
+            return Theme.barWxStorm;
+        return Theme.barTextDim;
+    }
+
     function compass(deg) {
         return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
     }

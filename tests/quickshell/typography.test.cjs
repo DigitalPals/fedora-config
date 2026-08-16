@@ -187,14 +187,13 @@ test("no surface that floats over the desktop draws a drop shadow", () => {
     assert.deepEqual(offenders, []);
 });
 
-test("the opaque reference colours are never painted", () => {
-    // `popBg`/`barBg` exist so contrast can be measured against a fixed
-    // surface. Painting one produces a flat opaque panel in the middle of a
-    // glass shell, which is what four surfaces did after the redesign landed.
+test("views paint semantic surfaces rather than their opaque variants", () => {
+    // `popBg`/`barBg` are selected by Theme's semantic aliases in solid mode
+    // and serve as fixed contrast references in glass mode. Painting one in a
+    // view would bypass the Glass effect switch.
     //
     // `Settings/` is exempt: its bar and toast previews are *pictures of*
-    // those surfaces, and its drag proxy floats over the settings page, which
-    // is opaque. Everything else is glass.
+    // those surfaces, and its drag proxy floats over the settings page.
     const offenders = [];
     for (const file of [...qmlFiles("Bar"), ...qmlFiles("Popovers"),
                         ...["LauncherWindow.qml", "LauncherView.qml",
@@ -208,7 +207,7 @@ test("the opaque reference colours are never painted", () => {
         });
     }
     assert.deepEqual(offenders, [],
-        "these draw the contrast reference instead of a glass token");
+        "these bypass the semantic glass/solid surface token");
 });
 
 test("low-emphasis text remains WCAG AA in both palettes", () => {

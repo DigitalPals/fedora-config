@@ -66,7 +66,7 @@ PanelWindow {
             width: launcherLoader.item ? launcherLoader.item.implicitWidth : 560
             height: launcherLoader.item ? launcherLoader.item.implicitHeight : 200
             radius: Theme.popRadius
-            color: Theme.glassStrong
+            color: Theme.surfaceStrong
 
             // The transform springs while opacity eases, so the shape
             // arrives a beat after the content becomes legible.

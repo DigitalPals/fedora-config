@@ -23,7 +23,7 @@ Rectangle {
     implicitWidth: pips.implicitWidth + 24
     implicitHeight: 30
     radius: Theme.pillRadius
-    color: Theme.chip
+    color: Theme.barChip
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     Behavior on color {
@@ -59,10 +59,10 @@ Rectangle {
                 readonly property bool urgent: exists && ws.urgent
                 readonly property bool hidden: Settings.modOpts.ws.hideEmpty
                     && !exists && !focused
-                readonly property color tone: focused ? Theme.accent
-                    : urgent ? Theme.red
-                    : root.numbered ? (exists ? Theme.chipHover : Theme.chip)
-                    : exists ? Theme.wsOccupied : Theme.dotDim
+                readonly property color tone: focused ? Theme.barAccent
+                    : urgent ? Theme.barRed
+                    : root.numbered ? (exists ? Theme.barChipHover : Theme.barChip)
+                    : exists ? Theme.barWsOccupied : Theme.barDotDim
 
                 visible: !hidden
                 width: hidden ? 0
@@ -97,7 +97,7 @@ Rectangle {
                     radius: pip.radius
                     blur: 10
                     spread: 0
-                    color: slot.focused ? Theme.accentGlow : "transparent"
+                    color: slot.focused ? Theme.barAccentGlow : "transparent"
 
                     Behavior on color {
                         ColorAnimation { duration: Theme.chipFadeDuration }
@@ -135,9 +135,9 @@ Rectangle {
                         font.pixelSize: Theme.fontMicro
                         font.weight: Theme.weightHeavy
                         font.features: Theme.tabularNumberFeatures
-                        color: slot.focused ? Theme.textOnAccent
-                            : slot.urgent ? Theme.textOnAccent
-                            : slot.exists ? Theme.textMid : Theme.textFaint
+                        color: slot.focused ? Theme.barAccentFg
+                            : slot.urgent ? Theme.barRedFg
+                            : slot.exists ? Theme.barTextMid : Theme.barTextFaint
 
                         Behavior on color {
                             ColorAnimation { duration: Theme.chipFadeDuration }

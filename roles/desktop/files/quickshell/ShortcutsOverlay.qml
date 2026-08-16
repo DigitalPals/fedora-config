@@ -60,7 +60,7 @@ PanelWindow {
             width: Math.min(680, root.width - 48)
             height: body.implicitHeight + 46
             radius: Theme.popRadius
-            color: Theme.glassStrong
+            color: Theme.surfaceStrong
             border.width: 1
             border.color: Theme.stroke
             opacity: scrim.opacity

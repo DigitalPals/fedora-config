@@ -284,15 +284,17 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema four carries the glass menubar's defaults and its migration", () => {
+test("schema five retains the glass redesign and adds menubar appearance settings", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 4/);
+    assert.match(helpers, /var VERSION = 5/);
     assert.match(helpers, /"updates", "gh", "t3", "usage", "tray"/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
     assert.match(helpers, /themeMode:\s*"dark"/);
     assert.match(helpers, /barHeight:\s*46/);
     assert.match(helpers, /barRadius:\s*23/);
+    assert.match(helpers, /glassEnabled:\s*true/);
+    assert.match(helpers, /barColorMode:\s*"default"/);
     assert.match(helpers, /mod\("media", true\)/);
     assert.match(helpers, /mod\("bt", false\)/);
     assert.match(helpers, /wallDir:\s*"~\/Pictures\/Wallpapers"/);
@@ -319,9 +321,10 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
     assert.match(folder, /popupType:\s*Controls\.Popup\.Item/);
     assert.match(settings, /interval:\s*8000/);
     assert.match(settings, /function retrySave/);
-    assert.match(settings, /migrationPending = parsed !== null && parsed\.v !== 3/);
+    assert.match(settings,
+        /migrationPending = parsed !== null && parsed\.v !== SettingsHelpers\.VERSION/);
     assert.match(settings, /if \(!ready \|\| migrationPending \|\| corruptBackupPending\)/,
-        "v1/v2 files must wait for the next user mutation before a v3 write");
+        "older files must wait for the next user mutation before a current-schema write");
     assert.match(bindings, /mainMod \..*" \+ comma".*settings toggle/);
 });
 

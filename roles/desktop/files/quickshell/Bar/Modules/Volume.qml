@@ -16,7 +16,7 @@ BarModule {
             : Audio.volume < 50 ? "volume_down" : "volume_up"
         size: Theme.barIconSize
         fill: 1
-        color: Audio.muted ? Theme.redText : Theme.textHi
+        color: Audio.muted ? Theme.barRedText : Theme.barTextHi
     }
 
     Text {
@@ -28,7 +28,7 @@ BarModule {
         font.pixelSize: Theme.fontCaption
         font.weight: Theme.weightBold
         font.features: Theme.tabularNumberFeatures
-        color: Audio.muted ? Theme.redText : Theme.textMid
+        color: Audio.muted ? Theme.barRedText : Theme.barTextMid
     }
 
     // A handler rather than a MouseArea: it takes the wheel without also

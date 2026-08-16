@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 4;
+var VERSION = 5;
 
 // Reads in default layout order: left, then center, then right. The order
 // only decides where an id the settings file has never seen is appended, but
@@ -31,6 +31,31 @@ var FONT_CHOICES = [
 ];
 
 var FONT_IDS = FONT_CHOICES.map(function(choice) { return choice.id; });
+
+// Named menubar colours. `default` and `macos` are adaptive pairs; the
+// remaining presets are intentionally fixed so changing the shell theme does
+// not silently change a colour the user chose explicitly. Custom is stored as
+// HSL components so hue survives even at zero saturation/lightness.
+var BAR_COLOR_CHOICES = [
+    { id: "default", label: "Shell Default" },
+    { id: "macos", label: "macOS" },
+    { id: "black", label: "Black" },
+    { id: "graphite", label: "Graphite" },
+    { id: "slate", label: "Slate" },
+    { id: "white", label: "White" },
+    { id: "custom", label: "Custom" }
+];
+
+var BAR_COLOR_IDS = BAR_COLOR_CHOICES.map(function(choice) { return choice.id; });
+
+var BAR_COLOR_PRESETS = {
+    "default": { dark: "#161424", light: "#ffffff" },
+    "macos": { dark: "#1d1d1f", light: "#f5f5f7" },
+    "black": { dark: "#000000", light: "#000000" },
+    "graphite": { dark: "#2c2c2e", light: "#2c2c2e" },
+    "slate": { dark: "#344054", light: "#344054" },
+    "white": { dark: "#ffffff", light: "#ffffff" }
+};
 
 // How a module draws itself in the bar, which is also how the bar groups a
 // run of them. `chip` modules share one rounded background and are separated
@@ -88,6 +113,11 @@ function defaults() {
         wallDir: "~/Pictures/Wallpapers",
         shuffle: "Off",
         themeMode: "dark",
+        glassEnabled: true,
+        barColorMode: "default",
+        barCustomHue: 247,
+        barCustomSaturation: 29,
+        barCustomLightness: 11,
         barHeight: 46,
         barRadius: 23,
         font: "urbanist",
@@ -155,6 +185,134 @@ function textIn(value, maxLen, fallback) {
 
 function hexIn(value, fallback) {
     return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
+
+function channelHex(value) {
+    return Math.round(Math.min(1, Math.max(0, value)) * 255)
+        .toString(16).padStart(2, "0");
+}
+
+function hslToHex(hue, saturation, lightness) {
+    var h = ((Number(hue) % 360) + 360) % 360 / 360;
+    var s = Math.min(100, Math.max(0, Number(saturation))) / 100;
+    var l = Math.min(100, Math.max(0, Number(lightness))) / 100;
+    if (!isFinite(h) || !isFinite(s) || !isFinite(l))
+        return "#000000";
+
+    if (s === 0)
+        return "#" + channelHex(l) + channelHex(l) + channelHex(l);
+
+    function hueChannel(p, q, t) {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    }
+
+    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    var p = 2 * l - q;
+    return "#" + [
+        hueChannel(p, q, h + 1 / 3),
+        hueChannel(p, q, h),
+        hueChannel(p, q, h - 1 / 3)
+    ].map(channelHex).join("");
+}
+
+function resolveBarColor(mode, themeMode, hue, saturation, lightness) {
+    var selected = enumIn(mode, BAR_COLOR_IDS, "default");
+    if (selected === "custom")
+        return hslToHex(hue, saturation, lightness);
+    var preset = BAR_COLOR_PRESETS[selected] || BAR_COLOR_PRESETS["default"];
+    return themeMode === "light" ? preset.light : preset.dark;
+}
+
+function rgbIn(value, fallback) {
+    var valid = hexIn(value, fallback || "#000000").toLowerCase();
+    return [1, 3, 5].map(function(offset) {
+        return parseInt(valid.slice(offset, offset + 2), 16) / 255;
+    });
+}
+
+function relativeLuminance(value) {
+    var linear = rgbIn(value).map(function(channel) {
+        return channel <= 0.04045 ? channel / 12.92
+            : Math.pow((channel + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function contrastRatio(a, b) {
+    var first = relativeLuminance(a);
+    var second = relativeLuminance(b);
+    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+function mixHex(from, to, amount) {
+    var start = rgbIn(from);
+    var end = rgbIn(to);
+    var t = Math.min(1, Math.max(0, amount));
+    return "#" + start.map(function(channel, index) {
+        return channelHex(channel + (end[index] - channel) * t);
+    }).join("");
+}
+
+function foregroundFor(background) {
+    return contrastRatio("#ffffff", background) >= contrastRatio("#000000", background)
+        ? "#ffffff" : "#000000";
+}
+
+// The least foreground mixed over a background that reaches the requested
+// contrast. On a mid-luminance colour the hierarchy may collapse to the full
+// black/white foreground; readability wins over artificial tonal separation.
+function contrastTone(background, foreground, target) {
+    if (contrastRatio(foreground, background) < target)
+        return foreground;
+    var low = 0;
+    var high = 1;
+    for (var i = 0; i < 16; i++) {
+        var mid = (low + high) / 2;
+        if (contrastRatio(mixHex(background, foreground, mid), background) >= target)
+            high = mid;
+        else
+            low = mid;
+    }
+    return mixHex(background, foreground, high);
+}
+
+// Preserve a semantic colour when it already reads; otherwise pull it toward
+// the bar's automatically selected foreground until it does.
+function ensureContrast(value, background, target) {
+    var source = hexIn(value, foregroundFor(background)).toLowerCase();
+    if (contrastRatio(source, background) >= target)
+        return source;
+    var foreground = foregroundFor(background);
+    var low = 0;
+    var high = 1;
+    for (var i = 0; i < 16; i++) {
+        var mid = (low + high) / 2;
+        if (contrastRatio(mixHex(source, foreground, mid), background) >= target)
+            high = mid;
+        else
+            low = mid;
+    }
+    return mixHex(source, foreground, high);
+}
+
+function barPalette(background) {
+    var bg = hexIn(background, "#161424").toLowerCase();
+    var foreground = foregroundFor(bg);
+    return {
+        background: bg,
+        foreground: foreground,
+        textHi: foreground,
+        textMid: contrastTone(bg, foreground, 7.0),
+        textLow: contrastTone(bg, foreground, 5.5),
+        textDim: contrastTone(bg, foreground, 4.8),
+        textFaint: contrastTone(bg, foreground, 4.5),
+        icon: contrastTone(bg, foreground, 6.0)
+    };
 }
 
 function nameIn(value, fallback) {
@@ -393,7 +551,7 @@ var V3_MOD_OPT_DEFAULTS = {
 
 function adoptRedesign(parsed) {
     if (!parsed || typeof parsed !== "object"
-            || (typeof parsed.v === "number" && parsed.v >= VERSION))
+            || (typeof parsed.v === "number" && parsed.v >= 4))
         return parsed;
     var next = clone(parsed);
     Object.keys(V3_DEFAULTS).forEach(function(key) {
@@ -424,6 +582,13 @@ function merge(raw) {
         wallDir: pathIn(parsed.wallDir, d.wallDir),
         shuffle: enumIn(parsed.shuffle, ["Off", "15m", "1h", "1d"], d.shuffle),
         themeMode: enumIn(parsed.themeMode, ["dark", "light"], d.themeMode),
+        glassEnabled: boolIn(parsed.glassEnabled, d.glassEnabled),
+        barColorMode: enumIn(parsed.barColorMode, BAR_COLOR_IDS, d.barColorMode),
+        barCustomHue: intIn(parsed.barCustomHue, 0, 359, 1, d.barCustomHue),
+        barCustomSaturation: intIn(parsed.barCustomSaturation, 0, 100, 1,
+            d.barCustomSaturation),
+        barCustomLightness: intIn(parsed.barCustomLightness, 0, 100, 1,
+            d.barCustomLightness),
         barHeight: intIn(parsed.barHeight, 28, 60, 1, d.barHeight),
         barRadius: intIn(parsed.barRadius, 0, 30, 1, d.barRadius),
         font: enumIn(parsed.font, FONT_IDS, d.font),
@@ -488,23 +653,7 @@ function formatMinutes(total) {
 }
 
 function hueToHex(degrees) {
-    var h = ((Number(degrees) % 360) + 360) % 360 / 360;
-    var s = 0.50;
-    var l = 0.75;
-    function hueChannel(p, q, t) {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1 / 6) return p + (q - p) * 6 * t;
-        if (t < 1 / 2) return q;
-        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-        return p;
-    }
-    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    var p = 2 * l - q;
-    var channels = [hueChannel(p, q, h + 1 / 3), hueChannel(p, q, h), hueChannel(p, q, h - 1 / 3)];
-    return "#" + channels.map(function(channel) {
-        return Math.round(channel * 255).toString(16).padStart(2, "0");
-    }).join("");
+    return hslToHex(degrees, 50, 75);
 }
 
 function hexHue(value, fallback) {
@@ -576,6 +725,9 @@ var exported = {
     DETAIL_POLICIES: DETAIL_POLICIES,
     FONT_CHOICES: FONT_CHOICES,
     FONT_IDS: FONT_IDS,
+    BAR_COLOR_CHOICES: BAR_COLOR_CHOICES,
+    BAR_COLOR_IDS: BAR_COLOR_IDS,
+    BAR_COLOR_PRESETS: BAR_COLOR_PRESETS,
     defaults: defaults,
     defaultMods: defaultMods,
     defaultModOpts: defaultModOpts,
@@ -591,6 +743,13 @@ var exported = {
     formatMinutes: formatMinutes,
     hueToHex: hueToHex,
     hexHue: hexHue,
+    hslToHex: hslToHex,
+    resolveBarColor: resolveBarColor,
+    relativeLuminance: relativeLuminance,
+    contrastRatio: contrastRatio,
+    foregroundFor: foregroundFor,
+    ensureContrast: ensureContrast,
+    barPalette: barPalette,
     clone: clone,
     restoreSnapshot: restoreSnapshot,
     merge: merge,

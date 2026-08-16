@@ -115,14 +115,14 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     color: {
                         if (group.kind === "chip")
-                            return Theme.chip;
+                            return Theme.barChip;
                         if (!group.ownsPointer)
                             return "transparent";
                         if (group.held || groupPointer.over)
-                            return Theme.chipHover;
+                            return Theme.barChipHover;
                         // The centre pill is bare at rest so the clock reads
                         // as part of the bar rather than as another button.
-                        return group.kind === "center" ? "transparent" : Theme.chip;
+                        return group.kind === "center" ? "transparent" : Theme.barChip;
                     }
                     scale: group.ownsPointer && groupMouse.pressed ? 0.96 : 1
 

@@ -6,7 +6,13 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
+    assert.equal(H.VERSION, 5);
     assert.equal(d.themeMode, "dark");
+    assert.equal(d.glassEnabled, true);
+    assert.equal(d.barColorMode, "default");
+    assert.deepEqual(
+        [d.barCustomHue, d.barCustomSaturation, d.barCustomLightness],
+        [247, 29, 11]);
     assert.equal(d.barHeight, 46);
     assert.equal(d.barRadius, 23);
     assert.equal(d.font, "urbanist");
@@ -69,6 +75,78 @@ test("defaults carry the design values", () => {
     // A fresh list per call: a shared array would let one edit reach the
     // defaults every later comparison is made against.
     assert.notEqual(H.defaultModOpts().gh.watch, H.defaultModOpts().gh.watch);
+});
+
+test("menubar presets are a small intentional neutral palette", () => {
+    assert.deepEqual(H.BAR_COLOR_CHOICES.map(choice => [choice.id, choice.label]), [
+        ["default", "Shell Default"],
+        ["macos", "macOS"],
+        ["black", "Black"],
+        ["graphite", "Graphite"],
+        ["slate", "Slate"],
+        ["white", "White"],
+        ["custom", "Custom"]
+    ]);
+
+    const resolve = (mode, theme = "dark") =>
+        H.resolveBarColor(mode, theme, 247, 29, 11);
+    assert.equal(resolve("default"), "#161424");
+    assert.equal(resolve("default", "light"), "#ffffff");
+    assert.equal(resolve("macos"), "#1d1d1f");
+    assert.equal(resolve("macos", "light"), "#f5f5f7");
+    assert.equal(resolve("black", "light"), "#000000");
+    assert.equal(resolve("graphite"), "#2c2c2e");
+    assert.equal(resolve("slate"), "#344054");
+    assert.equal(resolve("white"), "#ffffff");
+    assert.equal(resolve("custom"), "#161424",
+        "the default custom sliders begin at the shell's dark colour");
+});
+
+test("custom menubar HSL is deterministic and persisted input is bounded", () => {
+    assert.equal(H.hslToHex(0, 100, 50), "#ff0000");
+    assert.equal(H.hslToHex(120, 100, 50), "#00ff00");
+    assert.equal(H.hslToHex(240, 100, 50), "#0000ff");
+    assert.equal(H.hslToHex(480, 100, 50), "#00ff00", "hue wraps for previews");
+    assert.equal(H.hslToHex(17, 0, 50), "#808080");
+
+    const merged = H.merge({
+        v: H.VERSION,
+        glassEnabled: false,
+        barColorMode: "custom",
+        barCustomHue: 999,
+        barCustomSaturation: -4,
+        barCustomLightness: 140
+    });
+    assert.equal(merged.glassEnabled, false);
+    assert.equal(merged.barColorMode, "custom");
+    assert.deepEqual(
+        [merged.barCustomHue, merged.barCustomSaturation, merged.barCustomLightness],
+        [359, 0, 100]);
+
+    const invalid = H.merge({
+        glassEnabled: "no", barColorMode: "neon", barCustomHue: "blue"
+    });
+    assert.equal(invalid.glassEnabled, true);
+    assert.equal(invalid.barColorMode, "default");
+    assert.equal(invalid.barCustomHue, 247);
+});
+
+test("the automatic menubar palette keeps copy at AA contrast", () => {
+    const backgrounds = [
+        "#161424", "#1d1d1f", "#000000", "#2c2c2e", "#344054",
+        "#ffffff", "#f5f5f7", "#777777", "#00aaaa"
+    ];
+    for (const background of backgrounds) {
+        const palette = H.barPalette(background);
+        for (const key of ["textHi", "textMid", "textLow", "textDim", "textFaint", "icon"])
+            assert.ok(H.contrastRatio(palette[key], background) >= 4.5,
+                `${key} does not clear 4.5:1 on ${background}`);
+        for (const semantic of ["#5e9bff", "#c22f2f", "#b5761e"])
+            assert.ok(H.contrastRatio(H.ensureContrast(semantic, background, 4.5), background)
+                >= 4.5, `${semantic} does not clear 4.5:1 on ${background}`);
+    }
+    assert.equal(H.foregroundFor("#000000"), "#ffffff");
+    assert.equal(H.foregroundFor("#ffffff"), "#000000");
 });
 
 test("normalizeModOpts drops unknown modules and keys", () => {
@@ -302,6 +380,34 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
     const current = H.merge({ v: H.VERSION, barHeight: 30, accent: "#9ecbeb" });
     assert.equal(current.barHeight, 30);
     assert.equal(current.accent, "#9ecbeb");
+});
+
+test("schema-4 appearance choices survive the schema-5 upgrade", () => {
+    // Schema 4 already carried the glass redesign. Values equal to the older
+    // v3 defaults can now be deliberate choices and must not be adopted a
+    // second time when the new colour settings are filled from defaults.
+    const previous = H.merge({
+        v: 4,
+        themeMode: "light",
+        barHeight: 30,
+        barRadius: 9,
+        gap: 8,
+        accent: "#9ecbeb",
+        font: "oppo",
+        osd: "top"
+    });
+    assert.equal(previous.themeMode, "light");
+    assert.equal(previous.barHeight, 30);
+    assert.equal(previous.barRadius, 9);
+    assert.equal(previous.gap, 8);
+    assert.equal(previous.accent, "#9ecbeb");
+    assert.equal(previous.font, "oppo");
+    assert.equal(previous.osd, "top");
+    assert.equal(previous.glassEnabled, true);
+    assert.equal(previous.barColorMode, "default");
+    assert.equal(H.resolveBarColor(previous.barColorMode, previous.themeMode,
+        previous.barCustomHue, previous.barCustomSaturation,
+        previous.barCustomLightness), "#ffffff");
 });
 
 test("the tray and the updates chip persist in any module column", () => {

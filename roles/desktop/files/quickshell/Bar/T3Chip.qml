@@ -37,7 +37,7 @@ BarChip {
     spacing: 6
     // Attention is the one state that colours the chip itself: a session
     // waiting on the user is the only thing here worth interrupting for.
-    restFill: stressed ? Theme.amberBg : "transparent"
+    restFill: stressed ? Theme.barAmberBg : "transparent"
     tooltipAlign: 1
     tooltip: {
         if (T3Code.state === "unpaired")
@@ -58,14 +58,20 @@ BarChip {
     }
 
     Image {
+        id: t3Mark
         anchors.verticalCenter: parent.verticalCenter
         // PreserveAspectFit, so the box is a bound rather than a shape: the
         // 5:3 mark draws 15x9 inside it.
         height: 9
         width: 15
         sourceSize: Qt.size(30, 18)
-        source: Quickshell.shellDir + "/assets/" + (root.live ? "t3.svg" : "t3-dim.svg")
-        opacity: 0.92
+        source: Quickshell.shellDir + "/assets/t3.svg"
+        opacity: root.live ? 0.92 : 0.52
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            colorization: 1
+            colorizationColor: Theme.barIcon
+        }
     }
 
     // Live work: a lit dot with its own bloom, deliberately static. A pulse
@@ -93,7 +99,7 @@ BarChip {
             radius: dot.radius
             blur: 6
             spread: 0
-            color: Theme.accentGlow
+            color: Theme.barAccentGlow
         }
 
         Rectangle {
@@ -101,7 +107,7 @@ BarChip {
             width: 5
             height: 5
             radius: 2.5
-            color: Theme.accent
+            color: Theme.barAccent
         }
     }
 
@@ -116,13 +122,13 @@ BarChip {
         font.features: Theme.tabularNumberFeatures
         color: {
             if (!root.live)
-                return T3Code.state === "connecting" ? Theme.textLow : Theme.textFaint;
+                return T3Code.state === "connecting" ? Theme.barTextLow : Theme.barTextFaint;
             if (root.stressed)
-                return Theme.amber;
+                return Theme.barAmber;
             if (T3Code.runningCount > 0 || T3Code.monitoringCount > 0
                     || T3Code.doneCount > 0)
-                return Theme.textMid;
-            return Theme.textLow;
+                return Theme.barTextMid;
+            return Theme.barTextLow;
         }
 
         Behavior on color {

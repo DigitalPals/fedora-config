@@ -31,8 +31,8 @@ PopoutPanel {
 
     readonly property var navItems: [
         { id: "appearance", group: "SHELL", label: "Appearance", glyph: "palette",
-            title: "Appearance", description: "Shape, typography, and shell accent",
-            keywords: "bar height corner radius menu font accent color hue wallpaper theme" },
+            title: "Appearance", description: "Glass, menubar color, shape, type, and accent",
+            keywords: "glass blur solid menubar color macos black graphite slate custom hsl bar height corner radius menu font accent hue wallpaper theme" },
         { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "image",
             title: "Wallpaper", description: "Desktop image and automatic rotation",
             keywords: "desktop image background picture folder shuffle rotation" },

@@ -19,6 +19,6 @@ Item {
         width: root.kind === "dot" ? 3 : 1
         height: root.kind === "dot" ? 3 : 13
         radius: root.kind === "dot" ? 1.5 : 0
-        color: root.kind === "dot" ? Theme.dotDim : Theme.stroke
+        color: root.kind === "dot" ? Theme.barDotDim : Theme.barStroke
     }
 }

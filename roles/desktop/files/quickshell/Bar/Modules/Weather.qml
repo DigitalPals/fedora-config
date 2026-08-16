@@ -22,9 +22,9 @@ BarModule {
         size: Theme.iconSmall + 1
         fill: 1
         // Weather.code is -1 until a forecast lands, and both symbol() and
-        // glyphColor() already answer that with the "no data" mark in
-        // Theme.textDim — no fallback needed here.
-        color: Weather.glyphColor(Weather.code, Weather.isDay)
+        // barGlyphColor() already answers that with the "no data" mark in
+        // Theme.barTextDim — no fallback needed here.
+        color: Weather.barGlyphColor(Weather.code, Weather.isDay)
     }
 
     Text {
@@ -38,7 +38,7 @@ BarModule {
         font.features: Theme.tabularNumberFeatures
         // Dimmed while offline, so a forecast that has stopped being refreshed
         // does not read as current.
-        color: Weather.offline ? Theme.textFaint : Theme.textMid
+        color: Weather.offline ? Theme.barTextFaint : Theme.barTextMid
     }
 
     Text {
@@ -49,6 +49,6 @@ BarModule {
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
         font.weight: Theme.weightSemibold
-        color: Theme.textLow
+        color: Theme.barTextLow
     }
 }

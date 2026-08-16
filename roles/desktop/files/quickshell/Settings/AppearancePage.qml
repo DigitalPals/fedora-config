@@ -6,14 +6,23 @@ import QtQuick.Controls as Controls
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
 
-// Appearance page (design v2): live bar miniature, height/radius sliders
-// with presets, menu font picker, accent swatches + from-wallpaper accent.
+// Appearance page (design v2): live bar miniature, shell glass, accessible
+// menubar colour presets + HSL custom colour, geometry, type and accent.
 SettingsPage {
     id: page
 
     readonly property var accentChoices: ["#9ecbeb", "#a992e0", "#79b88b", "#d3b47e", "#e8837a"]
     readonly property string tempPreview: Settings.unit === "f" ? "70°" : "21°"
     readonly property int accentHue: SettingsHelpers.hexHue(Settings.accent, 204)
+    readonly property int barColorIndex: {
+        for (let i = 0; i < Settings.barColorChoices.length; ++i) {
+            if (Settings.barColorChoices[i].id === Settings.barColorMode)
+                return i;
+        }
+        return 0;
+    }
+    readonly property string barColorLabel:
+        Settings.barColorChoices[barColorIndex].label
 
     function pickAccent(value) {
         Settings.set("accent", value);
@@ -34,7 +43,8 @@ SettingsPage {
         PreviewStrip {
             width: parent.width
             height: 80
-            badgeText: "height " + Settings.barHeight + " · radius " + Settings.barRadius
+            badgeText: (Settings.glassEnabled ? "glass" : "solid") + " · "
+                + page.barColorLabel + " · " + Settings.effectiveBarColor.toUpperCase()
 
             // The miniature is a real bar drawn at true metrics inside a
             // 0.72-scaled space — the design's 8.5px preview text without a
@@ -51,7 +61,9 @@ SettingsPage {
                     width: parent.width - 28
                     height: Settings.barHeight
                     radius: Theme.clusterRadius
-                    color: Theme.barBg
+                    color: Theme.barSurface
+                    border.width: 1
+                    border.color: Theme.barStroke
 
                     Row {
                         anchors.left: parent.left
@@ -59,9 +71,9 @@ SettingsPage {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 4
 
-                        Rectangle { width: 12; height: 5; radius: 2.5; color: Theme.accent }
-                        Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.dotDim }
-                        Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.dotDim }
+                        Rectangle { width: 12; height: 5; radius: 2.5; color: Theme.barAccent }
+                        Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barDotDim }
+                        Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barDotDim }
                     }
 
                     Text {
@@ -71,7 +83,7 @@ SettingsPage {
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontCaption
                         font.weight: Theme.weightSemibold
-                        color: Theme.textHi
+                        color: Theme.barTextHi
                         renderType: Text.QtRendering
                     }
 
@@ -83,7 +95,7 @@ SettingsPage {
 
                         Repeater {
                             model: 3
-                            delegate: Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.dotDim }
+                            delegate: Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barDotDim }
                         }
                     }
                 }
@@ -93,19 +105,204 @@ SettingsPage {
         SectionHeader {
             label: "THEME"
             dirty: Settings.themeMode !== Settings.defaults.themeMode
-            onResetRequested: Settings.resetKeys(["themeMode"])
+                || Settings.glassEnabled !== Settings.defaults.glassEnabled
+            onResetRequested: Settings.resetKeys(["themeMode", "glassEnabled"])
         }
 
         PickerRow {
             width: parent.width
             label: "Mode"
             settingKey: "themeMode"
-            caption: "glass tint, text and hairlines"
+            caption: "shell surfaces and text"
             captionMono: false
             model: [
                 { value: "dark", label: "Dark" },
                 { value: "light", label: "Light" }
             ]
+        }
+
+        SwitchRow {
+            width: parent.width
+            label: "Glass effect"
+            settingKey: "glassEnabled"
+            description: Settings.glassApplyError
+                ? "Surface changed, but the compositor blur rule could not be updated"
+                : "Blurred translucent shell surfaces; off uses opaque surfaces"
+        }
+
+        SectionHeader {
+            label: "MENUBAR COLOR"
+            dirty: Settings.barColorMode !== Settings.defaults.barColorMode
+                || Settings.barCustomHue !== Settings.defaults.barCustomHue
+                || Settings.barCustomSaturation !== Settings.defaults.barCustomSaturation
+                || Settings.barCustomLightness !== Settings.defaults.barCustomLightness
+            onResetRequested: Settings.resetKeys(["barColorMode", "barCustomHue",
+                "barCustomSaturation", "barCustomLightness"], "Menubar color")
+        }
+
+        Column {
+            width: parent.width
+            spacing: 5
+
+            Flow {
+                width: parent.width
+                spacing: 9
+
+                Repeater {
+                    id: barColorRepeater
+                    model: Settings.barColorChoices
+
+                    delegate: Item {
+                        id: colorChoice
+
+                        required property var modelData
+                        required property int index
+                        readonly property bool selected:
+                            Settings.barColorMode === modelData.id
+                        readonly property string previewHex:
+                            Settings.previewBarColor(modelData.id)
+                        readonly property color previewColor: previewHex
+
+                        width: 32
+                        height: 32
+                        activeFocusOnTab: selected || (index === 0
+                            && Settings.barColorMode === "")
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: modelData.label + " menubar color"
+                        Accessible.description: previewHex.toUpperCase()
+                        Accessible.checked: selected
+                        Accessible.onPressAction: Settings.set("barColorMode", modelData.id)
+                        Controls.ToolTip.visible: colorMouse.containsMouse
+                        Controls.ToolTip.text: modelData.label + " · "
+                            + previewHex.toUpperCase()
+
+                        Keys.onPressed: event => {
+                            let next = -1;
+                            if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
+                                next = Math.max(0, index - 1);
+                            else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
+                                next = Math.min(Settings.barColorChoices.length - 1, index + 1);
+                            else if (event.key === Qt.Key_Home)
+                                next = 0;
+                            else if (event.key === Qt.Key_End)
+                                next = Settings.barColorChoices.length - 1;
+                            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Space) {
+                                Settings.set("barColorMode", modelData.id);
+                                event.accepted = true;
+                                return;
+                            }
+                            if (next >= 0) {
+                                Settings.set("barColorMode", Settings.barColorChoices[next].id);
+                                barColorRepeater.itemAt(next).forceActiveFocus();
+                                event.accepted = true;
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: colorChoice.selected ? 2
+                                : colorChoice.activeFocus ? 1 : 0
+                            border.color: colorChoice.selected ? Theme.accent : Theme.textHi
+                        }
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 22
+                            height: 22
+                            radius: 11
+                            color: colorChoice.previewColor
+                            border.width: 1
+                            border.color: Theme.stroke
+                        }
+
+                        MouseArea {
+                            id: colorMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                colorChoice.forceActiveFocus();
+                                Settings.set("barColorMode", colorChoice.modelData.id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 22
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: page.barColorLabel
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
+                    color: Theme.textMid
+                }
+
+                Text {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: (Settings.barColorMode === "default"
+                            || Settings.barColorMode === "macos" ? "adapts to theme · " : "")
+                        + Settings.effectiveBarColor.toUpperCase()
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.textFaint
+                }
+            }
+        }
+
+        SliderRow {
+            visible: Settings.barColorMode === "custom"
+            width: parent.width
+            label: "Hue"
+            settingKey: "barCustomHue"
+            min: 0
+            max: 359
+            step: 1
+            unit: "°"
+            hueTrack: true
+        }
+
+        SliderRow {
+            visible: Settings.barColorMode === "custom"
+            width: parent.width
+            label: "Saturation"
+            settingKey: "barCustomSaturation"
+            min: 0
+            max: 100
+            step: 1
+            unit: "%"
+            colorTrack: true
+            trackStart: SettingsHelpers.hslToHex(Settings.barCustomHue, 0,
+                Settings.barCustomLightness)
+            trackMiddle: SettingsHelpers.hslToHex(Settings.barCustomHue, 50,
+                Settings.barCustomLightness)
+            trackEnd: SettingsHelpers.hslToHex(Settings.barCustomHue, 100,
+                Settings.barCustomLightness)
+        }
+
+        SliderRow {
+            visible: Settings.barColorMode === "custom"
+            width: parent.width
+            label: "Lightness"
+            settingKey: "barCustomLightness"
+            min: 0
+            max: 100
+            step: 1
+            unit: "%"
+            colorTrack: true
+            trackStart: "#000000"
+            trackMiddle: SettingsHelpers.hslToHex(Settings.barCustomHue,
+                Settings.barCustomSaturation, 50)
+            trackEnd: "#ffffff"
         }
 
         SectionHeader {

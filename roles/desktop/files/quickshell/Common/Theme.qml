@@ -1,19 +1,17 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import "SettingsHelpers.js" as SettingsHelpers
 
 // Design tokens for the glass menubar ("QuickShell Menubar" redesign).
 //
-// Every surface in the shell is translucent and sits over the compositor's
-// blur, so the palette is expressed as alpha over an unknown backdrop rather
-// than as opaque fills. The `dark*` / `light*` literals below are the two
-// reference palettes; the semantic tokens under them pick one, which is what
-// makes the Control Center's Dark mode switch a one-property flip.
+// Shell surfaces can be translucent over compositor blur or opaque. The
+// `dark*` / `light*` literals below are the fixed reference palettes; semantic
+// surface tokens choose glass or solid, and semantic color tokens keep views
+// from knowing which variant is active.
 //
-// The `*Ref` colors are the opaque equivalents of the glass surfaces over the
-// shell's own dimmed wallpaper. Nothing draws them — they exist so contrast
-// can be reasoned about (and tested) against a fixed reference instead of
-// against whatever photograph happens to be behind the panel.
+// The opaque colors are also the glass surfaces' contrast references. Solid
+// mode draws them through semantic aliases; views never paint them directly.
 Singleton {
     id: root
 
@@ -23,7 +21,12 @@ Singleton {
     readonly property color darkPopBg: "#171526"
     readonly property color lightPopBg: "#eeedf3"
     readonly property color popBg: dark ? darkPopBg : lightPopBg
-    readonly property color barBg: popBg
+    readonly property color darkMenuBg: "#1a182c"
+    readonly property color lightMenuBg: "#fcfcff"
+    readonly property color menuBg: dark ? darkMenuBg : lightMenuBg
+    // The bar's opaque reference is independent of the surrounding shell
+    // theme for fixed/custom presets. It is also the exact solid-mode fill.
+    readonly property color barBg: Settings.effectiveBarColor
 
     // ---- glass ------------------------------------------------------------
     // The bar is the lighter glass; panels sit a step denser so copy stays
@@ -38,6 +41,14 @@ Singleton {
     readonly property color glassMenu: dark
         ? Qt.rgba(26 / 255, 24 / 255, 44 / 255, 0.88)
         : Qt.rgba(252 / 255, 252 / 255, 255 / 255, 0.92)
+    // Rendering uses semantic surface tokens. The raw glass colours above
+    // remain the translucent variants; disabling glass swaps in opaque
+    // references without making nested chip/tile fills opaque.
+    readonly property color barSurface: Settings.glassEnabled
+        ? Qt.rgba(barBg.r, barBg.g, barBg.b, dark ? 0.52 : 0.55)
+        : barBg
+    readonly property color surfaceStrong: Settings.glassEnabled ? glassStrong : popBg
+    readonly property color surfaceMenu: Settings.glassEnabled ? glassMenu : menuBg
     // Full-screen scrims behind the power menu / shortcut sheet.
     readonly property color scrim: dark
         ? Qt.rgba(10 / 255, 8 / 255, 22 / 255, 0.42)
@@ -50,6 +61,72 @@ Singleton {
     readonly property color hairline: stroke
     readonly property color hairlineSoft: dark
         ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.10)
+
+    // ---- menubar palette -------------------------------------------------
+    // A chosen bar colour may deliberately disagree with the shell's global
+    // light/dark mode. Derive its own foreground ladder so a white bar in a
+    // dark shell (or the reverse) remains readable. The helper floors every
+    // copy-bearing step at 4.5:1 against barBg.
+    readonly property var barPalette: SettingsHelpers.barPalette(Settings.effectiveBarColor)
+    readonly property bool barLightForeground: barPalette.foreground === "#ffffff"
+    readonly property color barTextHi: barPalette.textHi
+    readonly property color barTextMid: barPalette.textMid
+    readonly property color barTextLow: barPalette.textLow
+    readonly property color barTextDim: barPalette.textDim
+    readonly property color barTextFaint: barPalette.textFaint
+    readonly property color barIcon: barPalette.icon
+    readonly property color barDotDim: barLightForeground
+        ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(0, 0, 0, 0.26)
+    readonly property color barWsOccupied: barLightForeground
+        ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(0, 0, 0, 0.62)
+    readonly property color barStroke: barLightForeground
+        ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0, 0, 0, 0.14)
+    readonly property color barChip: barLightForeground
+        ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.07)
+    readonly property color barChipHover: barLightForeground
+        ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.13)
+
+    readonly property color barAccent: SettingsHelpers.ensureContrast(
+        Settings.effectiveAccent, Settings.effectiveBarColor, 4.5)
+    readonly property var barAccentPalette: SettingsHelpers.barPalette(
+        SettingsHelpers.ensureContrast(Settings.effectiveAccent,
+            Settings.effectiveBarColor, 4.5))
+    readonly property color barAccentFg: barAccentPalette.foreground
+    readonly property color barAccentGlow: Qt.rgba(
+        barAccent.r, barAccent.g, barAccent.b, 0.50)
+    readonly property color barRed: SettingsHelpers.ensureContrast(
+        barLightForeground ? "#ff8f8f" : "#c22f2f",
+        Settings.effectiveBarColor, 4.5)
+    readonly property var barRedPalette: SettingsHelpers.barPalette(barRed)
+    readonly property color barRedFg: barRedPalette.foreground
+    readonly property color barRedText: barRed
+    readonly property color barAmber: SettingsHelpers.ensureContrast(
+        barLightForeground ? "#ffc26e" : "#b5761e",
+        Settings.effectiveBarColor, 4.5)
+    readonly property var barAmberPalette: SettingsHelpers.barPalette(barAmber)
+    readonly property color barAmberFg: barAmberPalette.foreground
+    readonly property color barRedBg: Qt.rgba(
+        barRedText.r, barRedText.g, barRedText.b, 0.18)
+    readonly property color barAmberBg: Qt.rgba(
+        barAmber.r, barAmber.g, barAmber.b, barLightForeground ? 0.17 : 0.14)
+
+    readonly property color barWxSun: SettingsHelpers.ensureContrast(
+        "#ffc26e", Settings.effectiveBarColor, 4.5)
+    readonly property color barWxMoon: SettingsHelpers.ensureContrast(
+        "#bfc6da", Settings.effectiveBarColor, 4.5)
+    readonly property color barWxCloud: SettingsHelpers.ensureContrast(
+        barLightForeground ? "#a8b0c4" : "#5c6377",
+        Settings.effectiveBarColor, 4.5)
+    readonly property color barWxFog: SettingsHelpers.ensureContrast(
+        barLightForeground ? "#949aa8" : "#5f6572",
+        Settings.effectiveBarColor, 4.5)
+    readonly property color barWxRain: SettingsHelpers.ensureContrast(
+        "#6ab0ea", Settings.effectiveBarColor, 4.5)
+    readonly property color barWxSnow: SettingsHelpers.ensureContrast(
+        barLightForeground ? "#c8e2f5" : "#4a8fbe",
+        Settings.effectiveBarColor, 4.5)
+    readonly property color barWxStorm: SettingsHelpers.ensureContrast(
+        "#a992e0", Settings.effectiveBarColor, 4.5)
 
     // ---- fills ------------------------------------------------------------
     // chip: a resting pill inside the bar. chipHover: the same pill lit, and

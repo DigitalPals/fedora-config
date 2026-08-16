@@ -46,8 +46,25 @@ is manual.
 
 ## Appearance page
 
-- [ ] Height slider resizes the real bar live; miniature preview and badge
-      track it; presets snap it (pill highlights only on exact match).
+- [ ] Dark / Light changes the shell palette; Glass effect switches the bar,
+      popouts, launcher, notifications, OSD, power menu, shortcuts, tooltips,
+      and floating menus between blurred translucent and opaque surfaces.
+      Full-screen power/shortcut scrims stay translucent in both modes.
+- [ ] Glass effect applies without closing Settings or remapping/flickering the
+      bar. Toggle it twice quickly, then reload Hyprland and restart Quickshell;
+      the final persisted state wins each time.
+- [ ] Menubar color offers Shell Default, macOS, Black, Graphite, Slate,
+      White, and Custom. Default and macOS adapt to Dark / Light; the other
+      preset colors remain fixed. The preview badge reports the active mode,
+      preset, and exact hex value.
+- [ ] A Black menubar changes its text/icons to light tones; White changes
+      them to dark tones. Accent, warning, error, workspace, weather, and T3
+      marks remain legible, with no change to popover colors.
+- [ ] Custom reveals Hue, Saturation, and Lightness sliders. Their tracks and
+      the real bar update live, the chosen HSL survives a preset round-trip,
+      and the MENUBAR COLOR reset restores the adaptive Shell Default.
+- [ ] Height slider resizes the real bar live; the miniature tracks it;
+      presets snap it (pill highlights only on exact match).
 - [ ] Corner radius reshapes bar islands live.
 - [ ] Font rows render their own family; picking one reflows the bar and
       popovers instantly.

@@ -1,3 +1,21 @@
+-- Keep compositor blur in step with the shell's persisted glass setting from
+-- the first frame. Quickshell updates the named rule below at runtime; this
+-- lightweight read covers compositor reloads and restarts before the shell has
+-- a reason to emit a setting change.
+local function persisted_glass_enabled()
+  local home = os.getenv("HOME")
+  if not home then return true end
+
+  local file = io.open(home .. "/.local/state/quickshell/shell-settings.json", "r")
+  if not file then return true end
+  local contents = file:read("*a")
+  file:close()
+
+  local value = contents:match('[,{]%s*"glassEnabled"%s*:%s*(%a+)')
+  if value == "false" then return false end
+  return true
+end
+
 hl.config({
   general = {
     gaps_in = 5,
@@ -9,9 +27,9 @@ hl.config({
   cursor = { no_hardware_cursors = false },
   decoration = {
     rounding = 10,
-    -- The shell is glass now: every menubar and panel surface is a
-    -- translucent tint over whatever is behind it, and without a real blur
-    -- behind them they read as smeared plastic. Three passes at this radius
+    -- In glass mode every menubar and panel surface is a translucent tint over
+    -- whatever is behind it, and without a real blur they read as smeared
+    -- plastic. Three passes at this radius
     -- is the point where the wallpaper stops being legible through the bar;
     -- vibrancy stands in for the design's saturate(1.7).
     blur = {
@@ -65,8 +83,11 @@ hl.layer_rule({
 -- So ignore_alpha only has to skip pixels nothing was drawn on. Every surface
 -- that must blur is well clear of it: the menubar's glass is 0.52, a panel's
 -- 0.72, the full-screen scrims 0.42.
-hl.layer_rule({
+-- Intentionally global: Settings.qml reaches this stable handle through
+-- `hyprctl eval` so switching glass never has to remap a layer surface.
+quickshell_blur_rule = hl.layer_rule({
   name = "quickshell-blur",
+  enabled = persisted_glass_enabled(),
   match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|power|shortcuts)$]] },
   blur = true,
   ignore_alpha = 0.1,

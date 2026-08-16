@@ -20,10 +20,10 @@ BarModule {
         glyph: "deployed_code_update"
         glyphSize: Theme.barIconSize - 1
         glyphWeight: 600
-        idleColor: Theme.textMid
+        idleColor: Theme.barTextMid
         label: Updates.busy ? "…" : Updates.error !== "" ? "!" : Updates.total
         compact: root.compact
-        labelColor: Theme.textMid
+        labelColor: Theme.barTextMid
         alert: Updates.error !== ""
         tooltip: "Updates · " + Updates.summary
         tooltipAlign: 1

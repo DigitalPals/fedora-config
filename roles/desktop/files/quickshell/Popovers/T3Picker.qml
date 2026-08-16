@@ -183,7 +183,7 @@ Item {
         // This panel floats over the rest of the composer. A recessed tile
         // fill is intentionally very translucent and lets the controls below
         // compete with the choices, so use the dense menu glass instead.
-        color: Theme.glassMenu
+        color: Theme.surfaceMenu
         border.width: 1
         border.color: Theme.popBorder
         clip: true

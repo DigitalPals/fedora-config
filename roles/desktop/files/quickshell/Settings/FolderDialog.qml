@@ -57,7 +57,7 @@ Controls.Dialog {
 
     background: Rectangle {
         radius: Theme.popRadius
-        color: Theme.glassMenu
+        color: Theme.surfaceMenu
         border.width: 1
         border.color: Theme.popBorder
     }

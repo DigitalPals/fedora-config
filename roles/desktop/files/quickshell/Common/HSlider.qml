@@ -3,8 +3,9 @@ import "Format.js" as Format
 
 // The one slider: 4px track, 10px knob. Continuous while `step` is 0 (the
 // media seek bar), stepped otherwise (settings rows, all of which set one).
-// `gradientTrack` renders the night-light warmth ramp and `hueTrack` the
-// accent wheel, both with no fill.
+// `gradientTrack` renders the night-light warmth ramp, `hueTrack` the accent
+// wheel, and `colorTrack` a caller-provided three-stop ramp; all omit the
+// ordinary progress fill.
 //
 // Merged from the popover and settings copies for the same reason as
 // Common/Toggle.qml: the popover one had no Accessible or Keys handling at
@@ -19,6 +20,10 @@ Item {
     property bool dimmed: false
     property bool gradientTrack: false
     property bool hueTrack: false
+    property bool colorTrack: false
+    property color trackStart: "#000000"
+    property color trackMiddle: "#808080"
+    property color trackEnd: "#ffffff"
     property string accessibleName: "Slider"
     signal moved(real value)
 
@@ -75,9 +80,12 @@ Item {
         width: parent.width
         height: 4
         radius: 2
-        color: root.gradientTrack || root.hueTrack ? "transparent" : Theme.hairline
+        color: root.gradientTrack || root.hueTrack || root.colorTrack
+            ? "transparent" : Theme.hairline
         opacity: root.dimmed ? 0.45 : 1
-        gradient: root.hueTrack ? hueGradient : root.gradientTrack ? warmGradient : null
+        gradient: root.hueTrack ? hueGradient
+            : root.gradientTrack ? warmGradient
+            : root.colorTrack ? colorGradient : null
 
         Gradient {
             id: warmGradient
@@ -98,8 +106,16 @@ Item {
             GradientStop { position: 1.0; color: "#df9f9f" }
         }
 
+        Gradient {
+            id: colorGradient
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0; color: root.trackStart }
+            GradientStop { position: 0.5; color: root.trackMiddle }
+            GradientStop { position: 1; color: root.trackEnd }
+        }
+
         Rectangle {
-            visible: !root.gradientTrack && !root.hueTrack
+            visible: !root.gradientTrack && !root.hueTrack && !root.colorTrack
             width: root.ratio * parent.width
             height: parent.height
             radius: 2

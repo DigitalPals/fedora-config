@@ -122,8 +122,10 @@ test("the bar separates live workflows from persistent Inbox badges", () => {
     assert.match(marker, /visible:\s*GitHub\.runningCount > 0/);
     assert.match(marker, /width:\s*5[\s\S]*height:\s*5/);
     assert.doesNotMatch(marker, /Animation|Animator|Timer|opacity:/);
-    assert.match(source, /GitHub\.badgeTone === "red" \? Theme\.red/);
-    assert.match(source, /GitHub\.badgeTone === "amber" \? Theme\.amber/);
+    assert.match(source, /GitHub\.badgeTone === "red" \? Theme\.barRed/);
+    assert.match(source, /GitHub\.badgeTone === "amber" \? Theme\.barAmber/);
+    assert.match(source, /color:\s*ghChip\.badgeInk/,
+        "badge copy must follow the selected menubar colour's contrast palette");
     assert.match(source, /visible:\s*GitHub\.badgeVisible/);
     assert.match(source, /text:\s*GitHub\.pendingInboxCount > 99/);
     assert.match(source,

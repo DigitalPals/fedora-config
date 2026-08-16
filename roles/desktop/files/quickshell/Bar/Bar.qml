@@ -492,9 +492,9 @@ PanelWindow {
     }
 
     // ---- the slab ------------------------------------------------------
-    // One continuous pane of glass. The compositor supplies the blur behind
-    // it (see the layer rules in roles/desktop/files/looknfeel.lua); this
-    // draws the tint and the shadow that lifts it off the wallpaper.
+    // One continuous surface. In glass mode the compositor supplies the blur
+    // behind its tint (see roles/desktop/files/looknfeel.lua); solid mode uses
+    // the same selected menubar color at full opacity.
     Item {
         id: slabLayer
         x: Theme.barSideMargin
@@ -510,9 +510,9 @@ PanelWindow {
             id: barSlab
             anchors.fill: parent
             radius: Theme.clusterRadius
-            color: Theme.glass
+            color: Theme.barSurface
             border.width: 1
-            border.color: Theme.stroke
+            border.color: Theme.barStroke
 
             Behavior on color {
                 ColorAnimation { duration: Theme.surfaceDuration }
@@ -566,8 +566,8 @@ PanelWindow {
                 glyph: "apps"
                 glyphSize: Theme.iconMedium + 1
                 glyphWeight: 500
-                idleColor: Theme.textMid
-                restFill: Launcher.open ? Theme.chipHover : Theme.chip
+                idleColor: Theme.barTextMid
+                restFill: Launcher.open ? Theme.barChipHover : Theme.barChip
                 tooltip: "Apps  ·  Super Space"
                 tooltipAlign: -1
                 onClicked: Launcher.toggle()
@@ -620,8 +620,8 @@ PanelWindow {
                 glyph: "power_settings_new"
                 glyphSize: Theme.iconMedium
                 glyphWeight: 600
-                idleColor: Theme.textMid
-                hoverColor: Theme.redText
+                idleColor: Theme.barTextMid
+                hoverColor: Theme.barRedText
                 tooltip: "Power"
                 tooltipAlign: 1
                 onClicked: Session.openMenu()

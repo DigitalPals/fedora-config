@@ -62,7 +62,7 @@ BarModule {
             name: mark.glyph
             size: Theme.iconSmall + 1
             fill: 1
-            color: Theme.accent
+            color: Theme.barAccent
         }
     }
 
@@ -86,7 +86,7 @@ BarModule {
         font.weight: Theme.weightBold
         font.letterSpacing: 0.3
         font.features: Theme.tabularNumberFeatures
-        color: Theme.textHi
+        color: Theme.barTextHi
     }
 
     Divider {
@@ -104,6 +104,6 @@ BarModule {
         font.pixelSize: Theme.fontCaption
         font.weight: Theme.weightSemibold
         font.features: Theme.tabularNumberFeatures
-        color: Theme.textMid
+        color: Theme.barTextMid
     }
 }

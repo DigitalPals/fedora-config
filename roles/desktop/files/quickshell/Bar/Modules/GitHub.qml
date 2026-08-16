@@ -15,8 +15,10 @@ BarModule {
     BarChip {
         id: ghChip
 
-        readonly property color badgeTone: GitHub.badgeTone === "red" ? Theme.red
-            : GitHub.badgeTone === "amber" ? Theme.amber : Theme.accent
+        readonly property color badgeTone: GitHub.badgeTone === "red" ? Theme.barRed
+            : GitHub.badgeTone === "amber" ? Theme.barAmber : Theme.barAccent
+        readonly property color badgeInk: GitHub.badgeTone === "red" ? Theme.barRedFg
+            : GitHub.badgeTone === "amber" ? Theme.barAmberFg : Theme.barAccentFg
         readonly property real detailSaving: countLabel.visible
             ? countLabel.implicitWidth + spacing : 0
 
@@ -54,7 +56,7 @@ BarModule {
                 text: ""
                 font.family: Theme.fontNerd
                 font.pixelSize: Theme.barIconSize
-                color: ghChip.held || ghChip.hovered ? Theme.textHi : Theme.icon
+                color: ghChip.held || ghChip.hovered ? Theme.barTextHi : Theme.barIcon
 
                 Behavior on color {
                     ColorAnimation { duration: Theme.chipFadeDuration }
@@ -71,7 +73,7 @@ BarModule {
                 width: 5
                 height: 5
                 radius: 2.5
-                color: Theme.accent
+                color: Theme.barAccent
             }
 
             Rectangle {
@@ -98,7 +100,7 @@ BarModule {
                     font.pixelSize: Theme.fontMicro
                     font.weight: Theme.weightHeavy
                     font.features: Theme.tabularNumberFeatures
-                    color: Theme.textOnAccent
+                    color: ghChip.badgeInk
                 }
             }
         }

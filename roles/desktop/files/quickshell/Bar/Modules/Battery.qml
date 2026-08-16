@@ -41,9 +41,9 @@ BarModule {
             size: Theme.barIconSize
             fill: 1
             rotation: 90
-            color: root.critical ? Theme.redText
-                : root.low ? Theme.amber
-                : Battery.pluggedIn ? Theme.accent : Theme.textHi
+            color: root.critical ? Theme.barRedText
+                : root.low ? Theme.barAmber
+                : Battery.pluggedIn ? Theme.barAccent : Theme.barTextHi
         }
     }
 
@@ -56,6 +56,6 @@ BarModule {
         font.pixelSize: Theme.fontCaption
         font.weight: Theme.weightBold
         font.features: Theme.tabularNumberFeatures
-        color: root.critical ? Theme.redText : root.low ? Theme.amber : Theme.textMid
+        color: root.critical ? Theme.barRedText : root.low ? Theme.barAmber : Theme.barTextMid
     }
 }

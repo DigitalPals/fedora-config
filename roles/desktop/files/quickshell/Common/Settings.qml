@@ -5,6 +5,7 @@ import Quickshell.Io
 import Quickshell.Services.Notifications
 import "SettingsHelpers.js" as SettingsHelpers
 import "PanelRegistryData.js" as PanelRegistry
+import "ProcHelpers.js" as ProcHelpers
 
 // Shell settings store (design v2, "Shell settings"). Single source of truth
 // for user-tunable shell configuration: merged over defaults on load,
@@ -25,12 +26,18 @@ Singleton {
 
     readonly property var defaults: SettingsHelpers.defaults()
     readonly property var fontChoices: SettingsHelpers.FONT_CHOICES
+    readonly property var barColorChoices: SettingsHelpers.BAR_COLOR_CHOICES
 
     // ---- Persisted settings ----------------------------------------------
     property string wall: defaults.wall
     property string wallDir: defaults.wallDir
     property string shuffle: defaults.shuffle
     property string themeMode: defaults.themeMode
+    property bool glassEnabled: defaults.glassEnabled
+    property string barColorMode: defaults.barColorMode
+    property int barCustomHue: defaults.barCustomHue
+    property int barCustomSaturation: defaults.barCustomSaturation
+    property int barCustomLightness: defaults.barCustomLightness
     property int barHeight: defaults.barHeight
     property int barRadius: defaults.barRadius
     property string font: defaults.font
@@ -88,6 +95,8 @@ Singleton {
 
     readonly property string effectiveAccent:
         accentWall && wallAccent !== "" ? wallAccent : accent
+    readonly property string effectiveBarColor: SettingsHelpers.resolveBarColor(
+        barColorMode, themeMode, barCustomHue, barCustomSaturation, barCustomLightness)
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
@@ -96,8 +105,9 @@ Singleton {
     // One dirty/reset key list per settings page (grouped-rail design 1c).
     readonly property var sectionKeys: ({
         wallpaper: ["wall", "wallDir", "shuffle"],
-        appearance: ["themeMode", "barHeight", "barRadius", "font", "accent",
-            "accentWall"],
+        appearance: ["themeMode", "glassEnabled", "barColorMode", "barCustomHue",
+            "barCustomSaturation", "barCustomLightness", "barHeight", "barRadius",
+            "font", "accent", "accentWall"],
         bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
         modules: ["mods", "modOpts"],
         notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
@@ -150,6 +160,11 @@ Singleton {
 
     function setInternal(key, value) {
         root[key] = value;
+    }
+
+    function previewBarColor(mode) {
+        return SettingsHelpers.resolveBarColor(mode, themeMode, barCustomHue,
+            barCustomSaturation, barCustomLightness);
     }
 
     function setModuleEnabled(id, on) {
@@ -319,10 +334,11 @@ Singleton {
         // configuration on its way in.
         modOpts = seedWeatherFromEnv(parsed, merged.modOpts);
         ready = true;
-        migrationPending = parsed !== null && parsed.v !== 3;
+        migrationPending = parsed !== null && parsed.v !== SettingsHelpers.VERSION;
         firstRun = result.status === "empty";
         loaded = true;
         applyScrollFactor();
+        applyGlassEffect();
     }
 
     function saveNow() {
@@ -354,6 +370,15 @@ Singleton {
     onWallChanged: scheduleSave()
     onWallDirChanged: scheduleSave()
     onShuffleChanged: scheduleSave()
+    onThemeModeChanged: scheduleSave()
+    onGlassEnabledChanged: {
+        scheduleSave();
+        applyGlassEffect();
+    }
+    onBarColorModeChanged: scheduleSave()
+    onBarCustomHueChanged: scheduleSave()
+    onBarCustomSaturationChanged: scheduleSave()
+    onBarCustomLightnessChanged: scheduleSave()
     onBarHeightChanged: scheduleSave()
     onBarRadiusChanged: scheduleSave()
     onFontChanged: scheduleSave()
@@ -432,6 +457,52 @@ Singleton {
                 console.warn("could not apply touchpad scroll speed:", exitCode);
             if (Math.abs(root.dispatchedScrollFactor - root.scrollFactor) > 0.001)
                 scrollApplyTimer.restart();
+        }
+    }
+
+    // The layer namespace is fixed once Quickshell connects the Wayland
+    // surface, so glass is toggled through the named rule handle exported by
+    // looknfeel.lua. Surface fills still change synchronously through Theme;
+    // this call removes the compositor pass as well.
+    property bool dispatchedGlassEnabled: true
+    property bool glassApplyError: false
+
+    function applyGlassEffect() {
+        if (!loaded || glassApplyProc.running)
+            return;
+        dispatchedGlassEnabled = glassEnabled;
+        glassApplyProc.command = ["hyprctl", "eval",
+            "quickshell_blur_rule:set_enabled(" + (glassEnabled ? "true" : "false") + ")"];
+        glassApplyProc.running = true;
+    }
+
+    Timer {
+        id: glassReplayTimer
+        interval: 0
+        onTriggered: root.applyGlassEffect()
+    }
+
+    Process {
+        id: glassApplyProc
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        onExited: exitCode => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            root.glassApplyError = code !== 0;
+            if (code !== 0)
+                console.warn("could not apply compositor glass effect:", code);
+            if (root.dispatchedGlassEnabled !== root.glassEnabled)
+                glassReplayTimer.restart();
         }
     }
 

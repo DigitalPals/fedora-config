@@ -11,8 +11,8 @@ BarChip {
     id: root
 
     visible: Recorder.active
-    restFill: Theme.redBg
-    hoverFill: Theme.red
+    restFill: Theme.barRedBg
+    hoverFill: Theme.barRed
     hPadding: 12
     spacing: 6
     tooltip: "Stop recording" + (Recorder.outputFile !== ""
@@ -20,7 +20,7 @@ BarChip {
     tooltipAlign: 1
     onClicked: Recorder.toggle()
 
-    readonly property color ink: hovered ? Theme.textOnAccent : Theme.redText
+    readonly property color ink: hovered ? Theme.barRedFg : Theme.barRedText
 
     Rectangle {
         id: pulse

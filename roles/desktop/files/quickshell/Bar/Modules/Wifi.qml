@@ -18,7 +18,7 @@ BarModule {
             : "network_wifi_1_bar"
         size: Theme.barIconSize
         fill: 1
-        color: Theme.textHi
+        color: Theme.barTextHi
         opacity: WifiState.enabled && WifiState.connected ? 1 : 0.35
 
         Behavior on opacity {

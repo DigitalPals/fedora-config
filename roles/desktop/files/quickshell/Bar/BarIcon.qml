@@ -94,8 +94,8 @@ Rectangle {
     // The module's popout is expanded below it.
     property bool held: ownsPanel && host.popoutOpen(panelName)
     property bool alert: false
-    property color idleColor: Theme.icon
-    property color hoverColor: Theme.textHi
+    property color idleColor: Theme.barIcon
+    property color hoverColor: Theme.barTextHi
     property color labelColor: fg
     property real hPadding: label === "" || compact ? 8 : 11
     property real contentSpacing: 5
@@ -104,7 +104,7 @@ Rectangle {
     // What the pill rests on. Solo chips rest on the visible chip fill; a
     // glyph inside a group pill rests on nothing so the group reads as one
     // shape.
-    property color restFill: bare || inner ? "transparent" : Theme.chip
+    property color restFill: bare || inner ? "transparent" : Theme.barChip
 
     signal clicked(real mouseX)
     signal middleClicked
@@ -128,17 +128,17 @@ Rectangle {
         hovered: mouse.containsMouse
     }
 
-    readonly property color fg: active ? Theme.accentFg
-        : alert ? Theme.redText
+    readonly property color fg: active ? Theme.barAccentFg
+        : alert ? Theme.barRedText
         : held || root.hovered ? hoverColor : idleColor
 
     implicitHeight: pillHeight
     implicitWidth: round ? Theme.roundButton : content.implicitWidth + hPadding * 2
     radius: Theme.pillRadius
-    color: active ? Theme.accent
-        : alert ? Theme.redBg
-        : held ? Theme.chipHover
-        : root.hovered && !bare ? Theme.chipHover : restFill
+    color: active ? Theme.barAccent
+        : alert ? Theme.barRedBg
+        : held ? Theme.barChipHover
+        : root.hovered && !bare ? Theme.barChipHover : restFill
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     // Press feedback. The design scales a round button harder than a chip;
@@ -201,7 +201,7 @@ Rectangle {
             font.pixelSize: root.labelSize
             font.weight: root.labelWeight
             font.features: Theme.tabularNumberFeatures
-            color: root.alert ? Theme.redText : root.labelColor
+            color: root.alert ? Theme.barRedText : root.labelColor
 
             Behavior on color {
                 ColorAnimation { duration: Theme.chipFadeDuration }

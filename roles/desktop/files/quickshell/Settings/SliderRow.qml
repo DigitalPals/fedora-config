@@ -12,6 +12,10 @@ SettingsRow {
     property alias dimmed: slider.dimmed
     property alias gradientTrack: slider.gradientTrack
     property alias hueTrack: slider.hueTrack
+    property alias colorTrack: slider.colorTrack
+    property alias trackStart: slider.trackStart
+    property alias trackMiddle: slider.trackMiddle
+    property alias trackEnd: slider.trackEnd
     property string unit: "px"
     property int decimals: 0
     // Overrides the numeric readout when the value formats as something

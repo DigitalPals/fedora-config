@@ -29,7 +29,9 @@ SettingsPage {
                 width: parent.width - previewGap * 2
                 height: 17
                 radius: Settings.floating ? Math.max(2, Math.round(Settings.barRadius * 0.5)) : 0
-                color: Theme.barBg
+                color: Theme.barSurface
+                border.width: 1
+                border.color: Theme.barStroke
                 opacity: Settings.autoHide ? 0.4 : 1
 
                 Behavior on x { NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic } }
@@ -44,7 +46,7 @@ SettingsPage {
                     width: 9
                     height: 5
                     radius: 2.5
-                    color: Theme.accent
+                    color: Theme.barAccent
                 }
 
                 Row {
@@ -59,7 +61,7 @@ SettingsPage {
                             width: 5
                             height: 5
                             radius: 2.5
-                            color: Theme.dotDim
+                            color: Theme.barDotDim
                         }
                     }
                 }

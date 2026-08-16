@@ -253,7 +253,7 @@ Column {
                     radius: 4
                     // Punches the status dot out of the card behind it, so it
                     // takes the card's own glass rather than an opaque disc.
-                    color: Theme.glassStrong
+                    color: Theme.surfaceStrong
 
                     Rectangle {
                         anchors.centerIn: parent

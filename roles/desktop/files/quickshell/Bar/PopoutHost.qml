@@ -568,7 +568,7 @@ Item {
             id: surface
             anchors.fill: parent
             radius: Theme.popRadius
-            color: Theme.glassStrong
+            color: Theme.surfaceStrong
             border.width: 1
             border.color: Theme.stroke
             clip: true

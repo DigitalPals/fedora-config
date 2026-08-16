@@ -47,7 +47,9 @@ SettingsPage {
                     width: parent.width - 28
                     height: 18
                     radius: 5
-                    color: Theme.barBg
+                    color: Theme.barSurface
+                    border.width: 1
+                    border.color: Theme.barStroke
 
                     Row {
                         anchors.left: parent.left
@@ -55,8 +57,8 @@ SettingsPage {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 3
 
-                        Rectangle { width: 9; height: 4; radius: 2; color: Theme.accent }
-                        Rectangle { width: 4; height: 4; radius: 2; color: Theme.dotDim }
+                        Rectangle { width: 9; height: 4; radius: 2; color: Theme.barAccent }
+                        Rectangle { width: 4; height: 4; radius: 2; color: Theme.barDotDim }
                     }
 
                     Row {
@@ -67,7 +69,7 @@ SettingsPage {
 
                         Repeater {
                             model: 3
-                            delegate: Rectangle { width: 4; height: 4; radius: 2; color: Theme.dotDim }
+                            delegate: Rectangle { width: 4; height: 4; radius: 2; color: Theme.barDotDim }
                         }
                     }
                 }
@@ -91,7 +93,7 @@ SettingsPage {
                         : (Settings.position === "bottom" ? miniBar.y - height - 7
                             : parent.height - height - 7)
                     radius: 8
-                    color: Theme.popBg
+                    color: Theme.surfaceStrong
                     border.width: 1
                     border.color: Theme.popBorder
 

@@ -163,7 +163,7 @@ PanelWindow {
                     radius: Theme.cardRadius
                     clip: true
                     color: slot.critical ? Theme.redBgSoft
-                        : hovered ? Theme.glassMenu : Theme.glassStrong
+                        : hovered ? Theme.surfaceMenu : Theme.surfaceStrong
                     border.width: 1
                     border.color: slot.critical ? Theme.redBorder
                         : hovered ? Qt.rgba(1, 1, 1, 0.14) : Theme.popBorder

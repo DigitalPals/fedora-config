@@ -202,7 +202,7 @@ its value, dirty state, commit and undo from the base, and per-surface styling
 travels as a single `var` object (`Theme.switchRow`, a card's `style`) rather
 than as a dozen properties.
 
-## The glass menubar
+## Glass and the menubar palette
 
 The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project
 `facd7f56`) replaced an opaque bar and its bar-fused popouts with translucent
@@ -219,9 +219,12 @@ glass and detached panels. What that added, and what it needs:
   blank box, it is the word — invisible to qmllint.
   `tests/quickshell/material-symbols.test.cjs` reads the installed TTF's `post`
   table and checks every name the shell draws.
-- **Blur is the compositor's.** `roles/desktop/files/looknfeel.lua` carries a
-  `layer_rule` matching the `qs-*` namespaces; without it the glass reads as
-  flat grey plastic.
+- **Blur is the compositor's.** `roles/desktop/files/looknfeel.lua` exports the
+  named `quickshell_blur_rule` matching the `qs-*` namespaces. The Appearance
+  switch calls that handle through `hyprctl eval`; its initial `enabled` value
+  is read from the persisted JSON so compositor reloads retain the choice.
+  Layer namespaces stay fixed because changing one after a Wayland surface is
+  connected does not update the compositor rule safely.
 - **Nothing that floats over the desktop may draw a drop shadow.** Blur is
   applied per pixel of the *surface*, and every one of these layers is larger
   than the shape it draws — the menubar's runs past the slab to leave room for
@@ -235,17 +238,26 @@ glass and detached panels. What that added, and what it needs:
   and the rim highlight do the rest. Glows *inside* a surface (the focused
   workspace pip, the T3 running dot) are fine — they composite over the glass,
   not into the margin.
-- **A surface that still draws `Theme.popBg` is not glass.** That token is the
-  opaque *reference* the contrast test measures against; nothing should paint
-  it. `Theme.glass` / `glassStrong` / `glassMenu` are the real surfaces.
+- **Render semantic surfaces, never raw variants.** `Theme.barSurface`,
+  `surfaceStrong`, and `surfaceMenu` select translucent glass or their opaque
+  references from `Settings.glassEnabled`. Directly painting `Theme.glass*`,
+  `popBg`, or `barBg` bypasses that switch. Modal scrims are deliberately
+  separate: they remain translucent safety layers when glass is off.
+- **The menubar owns a palette.** Its selectable base color is independent of
+  the global Dark / Light palette except for the adaptive Shell Default and
+  macOS presets. `SettingsHelpers.barPalette` chooses light or dark foreground
+  and builds every menubar text/icon tone to a 4.5:1 floor against the opaque
+  base; bar-specific accent and status colors are pulled to the same floor.
+  Bar QML uses `Theme.bar*` tokens, while popovers keep the general palette.
 - **One spring.** `Theme.springCurve` is the design's overshooting bezier, and
   everything that moves or resizes uses it. Colour and opacity never spring —
   an overshooting fade reads as a flicker — so they use the ease curves.
-- **The schema migrated to 4.** `SettingsHelpers.adoptRedesign` gives a v3
-  settings file the new geometry for every key the user never moved, and leaves
-  the ones they did. Three modules were retired into other surfaces (`bell`
-  into the centre pill, `idle` into the Control Center, `control` into the
-  status pill).
+- **Schema 5 adds glass and menubar color.** A v4 file receives glass-on and
+  the adaptive Shell Default, reproducing its old appearance without running
+  the v3 redesign migration again. `SettingsHelpers.adoptRedesign` still gives
+  a v3 file the redesign geometry for every key the user never moved. Three
+  modules were retired in schema 4 (`bell` into the centre pill, `idle` into
+  the Control Center, `control` into the status pill).
 
 ## Already decided against — do not pick these up
 

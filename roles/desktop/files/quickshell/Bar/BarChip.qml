@@ -64,8 +64,8 @@ Rectangle {
     property real spacing: 8
     property real leftPadding: hPadding
     property real rightPadding: hPadding
-    property color restFill: inner ? "transparent" : Theme.chip
-    property color hoverFill: Theme.chipHover
+    property color restFill: inner ? "transparent" : Theme.barChip
+    property color hoverFill: Theme.barChipHover
     // The module's popout is expanded below it.
     property bool held: ownsPanel && host.popoutOpen(panelName)
     property bool pressFeedback: true
@@ -92,7 +92,7 @@ Rectangle {
     implicitHeight: pillHeight
     implicitWidth: content.implicitWidth + leftPadding + rightPadding
     radius: Theme.pillRadius
-    color: held ? Theme.chipHover : root.hovered ? hoverFill : restFill
+    color: held ? Theme.barChipHover : root.hovered ? hoverFill : restFill
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
     scale: pressFeedback && mouse.pressed ? 0.96 : 1
 

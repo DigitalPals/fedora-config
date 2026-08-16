@@ -29,8 +29,8 @@ BarModule {
         // scope, and the bar's pointer state has to arrive through it.
         required property Bar host
         property string glyph
-        property color tone: Theme.textMid
-        property color hoverTone: Theme.textHi
+        property color tone: Theme.barTextMid
+        property color hoverTone: Theme.barTextHi
         signal triggered
 
         // A MouseArea on a layer surface can miss its exit, and a tint bound
@@ -100,14 +100,14 @@ BarModule {
             width: 24
             height: 24
             radius: 12
-            color: Theme.chipHover
+            color: Theme.barChipHover
 
             Sym {
                 anchors.centerIn: parent
                 name: root.playing ? "graphic_eq" : "music_note"
                 size: Theme.iconSmall + 1
                 fill: 1
-                color: root.playing ? Theme.accent : Theme.textMid
+                color: root.playing ? Theme.barAccent : Theme.barTextMid
             }
         }
 
@@ -129,7 +129,7 @@ BarModule {
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightSemibold
-            color: mediaChip.held || mediaChip.hovered ? Theme.textHi : Theme.textMid
+            color: mediaChip.held || mediaChip.hovered ? Theme.barTextHi : Theme.barTextMid
             elide: Text.ElideRight
             width: Math.min(implicitWidth, Settings.modOpts.media.maxWidth)
 
@@ -168,7 +168,7 @@ BarModule {
                 TransportButton {
                     host: root.host
                     glyph: "skip_previous"
-                    tone: Theme.textMid
+                    tone: Theme.barTextMid
                     enabled: root.player !== null && root.player.canGoPrevious
                     onTriggered: root.player.previous()
                 }
@@ -176,8 +176,8 @@ BarModule {
                 TransportButton {
                     host: root.host
                     glyph: root.playing ? "pause" : "play_arrow"
-                    tone: Theme.textHi
-                    hoverTone: Theme.accent
+                    tone: Theme.barTextHi
+                    hoverTone: Theme.barAccent
                     enabled: root.player !== null && root.player.canTogglePlaying
                     onTriggered: root.player.togglePlaying()
                 }
@@ -185,7 +185,7 @@ BarModule {
                 TransportButton {
                     host: root.host
                     glyph: "skip_next"
-                    tone: Theme.textMid
+                    tone: Theme.barTextMid
                     enabled: root.player !== null && root.player.canGoNext
                     onTriggered: root.player.next()
                 }
