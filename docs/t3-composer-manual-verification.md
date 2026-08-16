@@ -8,6 +8,9 @@ select trait and a boolean trait.
 - [ ] Open an existing thread and New Thread. Confirm the prompt appears first,
   `Run settings` is directly beneath it, and the disclosure starts collapsed on
   both page types.
+- [ ] Open New Thread and confirm the prompt starts focused with its placeholder
+  still visible, typing lands immediately, and `Escape` still returns to the
+  inbox.
 - [ ] Toggle the disclosure, leave the page, reopen it, and confirm it resets to
   collapsed instead of persisting the previous choice.
 - [ ] Confirm the collapsed header has a right-pointing chevron; the expanded

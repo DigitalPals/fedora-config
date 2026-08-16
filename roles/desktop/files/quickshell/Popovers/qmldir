@@ -12,6 +12,7 @@ ControlCenterPopover ControlCenterPopover.qml
 FillSlider FillSlider.qml
 GitHubPopover GitHubPopover.qml
 HDivider HDivider.qml
+IconButton IconButton.qml
 LinkText LinkText.qml
 MediaPopover MediaPopover.qml
 NotifCenterPopover NotifCenterPopover.qml

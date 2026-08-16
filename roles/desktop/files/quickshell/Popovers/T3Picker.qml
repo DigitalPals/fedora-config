@@ -180,7 +180,10 @@ Item {
         y: root.openUpward ? -height - 4 : root.height + 4
         height: Math.min(root.menuRows, root.options.length) * 30 + 8
         radius: 8
-        color: Theme.insetSurface
+        // This panel floats over the rest of the composer. A recessed tile
+        // fill is intentionally very translucent and lets the controls below
+        // compete with the choices, so use the dense menu glass instead.
+        color: Theme.glassMenu
         border.width: 1
         border.color: Theme.popBorder
         clip: true

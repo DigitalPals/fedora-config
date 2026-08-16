@@ -285,7 +285,9 @@ Column {
                 }
 
                 Text {
-                    visible: promptEdit.text === "" && !promptEdit.activeFocus
+                    // Stays up while the field is merely focused — the page
+                    // autofocuses the prompt, and the cue must survive that.
+                    visible: promptEdit.text === ""
                     text: root.newThread ? "Describe the first task…" : "Send a follow-up…"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontBody
@@ -302,7 +304,7 @@ Column {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 7
             width: Math.max(31, sendText.implicitWidth + 18)
-            height: Theme.controlHeight
+            height: Theme.inlineActionHeight
             Accessible.role: Accessible.Button
             Accessible.name: root.sendLabel
             Accessible.onPressAction: root.sendRequested()
@@ -390,8 +392,7 @@ Column {
 
                     anchors.left: parent.left
                     anchors.leftMargin: 8
-                    anchors.top: parent.top
-                    anchors.topMargin: 9
+                    anchors.verticalCenter: parent.verticalCenter
                     text: settingsPresentation.expanded ? "▾" : "▸"
                     font.family: Theme.fontMono
                     font.pixelSize: Theme.fontCaption
@@ -432,8 +433,8 @@ Column {
                     anchors.rightMargin: 6
                     anchors.verticalCenter: settingsChevron.verticalCenter
                     width: accessText.implicitWidth + 18
-                    height: Theme.controlHeight
-                    radius: 5
+                    height: Theme.chipInnerHeight
+                    radius: Theme.chipRadius
                     color: root.draft?.runtimeMode === "full-access"
                         ? Theme.amberBg : Theme.hoverFill
 

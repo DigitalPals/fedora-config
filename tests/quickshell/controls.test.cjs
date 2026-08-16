@@ -104,3 +104,13 @@ test("the name check would notice a call site that dropped the property", () => 
     assert.ok(found.length >= 6,
         `only found ${found.length} named controls — blocksOf has stopped matching`);
 });
+
+test("filled sliders keep their leading glyph inside a low-value fill", () => {
+    const source = read("Popovers/FillSlider.qml");
+
+    assert.match(source,
+        /Math\.min\(width,\s*Math\.max\(height,\s*exact\)\)/,
+        "a tiny non-zero value must render as a leading circle, not a vertical sliver");
+    assert.match(source, /width:\s*root\.fillExtent/,
+        "the painted fill must use the guarded visual extent");
+});

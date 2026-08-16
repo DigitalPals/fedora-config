@@ -133,8 +133,13 @@ test("popout height cannot feed back into its own required envelope", () => {
         "a post-animation timer must not trigger a second layer-shell configure");
     assert.match(host, /host\.presented = false;\s*host\.surfaceH = 0;/,
         "the surface envelope resets only after the close animation unmaps it");
-    assert.match(window, /HyprlandWindow\.visibleMask:\s*visualRegion/,
-        "the stable envelope must not enlarge Hyprland's blur pass");
+    // Quickshell 0.2.1 sends this region in the wrong coordinate space on a
+    // scaled output. It is only a rendering optimisation, but at 2x it becomes
+    // a hard visual clip through the panel sides and bottom.
+    assert.doesNotMatch(window, /^\s*HyprlandWindow\.visibleMask\s*:/m,
+        "a HiDPI popout must not be clipped by Hyprland's visible-mask hint");
+    assert.doesNotMatch(host, /visualItem/,
+        "the host must not retain a dead visual-mask contract");
     // The input mask holds still too — it binds to the morph's target, so the
     // compositor hears about it once per switch instead of once per frame.
     assert.match(host, /id: hitRegion[\s\S]{0,80}?x: host\.targetX/,

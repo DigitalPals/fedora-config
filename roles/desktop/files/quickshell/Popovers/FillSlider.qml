@@ -20,6 +20,15 @@ Rectangle {
     signal moved(real value)
     signal glyphClicked
 
+    // The glyph occupies the first control-height-wide lane. A non-zero fill
+    // narrower than that turns into a detached vertical lozenge and leaves
+    // the glyph floating beside it. Keep the leading fill circular until the
+    // actual value grows past that lane; zero still has no fill at all.
+    readonly property real fillExtent: {
+        const exact = Format.clamp01(value) * width;
+        return exact <= 0 ? 0 : Math.min(width, Math.max(height, exact));
+    }
+
     height: Theme.controlHeight
     radius: height / 2
     color: Theme.tile
@@ -34,7 +43,7 @@ Rectangle {
     }
 
     Rectangle {
-        width: Format.clamp01(root.value) * parent.width
+        width: root.fillExtent
         height: parent.height
         radius: parent.radius
 

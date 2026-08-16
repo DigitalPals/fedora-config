@@ -15,65 +15,32 @@ Item {
 
     implicitHeight: header.height + 6 + viewport.height
 
-    component HeaderAction: Rectangle {
-        id: action
-        property string label: ""
-        signal triggered()
-        width: textItem.implicitWidth + 14
-        height: Theme.controlHeight
-        radius: 6
-        color: actionMouse.containsMouse ? Theme.hoverFillStrong : Theme.hoverFill
-        activeFocusOnTab: true
-        Accessible.role: Accessible.Button
-        Accessible.name: action.label
-        Accessible.onPressAction: action.triggered()
-        border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
-
-        Keys.onPressed: event => {
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                    || event.key === Qt.Key_Space) {
-                action.triggered();
-                event.accepted = true;
-            }
-        }
-
-        Text {
-            id: textItem
-            anchors.centerIn: parent
-            text: action.label
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            color: Theme.textMid
-        }
-
-        MouseArea {
-            id: actionMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: action.triggered()
-        }
-    }
-
+    // Left-aligned header matching the thread page: slim glyph back button,
+    // title beside it (design 5c).
     Item {
         id: header
         width: parent.width
         height: Theme.controlHeight
 
-        HeaderAction {
+        IconButton {
+            id: backButton
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            label: "← Inbox"
+            glyph: "←"
+            accessibleName: "Back to inbox"
             onTriggered: root.backRequested()
         }
 
         Text {
-            anchors.centerIn: parent
+            anchors.left: backButton.right
+            anchors.leftMargin: 9
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
             text: "New thread"
+            elide: Text.ElideRight
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontBody
-            font.weight: Theme.weightBold
+            font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
     }
@@ -200,5 +167,6 @@ Item {
     Component.onCompleted: {
         T3Code.ensureNewThreadDraft(contextThreadId);
         composer.syncPrompt();
+        composer.focusPrompt();
     }
 }

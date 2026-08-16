@@ -91,7 +91,6 @@ Item {
     readonly property real requiredHeight: presented
         ? bodyTop + Math.max(1, surfaceH) + shadowBudget : 0
     readonly property alias maskItem: hitRegion
-    readonly property alias visualItem: card
 
     function clamp(value, low, high) {
         return Math.max(low, Math.min(high, value));

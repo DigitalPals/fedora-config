@@ -31,15 +31,10 @@ PanelWindow {
     color: "transparent"
 
     mask: Region { item: popout.maskItem }
-    // surfaceH stays at the largest panel height until close, preventing a
-    // second layer-shell configure after a shorter morph. Tell Hyprland which
-    // part actually has non-zero alpha so the transparent remainder does not
-    // enlarge the compositor's blur pass.
-    // The Quickshell 0.2.1 qmltypes omit this attached property's Region type.
-    // qmllint disable missing-type
-    HyprlandWindow.visibleMask: visualRegion
-    // qmllint enable missing-type
-    Region { id: visualRegion; item: popout.visualItem }
+    // Do not set HyprlandWindow.visibleMask here. In Quickshell 0.2.1 the
+    // region is applied in the wrong coordinate space on scaled outputs,
+    // clipping the detached card along its sides and bottom at 2x scale.
+    // The input mask above is unaffected and must remain tight.
 
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: root.visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
