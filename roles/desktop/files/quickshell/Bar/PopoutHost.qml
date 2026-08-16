@@ -577,25 +577,6 @@ Item {
                 ColorAnimation { duration: Theme.surfaceDuration }
             }
 
-            // The rim light along the top edge. Drawn as a rounded rectangle
-            // and clipped to its own upper half, so the highlight follows the
-            // corners and then stops — an unclipped one closes into a ring and
-            // draws a stray line across the panel.
-            Item {
-                width: parent.width
-                height: Theme.popRadius
-                clip: true
-
-                Rectangle {
-                    width: parent.width
-                    height: Theme.popRadius * 2
-                    radius: Theme.popRadius
-                    color: "transparent"
-                    border.width: 1
-                    border.color: Theme.strokeHi
-                }
-            }
-
             FocusScope {
                 anchors.fill: parent
                 focus: host.presented && Popouts.open

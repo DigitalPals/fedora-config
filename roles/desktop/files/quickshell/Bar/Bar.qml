@@ -494,8 +494,7 @@ PanelWindow {
     // ---- the slab ------------------------------------------------------
     // One continuous pane of glass. The compositor supplies the blur behind
     // it (see the layer rules in roles/desktop/files/looknfeel.lua); this
-    // draws the tint, the rim light along the top edge, and the shadow that
-    // lifts it off the wallpaper.
+    // draws the tint and the shadow that lifts it off the wallpaper.
     Item {
         id: slabLayer
         x: Theme.barSideMargin
@@ -528,25 +527,6 @@ PanelWindow {
                 }
             }
 
-            // The inset highlight along the top edge. Clipped to its own upper
-            // half so the rim follows the corners and then stops: unclipped it
-            // closes into a ring and reads as a second border.
-            Item {
-                x: 1
-                y: 1
-                width: parent.width - 2
-                height: Math.max(1, Theme.clusterRadius)
-                clip: true
-
-                Rectangle {
-                    width: parent.width
-                    height: Math.max(2, Theme.clusterRadius * 2)
-                    radius: Math.max(0, Theme.clusterRadius - 1)
-                    color: "transparent"
-                    border.width: 1
-                    border.color: Theme.strokeHi
-                }
-            }
         }
 
         // Right-click anywhere on the slab opens Shell settings. Module mouse

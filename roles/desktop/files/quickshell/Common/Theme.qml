@@ -43,12 +43,9 @@ Singleton {
         ? Qt.rgba(10 / 255, 8 / 255, 22 / 255, 0.42)
         : Qt.rgba(236 / 255, 236 / 255, 244 / 255, 0.5)
 
-    // Hairlines. `stroke` is the outer edge, `strokeHi` the inset highlight
-    // along the top that gives the glass its lit rim.
+    // Hairlines.
     readonly property color stroke: dark
         ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.65)
-    readonly property color strokeHi: dark
-        ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.90)
     readonly property color popBorder: stroke
     readonly property color hairline: stroke
     readonly property color hairlineSoft: dark
