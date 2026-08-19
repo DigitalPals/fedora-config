@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Wayland
 import "../Common"
+import "../Common/BarGeometry.js" as BarGeometry
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 import "../Common/PanelRegistryData.js" as PanelRegistry
 
@@ -42,14 +43,24 @@ PanelWindow {
     implicitHeight: closedHeight
     // The bar edge's y inside this window: hugging the anchored screen edge
     // with the configured gap on either position.
-    readonly property real barY: Settings.position === "top"
-        ? Theme.barTopMargin : height - Theme.barTopMargin - Theme.barHeight
+    readonly property real barY: BarGeometry.barY({
+        style: Settings.barStyle,
+        gap: Settings.gap,
+        height: Theme.barHeight,
+        position: Settings.position,
+        windowHeight: height
+    })
     // Balanced spacing: with Hyprland's gaps_out on top of the exclusive
     // zone, windows end up exactly barTopMargin below the bar's inner edge —
     // the same gap as outside it. Auto-hide and "reserve space" off both drop
     // the zone entirely.
-    exclusiveZone: Settings.autoHide || !Settings.exclusive ? 0
-        : Theme.barTopMargin + Theme.barHeight - (Settings.floating ? 2 : 0)
+    exclusiveZone: BarGeometry.exclusiveZone({
+        style: Settings.barStyle,
+        gap: Settings.gap,
+        height: Theme.barHeight,
+        autoHide: Settings.autoHide,
+        exclusive: Settings.exclusive
+    })
     color: "transparent"
 
     // Geometry animations stay off until the bar has laid itself out once, so
@@ -70,9 +81,12 @@ PanelWindow {
     // pass through the vacated area.
     property bool revealed: true
     readonly property bool hidden: Settings.autoHide && !revealed && !Popouts.open
-    property real hideShift: hidden
-        ? (Settings.position === "top" ? -1 : 1) * (Theme.barTopMargin + Theme.barHeight + 12)
-        : 0
+    property real hideShift: hidden ? BarGeometry.hideShift({
+        style: Settings.barStyle,
+        gap: Settings.gap,
+        height: Theme.barHeight,
+        position: Settings.position
+    }) : 0
 
     Behavior on hideShift {
         NumberAnimation {
@@ -451,7 +465,7 @@ PanelWindow {
         x: 0
         y: Settings.position === "top" ? 0 : barWindow.height - height
         width: parent.width
-        height: Theme.barTopMargin + Theme.barHeight + 4
+        height: Theme.barTopMargin + Theme.barHeight
     }
 
     // Hover target while hidden: a thin strip hugging the bar's screen edge.
@@ -511,8 +525,6 @@ PanelWindow {
             anchors.fill: parent
             radius: Theme.clusterRadius
             color: Theme.barSurface
-            border.width: 1
-            border.color: Theme.barStroke
 
             Behavior on color {
                 ColorAnimation { duration: Theme.surfaceDuration }
@@ -527,6 +539,23 @@ PanelWindow {
                 }
             }
 
+        }
+
+        HugCorner {
+            visible: Theme.barHug
+            x: 0
+            y: Settings.position === "top" ? parent.height : -height
+            bottomCorner: Settings.position === "bottom"
+            fillColor: Theme.barSurface
+        }
+
+        HugCorner {
+            visible: Theme.barHug
+            x: parent.width - width
+            y: Settings.position === "top" ? parent.height : -height
+            rightCorner: true
+            bottomCorner: Settings.position === "bottom"
+            fillColor: Theme.barSurface
         }
 
         // Right-click anywhere on the slab opens Shell settings. Module mouse

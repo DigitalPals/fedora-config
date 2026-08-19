@@ -23,7 +23,7 @@ function qmlFiles(directory) {
     return out;
 }
 
-test("Appearance exposes live glass and accessible menubar colour controls", () => {
+test("Appearance exposes live glass, palette, and stored fixed color controls", () => {
     const appearance = read("Settings/AppearancePage.qml");
     const settings = read("Common/Settings.qml");
     const slider = read("Common/HSlider.qml");
@@ -42,7 +42,12 @@ test("Appearance exposes live glass and accessible menubar colour controls", () 
 
     assert.match(appearance,
         /label:\s*"Glass effect"[\s\S]{0,100}?settingKey:\s*"glassEnabled"/);
-    assert.match(appearance, /label:\s*"MENUBAR COLOR"/);
+    assert.match(appearance, /label:\s*"PALETTE"/);
+    assert.match(appearance,
+        /label:\s*"Colors"[\s\S]{0,100}?settingKey:\s*"paletteMode"/);
+    assert.match(appearance, /Common\.Palette\.busy/);
+    assert.match(appearance, /Common\.Palette\.error/);
+    assert.match(appearance, /label:\s*"FIXED MENUBAR COLOR"/);
     assert.match(appearance, /model:\s*Settings\.barColorChoices/);
     assert.match(appearance, /Accessible\.role:\s*Accessible\.RadioButton/);
     assert.match(appearance, /Accessible\.checked:\s*selected/);
@@ -51,6 +56,8 @@ test("Appearance exposes live glass and accessible menubar colour controls", () 
         assert.match(appearance, new RegExp(`settingKey: "${key}"`));
     assert.match(appearance, /hueTrack:\s*true/);
     assert.match(appearance, /colorTrack:\s*true/);
+    assert.match(appearance, /enabled:\s*page\.fixedPalette/,
+        "fixed choices remain visible but cannot be edited in wallpaper mode");
     assert.match(slider, /property bool colorTrack:\s*false/);
     assert.match(slider, /GradientStop \{ position: 0\.5; color: root\.trackMiddle \}/);
 });
@@ -103,7 +110,8 @@ test("menubar content uses its colour-derived palette", () => {
     }
 
     const theme = read("Common/Theme.qml");
-    assert.match(theme, /readonly property var barPalette:\s*SettingsHelpers\.barPalette/);
+    assert.match(theme,
+        /readonly property var barPalette:\s*paletteActive[\s\S]{0,180}?SettingsHelpers\.barPalette/);
     assert.match(theme, /readonly property color barAccent:\s*SettingsHelpers\.ensureContrast/);
     assert.match(read("Common/Weather.qml"), /function barGlyphColor/);
     assert.match(read("Bar/Modules/Weather.qml"), /Weather\.barGlyphColor/);

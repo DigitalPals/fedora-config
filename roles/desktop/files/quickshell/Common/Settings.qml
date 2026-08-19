@@ -42,9 +42,9 @@ Singleton {
     property int barRadius: defaults.barRadius
     property string font: defaults.font
     property string accent: defaults.accent
-    property bool accentWall: defaults.accentWall
+    property string paletteMode: defaults.paletteMode
     property string position: defaults.position
-    property bool floating: defaults.floating
+    property string barStyle: defaults.barStyle
     property int gap: defaults.gap
     property bool autoHide: defaults.autoHide
     property bool exclusive: defaults.exclusive
@@ -67,10 +67,6 @@ Singleton {
     property int notifBodyLines: defaults.notifBodyLines
     property var mods: defaults.mods
     property var modOpts: defaults.modOpts
-    // Wallpaper-accent extraction cache: the derived color and the wallpaper
-    // it was derived from, persisted so magick never re-runs across restarts.
-    property string wallAccent: defaults.wallAccent
-    property string wallAccentFor: defaults.wallAccentFor
 
     // ---- Runtime state (not persisted) -----------------------------------
     property bool panelOpen: false
@@ -93,8 +89,10 @@ Singleton {
     // Guards saves while loaded values are being applied.
     property bool ready: false
 
-    readonly property string effectiveAccent:
-        accentWall && wallAccent !== "" ? wallAccent : accent
+    // Fixed choices stay available while wallpaper mode is active. Theme
+    // selects Palette's roles when they are ready and falls back to these
+    // values without changing paletteMode when Matugen is unavailable.
+    readonly property string effectiveAccent: accent
     readonly property string effectiveBarColor: SettingsHelpers.resolveBarColor(
         barColorMode, themeMode, barCustomHue, barCustomSaturation, barCustomLightness)
     readonly property bool modsModified:
@@ -107,8 +105,8 @@ Singleton {
         wallpaper: ["wall", "wallDir", "shuffle"],
         appearance: ["themeMode", "glassEnabled", "barColorMode", "barCustomHue",
             "barCustomSaturation", "barCustomLightness", "barHeight", "barRadius",
-            "font", "accent", "accentWall"],
-        bar: ["position", "floating", "gap", "autoHide", "exclusive", "monitor"],
+            "font", "accent", "paletteMode"],
+        bar: ["position", "barStyle", "gap", "autoHide", "exclusive", "monitor"],
         modules: ["mods", "modOpts"],
         notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
@@ -155,10 +153,6 @@ Singleton {
     function set(key, value) {
         clearUndo();
         migrationPending = false;
-        root[key] = value;
-    }
-
-    function setInternal(key, value) {
         root[key] = value;
     }
 
@@ -225,8 +219,30 @@ Singleton {
     }
 
     function resetAll() {
-        resetKeys(Object.keys(defaults).filter(key => key !== "wallAccent" && key !== "wallAccentFor"),
-            "All settings");
+        resetKeys(Object.keys(defaults), "All settings");
+    }
+
+    // A preset is one reversible transaction. It deliberately changes only
+    // visual modes and the workspace presentation; module order and the
+    // user's stored floating dimensions remain untouched.
+    function applyLayeredHugPreset() {
+        migrationPending = false;
+        clearUndo();
+        resetSnapshot = {
+            barStyle: barStyle,
+            paletteMode: paletteMode,
+            glassEnabled: glassEnabled,
+            modOpts: SettingsHelpers.clone(modOpts)
+        };
+        resetLabel = "Layered Hug preset";
+        barStyle = "hug";
+        paletteMode = "wallpaper";
+        glassEnabled = true;
+        const nextOptions = SettingsHelpers.clone(modOpts);
+        nextOptions.ws.style = "dots";
+        modOpts = SettingsHelpers.normalizeModOpts(nextOptions);
+        announcement = "Layered Hug applied. Undo available for eight seconds.";
+        resetTimer.restart();
     }
 
     function undoReset() {
@@ -383,9 +399,9 @@ Singleton {
     onBarRadiusChanged: scheduleSave()
     onFontChanged: scheduleSave()
     onAccentChanged: scheduleSave()
-    onAccentWallChanged: scheduleSave()
+    onPaletteModeChanged: scheduleSave()
     onPositionChanged: scheduleSave()
-    onFloatingChanged: scheduleSave()
+    onBarStyleChanged: scheduleSave()
     onGapChanged: scheduleSave()
     onAutoHideChanged: scheduleSave()
     onExclusiveChanged: scheduleSave()
@@ -411,8 +427,6 @@ Singleton {
     onNotifBodyLinesChanged: scheduleSave()
     onModsChanged: scheduleSave()
     onModOptsChanged: scheduleSave()
-    onWallAccentChanged: scheduleSave()
-    onWallAccentForChanged: scheduleSave()
 
     Timer {
         id: saveTimer

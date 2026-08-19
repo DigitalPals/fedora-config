@@ -238,18 +238,23 @@ test("usage chip hover joins the latched menu session", () => {
 });
 
 test("regression fixes keep asynchronous state identity-safe", () => {
-    const wallpaper = read("Common/Wallpaper.qml");
+    const palette = read("Common/Palette.qml");
     const sysInfo = read("Common/SysInfo.qml");
     const bar = read("Bar/Bar.qml");
     const tooltip = read("Bar/BarTooltip.qml");
     const packages = fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8");
 
-    assert.match(wallpaper, /property string activeAccentFor/);
-    assert.match(wallpaper, /root\.currentIdentity === completedFor/);
-    assert.match(wallpaper, /Settings\.setInternal\("wallAccentFor", completedFor\)/);
-    assert.match(wallpaper, /property bool accentBusy/);
-    assert.match(wallpaper, /property string accentError/);
-    assert.match(packages, /- ImageMagick/);
+    assert.match(palette, /property string activeIdentity/);
+    assert.match(palette, /PaletteHelpers\.resultIsCurrent\(completedIdentity,/);
+    assert.match(palette, /wallpaper-palette\.json/);
+    assert.match(palette, /property bool busy/);
+    assert.match(palette, /property string error/);
+    assert.match(palette, /atomicWrites:\s*true/);
+    assert.match(palette,
+        /\["matugen", "image", activeIdentity,[\s\S]{0,160}?"scheme-tonal-spot"/);
+    assert.match(palette, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/);
+    assert.match(palette, /"Matugen is not installed"/);
+    assert.match(packages, /- matugen/);
     assert.match(sysInfo, /property string nightLightLifecycle/);
     assert.doesNotMatch(sysInfo, /running:\s*root\.nightLight/);
     assert.match(bar, /Component\.onCompleted:[\s\S]*Settings\.autoHide[\s\S]*hideTimer\.restart/);
@@ -284,9 +289,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema five retains the glass redesign and adds menubar appearance settings", () => {
+test("schema six adds layered bar and wallpaper palette modes", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 5/);
+    assert.match(helpers, /var VERSION = 6/);
     assert.match(helpers, /"updates", "gh", "t3", "usage", "tray"/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
@@ -295,6 +300,10 @@ test("schema five retains the glass redesign and adds menubar appearance setting
     assert.match(helpers, /barRadius:\s*23/);
     assert.match(helpers, /glassEnabled:\s*true/);
     assert.match(helpers, /barColorMode:\s*"default"/);
+    assert.match(helpers, /paletteMode:\s*"wallpaper"/);
+    assert.match(helpers, /barStyle:\s*"hug"/);
+    assert.match(helpers, /function migrateBarStyle\(parsed, defaultsValue\)/);
+    assert.match(helpers, /function migratePaletteMode\(parsed, defaultsValue\)/);
     assert.match(helpers, /mod\("media", true\)/);
     assert.match(helpers, /mod\("bt", false\)/);
     assert.match(helpers, /wallDir:\s*"~\/Pictures\/Wallpapers"/);
@@ -303,6 +312,21 @@ test("schema five retains the glass redesign and adds menubar appearance setting
     // wherever the user never chose otherwise, or the redesign never appears.
     assert.match(helpers, /function adoptRedesign\(parsed\)/);
     assert.match(helpers, /V3_DEFAULTS = \{[\s\S]*?barHeight: 30/);
+});
+
+test("Layered Hug is one undoable preset and preserves layout dimensions", () => {
+    const settings = read("Common/Settings.qml");
+    const preset = settings.slice(settings.indexOf("function applyLayeredHugPreset()"),
+        settings.indexOf("function undoReset()"));
+    assert.match(preset, /resetSnapshot = \{[\s\S]*?barStyle:[\s\S]*?paletteMode:[\s\S]*?glassEnabled:[\s\S]*?modOpts:/);
+    assert.match(preset, /barStyle = "hug"/);
+    assert.match(preset, /paletteMode = "wallpaper"/);
+    assert.match(preset, /glassEnabled = true/);
+    assert.match(preset, /nextOptions\.ws\.style = "dots"/);
+    assert.doesNotMatch(preset, /\bmods\s*=/);
+    assert.doesNotMatch(preset, /barHeight\s*=/);
+    assert.doesNotMatch(preset, /barRadius\s*=/);
+    assert.doesNotMatch(preset, /gap\s*=/);
 });
 
 test("settings improvements expose fitting, embedded folders, undo, and shortcut", () => {

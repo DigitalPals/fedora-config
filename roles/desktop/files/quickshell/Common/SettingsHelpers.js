@@ -1,7 +1,10 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 5;
+var VERSION = 6;
+
+var BAR_STYLES = ["hug", "floating", "attached"];
+var PALETTE_MODES = ["wallpaper", "fixed"];
 
 // Reads in default layout order: left, then center, then right. The order
 // only decides where an id the settings file has never seen is appended, but
@@ -122,9 +125,9 @@ function defaults() {
         barRadius: 23,
         font: "urbanist",
         accent: "#5e9bff",
-        accentWall: false,
+        paletteMode: "wallpaper",
         position: "top",
-        floating: true,
+        barStyle: "hug",
         gap: 10,
         autoHide: false,
         exclusive: true,
@@ -146,9 +149,7 @@ function defaults() {
         notifProgress: true,
         notifBodyLines: 2,
         mods: defaultMods(),
-        modOpts: defaultModOpts(),
-        wallAccent: "",
-        wallAccentFor: ""
+        modOpts: defaultModOpts()
     };
 }
 
@@ -312,6 +313,24 @@ function barPalette(background) {
         textDim: contrastTone(bg, foreground, 4.8),
         textFaint: contrastTone(bg, foreground, 4.5),
         icon: contrastTone(bg, foreground, 6.0)
+    };
+}
+
+// Material palettes provide their own on-surface tones. Build the established
+// semantic ladder from those roles while retaining the shell-wide AA floor.
+function semanticPalette(background, onSurface, onSurfaceVariant) {
+    var bg = hexIn(background, "#161424").toLowerCase();
+    var hi = ensureContrast(onSurface, bg, 7.0);
+    var variant = ensureContrast(onSurfaceVariant, bg, 4.5);
+    return {
+        background: bg,
+        foreground: hi,
+        textHi: hi,
+        textMid: ensureContrast(variant, bg, 7.0),
+        textLow: ensureContrast(variant, bg, 5.5),
+        textDim: ensureContrast(variant, bg, 4.8),
+        textFaint: ensureContrast(variant, bg, 4.5),
+        icon: ensureContrast(variant, bg, 6.0)
     };
 }
 
@@ -572,6 +591,56 @@ function adoptRedesign(parsed) {
     return next;
 }
 
+// Schema 6 replaces two booleans with explicit visual modes. A v5 floating
+// bar whose geometry was never changed becomes the new edge-hugging default;
+// customized floating geometry remains floating, and the old edge-to-edge
+// option remains attached. The fixed color values are intentionally never
+// discarded: paletteMode only chooses which palette is active.
+var V5_DEFAULTS = {
+    barHeight: 46,
+    barRadius: 23,
+    gap: 10,
+    accent: "#5e9bff",
+    barColorMode: "default",
+    barCustomHue: 247,
+    barCustomSaturation: 29,
+    barCustomLightness: 11
+};
+
+function migrateBarStyle(parsed, defaultsValue) {
+    if (typeof parsed.v === "number" && parsed.v >= 6)
+        return enumIn(parsed.barStyle, BAR_STYLES, defaultsValue);
+    if (parsed.floating === false)
+        return "attached";
+    var pristine = intIn(parsed.barHeight, 28, 60, 1, V5_DEFAULTS.barHeight)
+            === V5_DEFAULTS.barHeight
+        && intIn(parsed.barRadius, 0, 30, 1, V5_DEFAULTS.barRadius)
+            === V5_DEFAULTS.barRadius
+        && intIn(parsed.gap, 4, 24, 1, V5_DEFAULTS.gap) === V5_DEFAULTS.gap;
+    return pristine ? "hug" : "floating";
+}
+
+function migratePaletteMode(parsed, defaultsValue) {
+    if (typeof parsed.v === "number" && parsed.v >= 6)
+        return enumIn(parsed.paletteMode, PALETTE_MODES, defaultsValue);
+    if (parsed.accentWall === true)
+        return "wallpaper";
+    var accent = hexIn(parsed.accent, V5_DEFAULTS.accent).toLowerCase();
+    var barMode = enumIn(parsed.barColorMode, BAR_COLOR_IDS,
+        V5_DEFAULTS.barColorMode);
+    var customHue = intIn(parsed.barCustomHue, 0, 359, 1,
+        V5_DEFAULTS.barCustomHue);
+    var customSaturation = intIn(parsed.barCustomSaturation, 0, 100, 1,
+        V5_DEFAULTS.barCustomSaturation);
+    var customLightness = intIn(parsed.barCustomLightness, 0, 100, 1,
+        V5_DEFAULTS.barCustomLightness);
+    return accent === V5_DEFAULTS.accent && barMode === V5_DEFAULTS.barColorMode
+        && customHue === V5_DEFAULTS.barCustomHue
+        && customSaturation === V5_DEFAULTS.barCustomSaturation
+        && customLightness === V5_DEFAULTS.barCustomLightness
+        ? "wallpaper" : "fixed";
+}
+
 function merge(raw) {
     var d = defaults();
     if (!raw || typeof raw !== "object")
@@ -593,9 +662,9 @@ function merge(raw) {
         barRadius: intIn(parsed.barRadius, 0, 30, 1, d.barRadius),
         font: enumIn(parsed.font, FONT_IDS, d.font),
         accent: hexIn(parsed.accent, d.accent),
-        accentWall: boolIn(parsed.accentWall, d.accentWall),
+        paletteMode: migratePaletteMode(parsed, d.paletteMode),
         position: enumIn(parsed.position, ["top", "bottom"], d.position),
-        floating: boolIn(parsed.floating, d.floating),
+        barStyle: migrateBarStyle(parsed, d.barStyle),
         gap: intIn(parsed.gap, 4, 24, 1, d.gap),
         autoHide: boolIn(parsed.autoHide, d.autoHide),
         exclusive: boolIn(parsed.exclusive, d.exclusive),
@@ -619,9 +688,7 @@ function merge(raw) {
         notifProgress: boolIn(parsed.notifProgress, d.notifProgress),
         notifBodyLines: intIn(parsed.notifBodyLines, 0, 3, 1, d.notifBodyLines),
         mods: migrateMods(parsed.mods, parsed.v),
-        modOpts: normalizeModOpts(parsed.modOpts),
-        wallAccent: hexIn(parsed.wallAccent, ""),
-        wallAccentFor: typeof parsed.wallAccentFor === "string" ? parsed.wallAccentFor : ""
+        modOpts: normalizeModOpts(parsed.modOpts)
     };
 }
 
@@ -717,6 +784,8 @@ function parse(text) {
 
 var exported = {
     VERSION: VERSION,
+    BAR_STYLES: BAR_STYLES,
+    PALETTE_MODES: PALETTE_MODES,
     MODULE_IDS: MODULE_IDS,
     RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
     MODULE_GROUPS: MODULE_GROUPS,
@@ -734,6 +803,8 @@ var exported = {
     normalizeMods: normalizeMods,
     normalizeModOpts: normalizeModOpts,
     migrateMods: migrateMods,
+    migrateBarStyle: migrateBarStyle,
+    migratePaletteMode: migratePaletteMode,
     pathIn: pathIn,
     detailIn: detailIn,
     repoListIn: repoListIn,
@@ -750,6 +821,7 @@ var exported = {
     foregroundFor: foregroundFor,
     ensureContrast: ensureContrast,
     barPalette: barPalette,
+    semanticPalette: semanticPalette,
     clone: clone,
     restoreSnapshot: restoreSnapshot,
     merge: merge,

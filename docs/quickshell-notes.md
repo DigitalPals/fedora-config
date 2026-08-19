@@ -202,7 +202,7 @@ its value, dirty state, commit and undo from the base, and per-surface styling
 travels as a single `var` object (`Theme.switchRow`, a card's `style`) rather
 than as a dozen properties.
 
-## Glass and the menubar palette
+## Layered Hug, glass, and the wallpaper palette
 
 The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project
 `facd7f56`) replaced an opaque bar and its bar-fused popouts with translucent
@@ -243,21 +243,33 @@ glass and detached panels. What that added, and what it needs:
   references from `Settings.glassEnabled`. Directly painting `Theme.glass*`,
   `popBg`, or `barBg` bypasses that switch. Modal scrims are deliberately
   separate: they remain translucent safety layers when glass is off.
-- **The menubar owns a palette.** Its selectable base color is independent of
-  the global Dark / Light palette except for the adaptive Shell Default and
-  macOS presets. `SettingsHelpers.barPalette` chooses light or dark foreground
-  and builds every menubar text/icon tone to a 4.5:1 floor against the opaque
-  base; bar-specific accent and status colors are pulled to the same floor.
-  Bar QML uses `Theme.bar*` tokens, while popovers keep the general palette.
+- **Wallpaper mode is one validated Material palette.** `Common/Palette.qml`
+  runs Matugen's tonal-spot scheme for the selected wallpaper, whitelists the
+  semantic roles in `PaletteHelpers.js`, and atomically caches both light and
+  dark variants at `~/.local/state/quickshell/wallpaper-palette.json`. Theme
+  changes select the cached variant. Missing or malformed Matugen output leaves
+  the user's mode unchanged and renders the stored fixed colors as fallback.
+  Copy-bearing tones are still forced to a 4.5:1 floor against their opaque
+  reference surface.
+- **Bar style is explicit.** `hug` is the default edge-attached slab with local
+  `QtQuick.Shapes` concave corners; `floating` alone uses the stored gap and
+  radius; `attached` is full-width and square. Hug/attached reserve exactly the
+  bar height, and the decorators travel with auto-hide without joining its
+  input mask.
+- **State layers are shared.** `Common/StateLayer.qml` supplies the 8% hover
+  and 12% pressed/focused overlay used by bar primitives, workspace targets,
+  shared actions, toggles, and settings controls. Controls retain their press
+  scale and accessibility behavior.
 - **One spring.** `Theme.springCurve` is the design's overshooting bezier, and
   everything that moves or resizes uses it. Colour and opacity never spring —
   an overshooting fade reads as a flicker — so they use the ease curves.
-- **Schema 5 adds glass and menubar color.** A v4 file receives glass-on and
-  the adaptive Shell Default, reproducing its old appearance without running
-  the v3 redesign migration again. `SettingsHelpers.adoptRedesign` still gives
-  a v3 file the redesign geometry for every key the user never moved. Three
-  modules were retired in schema 4 (`bell` into the centre pill, `idle` into
-  the Control Center, `control` into the status pill).
+- **Schema 6 adds bar style and palette mode.** A v5 attached bar remains
+  attached. A v5 floating bar adopts Hug only when height, radius, and gap are
+  pristine; custom geometry remains floating. Old wallpaper-accent users and
+  untouched colors adopt wallpaper mode, while active custom colors select
+  fixed mode without discarding either stored choice. Module order is never
+  part of this migration. `SettingsHelpers.adoptRedesign` still gives a v3
+  file the schema-4 geometry only where the user never moved it.
 
 ## Already decided against — do not pick these up
 

@@ -31,14 +31,14 @@ PopoutPanel {
 
     readonly property var navItems: [
         { id: "appearance", group: "SHELL", label: "Appearance", glyph: "palette",
-            title: "Appearance", description: "Glass, menubar color, shape, type, and accent",
-            keywords: "glass blur solid menubar color macos black graphite slate custom hsl bar height corner radius menu font accent hue wallpaper theme" },
+            title: "Appearance", description: "Wallpaper palette, glass, shape, type, and fixed colors",
+            keywords: "layered hug preset palette matugen glass blur solid menubar color custom hsl bar height corner radius menu font accent wallpaper theme" },
         { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "image",
             title: "Wallpaper", description: "Desktop image and automatic rotation",
             keywords: "desktop image background picture folder shuffle rotation" },
         { id: "bar", group: "SHELL", label: "Bar layout", glyph: "space_dashboard",
             title: "Bar layout", description: "Position, spacing, and monitor behavior",
-            keywords: "position top bottom floating gap auto hide exclusive monitor" },
+            keywords: "position top bottom hug floating attached gap auto hide exclusive monitor" },
         { id: "modules", group: "SHELL", label: "Modules", glyph: "widgets",
             title: "Modules", description: "Choose and arrange the bar’s contents",
             keywords: "clock weather media workspaces volume wifi battery bluetooth arrange order" },
@@ -126,9 +126,7 @@ PopoutPanel {
         height: visible ? 34 : 0
         visible: root.matchesQuery(modelData)
         radius: Theme.rowRadius
-        color: current ? Theme.accentBg
-            : navMouse.pressed ? Theme.hoverFillStrong
-            : navMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+        color: current ? Theme.accentBg : "transparent"
         border.width: activeFocus ? 1 : 0
         border.color: Theme.accent
         activeFocusOnTab: navItem.current
@@ -152,6 +150,15 @@ PopoutPanel {
                     || event.key === Qt.Key_Space) {
                 Settings.page = modelData.id; event.accepted = true;
             }
+        }
+
+        StateLayer {
+            anchors.fill: parent
+            radius: parent.radius
+            hovered: navMouse.containsMouse
+            pressed: navMouse.pressed
+            focused: navItem.activeFocus
+            tint: navItem.current ? Theme.accent : Theme.textHi
         }
 
         Sym {

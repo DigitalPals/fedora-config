@@ -19,9 +19,9 @@ const { shellDir, load } = require("./shell.cjs");
 const SETTINGS = fs.readFileSync(path.join(shellDir, "Common", "Settings.qml"), "utf8");
 const KEYS = Object.keys(load("SettingsHelpers.js").defaults());
 
-// Derived state cached beside the settings rather than chosen by the user:
-// no page owns them and Reset all deliberately skips them.
-const NOT_USER_FACING = ["wallAccent", "wallAccentFor"];
+// The wallpaper palette has its own cache file, so every persisted shell
+// setting is user-facing and belongs to one page.
+const NOT_USER_FACING = [];
 
 function sectionKeys() {
     const start = SETTINGS.indexOf("readonly property var sectionKeys: ({");
@@ -97,4 +97,5 @@ test("Reset all skips exactly the settings no page owns", () => {
         .map(m => m[1]);
     assert.deepEqual(skipped.sort(), [...NOT_USER_FACING].sort(),
         "Reset all and the page grouping disagree about what is user-facing");
+    assert.match(resetAll, /resetKeys\(Object\.keys\(defaults\), "All settings"\)/);
 });

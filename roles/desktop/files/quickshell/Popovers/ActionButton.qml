@@ -30,7 +30,7 @@ Rectangle {
     width: labelText.implicitWidth + hPadding
     height: Theme.inlineActionHeight
     radius: 6
-    color: actionMouse.containsMouse && enabled ? Qt.lighter(fill, 1.2) : fill
+    color: fill
     opacity: enabled ? 1 : 0.4
     activeFocusOnTab: enabled && visible && revealed
     Accessible.role: Accessible.Button
@@ -47,6 +47,15 @@ Rectangle {
             root.triggered();
             event.accepted = true;
         }
+    }
+
+    StateLayer {
+        anchors.fill: parent
+        radius: parent.radius
+        hovered: actionMouse.containsMouse && root.enabled
+        pressed: actionMouse.pressed
+        focused: root.activeFocus
+        tint: root.tint
     }
 
     Text {

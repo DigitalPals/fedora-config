@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import "." as Common
 import "SettingsHelpers.js" as SettingsHelpers
 
 // Design tokens for the glass menubar ("QuickShell Menubar" redesign).
@@ -16,37 +17,45 @@ Singleton {
     id: root
 
     readonly property bool dark: Settings.themeMode !== "light"
+    readonly property bool paletteActive:
+        Settings.paletteMode === "wallpaper" && Common.Palette.ready
 
     // ---- reference surfaces (opaque; used for contrast math) --------------
     readonly property color darkPopBg: "#171526"
     readonly property color lightPopBg: "#eeedf3"
-    readonly property color popBg: dark ? darkPopBg : lightPopBg
+    readonly property color background: paletteActive ? Common.Palette.background
+        : dark ? "#100e1c" : "#f7f5fb"
+    readonly property color popBg: paletteActive ? Common.Palette.surfaceContainerLow
+        : dark ? darkPopBg : lightPopBg
     readonly property color darkMenuBg: "#1a182c"
     readonly property color lightMenuBg: "#fcfcff"
-    readonly property color menuBg: dark ? darkMenuBg : lightMenuBg
+    readonly property color menuBg: paletteActive ? Common.Palette.surfaceContainer
+        : dark ? darkMenuBg : lightMenuBg
+    // The highest container is the least favorable opaque backdrop for copy:
+    // it is lightest in dark mode and darkest in light mode. Calibrating the
+    // shared copy colors here keeps one semantic ladder safe on every lower
+    // panel, menu, and group surface too.
+    readonly property color copyReferenceBg: paletteActive
+        ? Common.Palette.surfaceContainerHigh : popBg
     // The bar's opaque reference is independent of the surrounding shell
     // theme for fixed/custom presets. It is also the exact solid-mode fill.
-    readonly property color barBg: Settings.effectiveBarColor
+    readonly property color barBg: paletteActive ? Common.Palette.surface
+        : Settings.effectiveBarColor
 
     // ---- glass ------------------------------------------------------------
     // The bar is the lighter glass; panels sit a step denser so copy stays
     // readable over a busy wallpaper.
-    readonly property color glass: dark
-        ? Qt.rgba(22 / 255, 20 / 255, 36 / 255, 0.52)
-        : Qt.rgba(1, 1, 1, 0.55)
-    readonly property color glassStrong: dark
-        ? Qt.rgba(26 / 255, 24 / 255, 44 / 255, 0.72)
-        : Qt.rgba(252 / 255, 252 / 255, 255 / 255, 0.80)
+    readonly property color glass: Qt.rgba(barBg.r, barBg.g, barBg.b,
+        dark ? 0.52 : 0.55)
+    readonly property color glassStrong: Qt.rgba(popBg.r, popBg.g, popBg.b,
+        dark ? 0.72 : 0.80)
     // Menus that float above a panel need to stay legible over it.
-    readonly property color glassMenu: dark
-        ? Qt.rgba(26 / 255, 24 / 255, 44 / 255, 0.88)
-        : Qt.rgba(252 / 255, 252 / 255, 255 / 255, 0.92)
+    readonly property color glassMenu: Qt.rgba(menuBg.r, menuBg.g, menuBg.b,
+        dark ? 0.88 : 0.92)
     // Rendering uses semantic surface tokens. The raw glass colours above
     // remain the translucent variants; disabling glass swaps in opaque
     // references without making nested chip/tile fills opaque.
-    readonly property color barSurface: Settings.glassEnabled
-        ? Qt.rgba(barBg.r, barBg.g, barBg.b, dark ? 0.52 : 0.55)
-        : barBg
+    readonly property color barSurface: Settings.glassEnabled ? glass : barBg
     readonly property color surfaceStrong: Settings.glassEnabled ? glassStrong : popBg
     readonly property color surfaceMenu: Settings.glassEnabled ? glassMenu : menuBg
     // Full-screen scrims behind the power menu / shortcut sheet.
@@ -55,20 +64,27 @@ Singleton {
         : Qt.rgba(236 / 255, 236 / 255, 244 / 255, 0.5)
 
     // Hairlines.
-    readonly property color stroke: dark
-        ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.65)
+    readonly property color stroke: paletteActive ? Common.Palette.outlineVariant
+        : dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.65)
     readonly property color popBorder: stroke
     readonly property color hairline: stroke
-    readonly property color hairlineSoft: dark
-        ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.10)
+    readonly property color hairlineSoft: paletteActive
+        ? Qt.rgba(Common.Palette.outlineVariant.r, Common.Palette.outlineVariant.g,
+            Common.Palette.outlineVariant.b, 0.58)
+        : dark ? Qt.rgba(1, 1, 1, 0.08)
+        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.10)
 
     // ---- menubar palette -------------------------------------------------
     // A chosen bar colour may deliberately disagree with the shell's global
     // light/dark mode. Derive its own foreground ladder so a white bar in a
     // dark shell (or the reverse) remains readable. The helper floors every
     // copy-bearing step at 4.5:1 against barBg.
-    readonly property var barPalette: SettingsHelpers.barPalette(Settings.effectiveBarColor)
-    readonly property bool barLightForeground: barPalette.foreground === "#ffffff"
+    readonly property var barPalette: paletteActive
+        ? SettingsHelpers.semanticPalette(barBg.toString(),
+            Common.Palette.onSurface.toString(), Common.Palette.onSurfaceVariant.toString())
+        : SettingsHelpers.barPalette(Settings.effectiveBarColor)
+    readonly property bool barLightForeground:
+        SettingsHelpers.relativeLuminance(barPalette.foreground) > 0.5
     readonly property color barTextHi: barPalette.textHi
     readonly property color barTextMid: barPalette.textMid
     readonly property color barTextLow: barPalette.textLow
@@ -79,30 +95,36 @@ Singleton {
         ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(0, 0, 0, 0.26)
     readonly property color barWsOccupied: barLightForeground
         ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(0, 0, 0, 0.62)
-    readonly property color barStroke: barLightForeground
-        ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0, 0, 0, 0.14)
-    readonly property color barChip: barLightForeground
-        ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.07)
-    readonly property color barChipHover: barLightForeground
-        ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.13)
+    readonly property color barStroke: paletteActive ? Common.Palette.outlineVariant
+        : barLightForeground ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0, 0, 0, 0.14)
+    readonly property color barChip: paletteActive
+        ? Qt.rgba(Common.Palette.surfaceContainer.r, Common.Palette.surfaceContainer.g,
+            Common.Palette.surfaceContainer.b, 0.52)
+        : barLightForeground ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.07)
+    readonly property color barChipHover: paletteActive
+        ? Qt.rgba(Common.Palette.surfaceContainerHigh.r, Common.Palette.surfaceContainerHigh.g,
+            Common.Palette.surfaceContainerHigh.b, 0.72)
+        : barLightForeground ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.13)
 
     readonly property color barAccent: SettingsHelpers.ensureContrast(
-        Settings.effectiveAccent, Settings.effectiveBarColor, 4.5)
+        paletteActive ? Common.Palette.primary.toString() : Settings.effectiveAccent,
+        barBg.toString(), 4.5)
     readonly property var barAccentPalette: SettingsHelpers.barPalette(
-        SettingsHelpers.ensureContrast(Settings.effectiveAccent,
-            Settings.effectiveBarColor, 4.5))
-    readonly property color barAccentFg: barAccentPalette.foreground
+        barAccent.toString())
+    readonly property color barAccentFg: paletteActive
+        ? SettingsHelpers.ensureContrast(Common.Palette.onPrimary.toString(),
+            barAccent.toString(), 4.5) : barAccentPalette.foreground
     readonly property color barAccentGlow: Qt.rgba(
         barAccent.r, barAccent.g, barAccent.b, 0.50)
     readonly property color barRed: SettingsHelpers.ensureContrast(
         barLightForeground ? "#ff8f8f" : "#c22f2f",
-        Settings.effectiveBarColor, 4.5)
+        barBg.toString(), 4.5)
     readonly property var barRedPalette: SettingsHelpers.barPalette(barRed)
     readonly property color barRedFg: barRedPalette.foreground
     readonly property color barRedText: barRed
     readonly property color barAmber: SettingsHelpers.ensureContrast(
         barLightForeground ? "#ffc26e" : "#b5761e",
-        Settings.effectiveBarColor, 4.5)
+        barBg.toString(), 4.5)
     readonly property var barAmberPalette: SettingsHelpers.barPalette(barAmber)
     readonly property color barAmberFg: barAmberPalette.foreground
     readonly property color barRedBg: Qt.rgba(
@@ -111,32 +133,41 @@ Singleton {
         barAmber.r, barAmber.g, barAmber.b, barLightForeground ? 0.17 : 0.14)
 
     readonly property color barWxSun: SettingsHelpers.ensureContrast(
-        "#ffc26e", Settings.effectiveBarColor, 4.5)
+        "#ffc26e", barBg.toString(), 4.5)
     readonly property color barWxMoon: SettingsHelpers.ensureContrast(
-        "#bfc6da", Settings.effectiveBarColor, 4.5)
+        "#bfc6da", barBg.toString(), 4.5)
     readonly property color barWxCloud: SettingsHelpers.ensureContrast(
         barLightForeground ? "#a8b0c4" : "#5c6377",
-        Settings.effectiveBarColor, 4.5)
+        barBg.toString(), 4.5)
     readonly property color barWxFog: SettingsHelpers.ensureContrast(
         barLightForeground ? "#949aa8" : "#5f6572",
-        Settings.effectiveBarColor, 4.5)
+        barBg.toString(), 4.5)
     readonly property color barWxRain: SettingsHelpers.ensureContrast(
-        "#6ab0ea", Settings.effectiveBarColor, 4.5)
+        "#6ab0ea", barBg.toString(), 4.5)
     readonly property color barWxSnow: SettingsHelpers.ensureContrast(
         barLightForeground ? "#c8e2f5" : "#4a8fbe",
-        Settings.effectiveBarColor, 4.5)
+        barBg.toString(), 4.5)
     readonly property color barWxStorm: SettingsHelpers.ensureContrast(
-        "#a992e0", Settings.effectiveBarColor, 4.5)
+        "#a992e0", barBg.toString(), 4.5)
 
     // ---- fills ------------------------------------------------------------
     // chip: a resting pill inside the bar. chipHover: the same pill lit, and
     // the open/held state. tile: a recessed block inside a panel.
-    readonly property color chip: dark
-        ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.07)
-    readonly property color chipHover: dark
-        ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.13)
-    readonly property color tile: dark
-        ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.06)
+    readonly property color chip: paletteActive
+        ? Qt.rgba(Common.Palette.surfaceContainer.r, Common.Palette.surfaceContainer.g,
+            Common.Palette.surfaceContainer.b, 0.56)
+        : dark ? Qt.rgba(1, 1, 1, 0.08)
+        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.07)
+    readonly property color chipHover: paletteActive
+        ? Qt.rgba(Common.Palette.surfaceContainerHigh.r, Common.Palette.surfaceContainerHigh.g,
+            Common.Palette.surfaceContainerHigh.b, 0.74)
+        : dark ? Qt.rgba(1, 1, 1, 0.16)
+        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.13)
+    readonly property color tile: paletteActive
+        ? Qt.rgba(Common.Palette.surfaceContainerHigh.r, Common.Palette.surfaceContainerHigh.g,
+            Common.Palette.surfaceContainerHigh.b, 0.62)
+        : dark ? Qt.rgba(1, 1, 1, 0.09)
+        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.06)
     // Occupied workspace pips are functional state, not decorative furniture:
     // keep them well above dotDim while the focused pip remains uniquely accent.
     readonly property color wsOccupied: dark
@@ -169,35 +200,64 @@ Singleton {
     readonly property color lightTextFaint: "#63617a"
     readonly property color lightIcon: "#3a3850"
 
-    readonly property color textHi: dark ? darkTextHi : lightTextHi
-    readonly property color textMid: dark ? darkTextMid : lightTextMid
-    readonly property color textLow: dark ? darkTextLow : lightTextLow
-    readonly property color textDim: dark ? darkTextDim : lightTextDim
-    readonly property color textFaint: dark ? darkTextFaint : lightTextFaint
-    readonly property color icon: dark ? darkIcon : lightIcon
+    readonly property var textPalette: paletteActive
+        ? SettingsHelpers.semanticPalette(copyReferenceBg.toString(),
+            Common.Palette.onSurface.toString(), Common.Palette.onSurfaceVariant.toString())
+        : null
+    readonly property color textHi: paletteActive ? textPalette.textHi
+        : dark ? darkTextHi : lightTextHi
+    readonly property color textMid: paletteActive ? textPalette.textMid
+        : dark ? darkTextMid : lightTextMid
+    readonly property color textLow: paletteActive ? textPalette.textLow
+        : dark ? darkTextLow : lightTextLow
+    readonly property color textDim: paletteActive ? textPalette.textDim
+        : dark ? darkTextDim : lightTextDim
+    readonly property color textFaint: paletteActive ? textPalette.textFaint
+        : dark ? darkTextFaint : lightTextFaint
+    readonly property color icon: paletteActive ? textPalette.icon
+        : dark ? darkIcon : lightIcon
     // Decorative only — empty workspace pips and inactive rails.
     readonly property color dotDim: dark
         ? Qt.rgba(245 / 255, 244 / 255, 251 / 255, 0.30)
         : Qt.rgba(28 / 255, 26 / 255, 46 / 255, 0.26)
     // Copy drawn on top of the accent or on a photographic tile.
-    readonly property color textOnAccent: "#ffffff"
+    readonly property color textOnAccent: accentFg
 
     // ---- accent and status -------------------------------------------------
-    readonly property color accent: Settings.effectiveAccent
-    readonly property color accentFg: "#ffffff"
-    readonly property color accentSoft: Qt.rgba(accent.r, accent.g, accent.b, 0.24)
+    readonly property color accent: paletteActive ? Common.Palette.primary
+        : Settings.effectiveAccent
+    readonly property color accentFg: paletteActive
+        ? SettingsHelpers.ensureContrast(Common.Palette.onPrimary.toString(),
+            accent.toString(), 4.5) : "#ffffff"
+    readonly property color accentSoft: paletteActive
+        ? Qt.rgba(Common.Palette.primaryContainer.r, Common.Palette.primaryContainer.g,
+            Common.Palette.primaryContainer.b, 0.72)
+        : Qt.rgba(accent.r, accent.g, accent.b, 0.24)
     readonly property color accentGlow: Qt.rgba(accent.r, accent.g, accent.b, 0.50)
     readonly property color accentBg: accentSoft
-    readonly property color accentBgSoft: Qt.rgba(accent.r, accent.g, accent.b, 0.12)
+    readonly property color accentBgSoft: paletteActive
+        ? Qt.rgba(Common.Palette.primaryContainer.r, Common.Palette.primaryContainer.g,
+            Common.Palette.primaryContainer.b, 0.42)
+        : Qt.rgba(accent.r, accent.g, accent.b, 0.12)
     readonly property color accentHover: Qt.lighter(accent, 1.25)
 
-    readonly property color red: "#ff6b6b"
-    readonly property color redText: dark ? "#ff8f8f" : "#c22f2f"
-    readonly property color redBg: Qt.rgba(1, 107 / 255, 107 / 255, 0.18)
-    readonly property color redBgSoft: Qt.rgba(1, 107 / 255, 107 / 255, 0.10)
-    readonly property color redBorder: Qt.rgba(1, 107 / 255, 107 / 255, 0.38)
+    readonly property color red: paletteActive ? Common.Palette.errorRole : "#ff6b6b"
+    readonly property color redText: paletteActive
+        ? SettingsHelpers.ensureContrast(Common.Palette.errorRole.toString(),
+            copyReferenceBg.toString(), 4.5) : dark ? "#ff8f8f" : "#c22f2f"
+    readonly property color redBg: paletteActive
+        ? Qt.rgba(Common.Palette.errorContainer.r, Common.Palette.errorContainer.g,
+            Common.Palette.errorContainer.b, 0.68)
+        : Qt.rgba(1, 107 / 255, 107 / 255, 0.18)
+    readonly property color redBgSoft: paletteActive
+        ? Qt.rgba(Common.Palette.errorContainer.r, Common.Palette.errorContainer.g,
+            Common.Palette.errorContainer.b, 0.42)
+        : Qt.rgba(1, 107 / 255, 107 / 255, 0.10)
+    readonly property color redBorder: paletteActive ? Common.Palette.outlineVariant
+        : Qt.rgba(1, 107 / 255, 107 / 255, 0.38)
 
-    readonly property color amber: dark ? "#ffc26e" : "#b5761e"
+    readonly property color amber: SettingsHelpers.ensureContrast(
+        dark ? "#ffc26e" : "#b5761e", copyReferenceBg.toString(), 4.5)
     readonly property color amberBg: dark
         ? Qt.rgba(1, 194 / 255, 110 / 255, 0.17)
         : Qt.rgba(181 / 255, 118 / 255, 30 / 255, 0.14)
@@ -208,7 +268,8 @@ Singleton {
         ? Qt.rgba(1, 194 / 255, 110 / 255, 0.38)
         : Qt.rgba(181 / 255, 118 / 255, 30 / 255, 0.35)
 
-    readonly property color ok: dark ? "#63d68c" : "#1f9d57"
+    readonly property color ok: SettingsHelpers.ensureContrast(
+        dark ? "#63d68c" : "#1f9d57", copyReferenceBg.toString(), 4.5)
     readonly property color connected: ok
 
     // Accent at an arbitrary alpha, for the few fills outside the standard
@@ -217,20 +278,33 @@ Singleton {
         return Qt.rgba(accent.r, accent.g, accent.b, alpha);
     }
 
+    readonly property real stateHoverOpacity: 0.08
+    readonly property real statePressedOpacity: 0.12
+
     // Weather icon tints — the one place the bar carries real colour, so
     // they stay a shade below full saturation to sit inside the palette.
-    readonly property color wxSun: "#ffc26e"
-    readonly property color wxMoon: "#bfc6da"
-    readonly property color wxCloud: dark ? "#a8b0c4" : "#5c6377"
-    readonly property color wxFog: dark ? "#949aa8" : "#5f6572"
-    readonly property color wxRain: "#6ab0ea"
-    readonly property color wxSnow: dark ? "#c8e2f5" : "#4a8fbe"
-    readonly property color wxStorm: "#a992e0"
+    readonly property color wxSun: SettingsHelpers.ensureContrast(
+        "#ffc26e", copyReferenceBg.toString(), 4.5)
+    readonly property color wxMoon: SettingsHelpers.ensureContrast(
+        "#bfc6da", copyReferenceBg.toString(), 4.5)
+    readonly property color wxCloud: SettingsHelpers.ensureContrast(
+        dark ? "#a8b0c4" : "#5c6377", copyReferenceBg.toString(), 4.5)
+    readonly property color wxFog: SettingsHelpers.ensureContrast(
+        dark ? "#949aa8" : "#5f6572", copyReferenceBg.toString(), 4.5)
+    readonly property color wxRain: SettingsHelpers.ensureContrast(
+        "#6ab0ea", copyReferenceBg.toString(), 4.5)
+    readonly property color wxSnow: SettingsHelpers.ensureContrast(
+        dark ? "#c8e2f5" : "#4a8fbe", copyReferenceBg.toString(), 4.5)
+    readonly property color wxStorm: SettingsHelpers.ensureContrast(
+        "#a992e0", copyReferenceBg.toString(), 4.5)
 
     // Provider brand colors
-    readonly property color brandClaude: "#d97757"
-    readonly property color brandCodex: "#4fb8a8"
-    readonly property color brandKimi: "#4d6bfe"
+    readonly property color brandClaude: SettingsHelpers.ensureContrast(
+        "#d97757", copyReferenceBg.toString(), 4.5)
+    readonly property color brandCodex: SettingsHelpers.ensureContrast(
+        "#4fb8a8", copyReferenceBg.toString(), 4.5)
+    readonly property color brandKimi: SettingsHelpers.ensureContrast(
+        "#4d6bfe", copyReferenceBg.toString(), 4.5)
 
     // ---- typography --------------------------------------------------------
     // fontMenu is settings-driven; the family strings live in
@@ -286,13 +360,15 @@ Singleton {
     readonly property var tabularNumberFeatures: ({ "tnum": 1 })
 
     // ---- metrics -----------------------------------------------------------
-    // Bar geometry is settings-driven; the defaults reproduce the design
-    // (46 / 23 / 10). Attached (non-floating) bars sit edge-to-edge with
-    // square corners.
+    // Bar geometry is settings-driven. Hug and attached styles meet the
+    // screen edge; floating alone consumes the user's gap and outer radius.
     readonly property int barHeight: Settings.barHeight
-    readonly property int barTopMargin: Settings.floating ? Settings.gap : 0
-    readonly property int barSideMargin: Settings.floating ? Settings.gap : 0
-    readonly property int clusterRadius: Settings.floating ? Settings.barRadius : 0
+    readonly property bool barFloating: Settings.barStyle === "floating"
+    readonly property bool barHug: Settings.barStyle === "hug"
+    readonly property int barTopMargin: barFloating ? Settings.gap : 0
+    readonly property int barSideMargin: barFloating ? Settings.gap : 0
+    readonly property int clusterRadius: barFloating ? Settings.barRadius : 0
+    readonly property int hugCornerSize: 16
     // Inner gutter either side of the bar's content, and the gap between the
     // three sections.
     readonly property int barPadding: 10

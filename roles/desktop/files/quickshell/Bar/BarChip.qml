@@ -92,7 +92,7 @@ Rectangle {
     implicitHeight: pillHeight
     implicitWidth: content.implicitWidth + leftPadding + rightPadding
     radius: Theme.pillRadius
-    color: held ? Theme.barChipHover : root.hovered ? hoverFill : restFill
+    color: held ? Theme.barChipHover : restFill
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
     scale: pressFeedback && mouse.pressed ? 0.96 : 1
 
@@ -117,6 +117,14 @@ Rectangle {
             easing.type: Easing.BezierSpline
             easing.bezierCurve: Theme.springCurve
         }
+    }
+
+    StateLayer {
+        anchors.fill: parent
+        radius: root.radius
+        hovered: root.hovered
+        pressed: mouse.pressed
+        tint: Theme.barTextHi
     }
 
     Row {

@@ -94,18 +94,19 @@ test("settings-driven tokens default to the original menu metrics", () => {
     assert.equal(d.barHeight, 46);
     assert.equal(d.barRadius, 23);
     assert.equal(d.gap, 10);
-    assert.equal(d.floating, true);
+    assert.equal(d.barStyle, "hug");
     assert.equal(d.accent, "#5e9bff");
     const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
     assert.equal(menuChoice.family, "Urbanist");
 
     assert.match(theme, /readonly property int barHeight:\s*Settings\.barHeight/);
-    assert.match(theme, /readonly property int clusterRadius:\s*Settings\.floating\s*\?\s*Settings\.barRadius\s*:\s*0/);
-    assert.match(theme, /readonly property color accent:\s*Settings\.effectiveAccent/);
+    assert.match(theme, /readonly property bool barFloating:\s*Settings\.barStyle === "floating"/);
+    assert.match(theme, /readonly property int clusterRadius:\s*barFloating \? Settings\.barRadius : 0/);
+    assert.match(theme, /readonly property color accent:\s*paletteActive \? Common\.Palette\.primary/);
     assert.match(theme, /Settings\.fontChoices/);
     // Derived accent fills must track the dynamic accent, not a literal.
     assert.doesNotMatch(theme, /158 \/ 255/);
-    assert.match(theme, /readonly property color accentSoft:\s*Qt\.rgba\(accent\.r/);
+    assert.match(theme, /readonly property color accentSoft:\s*paletteActive/);
 });
 
 test("the menu face is scoped to the bar and its popovers", () => {

@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 5);
+    assert.equal(H.VERSION, 6);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, true);
     assert.equal(d.barColorMode, "default");
@@ -17,8 +17,9 @@ test("defaults carry the design values", () => {
     assert.equal(d.barRadius, 23);
     assert.equal(d.font, "urbanist");
     assert.equal(d.accent, "#5e9bff");
+    assert.equal(d.paletteMode, "wallpaper");
     assert.equal(d.position, "top");
-    assert.equal(d.floating, true);
+    assert.equal(d.barStyle, "hug");
     assert.equal(d.gap, 10);
     assert.equal(d.autoHide, false);
     assert.equal(d.exclusive, true);
@@ -308,6 +309,9 @@ test("merge falls back on invalid enums, colors and names", () => {
     assert.equal(H.merge({ v: H.VERSION, font: "oppo" }).font, "oppo",
         "the previous menu face stays selectable");
     assert.equal(H.merge({ themeMode: "sepia" }).themeMode, "dark");
+    assert.equal(H.merge({ v: H.VERSION, paletteMode: "auto" }).paletteMode,
+        "wallpaper");
+    assert.equal(H.merge({ v: H.VERSION, barStyle: "island" }).barStyle, "hug");
     assert.equal(H.merge({ position: "left" }).position, "top");
     assert.equal(H.merge({ pollMax: 120 }).pollMax, 300);
     assert.equal(H.merge({ accent: "red" }).accent, "#5e9bff");
@@ -315,7 +319,59 @@ test("merge falls back on invalid enums, colors and names", () => {
     assert.equal(H.merge({ wall: "../../etc/passwd" }).wall, H.defaults().wall);
     assert.equal(H.merge({ wall: "" }).wall, H.defaults().wall);
     assert.equal(H.merge({ monitor: "eDP-1" }).monitor, "eDP-1");
-    assert.equal(H.merge({ wallAccent: "blue" }).wallAccent, "");
+});
+
+test("schema-5 bar modes migrate without losing customized geometry", () => {
+    assert.equal(H.merge({
+        v: 5, floating: true, barHeight: 46, barRadius: 23, gap: 10
+    }).barStyle, "hug", "pristine floating geometry adopts the new default");
+    assert.equal(H.merge({
+        v: 5, floating: true, barHeight: 44, barRadius: 23, gap: 10
+    }).barStyle, "floating", "a customized height remains floating");
+    assert.equal(H.merge({
+        v: 5, floating: true, barHeight: 46, barRadius: 18, gap: 10
+    }).barStyle, "floating", "a customized radius remains floating");
+    assert.equal(H.merge({
+        v: 5, floating: false, barHeight: 46, barRadius: 23, gap: 10
+    }).barStyle, "attached");
+});
+
+test("schema-5 colors select wallpaper or fixed mode and remain stored", () => {
+    const pristine = H.merge({
+        v: 5, accent: "#5e9bff", barColorMode: "default"
+    });
+    assert.equal(pristine.paletteMode, "wallpaper");
+
+    const oldWallpaperAccent = H.merge({
+        v: 5, accentWall: true, accent: "#a992e0", barColorMode: "black"
+    });
+    assert.equal(oldWallpaperAccent.paletteMode, "wallpaper");
+    assert.equal(oldWallpaperAccent.accent, "#a992e0");
+    assert.equal(oldWallpaperAccent.barColorMode, "black");
+
+    const customAccent = H.merge({ v: 5, accent: "#a992e0" });
+    assert.equal(customAccent.paletteMode, "fixed");
+    assert.equal(customAccent.accent, "#a992e0");
+
+    const customBar = H.merge({ v: 5, barColorMode: "graphite" });
+    assert.equal(customBar.paletteMode, "fixed");
+    assert.equal(customBar.barColorMode, "graphite");
+
+    const dormantCustomBar = H.merge({
+        v: 5, barColorMode: "default", barCustomHue: 120
+    });
+    assert.equal(dormantCustomBar.paletteMode, "fixed");
+    assert.equal(dormantCustomBar.barCustomHue, 120);
+});
+
+test("schema-6 migration preserves module order and centered clock/weather", () => {
+    const raw = H.defaultMods();
+    raw.left = [raw.left[1], raw.left[0]];
+    raw.right = [raw.right.at(-1), ...raw.right.slice(0, -1)];
+    const migrated = H.merge({ v: 5, floating: true, mods: raw });
+    assert.deepEqual(migrated.mods.left.map(entry => entry.id), ["media", "ws"]);
+    assert.deepEqual(migrated.mods.center.map(entry => entry.id), ["clock", "weather"]);
+    assert.equal(migrated.mods.right[0].id, "batt");
 });
 
 test("normalizeMods drops unknown ids and dedupes across columns", () => {
@@ -382,7 +438,7 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
     assert.equal(current.accent, "#9ecbeb");
 });
 
-test("schema-4 appearance choices survive the schema-5 upgrade", () => {
+test("schema-4 appearance choices survive later schema upgrades", () => {
     // Schema 4 already carried the glass redesign. Values equal to the older
     // v3 defaults can now be deliberate choices and must not be adopted a
     // second time when the new colour settings are filled from defaults.
@@ -405,6 +461,8 @@ test("schema-4 appearance choices survive the schema-5 upgrade", () => {
     assert.equal(previous.osd, "top");
     assert.equal(previous.glassEnabled, true);
     assert.equal(previous.barColorMode, "default");
+    assert.equal(previous.barStyle, "floating");
+    assert.equal(previous.paletteMode, "fixed");
     assert.equal(H.resolveBarColor(previous.barColorMode, previous.themeMode,
         previous.barCustomHue, previous.barCustomSaturation,
         previous.barCustomLightness), "#ffffff");

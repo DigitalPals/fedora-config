@@ -27,6 +27,9 @@ is manual.
       at most ~2 writes/s during a continuous drag.
 - [ ] Editing the JSON externally applies live (no restart); junk values are
       clamped or reverted to defaults on the next save.
+- [ ] A schema-5 pristine floating bar migrates to Hug; a customized height,
+      radius, or gap remains Floating; an old non-floating bar becomes Attached.
+      Module order and centered Clock/Weather remain unchanged.
 - [ ] Deleting the file live restores defaults; restart keeps them.
 - [ ] Reset controls reset exactly their group and show an eight-second
       `… reset · Undo` footer. Undo restores the snapshot; a new reset replaces
@@ -53,10 +56,15 @@ is manual.
 - [ ] Glass effect applies without closing Settings or remapping/flickering the
       bar. Toggle it twice quickly, then reload Hyprland and restart Quickshell;
       the final persisted state wins each time.
-- [ ] Menubar color offers Shell Default, macOS, Black, Graphite, Slate,
-      White, and Custom. Default and macOS adapt to Dark / Light; the other
-      preset colors remain fixed. The preview badge reports the active mode,
-      preset, and exact hex value.
+- [ ] Wallpaper palette shows surface/primary/error swatches and generation
+      status. Switching Dark / Light selects the cached variant without a new
+      Matugen process; changing wallpaper regenerates once after the debounce.
+- [ ] Change wallpapers rapidly: no stale palette flashes. Temporarily hide
+      `matugen` or feed malformed output: the selector remains Wallpaper,
+      the fallback error appears, and the stored fixed palette renders.
+- [ ] Fixed menubar color offers Shell Default, macOS, Black, Graphite, Slate,
+      White, and Custom. The controls remain visible but disabled in Wallpaper
+      mode, and their values return unchanged after switching back to Fixed.
 - [ ] A Black menubar changes its text/icons to light tones; White changes
       them to dark tones. Accent, warning, error, workspace, weather, and T3
       marks remain legible, with no change to popover colors.
@@ -68,20 +76,21 @@ is manual.
 - [ ] Corner radius reshapes bar islands live.
 - [ ] Font rows render their own family; picking one reflows the bar and
       popovers instantly.
-- [ ] Accent swatches recolor the whole shell (bar, popouts, toasts,
-      settings chrome). "From wallpaper" derives a pastel from the current
-      wallpaper (cached in the JSON as `wallAccent`); switching wallpaper
-      while enabled re-derives it.
-- [ ] Accent hue sweeps continuously through fixed HSL S=.50/L=.75 colors and
-      turns off wallpaper-derived accent mode.
+- [ ] Fixed accent swatches and hue recolor the whole shell in Fixed mode and
+      remain visible but disabled in Wallpaper mode.
+- [ ] "Apply Layered Hug" enables Hug, Wallpaper, Glass, and dot workspaces in
+      one undoable action without changing module order, height, radius, or gap.
 
 ## Bar layout page
 
 - [ ] Position Bottom moves the bar; every popout opens above it with the
       fused surface mirrored, content upright, shadow below; tooltips flip
       above modules; toasts hug the top edge; Esc/hover-switching still work.
-- [ ] Floating off = edge-to-edge square bar; Edge gap dims while attached.
-- [ ] Edge gap slider moves the bar off the screen edge live.
+- [ ] Style picker renders Hug as full-width with 16px concave corners,
+      Floating as the existing detached rounded slab, and Attached full-width
+      and square. Top/Bottom mirrors Hug's corners without mirroring content.
+- [ ] Edge gap and corner radius are enabled only for Floating; the stored
+      values survive a round trip through Hug and Attached.
 - [ ] Auto-hide: bar slides away after ~1.6 s without hover; hovering the
       screen edge reveals it; it stays out while a popout or the settings
       window is open; clicks pass through the vacated strip.
@@ -155,6 +164,10 @@ is manual.
       shifts only after all eligible detail is compact.
 - [ ] Fine-grained touchpad scrolling over Volume changes it once per
       accumulated wheel step, not once per raw event.
+- [ ] Workspace cells keep a 22px width and full 30px target. Moving right
+      sends the lozenge's right edge in 120ms and left edge in 300ms; moving
+      left reverses those assignments. Hide-empty/model/settings changes snap,
+      while urgency, numbered mode, tooltips, and accessible actions persist.
 - [ ] Tab/arrow traversal, automatic focus scrolling, roles/states/actions,
       and Orca announcements work for navigation, custom controls, resets,
       drag/drop, module cogs and their sub-pages, and save errors.

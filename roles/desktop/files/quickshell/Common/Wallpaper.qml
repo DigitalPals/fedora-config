@@ -8,10 +8,8 @@ import "Format.js" as Format
 
 // Wallpaper management: quickshell draws the image on the background layer;
 // this singleton tracks the directory and delegates the current selection to
-// the Settings store (design v2 Wallpaper page). It also derives the
-// from-wallpaper accent: dominant hue sampled by ImageMagick, pastelized to
-// the palette's lightness so accent foregrounds keep their contrast, cached
-// in Settings so magick never re-runs for an unchanged wallpaper.
+// the Settings store (design v2 Wallpaper page). Material color generation
+// lives in Palette, keeping image selection and palette validation separate.
 Singleton {
     id: root
 
@@ -21,10 +19,6 @@ Singleton {
         ? Quickshell.env("HOME") + Settings.wallDir.slice(1) : Settings.wallDir
     property var files: []
     readonly property bool loading: folderModel.status === FolderListModel.Loading
-    property bool accentBusy: false
-    property string accentError: ""
-    property string queuedAccentFor: ""
-    property string activeAccentFor: ""
     property string pendingDir: ""
     property bool candidateLoadingSeen: false
     property string directoryError: ""
@@ -206,76 +200,6 @@ Singleton {
         onTriggered: root.shuffle()
     }
 
-    // ---- from-wallpaper accent -------------------------------------------
-    function extractAccent() {
-        if (!Settings.accentWall) {
-            queuedAccentFor = "";
-            return;
-        }
-        if (Settings.wall === "" || Settings.wallAccentFor === currentIdentity)
-            return;
-        // Queue by immutable wallpaper identity. A late ImageMagick result
-        // must never be attributed to whichever image is current at exit.
-        queuedAccentFor = currentIdentity;
-        startQueuedAccent();
-    }
-
-    function startQueuedAccent() {
-        if (accentProc.running || queuedAccentFor === "" || !Settings.accentWall)
-            return;
-        activeAccentFor = queuedAccentFor;
-        queuedAccentFor = "";
-        accentError = "";
-        accentBusy = true;
-        accentProc.command = ["magick", activeAccentFor,
-            "-resize", "1x1!", "-format", "%[hex:u.p{0,0}]", "info:"];
-        accentProc.running = true;
-    }
-
-    // Average color → hue only; saturation/lightness are pinned to the
-    // built-in palette's pastel band (#9ecbeb ≈ S.53 L.77) so any wallpaper
-    // yields an AA-safe accent and accentFg stays legible on accent fills.
-    // The same two helpers drive the accent-hue slider, and they carry the
-    // 0.5/0.75 constants this used to restate; hexHue rounds to whole
-    // degrees on the way through, which moves a channel by at most 1/255.
-    function pastelize(hexText) {
-        const match = hexText.match(/[0-9a-fA-F]{6}/);
-        if (!match)
-            return "";
-        return SettingsHelpers.hueToHex(SettingsHelpers.hexHue("#" + match[0], 0));
-    }
-
-    Process {
-        id: accentProc
-
-        stdout: StdioCollector {
-            id: accentOut
-        }
-
-        onExited: exitCode => {
-            const completedFor = root.activeAccentFor;
-            root.activeAccentFor = "";
-            if (exitCode !== 0) {
-                root.accentError = "Could not extract a color";
-                console.warn("wallpaper accent extraction failed:", exitCode);
-            } else {
-                const pastel = root.pastelize(accentOut.text);
-                if (pastel !== "" && Settings.accentWall
-                        && root.currentIdentity === completedFor) {
-                    Settings.setInternal("wallAccent", pastel);
-                    Settings.setInternal("wallAccentFor", completedFor);
-                } else if (pastel === "") {
-                    root.accentError = "No usable color found";
-                }
-            }
-            if (root.accentError !== "")
-                console.warn("wallpaper accent extraction returned no color:", accentOut.text);
-            root.accentBusy = false;
-            if (root.queuedAccentFor !== "")
-                Qt.callLater(root.startQueuedAccent);
-        }
-    }
-
     Process {
         id: thumbnailProc
 
@@ -304,22 +228,4 @@ Singleton {
         }
     }
 
-    Connections {
-        target: Settings
-
-        function onWallChanged() {
-            root.extractAccent();
-        }
-
-        function onWallDirChanged() {
-            root.extractAccent();
-        }
-
-        function onAccentWallChanged() {
-            root.extractAccent();
-        }
-    }
-
-    // Covers accentWall persisted on with a stale or missing cache.
-    Component.onCompleted: extractAccent()
 }

@@ -29,9 +29,7 @@ Flow {
             width: pillText.implicitWidth + root.padH * 2
             height: root.pillHeight
             radius: height / 2
-            color: pill.selected ? Theme.accentAlpha(0.16)
-                : pillMouse.pressed ? Theme.hoverFillStrong
-                : pillMouse.containsMouse || activeFocus ? Theme.hoverFill : Theme.cardFill
+            color: pill.selected ? Theme.accentAlpha(0.16) : Theme.cardFill
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accent
             activeFocusOnTab: pill.selected || (!root.anySelected && index === 0)
@@ -59,6 +57,15 @@ Flow {
                     pillRepeater.itemAt(next).forceActiveFocus();
                     event.accepted = true;
                 }
+            }
+
+            StateLayer {
+                anchors.fill: parent
+                radius: parent.radius
+                hovered: pillMouse.containsMouse
+                pressed: pillMouse.pressed
+                focused: pill.activeFocus
+                tint: pill.selected ? Theme.accent : Theme.textHi
             }
 
             Text {

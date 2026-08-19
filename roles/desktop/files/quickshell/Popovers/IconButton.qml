@@ -21,7 +21,7 @@ Rectangle {
     width: 26
     height: Theme.controlHeight
     radius: 7
-    color: iconMouse.containsMouse && enabled ? Theme.hoverFillStrong : Theme.hoverFill
+    color: Theme.hoverFill
     opacity: enabled ? 1 : 0.4
     activeFocusOnTab: enabled && visible
     border.width: activeFocus ? 1 : 0
@@ -35,6 +35,15 @@ Rectangle {
             iconButton.triggered();
             event.accepted = true;
         }
+    }
+
+    StateLayer {
+        anchors.fill: parent
+        radius: parent.radius
+        hovered: iconMouse.containsMouse && iconButton.enabled
+        pressed: iconMouse.pressed
+        focused: iconButton.activeFocus
+        tint: iconButton.tint
     }
 
     Text {

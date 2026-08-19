@@ -138,7 +138,7 @@ Rectangle {
     color: active ? Theme.barAccent
         : alert ? Theme.barRedBg
         : held ? Theme.barChipHover
-        : root.hovered && !bare ? Theme.barChipHover : restFill
+        : restFill
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     // Press feedback. The design scales a round button harder than a chip;
@@ -165,6 +165,14 @@ Rectangle {
             easing.type: Easing.BezierSpline
             easing.bezierCurve: Theme.springCurve
         }
+    }
+
+    StateLayer {
+        anchors.fill: parent
+        radius: parent.radius
+        hovered: root.hovered && !root.bare
+        pressed: mouse.pressed
+        tint: root.fg
     }
 
     Row {

@@ -19,6 +19,10 @@ SELinux, and the base operating system.
 - Laptop power management, firewall rules, hardware support, and a Plymouth theme
 - Repeatable system and Flatpak updates through one command
 
+The shell's Layered Hug visual direction was inspired by
+[Illogical Impulse](https://github.com/end-4/dots-hyprland). This is an
+original implementation; no upstream code or assets were incorporated.
+
 ## Third-party fonts
 
 The Quickshell menubar and its popovers use

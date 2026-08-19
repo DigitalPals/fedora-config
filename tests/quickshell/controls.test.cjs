@@ -114,3 +114,21 @@ test("filled sliders keep their leading glyph inside a low-value fill", () => {
     assert.match(source, /width:\s*root\.fillExtent/,
         "the painted fill must use the guarded visual extent");
 });
+
+test("shared state layers use Material interaction strengths", () => {
+    const layer = read("Common/StateLayer.qml");
+    const theme = read("Common/Theme.qml");
+    assert.match(theme, /stateHoverOpacity:\s*0\.08/);
+    assert.match(theme, /statePressedOpacity:\s*0\.12/);
+    assert.match(layer,
+        /opacity:\s*pressed \|\| focused \? Theme\.statePressedOpacity\s*:\s*hovered \? Theme\.stateHoverOpacity : 0/);
+    for (const rel of [
+        "Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/Workspaces.qml",
+        "Common/Toggle.qml", "Popovers/ActionButton.qml", "Popovers/IconButton.qml",
+        "Settings/PillRow.qml", "Settings/SettingsAction.qml"
+    ])
+        assert.match(read(rel), /StateLayer\s*\{/,
+            `${rel} does not use the shared state overlay`);
+    assert.match(read("Bar/BarIcon.qml"), /scale:\s*mouse\.pressed/,
+        "the state layer must not replace bar press-scale feedback");
+});

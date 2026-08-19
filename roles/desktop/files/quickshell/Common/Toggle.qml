@@ -38,6 +38,7 @@ Item {
     }
 
     Rectangle {
+        id: track
         anchors.centerIn: parent
         width: root.trackWidth
         height: root.trackHeight
@@ -45,6 +46,15 @@ Item {
         color: root.checked ? Theme.accent : Qt.rgba(1, 1, 1, 0.12)
         border.width: root.activeFocus ? 1 : 0
         border.color: Theme.textHi
+
+        StateLayer {
+            anchors.fill: parent
+            radius: parent.radius
+            hovered: toggleMouse.containsMouse
+            pressed: toggleMouse.pressed
+            focused: root.activeFocus
+            tint: root.checked ? Theme.accentFg : Theme.textHi
+        }
     }
 
     Rectangle {
@@ -65,6 +75,7 @@ Item {
     }
 
     MouseArea {
+        id: toggleMouse
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor

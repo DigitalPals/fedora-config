@@ -3,24 +3,34 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell.Hyprland
 import "../Common"
+import "../Common/WorkspaceMotion.js" as WorkspaceMotion
 
-// The workspace pager: a pill of pips, the focused one stretched into a lozenge
-// and lit with the accent.
-//
-// The stretch is the whole idea — the focused workspace is not a differently
-// coloured dot, it is a wider one, so the pager reads at a glance from the far
-// side of the screen. Width springs; colour and glow cross-fade.
+// Fixed-cell workspace pager. Every resting/occupied/urgent pip is drawn in
+// its own cell, while one accent lozenge travels above them. Its leading edge
+// arrives first and its trailing edge follows, making direction readable
+// without changing the pager's geometry or pointer targets.
 Rectangle {
     id: root
 
-    // Only to hand the bar's pointer state to the tooltips below.
     property Bar host: null
 
     readonly property bool numbered: Settings.modOpts.ws.style === "numbers"
+    readonly property int focusedId: Hyprland.focusedWorkspace
+        ? Hyprland.focusedWorkspace.id : -1
     readonly property int slots: Math.max(Settings.modOpts.ws.minSlots,
-        ...Hyprland.workspaces.values.map(w => w.id))
+        ...Hyprland.workspaces.values.map(workspace => workspace.id))
+    readonly property var existingIds:
+        Hyprland.workspaces.values.map(workspace => workspace.id).sort((a, b) => a - b)
+    readonly property var visibleIds: WorkspaceMotion.visibleIds(slots,
+        existingIds, -1, Settings.modOpts.ws.hideEmpty)
+    readonly property string structureKey: JSON.stringify([
+        slots, existingIds, Settings.modOpts.ws.hideEmpty
+    ])
+    property int previousFocusedId: -1
+    property bool indicatorReady: false
+    property bool snapRequested: true
 
-    implicitWidth: pips.implicitWidth + 24
+    implicitWidth: pips.width + 24
     implicitHeight: 30
     radius: Theme.pillRadius
     color: Theme.barChip
@@ -39,49 +49,132 @@ Rectangle {
         }
     }
 
-    Row {
+    function settleIndicator(animate) {
+        const bounds = WorkspaceMotion.indicatorBounds(visibleIds, focusedId);
+        if (!bounds) {
+            indicatorReady = false;
+            previousFocusedId = focusedId;
+            return;
+        }
+        const durations = WorkspaceMotion.edgeDurations(previousFocusedId,
+            focusedId, animate && indicatorReady && !snapRequested);
+        activeLozenge.leftDuration = durations.left;
+        activeLozenge.rightDuration = durations.right;
+        activeLozenge.animateEdges = durations.direction !== 0;
+        activeLozenge.leftEdge = bounds.left;
+        activeLozenge.rightEdge = bounds.right;
+        indicatorReady = true;
+        previousFocusedId = focusedId;
+        snapRequested = false;
+    }
+
+    onFocusedIdChanged: focusSettle.restart()
+    onStructureKeyChanged: {
+        snapRequested = true;
+        focusSettle.restart();
+    }
+
+    Connections {
+        target: Settings
+
+        // Any settings reload or hide-empty/style structural change seats the
+        // indicator instantly. Ordinary Hyprland focus changes never touch
+        // modOpts and retain their directional motion.
+        function onModOptsChanged() {
+            root.snapRequested = true;
+            focusSettle.restart();
+        }
+    }
+
+    Timer {
+        id: focusSettle
+        interval: 0
+        onTriggered: root.settleIndicator(true)
+    }
+
+    Item {
         id: pips
         anchors.centerIn: parent
-        spacing: 7
+        width: root.visibleIds.length * WorkspaceMotion.CELL_WIDTH
+        height: 30
+
+        RectangularShadow {
+            visible: root.indicatorReady
+            x: activeLozenge.x
+            y: activeLozenge.y
+            width: activeLozenge.width
+            height: activeLozenge.height
+            radius: activeLozenge.radius
+            blur: 10
+            spread: 0
+            color: Theme.barAccentGlow
+        }
+
+        Rectangle {
+            id: activeLozenge
+
+            property real leftEdge: 2
+            property real rightEdge: 20
+            property int leftDuration: 0
+            property int rightDuration: 0
+            property bool animateEdges: false
+
+            visible: root.indicatorReady
+            x: leftEdge
+            y: (parent.height - height) / 2
+            width: Math.max(1, rightEdge - leftEdge)
+            height: root.numbered ? 18 : 8
+            radius: Theme.pillRadius
+            color: Theme.barAccent
+            z: 1
+
+            Behavior on leftEdge {
+                enabled: activeLozenge.animateEdges
+                NumberAnimation {
+                    duration: activeLozenge.leftDuration
+                    easing.type: Easing.OutCubic
+                }
+            }
+
+            Behavior on rightEdge {
+                enabled: activeLozenge.animateEdges
+                NumberAnimation {
+                    duration: activeLozenge.rightDuration
+                    easing.type: Easing.OutCubic
+                }
+            }
+
+            Behavior on height {
+                NumberAnimation { duration: Theme.chipFadeDuration }
+            }
+
+            Behavior on color {
+                ColorAnimation { duration: 200 }
+            }
+        }
 
         Repeater {
-            model: root.slots
+            model: root.visibleIds
 
             delegate: Item {
                 id: slot
 
                 required property int index
-                readonly property int wsId: index + 1
-                readonly property var ws: Hyprland.workspaces.values.find(w => w.id === wsId) ?? null
+                required property int modelData
+                readonly property int wsId: modelData
+                readonly property var ws: Hyprland.workspaces.values.find(
+                    workspace => workspace.id === wsId) ?? null
                 readonly property bool exists: ws !== null
-                readonly property bool focused: Hyprland.focusedWorkspace !== null
-                    && Hyprland.focusedWorkspace.id === wsId
+                readonly property bool focused: root.focusedId === wsId
                 readonly property bool urgent: exists && ws.urgent
-                readonly property bool hidden: Settings.modOpts.ws.hideEmpty
-                    && !exists && !focused
-                readonly property color tone: focused ? Theme.barAccent
-                    : urgent ? Theme.barRed
-                    : root.numbered ? (exists ? Theme.barChipHover : Theme.barChip)
+                readonly property color restingTone: urgent ? Theme.barRed
+                    : root.numbered
+                    ? (exists ? Theme.barChipHover : Theme.barChip)
                     : exists ? Theme.barWsOccupied : Theme.barDotDim
 
-                visible: !hidden
-                width: hidden ? 0
-                    : root.numbered ? (focused ? 26 : 18)
-                    : (focused ? 30 : 10)
-                height: root.numbered ? 18 : 10
-                anchors.verticalCenter: parent.verticalCenter
-
-                Behavior on width {
-                    NumberAnimation {
-                        duration: Theme.expandDuration + 50
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Theme.springCurve
-                    }
-                }
-
-                Behavior on height {
-                    NumberAnimation { duration: Theme.chipFadeDuration + 100 }
-                }
+                x: index * WorkspaceMotion.CELL_WIDTH
+                width: WorkspaceMotion.CELL_WIDTH
+                height: 30
 
                 Accessible.role: Accessible.Button
                 Accessible.name: "Workspace " + wsId
@@ -90,58 +183,43 @@ Rectangle {
                 Accessible.onPressAction: Hyprland.dispatch(
                     "hl.dsp.focus({ workspace = " + wsId + " })")
 
-                // The focused pip carries a soft bloom of its own colour, which
-                // is what stops the accent lozenge reading as a flat sticker.
-                RectangularShadow {
-                    anchors.fill: pip
-                    radius: pip.radius
-                    blur: 10
-                    spread: 0
-                    color: slot.focused ? Theme.barAccentGlow : "transparent"
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: root.numbered ? 18 : 6
+                    height: root.numbered ? 18 : 6
+                    radius: Theme.pillRadius
+                    color: slot.restingTone
 
                     Behavior on color {
-                        ColorAnimation { duration: Theme.chipFadeDuration }
+                        ColorAnimation { duration: 200 }
                     }
                 }
 
-                Rectangle {
-                    id: pip
+                StateLayer {
                     anchors.fill: parent
+                    anchors.margins: 1
                     radius: Theme.pillRadius
-                    color: slot.tone
-                    // Pips answer a press before the compositor has switched,
-                    // and grow a little under the pointer so an eight-pixel
-                    // target still feels like one.
-                    scale: wsMouse.pressed ? 0.86
-                        : wsPointer.over ? (root.numbered ? 1.12 : 1.18) : 1
+                    hovered: wsPointer.over
+                    pressed: wsMouse.pressed
+                    tint: Theme.barTextHi
+                    z: 2
+                }
+
+                Text {
+                    visible: root.numbered
+                    anchors.centerIn: parent
+                    text: slot.wsId
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontMicro
+                    font.weight: Theme.weightHeavy
+                    font.features: Theme.tabularNumberFeatures
+                    color: slot.focused ? Theme.barAccentFg
+                        : slot.urgent ? Theme.barRedFg
+                        : slot.exists ? Theme.barTextMid : Theme.barTextFaint
+                    z: 3
 
                     Behavior on color {
-                        ColorAnimation { duration: Theme.chipFadeDuration }
-                    }
-
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Theme.pressDuration
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: Theme.springCurve
-                        }
-                    }
-
-                    Text {
-                        visible: root.numbered
-                        anchors.centerIn: parent
-                        text: slot.wsId
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontMicro
-                        font.weight: Theme.weightHeavy
-                        font.features: Theme.tabularNumberFeatures
-                        color: slot.focused ? Theme.barAccentFg
-                            : slot.urgent ? Theme.barRedFg
-                            : slot.exists ? Theme.barTextMid : Theme.barTextFaint
-
-                        Behavior on color {
-                            ColorAnimation { duration: Theme.chipFadeDuration }
-                        }
+                        ColorAnimation { duration: 200 }
                     }
                 }
 
@@ -157,9 +235,8 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    // This Hyprland build speaks the Lua IPC dialect: raw
-                    // dispatch text is evaluated as `hl.dispatch(<text>)`.
-                    onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + slot.wsId + " })")
+                    onClicked: Hyprland.dispatch(
+                        "hl.dsp.focus({ workspace = " + slot.wsId + " })")
                 }
 
                 BarTooltip {
@@ -173,4 +250,9 @@ Rectangle {
             }
         }
     }
+
+    Component.onCompleted: Qt.callLater(() => {
+        root.snapRequested = true;
+        root.settleIndicator(false);
+    })
 }

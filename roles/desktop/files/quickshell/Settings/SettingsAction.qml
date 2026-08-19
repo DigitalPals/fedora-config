@@ -14,8 +14,7 @@ Rectangle {
     width: compact ? 30 : actionRow.implicitWidth + 16
     height: 30
     radius: Theme.rowRadius
-    color: mouse.pressed ? Theme.hoverFillStrong
-        : mouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+    color: "transparent"
     border.width: activeFocus ? 1 : 0
     border.color: danger ? Theme.red : Theme.accent
     activeFocusOnTab: true
@@ -30,6 +29,15 @@ Rectangle {
                 || event.key === Qt.Key_Space) {
             root.triggered(); event.accepted = true;
         }
+    }
+
+    StateLayer {
+        anchors.fill: parent
+        radius: parent.radius
+        hovered: mouse.containsMouse
+        pressed: mouse.pressed
+        focused: root.activeFocus
+        tint: root.danger ? Theme.red : Theme.textHi
     }
 
     Row {

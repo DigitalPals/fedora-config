@@ -10,6 +10,7 @@
 # to resolve a registered type. qmldir.test.cjs carries the exemption.
 
 singleton Theme Theme.qml
+singleton Palette Palette.qml
 singleton Popouts Popouts.qml
 singleton Screens Screens.qml
 singleton Launcher Launcher.qml
@@ -48,3 +49,5 @@ NotifActions NotifActions.qml
 NotifCard NotifCard.qml
 NotifIcon NotifIcon.qml
 Toggle Toggle.qml
+StateLayer StateLayer.qml
+HugCorner HugCorner.qml
