@@ -1,0 +1,17 @@
+---
+# Qt snapshots the available font families for the life of the process. Only
+# restart an already-running shell: on a headless provision or before the
+# graphical session starts, the next normal start will see the new cache.
+- name: Restart Quickshell after installing fonts
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - try-restart
+      - quickshell.service
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  changed_when: true
+  failed_when: false

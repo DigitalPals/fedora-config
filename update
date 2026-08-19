@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # XPS update wrapper, v2 "mission control" UI (design 2a).
 # Dnf + flatpak run concurrently; --full additionally converges the Ansible
-# configuration with --skip-tags boot,finalize. A flatpak failure warns and
+# configuration with --skip-tags boot. A flatpak failure warns and
 # continues, while a dnf failure aborts. Full logs land under xps-update/logs/.
 set -uo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
@@ -20,8 +20,8 @@ Options:
 
 ANSIBLE_ARGS are accepted only with --full and are passed to ansible-playbook.
 
-With --full, ./tests/run (Noctalia config + hardware integration checks) must
-pass before the playbook is allowed to touch the machine.
+With --full, ./tests/run (Quickshell unit tests + QML lint) must pass before
+the playbook is allowed to touch the machine.
 
 Examples:
   ./update
@@ -261,8 +261,8 @@ fi
 
 printf '\n  %sCONFIGURATION%s\n' "$UI_BOLD" "$UI_RESET"
 
-# Gate the deploy on the repo checks: an invalid shell configuration or broken
-# hardware helper would otherwise land on the machine before being detected.
+# Gate the deploy on the repo checks: broken QML or a failing helper test would
+# otherwise be copied onto the machine and only surface at the next reload.
 if [[ $skip_tests == true ]]; then
   ui_warn 'Repo checks' 'skipped (--skip-tests)'
 elif ! run_step 'Repo checks' "$log_root/tests.log" ./tests/run; then
@@ -273,7 +273,7 @@ elif ! run_step 'Repo checks' "$log_root/tests.log" ./tests/run; then
 fi
 
 ansible_rc=0
-ansible-playbook site.yml --skip-tags boot,finalize "${ansible_args[@]}" || ansible_rc=$?
+ansible-playbook site.yml --skip-tags boot "${ansible_args[@]}" || ansible_rc=$?
 
 total=$(ui_duration $((SECONDS - start)))
 if (( ansible_rc == 0 && flatpak_rc == 0 )); then

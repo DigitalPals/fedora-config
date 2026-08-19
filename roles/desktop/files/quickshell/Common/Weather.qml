@@ -1,0 +1,289 @@
+pragma Singleton
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import "ProcHelpers.js" as ProcHelpers
+
+// Open-Meteo backed weather state for the bar chip + popover. No API key;
+// location and cadence come from the weather module's settings (the old
+// QS_WEATHER_* env vars are seeded into them once by Settings).
+Singleton {
+    id: root
+
+    readonly property string latitude: String(Settings.modOpts.weather.lat)
+    readonly property string longitude: String(Settings.modOpts.weather.lon)
+    readonly property string place: Settings.modOpts.weather.place
+
+    readonly property int pollIntervalSecs: Settings.modOpts.weather.pollMins * 60
+
+    // Three states, and consumers need all three apart. `ready` stays true
+    // once a forecast has ever landed, so it is "there is something to
+    // draw", not "the last fetch worked":
+    //   !ready && !offline  — the first fetch has not come back yet
+    //   !ready && offline   — nothing to draw and no way to get it
+    //   ready && offline    — the last known sky, now going stale
+    property bool ready: false
+    // Why the last fetch failed, "" while it is working.
+    property string fetchError: ""
+    readonly property bool offline: fetchError !== ""
+    property double updatedAt: 0
+    property int temp: 0
+    property int feels: 0
+    property int humidity: 0
+    property int windKmh: 0
+    property string windDir: ""
+    property string condition: ""
+    property int code: -1
+    property bool isDay: true
+    // [{ day, code, lo, hi }] — today plus four days out.
+    property var days: []
+
+    readonly property string url: "https://api.open-meteo.com/v1/forecast"
+        + "?latitude=" + latitude + "&longitude=" + longitude
+        + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,is_day"
+        + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+        + "&timezone=auto&forecast_days=5"
+        + (Settings.unit === "f" ? "&temperature_unit=fahrenheit" : "")
+
+    Connections {
+        target: Settings
+
+        function onUnitChanged() {
+            root.refresh();
+        }
+
+        // Any modOpts write lands here; only refetch when it moved the
+        // request (location change), not on unrelated module options.
+        function onModOptsChanged() {
+            if (root.url !== root.fetchedUrl)
+                root.refresh();
+        }
+    }
+
+    function describe(code) {
+        if (code === 0)
+            return "Clear sky";
+        if (code === 1)
+            return "Mostly clear";
+        if (code === 2)
+            return "Partly cloudy";
+        if (code === 3)
+            return "Overcast";
+        if (code === 45 || code === 48)
+            return "Fog";
+        if (code >= 51 && code <= 57)
+            return "Drizzle";
+        if (code >= 61 && code <= 67)
+            return "Rain";
+        if (code >= 71 && code <= 77)
+            return "Snow";
+        if (code >= 80 && code <= 82)
+            return "Rain showers";
+        if (code === 85 || code === 86)
+            return "Snow showers";
+        if (code >= 95)
+            return "Thunderstorm";
+        return "—";
+    }
+
+    // Material Symbols ligature for a WMO code, for anything drawn with
+    // Common/Sym.qml. Kept in the same code order as glyph() and glyphColor()
+    // below, so a mark, its Nerd Font twin and its tint cannot disagree about
+    // what the sky is doing.
+    function symbol(code, day) {
+        if (code < 0)
+            return "cloud_off";
+        if (code === 0)
+            return day ? "clear_day" : "bedtime";
+        if (code === 1 || code === 2)
+            return day ? "partly_cloudy_day" : "partly_cloudy_night";
+        if (code === 3)
+            return "cloud";
+        if (code === 45 || code === 48)
+            return "foggy";
+        if (code >= 51 && code <= 57)
+            return "rainy_light";
+        if (code >= 61 && code <= 67)
+            return "rainy";
+        if (code >= 71 && code <= 77)
+            return "weather_snowy";
+        if (code >= 80 && code <= 82)
+            return "rainy_heavy";
+        if (code === 85 || code === 86)
+            return "weather_snowy";
+        if (code >= 95)
+            return "thunderstorm";
+        return "cloud";
+    }
+
+    // Kept in the same code order as symbol() so a mark and its tint never
+    // disagree about what the sky is doing.
+    function glyphColor(code, day) {
+        if (code < 0)
+            return Theme.textDim;
+        if (code <= 2)
+            return day ? Theme.wxSun : Theme.wxMoon;
+        if (code === 3)
+            return Theme.wxCloud;
+        if (code === 45 || code === 48)
+            return Theme.wxFog;
+        if (code >= 51 && code <= 67)
+            return Theme.wxRain;
+        if (code >= 71 && code <= 77)
+            return Theme.wxSnow;
+        if (code >= 80 && code <= 82)
+            return Theme.wxRain;
+        if (code === 85 || code === 86)
+            return Theme.wxSnow;
+        if (code >= 95)
+            return Theme.wxStorm;
+        return Theme.textDim;
+    }
+
+    // The menubar can use a fixed/custom colour independent of the shell's
+    // light/dark palette, so its weather mark needs the parallel bar tones.
+    function barGlyphColor(code, day) {
+        if (code < 0)
+            return Theme.barTextDim;
+        if (code <= 2)
+            return day ? Theme.barWxSun : Theme.barWxMoon;
+        if (code === 3)
+            return Theme.barWxCloud;
+        if (code === 45 || code === 48)
+            return Theme.barWxFog;
+        if (code >= 51 && code <= 67)
+            return Theme.barWxRain;
+        if (code >= 71 && code <= 77)
+            return Theme.barWxSnow;
+        if (code >= 80 && code <= 82)
+            return Theme.barWxRain;
+        if (code === 85 || code === 86)
+            return Theme.barWxSnow;
+        if (code >= 95)
+            return Theme.barWxStorm;
+        return Theme.barTextDim;
+    }
+
+    function compass(deg) {
+        return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
+    }
+
+    // True when the body was a forecast this shell could read.
+    function apply(text) {
+        if (text.trim() === "")
+            return false;
+        try {
+            const d = JSON.parse(text);
+            const cur = d.current;
+            temp = Math.round(cur.temperature_2m);
+            feels = Math.round(cur.apparent_temperature);
+            humidity = Math.round(cur.relative_humidity_2m);
+            windKmh = Math.round(cur.wind_speed_10m);
+            windDir = compass(cur.wind_direction_10m);
+            code = cur.weather_code;
+            isDay = cur.is_day === 1;
+            condition = describe(cur.weather_code);
+            const out = [];
+            for (let i = 0; i < d.daily.time.length; i++) {
+                out.push({
+                    day: new Date(d.daily.time[i] + "T12:00:00").toLocaleDateString(Qt.locale("en_US"), "ddd"),
+                    code: d.daily.weather_code[i],
+                    lo: Math.round(d.daily.temperature_2m_min[i]),
+                    hi: Math.round(d.daily.temperature_2m_max[i])
+                });
+            }
+            days = out;
+            updatedAt = Date.now();
+            ready = true;
+            return true;
+        } catch (e) {
+            console.warn("weather parse failed:", e);
+            return false;
+        }
+    }
+
+    property string fetchedUrl: ""
+
+    function refresh() {
+        fetchedUrl = url;
+        fetchProc.staleRuns += fetchProc.running ? 1 : 0;
+        fetchProc.running = false;
+        fetchProc.running = true;
+    }
+
+    // Everything a finished fetch has to say, in one place: the body when the
+    // request worked, ProcHelpers.NOT_STARTED when curl never ran.
+    function settle(exitCode, body, errText) {
+        if (exitCode === 0 && apply(body)) {
+            fetchError = "";
+            return;
+        }
+        const reason = exitCode === 0
+            ? "open-meteo sent a forecast this shell could not read"
+            : ProcHelpers.commandError("curl", exitCode, errText, ProcHelpers.CURL_EXIT);
+        // The retry timer runs every 30s until a forecast lands, so log the
+        // transition rather than every attempt.
+        if (fetchError !== reason)
+            console.warn("weather unavailable:", reason);
+        fetchError = reason;
+    }
+
+    Process {
+        id: fetchProc
+        // `curl -sf` says nothing at all when it fails: -s silences the error
+        // text and -f empties the body on an HTTP error, so the exit status
+        // is the entire report. It arrives after both streams close, and on
+        // the falling edge of `running` even when curl never started.
+        //
+        // Runs killed by refresh() have yet to report in: their exit lands as
+        // a crash some time after the replacement started, and is not news.
+        property int staleRuns: 0
+        property string body: ""
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["curl", "-sf", "--max-time", "15", root.url]
+
+        stdout: StdioCollector {
+            onStreamFinished: fetchProc.body = text
+        }
+        stderr: StdioCollector {
+            onStreamFinished: fetchProc.errText = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            fetchProc.exitSeen = true;
+            fetchProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else if (staleRuns > 0) {
+                staleRuns--;
+            } else {
+                root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
+            }
+        }
+    }
+
+    Timer {
+        interval: root.pollIntervalSecs * 1000
+        running: true
+        repeat: true
+        onTriggered: root.refresh()
+    }
+
+    // Retry quickly until the first fetch lands (Wi-Fi may still be
+    // associating at session start).
+    Timer {
+        interval: 30000
+        running: !root.ready
+        repeat: true
+        onTriggered: root.refresh()
+    }
+
+    Component.onCompleted: refresh()
+}

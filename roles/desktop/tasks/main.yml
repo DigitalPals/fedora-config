@@ -11,7 +11,13 @@
       - gdm
       - gnome-keyring
       - hyprland
+      - hypridle
+      - hyprlock
       - hyprpicker
+      - hyprpolkitagent
+      - hyprsunset
+      - quickshell
+      - ImageMagick
       - xdg-desktop-portal
       - xdg-desktop-portal-gtk
       - xdg-desktop-portal-hyprland
@@ -26,7 +32,9 @@
       - brightnessctl
       - playerctl
       - socat
-      # Shared helpers used by update/install scripts and link diagnostics.
+      # Runtime dependencies of the Quickshell bar that were only ever
+      # installed transitively: curl fetches the weather, iw reads the Wi-Fi
+      # link rate.
       - curl
       - iw
       - tesseract
@@ -36,101 +44,51 @@
       - libinput-utils
       - vulkan-loader
       - vulkan-tools
+      # QtWebSockets QML module for the T3 Code bar client; Fedora ships
+      # the QML plugin in the -devel subpackage.
+      - qt6-qtwebsockets-devel
+      # qmllint for the quickshell QML smoke check (tests/qml-lint).
+      - qt6-qtdeclarative-devel
     state: present
   when: not ansible_check_mode
 
-- name: Install the native Noctalia shell
+- name: Install Fedora fuzzel and matugen rather than COPR variants
   ansible.builtin.dnf:
     name:
-      - noctalia
-      - upower
+      - fuzzel
+      - matugen
     state: present
+    disablerepo:
+      - _copr:copr.fedorainfracloud.org:sdegler:hyprland
   when: not ansible_check_mode
-  tags: [noctalia]
 
 - name: Ensure GDM is the display manager while preserving GNOME
   ansible.builtin.systemd_service:
     name: gdm.service
     enabled: true
 
-- name: Stop and disable the retired Quickshell desktop services
-  ansible.builtin.command:
-    argv:
-      - systemctl
-      - --user
-      - "--machine={{ primary_user }}@.host"
-      - disable
-      - --now
-      - quickshell.service
-      - hypridle.service
-      - hyprpolkitagent.service
-  changed_when: false
-  failed_when: false
-  when: not ansible_check_mode
-  tags: [noctalia]
-
-- name: Remove packages superseded by the native Noctalia shell
-  ansible.builtin.dnf:
-    name:
-      - quickshell
-      - hypridle
-      - hyprlock
-      - hyprpolkitagent
-      - hyprsunset
-      - fuzzel
-      - matugen
-      # Development headers used only by the retired QML lint/build path.
-      - qt6-qtwebsockets-devel
-      - qt6-qtdeclarative-devel
-    state: absent
-  when: not ansible_check_mode
-  tags: [noctalia]
-
-- name: Install Hyprland Noctalia session launcher
+- name: Install Hyprland Quickshell session launcher
   ansible.builtin.template:
-    src: hyprland-noctalia.j2
-    dest: /usr/local/bin/hyprland-noctalia
+    src: hyprland-quickshell.j2
+    dest: /usr/local/bin/hyprland-quickshell
     owner: root
     group: root
     mode: "0755"
-  tags: [noctalia]
 
-- name: Register Hyprland Noctalia GDM session
+- name: Register Hyprland Quickshell GDM session
   ansible.builtin.copy:
-    dest: /usr/share/wayland-sessions/hyprland-noctalia.desktop
+    dest: /usr/share/wayland-sessions/hyprland-quickshell.desktop
     owner: root
     group: root
     mode: "0644"
     content: |
       [Desktop Entry]
-      Name=Hyprland (Noctalia)
-      Comment=Hyprland with the Noctalia desktop shell
-      Exec=/usr/local/bin/hyprland-noctalia
-      TryExec=/usr/local/bin/hyprland-noctalia
+      Name=Hyprland (Quickshell)
+      Comment=Hyprland with Quickshell Desktop Shell
+      Exec=/usr/local/bin/hyprland-quickshell
+      TryExec=/usr/local/bin/hyprland-quickshell
       Type=Application
       DesktopNames=Hyprland
-  tags: [noctalia]
-
-- name: Remove retired Quickshell sessions, configuration, state, and units
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /usr/local/bin/hyprland-quickshell
-    - /usr/share/wayland-sessions/hyprland-quickshell.desktop
-    - "{{ primary_home }}/.config/quickshell"
-    - "{{ primary_home }}/.local/state/quickshell"
-    - "{{ primary_home }}/.cache/quickshell"
-    - "{{ primary_home }}/.config/systemd/user/quickshell.service"
-    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/quickshell.service"
-    - "{{ primary_home }}/.config/systemd/user/hypridle.service"
-    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/hypridle.service"
-    - "{{ primary_home }}/.config/systemd/user/hyprpolkitagent.service"
-    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/hyprpolkitagent.service"
-    - "{{ primary_home }}/.config/hypr/hypridle.conf"
-    - "{{ primary_home }}/.config/hypr/hyprlock.conf"
-  notify: Reload user systemd
-  tags: [noctalia]
 
 - name: Retire Lumen entirely
   ansible.builtin.file:
@@ -195,13 +153,10 @@
     mode: "0755"
   loop:
     - "{{ primary_home }}/.config/hypr"
-    - "{{ primary_home }}/.config/noctalia"
     - "{{ primary_home }}/.config/xdg-desktop-portal"
     - "{{ primary_home }}/.config/systemd/user"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
     - "{{ primary_home }}/.local/state/hyprland"
-    - "{{ primary_home }}/.local/state/noctalia"
-  tags: [noctalia]
 
 - name: Install Hyprland Lua configuration
   become: true
@@ -217,51 +172,84 @@
     - looknfeel.lua
     - bindings.lua
     - autostart.lua
-  tags: [noctalia]
 
-- name: Mark the managed Noctalia setup as complete
+- name: Install rendered Hyprland helper configuration
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    content: ""
-    dest: "{{ primary_home }}/.local/state/noctalia/.setup-complete"
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ primary_home }}/.config/hypr/{{ item.dest }}"
     mode: "0644"
-    force: false
-  tags: [noctalia]
+  loop:
+    - { src: hypridle.conf.j2, dest: hypridle.conf }
+    - { src: hyprlock.conf.j2, dest: hyprlock.conf }
 
-- name: Validate the managed Noctalia configuration
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/noctalia
-      - config
-      - validate
-      - "{{ role_path }}/files/noctalia/config.toml"
-  environment:
-    HOME: "{{ primary_home }}"
+# The copy below is unconditional, so broken QML would land on disk and only
+# surface at the next shell reload, far from the change that caused it. Run
+# the same static check tests/run uses, against the source tree, first.
+# Skip with --skip-tags quickshell-lint; it is read-only, so it also runs
+# under --check. tests/qml-lint exits 0 with a SKIP when qmllint is absent.
+- name: Check the Quickshell configuration before installing it
+  ansible.builtin.command: "{{ playbook_dir }}/tests/qml-lint"
+  delegate_to: localhost
+  become: false
   changed_when: false
-  when: not ansible_check_mode
-  tags: [noctalia]
+  check_mode: false
+  failed_when: false
+  register: quickshell_lint
+  tags: [quickshell, quickshell-lint]
 
-- name: Install Noctalia configuration
+# Reported separately so the findings themselves reach the terminal: a failing
+# command module puts them in stdout, which the compact callback drops in
+# favor of "non-zero return code".
+- name: Refuse to install a Quickshell configuration that qmllint rejects
+  ansible.builtin.fail:
+    msg: "{{ quickshell_lint.stdout | default(quickshell_lint.stderr) | default('qmllint failed') }}"
+  when: quickshell_lint.rc | default(0) != 0
+  tags: [quickshell, quickshell-lint]
+
+- name: Install Quickshell menubar configuration
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    src: noctalia/
-    dest: "{{ primary_home }}/.config/noctalia/"
+    src: quickshell/
+    dest: "{{ primary_home }}/.config/quickshell/"
     mode: "0644"
     directory_mode: "0755"
-  register: noctalia_config
-  tags: [noctalia]
+  register: quickshell_config
+  tags: [quickshell]
 
-- name: Report that Noctalia will hot-reload the new configuration
+# Deliberately no restart handler: Quickshell watches its config directory and
+# hot-reloads, and a forced restart mid-session is more disruptive than the
+# problem it would solve.
+- name: Report that the shell will hot-reload the new configuration
   ansible.builtin.debug:
     msg: >-
-      Noctalia configuration changed; a running shell will reload it. Its log
-      is at `~/.cache/noctalia/noctalia.log`.
-  when: noctalia_config is changed
-  tags: [noctalia]
+      Quickshell configuration changed; the running shell reloads it on its
+      own. Check `journalctl --user -u quickshell.service -n 50` if the bar
+      looks wrong.
+  when: quickshell_config is changed
+  tags: [quickshell]
+
+- name: Remove retired generic Quickshell launcher components
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/quickshell/{{ item }}"
+    state: absent
+  loop:
+    - Common/Popovers.qml
+    - Popovers/LauncherPopover.qml
+    - Popovers/PopoverWindow.qml
+    # The unit tests moved to the repo's tests/quickshell/; this clears the
+    # copies earlier deploys left behind. Safe to drop once every machine has
+    # run the playbook since.
+    - Common/tests
+    # The switch and slider merged into Common/Toggle.qml and
+    # Common/HSlider.qml. A directory carrying a qmldir is not scanned, so a
+    # leftover copy is inert rather than ambiguous — this is tidiness.
+    - Popovers/Toggle.qml
+    - Popovers/HSlider.qml
+    - Settings/SettingsSwitch.qml
+    - Settings/SettingsSlider.qml
 
 - name: Configure portal preference without patching Fedora files
   become: true
@@ -297,6 +285,9 @@
     dest: "{{ primary_home }}/.config/systemd/user/{{ item }}.service"
     mode: "0644"
   loop:
+    - quickshell
+    - hypridle
+    - hyprpolkitagent
     - voxtype
   notify: Reload user systemd
 
@@ -329,46 +320,14 @@
     state: link
     force: true
   loop:
+    - quickshell
+    - hypridle
+    - hyprpolkitagent
     - voxtype
     - external-monitor-toggle
   notify: Reload user systemd
 
-- name: Check whether Noctalia is already running
-  ansible.builtin.command:
-    argv:
-      - pgrep
-      - -u
-      - "{{ ansible_facts.getent_passwd[primary_user][1] }}"
-      - -x
-      - noctalia
-  register: noctalia_running
-  changed_when: false
-  failed_when: false
-  check_mode: false
-  tags: [noctalia]
-
-- name: Start Noctalia through an already-running Hyprland session
-  ansible.builtin.command:
-    argv:
-      - systemd-run
-      - --user
-      - "--machine={{ primary_user }}@.host"
-      - --unit=noctalia-transition
-      - --wait
-      - --collect
-      - --property=Type=exec
-      - /usr/bin/hyprctl
-      - dispatch
-      - 'hl.dsp.exec_cmd("/usr/bin/noctalia")'
-  changed_when: false
-  failed_when: false
-  when:
-    - not ansible_check_mode
-    - noctalia_running.rc != 0
-  tags: [noctalia]
-
 - name: Preserve SELinux labels on local session executable
-  ansible.builtin.command: restorecon -F /usr/local/bin/hyprland-noctalia
+  ansible.builtin.command: restorecon -F /usr/local/bin/hyprland-quickshell
   changed_when: false
   when: not ansible_check_mode
-  tags: [noctalia]

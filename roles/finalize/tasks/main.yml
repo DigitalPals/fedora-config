@@ -43,15 +43,178 @@
     insertbefore: BOF
   when: gdm_autologin | bool
 
-- name: Make Hyprland Noctalia the autologin session
+- name: Make Hyprland Quickshell the autologin session
   ansible.builtin.lineinfile:
     path: "/var/lib/AccountsService/users/{{ primary_user }}"
     regexp: "^\\s*{{ item }}\\s*="
-    line: "{{ item }}=hyprland-noctalia"
+    line: "{{ item }}=hyprland-quickshell"
     insertafter: "^\\[User\\]$"
     firstmatch: true
   loop:
     - Session
     - XSession
   when: gdm_autologin | bool
-  tags: [noctalia]
+
+# Shell packages, fonts, configuration, and user units are all installed by
+# earlier roles. Flush their handlers here so an already-running Noctalia
+# session can be handed over without leaving the user without a desktop shell.
+- name: Apply pending user-unit changes before the shell handoff
+  ansible.builtin.meta: flush_handlers
+  tags: [quickshell]
+
+- name: Check whether the retired Noctalia shell is running
+  ansible.builtin.command:
+    argv:
+      - pgrep
+      - -u
+      - "{{ ansible_facts.getent_passwd[primary_user][1] }}"
+      - -x
+      - noctalia
+  register: retired_noctalia_running
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [quickshell]
+
+- name: Hand the running session from Noctalia to Quickshell
+  when:
+    - not ansible_check_mode
+    - retired_noctalia_running.rc == 0
+  tags: [quickshell]
+  block:
+    - name: Stop Noctalia after Quickshell is ready on disk
+      ansible.builtin.command:
+        argv:
+          - pkill
+          - -u
+          - "{{ ansible_facts.getent_passwd[primary_user][1] }}"
+          - -x
+          - noctalia
+      register: retired_noctalia_stop
+      changed_when: retired_noctalia_stop.rc == 0
+      failed_when: retired_noctalia_stop.rc not in [0, 1]
+
+    - name: Wait for Noctalia to release its desktop bus names
+      ansible.builtin.command:
+        argv:
+          - pgrep
+          - -u
+          - "{{ ansible_facts.getent_passwd[primary_user][1] }}"
+          - -x
+          - noctalia
+      register: retired_noctalia_stopped
+      changed_when: false
+      failed_when: false
+      until: retired_noctalia_stopped.rc != 0
+      retries: 10
+      delay: 1
+
+    - name: Start the restored Quickshell desktop services
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - --user
+          - "--machine={{ primary_user }}@.host"
+          - start
+          - quickshell.service
+          - hypridle.service
+          - hyprpolkitagent.service
+      changed_when: true
+
+    - name: Confirm the restored desktop services are active
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - --user
+          - "--machine={{ primary_user }}@.host"
+          - is-active
+          - --quiet
+          - "{{ item }}.service"
+      loop:
+        - quickshell
+        - hypridle
+        - hyprpolkitagent
+      changed_when: false
+
+  rescue:
+    - name: Recover Noctalia if the live Quickshell handoff fails
+      ansible.builtin.command:
+        argv:
+          - systemd-run
+          - --user
+          - "--machine={{ primary_user }}@.host"
+          - --unit=noctalia-rollback-recovery
+          - --collect
+          - /usr/bin/noctalia
+      changed_when: true
+      failed_when: false
+
+    - name: Stop before removing the recoverable Noctalia installation
+      ansible.builtin.fail:
+        msg: >-
+          Quickshell did not remain active during the live handoff. Noctalia
+          recovery was attempted and its package and user data were preserved.
+
+- name: Inspect retired Noctalia user data
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop:
+    - { name: config, path: "{{ primary_home }}/.config/noctalia" }
+    - { name: state, path: "{{ primary_home }}/.local/state/noctalia" }
+  loop_control:
+    label: "{{ item.path }}"
+  register: retired_noctalia_user_data
+  tags: [quickshell]
+
+- name: Create a private backup directory for retired Noctalia data
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/state/noctalia-retired-{{ ansible_date_time.iso8601_basic_short }}"
+    state: directory
+    mode: "0700"
+  when: >-
+    retired_noctalia_user_data.results
+    | selectattr('stat.exists')
+    | list
+    | length > 0
+  tags: [quickshell]
+
+- name: Preserve retired Noctalia settings and state
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/mv
+      - --
+      - "{{ item.item.path }}"
+      - "{{ primary_home }}/.local/state/noctalia-retired-{{ ansible_date_time.iso8601_basic_short }}/{{ item.item.name }}"
+  loop: "{{ retired_noctalia_user_data.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  when:
+    - not ansible_check_mode
+    - item.stat.exists
+  changed_when: true
+  tags: [quickshell]
+
+- name: Remove retired Noctalia launchers and cache
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/bin/hyprland-noctalia
+    - /usr/share/wayland-sessions/hyprland-noctalia.desktop
+    - "{{ primary_home }}/.config/noctalia"
+    - "{{ primary_home }}/.local/state/noctalia"
+    - "{{ primary_home }}/.cache/noctalia"
+  tags: [quickshell]
+
+- name: Remove the retired Noctalia package
+  ansible.builtin.dnf:
+    name: noctalia
+    state: absent
+  when: not ansible_check_mode
+  tags: [quickshell]

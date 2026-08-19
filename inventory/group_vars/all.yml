@@ -91,9 +91,18 @@ nerd_font_apps:
     repo: ryanoasis/nerd-fonts
     asset_regex: '^FiraCode[.]tar[.]xz$'
     kind: font
-# Noctalia uses Urbanist for its managed shell configuration. Upstream
-# publishes it as a bare variable TTF, so the URL pins a commit and the
-# checksum pins the installed bytes.
+pinned_font_archives:
+  - name: oppo-sans
+    version: "4.0"
+    url: https://openfs.oppomobile.com/open/oop/202412/05/0f155015fff7700fbbcef7fa2aad78dc.zip
+    checksum: sha256:4a314ad9446d0ba86fde57f18dbe8b7376c32dd5cdf6e3c8119a5d1ccf934ba8
+    expected_font: OPPO_Sans_4.0/OPPO Sans 4.0.ttf
+
+# Single-file fonts, which upstream publishes as bare variable TTFs rather than
+# archives. The URL is pinned to a commit and the checksum pins the bytes, so
+# the version below is only the directory label. Both are what the Quickshell
+# menubar draws: Urbanist is Theme.fontMenu's default face, and Material
+# Symbols Rounded is every icon in the shell (Common/Sym.qml).
 pinned_font_files:
   - name: urbanist
     version: "1.321"
@@ -103,7 +112,18 @@ pinned_font_files:
     license_url: https://raw.githubusercontent.com/coreyhu/Urbanist/cf64de52fe255c01a13db5f25c6deeb51a240311/OFL.txt
     license_checksum: sha256:93b568382826c6f92eda0dc4807d0106b05141fb8348cd63ac996077e8cc47fa
     license_filename: OFL.txt
+  - name: material-symbols-rounded
+    version: "2026.08.14"
+    url: https://raw.githubusercontent.com/google/material-design-icons/e083cc60a0828fdd3b404cea0cb8a5b900e9c23e/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.ttf
+    checksum: sha256:c2c185c2f31193348f34ae454215d990bb49f494c45e79348d9f2b3d653607d7
+    filename: MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf
+    license_url: https://raw.githubusercontent.com/google/material-design-icons/e083cc60a0828fdd3b404cea0cb8a5b900e9c23e/LICENSE
+    license_checksum: sha256:58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd
+    license_filename: LICENSE.txt
 source_apps:
+  - name: awww
+    repo_url: https://codeberg.org/LGFae/awww.git
+    binary_names: [awww, awww-daemon]
   - name: wayfreeze
     repo_url: https://github.com/jappie3/wayfreeze.git
     binary_names: [wayfreeze]

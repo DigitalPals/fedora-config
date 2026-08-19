@@ -8,15 +8,17 @@ set -uo pipefail
 
 cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
+shell_dir=roles/desktop/files/quickshell
 failed_stages=()
 
 if [[ -t 1 ]]; then
-  C_GREEN=$'\033[32m' C_RED=$'\033[31m' C_OFF=$'\033[0m'
+  C_GREEN=$'\033[32m' C_RED=$'\033[31m' C_YELLOW=$'\033[33m' C_OFF=$'\033[0m'
 else
-  C_GREEN='' C_RED='' C_OFF=''
+  C_GREEN='' C_RED='' C_YELLOW='' C_OFF=''
 fi
 
 pass() { printf '%sPASS%s  %-11s %s\n' "$C_GREEN" "$C_OFF" "$1" "${2:-}"; }
+skip() { printf '%sSKIP%s  %-11s %s\n' "$C_YELLOW" "$C_OFF" "$1" "${2:-}"; }
 fail() {
   printf '%sFAIL%s  %-11s %s\n' "$C_RED" "$C_OFF" "$1" "${2:-}"
   failed_stages+=("$1")
@@ -36,64 +38,108 @@ excerpt() {
   return 0
 }
 
-# ── Noctalia configuration and Hyprland integration ─────────────────────────
-stage_noctalia() {
+# ── Quickshell pure-logic unit tests ────────────────────────────────────────
+# `node --test <dir>` does not discover these (the runner tries to load the
+# directory as a module), so the files are expanded here instead.
+#
+# They live here rather than beside the code they test: the Ansible role copies
+# the whole shell tree into ~/.config/quickshell, and test files have no
+# business in a deployed config directory.
+stage_unit_tests() {
+  local files=() out rc=0 t0 elapsed passed failed
+  shopt -s nullglob
+  files=(tests/quickshell/*.test.cjs)
+  shopt -u nullglob
+
+  if ((${#files[@]} == 0)); then
+    fail 'unit tests' 'no *.test.cjs under tests/quickshell'
+    return
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    skip 'unit tests' 'node not installed (dnf install nodejs24)'
+    return
+  fi
+
+  t0=$(now_ms)
+  out=$(node --test "${files[@]}" 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+
+  passed=$(awk '$2 == "pass" { n = $3 } END { print n + 0 }' <<<"$out")
+  failed=$(awk '$2 == "fail" { n = $3 } END { print n + 0 }' <<<"$out")
+
+  if ((rc == 0)); then
+    pass 'unit tests' "$passed passing in ${#files[@]} files $(took "$elapsed")"
+    return
+  fi
+
+  fail 'unit tests' "$failed of $((passed + failed)) failing"
+  # The trailing "failing tests:" block holds the assertion diagnostics; fall
+  # back to everything when the runner died before printing it.
+  if grep -q 'failing tests:' <<<"$out"; then
+    excerpt "$(sed -n '/failing tests:/,$p' <<<"$out")"
+  else
+    excerpt "$out"
+  fi
+}
+
+# ── QML static analysis ─────────────────────────────────────────────────────
+stage_qml_lint() {
   local out rc=0 t0 elapsed
 
   t0=$(now_ms)
+  out=$(tests/qml-lint 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+
+  if [[ $out == SKIP* ]]; then
+    skip 'qml lint' "$(sed 's/^SKIP  *//' <<<"$out" | tail -n1)"
+  elif ((rc == 0)); then
+    # qml-lint's own success line already carries the file count; reuse it so
+    # both stages read the same way.
+    pass 'qml lint' "$(sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^PASS  *//' <<<"$out" | tail -n1) $(took "$elapsed")"
+  else
+    fail 'qml lint' 'qmllint reported errors'
+    excerpt "$(sed 's/\x1b\[[0-9;]*m//g' <<<"$out")"
+  fi
+}
+
+# ── Quickshell configuration and live migration integration ────────────────
+stage_quickshell_integration() {
+  local out rc=0 t0 elapsed
+  t0=$(now_ms)
+
   out=$(python3 - <<'PY' 2>&1
 from pathlib import Path
-import tomllib
-
-config_path = Path("roles/desktop/files/noctalia/config.toml")
-config = tomllib.loads(config_path.read_text())
-
-assert config["shell"]["polkit_agent"] is True
-assert config["shell"]["setup_wizard_enabled"] is False
-assert config["notification"]["enable_daemon"] is True
-assert config["lockscreen"]["enabled"] is True
-assert config["idle"]["behavior"]["lock"]["timeout"] == 300
-assert config["idle"]["behavior"]["screen-off"]["timeout"] == 600
-assert config["bar"]["main"]["position"] == "top"
-assert "launcher" in config["bar"]["main"]["start"]
-assert "control-center" in config["bar"]["main"]["end"]
 
 tasks = Path("roles/desktop/tasks/main.yml").read_text()
+finalize = Path("roles/finalize/tasks/main.yml").read_text()
 autostart = Path("roles/desktop/files/autostart.lua").read_text()
 bindings = Path("roles/desktop/files/bindings.lua").read_text()
 look = Path("roles/desktop/files/looknfeel.lua").read_text()
-finalize = Path("roles/finalize/tasks/main.yml").read_text()
 
-assert "- noctalia" in tasks
-assert "src: noctalia/" in tasks
-assert ".local/state/noctalia/.setup-complete" in tasks
-assert "hl.exec_cmd([[noctalia]])" in autostart
-assert "noctalia msg " in bindings
-assert "panel-toggle launcher" in bindings
-assert "settings-toggle" in bindings
-assert "session lock" in bindings
-assert "noctalia-(bar-.+|notification|dock|panel|attached-panel|osd|window-switcher)" in look
-assert "hyprland-noctalia" in finalize
-
-assert not Path("roles/desktop/files/quickshell").exists()
-assert not Path("tests/quickshell").exists()
-assert not Path("roles/desktop/templates/quickshell.service.j2").exists()
-print("TOML and Hyprland integration contract valid")
+assert Path("roles/desktop/files/quickshell/shell.qml").is_file()
+assert Path("roles/desktop/templates/quickshell.service.j2").is_file()
+assert Path("roles/desktop/templates/hyprland-quickshell.j2").is_file()
+assert not Path("roles/desktop/files/noctalia").exists()
+assert "- quickshell" in tasks
+assert "src: quickshell/" in tasks
+assert "qs ipc call launcher toggle" in bindings
+assert "noctalia" not in autostart.lower()
+assert "qs-(bar|bar-popout|launcher|notifications|osd|power|shortcuts|wallpaper)" in look
+assert "hyprland-quickshell" in finalize
+assert "noctalia-retired-" in finalize
+assert "/usr/share/wayland-sessions/hyprland-noctalia.desktop" in finalize
+assert "name: noctalia" in finalize
+assert "quickshell.service" in finalize
+print("Quickshell configuration and guarded Noctalia migration are wired")
 PY
-) || rc=$?
+) || rc=1
 
-  if ((rc == 0)) && command -v noctalia >/dev/null 2>&1; then
-    semantic=$(noctalia config validate roles/desktop/files/noctalia/config.toml 2>&1) || rc=$?
-    grep -q 'WARN' <<<"$semantic" && rc=1
-    out+=$'\n'"$semantic"
-  fi
   elapsed=$(( $(now_ms) - t0 ))
-
   if ((rc == 0)); then
-    pass 'Noctalia' "config and integration $(took "$elapsed")"
+    pass 'Quickshell' "configuration and migration integration $(took "$elapsed")"
   else
-    fail 'Noctalia' 'configuration or integration check failed'
-    excerpt "$out"
+    fail 'Quickshell' 'configuration or migration integration check failed'
+    excerpt "${out:-unknown failure}"
   fi
 }
 
@@ -213,13 +259,15 @@ PY
   fi
 }
 
-stage_noctalia
+stage_unit_tests
+stage_qml_lint
+stage_quickshell_integration
 stage_xps_hardware
 
 # Keep the verdict on the last line: `update` tails this output into its own
 # failure report, so the actionable summary has to survive the truncation.
 if ((${#failed_stages[@]} > 0)); then
-  printf '\n%d of 2 repo check stages failed: %s\n' \
+  printf '\n%d of 4 repo check stages failed: %s\n' \
     "${#failed_stages[@]}" "$(IFS=, ; printf '%s' "${failed_stages[*]}")"
   exit 1
 fi

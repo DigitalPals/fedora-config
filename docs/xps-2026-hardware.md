@@ -21,8 +21,8 @@ network sinks bypass it.
 The XPS 14 profile was measured on `0DB9`; `0DBA` is included on the same basis
 as Quattro and has not been independently measured here. Fedora provides the
 filter-chain LV2 loader and `lsp-plugins-lv2` limiter. Desktop volume keys and
-the Noctalia volume widget's scroll actions control the physical speaker gain
-while the virtual filter master stays at unity.
+the Quickshell audio UI control the physical speaker gain while the virtual
+filter master stays at unity.
 
 Useful checks:
 
@@ -61,12 +61,13 @@ authselect current --raw
 /usr/local/libexec/xps-fingerprint-check "$USER"
 ```
 
-GDM uses Fedora's dedicated fingerprint PAM conversation, while Noctalia talks
-to fprintd for lock-screen verification. Fedora has no stock `authselect`
-feature for inserting a lid-state command into PAM, so the role does not copy
-Omarchy's custom clamshell helper. This does not matter on the tested `0DB9`
-without a reader; on a future reader-equipped configuration, password remains
-available when the reader is inaccessible.
+GDM uses Fedora's dedicated fingerprint PAM conversation. Hyprlock continues to
+use the system PAM configuration with password authentication available as the
+fallback. Fedora has no stock `authselect` feature for inserting a lid-state
+command into PAM, so the role does not copy Omarchy's custom clamshell helper.
+This does not matter on the tested `0DB9` without a reader; on a future
+reader-equipped configuration, password remains available when the reader is
+inaccessible.
 
 ## OVTI08F4 / IPU7 camera
 

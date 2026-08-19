@@ -1,3 +1,17 @@
+local function persisted_scroll_factor()
+  local home = os.getenv("HOME")
+  if not home then return 1.0 end
+
+  local file = io.open(home .. "/.local/state/quickshell/shell-settings.json", "r")
+  if not file then return 1.0 end
+  local contents = file:read("*a")
+  file:close()
+
+  local value = tonumber(contents:match('"scrollFactor"%s*:%s*([%d%.]+)'))
+  if value and value >= 0.2 and value <= 2.0 then return value end
+  return 1.0
+end
+
 hl.config({
   input = {
     kb_layout = "us",
@@ -12,7 +26,7 @@ hl.config({
       natural_scroll = true,
       disable_while_typing = true,
       tap_to_click = true,
-      scroll_factor = 1.0,
+      scroll_factor = persisted_scroll_factor(),
     },
   },
 })
