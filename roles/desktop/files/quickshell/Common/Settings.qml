@@ -104,9 +104,9 @@ Singleton {
     readonly property var sectionKeys: ({
         wallpaper: ["wall", "wallDir", "shuffle"],
         appearance: ["themeMode", "glassEnabled", "barColorMode", "barCustomHue",
-            "barCustomSaturation", "barCustomLightness", "barHeight", "barRadius",
-            "font", "accent", "paletteMode"],
-        bar: ["position", "barStyle", "gap", "autoHide", "exclusive", "monitor"],
+            "barCustomSaturation", "barCustomLightness", "font", "accent", "paletteMode"],
+        bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
+            "exclusive", "monitor"],
         modules: ["mods", "modOpts"],
         notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
@@ -212,7 +212,7 @@ Singleton {
 
     function resetSection(section) {
         const labels = {
-            wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar layout",
+            wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar",
             modules: "Modules", notifications: "Notifications", system: "System"
         };
         resetKeys(sectionKeys[section] || [], labels[section] || "Settings");

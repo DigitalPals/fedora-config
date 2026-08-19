@@ -11,10 +11,12 @@ NotificationsPage NotificationsPage.qml
 PickerRow PickerRow.qml
 PillRow PillRow.qml
 PreviewStrip PreviewStrip.qml
+ResponsiveActionRow ResponsiveActionRow.qml
 SectionHeader SectionHeader.qml
 SettingsTextRow SettingsTextRow.qml
 SettingsAction SettingsAction.qml
 SettingsCard SettingsCard.qml
+SettingsGroup SettingsGroup.qml
 SettingsPage SettingsPage.qml
 SettingsRow SettingsRow.qml
 SettingsView SettingsView.qml

@@ -26,7 +26,9 @@ hl.config({
   },
   cursor = { no_hardware_cursors = false },
   decoration = {
-    rounding = 10,
+    -- Match Quickshell's Theme.hugCornerSize so tiled window corners continue
+    -- the menubar's inverted edge curve at the reserved boundary.
+    rounding = 16,
     -- In glass mode every menubar and panel surface is a translucent tint over
     -- whatever is behind it, and without a real blur they read as smeared
     -- plastic. Three passes at this radius

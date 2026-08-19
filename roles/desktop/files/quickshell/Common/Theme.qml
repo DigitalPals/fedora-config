@@ -368,7 +368,11 @@ Singleton {
     readonly property int barTopMargin: barFloating ? Settings.gap : 0
     readonly property int barSideMargin: barFloating ? Settings.gap : 0
     readonly property int clusterRadius: barFloating ? Settings.barRadius : 0
-    readonly property int hugCornerSize: 16
+    // One corner system for compositor windows and every non-pill shell
+    // surface. Semantic aliases below keep call sites descriptive while the
+    // geometry stays aligned with the Hug corners.
+    readonly property int surfaceRadius: 16
+    readonly property int hugCornerSize: surfaceRadius
     // Inner gutter either side of the bar's content, and the gap between the
     // three sections.
     readonly property int barPadding: 10
@@ -398,17 +402,17 @@ Singleton {
     readonly property int tileHeight: 60
     readonly property int calendarCellSize: 22
     readonly property int pickerRowHeight: 40
-    readonly property int popRadius: 28
-    readonly property int cardRadius: 20
-    readonly property int rowRadius: 16
-    readonly property int tileRadius: 16
+    readonly property int popRadius: surfaceRadius
+    readonly property int cardRadius: surfaceRadius
+    readonly property int rowRadius: surfaceRadius
+    readonly property int tileRadius: surfaceRadius
     // Gap between the bar's inner edge and the top of a panel hanging from it.
     readonly property int popGap: 12
 
-    // The settings row grid: a fixed label column, and the width below which
-    // a row stacks its control under its label instead of beside it.
-    readonly property int settingsLabelWidth: Settings.font === "mono" ? 122 : 96
-    readonly property int settingsNarrowWidth: 440
+    // The settings workspace uses one stable label lane in every font. Rows
+    // stack below their labels only when the page itself becomes narrow.
+    readonly property int settingsLabelWidth: 132
+    readonly property int settingsNarrowWidth: 520
 
     // Switch geometry per surface, for Common/Toggle.qml: `box` is the hit
     // area, `track` the pill drawn centred inside it. The knob always sits

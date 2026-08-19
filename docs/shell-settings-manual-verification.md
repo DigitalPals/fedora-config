@@ -1,6 +1,6 @@
 # Shell settings — manual verification
 
-The Shell settings window (design v2) makes bar geometry, appearance,
+The Shell settings workspace makes bar geometry, appearance,
 modules, wallpaper, and system behavior live-configurable, persisted to
 `~/.local/state/quickshell/shell-settings.json`. Automated coverage:
 `tests/run` — the Node suite (store merge/clamp rules, schema/property
@@ -12,6 +12,9 @@ is manual.
 ## Opening and closing
 
 - [ ] `qs ipc call settings toggle` opens the centered window; again closes it.
+- [ ] On an output with at least 900×680 logical pixels available, the card
+      opens at 900×680 with the labeled sidebar. Below 860px available width,
+      the same navigation becomes an icon rail with tooltips and 42px targets.
 - [ ] `qs ipc call settings open modules` lands on the Modules page.
 - [ ] Gear in the Control Center footer opens it (and closes the popout).
 - [ ] Right-click anywhere on the bar slab opens it; left-clicks on modules
@@ -46,6 +49,8 @@ is manual.
       first alphabetic supported image. Empty/unreadable folders change nothing.
 - [ ] "Open" opens the selected directory in the file manager. Large folders
       scroll smoothly without constructing every thumbnail at once.
+- [ ] Narrow the content below 520px: the gallery switches to one column and
+      folder path/actions stack without clipping or covering each other.
 
 ## Appearance page
 
@@ -63,25 +68,24 @@ is manual.
       `matugen` or feed malformed output: the selector remains Wallpaper,
       the fallback error appears, and the stored fixed palette renders.
 - [ ] Fixed menubar color offers Shell Default, macOS, Black, Graphite, Slate,
-      White, and Custom. The controls remain visible but disabled in Wallpaper
-      mode, and their values return unchanged after switching back to Fixed.
+      White, and Custom. The entire Bar Color and Accent area is absent in
+      Wallpaper mode, leaves Tab/Orca traversal immediately, and returns with
+      its values unchanged after switching back to Fixed.
 - [ ] A Black menubar changes its text/icons to light tones; White changes
       them to dark tones. Accent, warning, error, workspace, weather, and T3
       marks remain legible, with no change to popover colors.
 - [ ] Custom reveals Hue, Saturation, and Lightness sliders. Their tracks and
       the real bar update live, the chosen HSL survives a preset round-trip,
       and the MENUBAR COLOR reset restores the adaptive Shell Default.
-- [ ] Height slider resizes the real bar live; the miniature tracks it;
-      presets snap it (pill highlights only on exact match).
-- [ ] Corner radius reshapes bar islands live.
 - [ ] Font rows render their own family; picking one reflows the bar and
-      popovers instantly.
+      popovers instantly. Test every menu font: names and samples stay in
+      separate bounded lanes with no overlap.
 - [ ] Fixed accent swatches and hue recolor the whole shell in Fixed mode and
-      remain visible but disabled in Wallpaper mode.
+      are not focusable or exposed in Wallpaper mode.
 - [ ] "Apply Layered Hug" enables Hug, Wallpaper, Glass, and dot workspaces in
       one undoable action without changing module order, height, radius, or gap.
 
-## Bar layout page
+## Bar page
 
 - [ ] Position Bottom moves the bar; every popout opens above it with the
       fused surface mirrored, content upright, shadow below; tooltips flip
@@ -89,8 +93,13 @@ is manual.
 - [ ] Style picker renders Hug as full-width with 16px concave corners,
       Floating as the existing detached rounded slab, and Attached full-width
       and square. Top/Bottom mirrors Hug's corners without mirroring content.
-- [ ] Edge gap and corner radius are enabled only for Floating; the stored
-      values survive a round trip through Hug and Attached.
+- [ ] Height slider resizes the real bar live; the miniature tracks it; the
+      labeled Height presets row snaps to 38/46/54 without detaching its pills.
+- [ ] Edge gap and corner radius are shown only for Floating and leave keyboard
+      and accessibility traversal immediately when hidden. Their stored values
+      survive a round trip through Hug and Attached.
+- [ ] Changing Height or Corner radius dirties/reset-enables Bar only;
+      Appearance remains clean. Reset Bar owns and restores both values.
 - [ ] Auto-hide: bar slides away after ~1.6 s without hover; hovering the
       screen edge reveals it; it stays out while a popout or the settings
       window is open; clicks pass through the vacated strip.
@@ -137,6 +146,20 @@ is manual.
 - [ ] In a narrow/stacked settings panel, pointer and keyboard drops use the
       correct column-relative index, edge dragging scrolls, and focus returns
       to the dropped row.
+- [ ] At 640px of Modules content width, LEFT/CENTER/RIGHT render as three
+      columns; below it they stack. In the preview, each lane clips its own
+      chips and never paints into another lane. Optional tags disappear before
+      a full module name is shortened.
+
+## Notifications page
+
+- [ ] Preview updates live for position, duration, density, icons, body lines,
+      and timeout progress. “Timeout progress” and its description never
+      collide with the switch or reset lane.
+- [ ] Quiet Hours Off/Nights hides custom time sliders and removes them from
+      Tab/Orca traversal; Custom reveals both, preserving the stored range.
+- [ ] “Send test notification” and its current suppression explanation sit on
+      one line when they fit and stack cleanly on a narrow panel.
 
 ## System page
 
@@ -148,6 +171,8 @@ is manual.
       the bar; Bottom returns them; slide-in direction matches the edge.
 - [ ] Poll every 1 min shortens the countdown; the usage popover and the
       caption agree.
+- [ ] The full config path elides in its own lane; Open and Reset all remain
+      reachable and stack below it before any collision.
 
 ## Regression sweep
 
@@ -171,6 +196,10 @@ is manual.
 - [ ] Tab/arrow traversal, automatic focus scrolling, roles/states/actions,
       and Orca announcements work for navigation, custom controls, resets,
       drag/drop, module cogs and their sub-pages, and save errors.
+- [ ] Capture comparison screenshots for default Hug/Wallpaper, Floating/Fixed,
+      and a narrow panel. In each, check header title/description, preset/test
+      action copy, font samples, notification labels, config/folder paths,
+      module names, and preview chips for clipping or overlap.
 - [ ] `journalctl --user -u quickshell.service` free of QML errors and
       binding loops after exercising every page.
 - [ ] `tests/verify-xps` passes.

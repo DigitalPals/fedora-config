@@ -84,7 +84,7 @@ test("settings exposes responsive output and keyboard contracts", () => {
         "the settings view must inherit the popout contract");
     assert.match(read("Popovers/Surface.qml"), /^PopoutPanel \{/m,
         "every popover surface must inherit it too");
-    assert.match(view, /availableWidth\s*<\s*680/);
+    assert.match(view, /availableWidth\s*<\s*860/);
     assert.match(view, /function handleEscape\(\): bool/);
     // The host holds its loaded item as the contract type now, so these are
     // plain property writes rather than existence checks.
@@ -357,21 +357,25 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const page = read("Settings/SettingsPage.qml");
     const theme = read("Common/Theme.qml");
     const base = read("Settings/SettingsRow.qml");
+    const picker = read("Settings/PickerRow.qml");
+    const switchRow = read("Settings/SwitchRow.qml");
     const system = read("Settings/SystemPage.qml");
 
-    assert.match(view, /preferredHeight:\s*660/);
+    assert.match(view, /preferredWidth:\s*900/);
+    assert.match(view, /preferredHeight:\s*680/);
     // The gutter is unconditional: making it depend on scrollbarVisible
     // loops (narrower content re-wraps taller and flips the scrollbar).
     assert.match(page, /scrollGutter:\s*8/);
     assert.doesNotMatch(page, /scrollGutter:\s*scrollbarVisible/);
     assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
-    // The label column widens for the mono menu face. Every row used to
-    // carry this expression; it lives in Theme now and reaches the rows
-    // through SettingsRow, so assert it where it is rather than where it
-    // was — the rows below check that they still inherit the base.
-    assert.match(theme,
-        /readonly property int settingsLabelWidth:\s*Settings\.font === "mono" \? 122 : 96/);
+    // One fixed lane keeps every row aligned across all menu fonts.
+    assert.match(theme, /readonly property int settingsLabelWidth:\s*132/);
+    assert.match(theme, /readonly property int settingsNarrowWidth:\s*520/);
     assert.match(base, /readonly property int labelWidth:\s*Theme\.settingsLabelWidth/);
+    assert.match(picker, /narrowHeight:[\s\S]{0,100}?pills\.implicitHeight/,
+        "wrapped narrow picker pills must grow their row");
+    assert.match(switchRow, /narrowHeight:[\s\S]{0,100}?descriptionText\.implicitHeight/,
+        "wrapped switch descriptions must grow their row");
     for (const row of ["SliderRow", "PickerRow", "SwitchRow", "SettingsTextRow"])
         assert.match(read(`Settings/${row}.qml`), /^SettingsRow \{$/m,
             `${row} must build on SettingsRow`);
@@ -394,20 +398,118 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
     assert.doesNotMatch(input, /scroll_factor\s*=\s*0\.4/);
 });
 
-test("the grouped rail adds search, sections, and the rail save state (design 1c)", () => {
+test("the grouped rail keeps labeled sections and the rail save state without a page filter", () => {
     const view = read("Settings/SettingsView.qml");
     const settings = read("Common/Settings.qml");
 
     assert.match(view, /group:\s*"SHELL"/);
     assert.match(view, /group:\s*"SYSTEM"/);
-    assert.match(view, /property string navQuery/);
-    assert.match(view, /Search settings/);
+    assert.doesNotMatch(view, /property string navQuery/);
+    assert.doesNotMatch(view, /Search settings/);
+    assert.doesNotMatch(view, /clearSearch|matchesQuery/);
     assert.match(view, /id:\s*railFooter/);
     assert.match(view, /Saved · applies live/);
     assert.doesNotMatch(view, /shell-settings\.json/,
         "the config path chip lives on the System page, not a bottom footer");
     assert.match(view, /case "notifications": return notificationsPage;/);
     assert.match(settings, /"notifications", "system"\]/);
+});
+
+test("settings workspace uses shared responsive cards and bounded header lanes", () => {
+    const view = read("Settings/SettingsView.qml");
+    const group = read("Settings/SettingsGroup.qml");
+    const action = read("Settings/ResponsiveActionRow.qml");
+    const qmldir = read("Settings/qmldir");
+
+    assert.match(view, /preferredWidth:\s*900/);
+    assert.match(view, /preferredHeight:\s*680/);
+    assert.match(view, /compactNav:\s*availableWidth < 860/);
+    assert.match(view, /height:\s*42/,
+        "navigation targets must remain comfortably larger than the old 34px rows");
+    assert.match(view, /anchors\.right:\s*headerActions\.left/);
+    assert.match(view, /id:\s*headerCopy[\s\S]{0,700}?elide:\s*Text\.ElideRight/,
+        "header copy must be bounded before the action lane");
+
+    assert.match(group, /default property alias content:/);
+    assert.match(group, /property bool dirty:/);
+    assert.match(group, /signal resetRequested\(\)/);
+    assert.match(action, /readonly property bool stacked:\s*width < breakpoint/);
+    assert.match(action, /maximumLineCount:\s*root\.maximumLines/);
+    assert.match(qmldir, /^SettingsGroup SettingsGroup\.qml$/m);
+    assert.match(qmldir, /^ResponsiveActionRow ResponsiveActionRow\.qml$/m);
+
+    for (const page of ["AppearancePage", "BarLayoutPage", "NotificationsPage", "SystemPage"])
+        assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
+            `${page} must use grouped setting cards`);
+    for (const page of ["AppearancePage", "WallpaperPage", "NotificationsPage", "SystemPage"])
+        assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
+            `${page} must use bounded responsive action copy`);
+});
+
+test("progressive disclosure hides inactive controls without discarding latent values", () => {
+    const appearance = read("Settings/AppearancePage.qml");
+    const bar = read("Settings/BarLayoutPage.qml");
+    const reveal = read("Common/Revealer.qml");
+    const picker = read("Settings/PickerRow.qml");
+
+    const fixedAt = appearance.indexOf("id: fixedColorReveal");
+    const typeAt = appearance.indexOf('title: "Typography"');
+    assert.ok(fixedAt > 0 && typeAt > fixedAt);
+    const fixed = appearance.slice(fixedAt, typeAt);
+    assert.match(fixed, /reveal:\s*page\.fixedPalette/);
+    for (const key of ["barColorMode", "barCustomHue", "barCustomSaturation",
+        "barCustomLightness", "accent"])
+        assert.match(fixed, new RegExp(key), `${key} must live inside the fixed-color reveal`);
+    assert.match(fixed,
+        /id:\s*customColorReveal[\s\S]*?reveal:\s*Settings\.barColorMode === "custom"/);
+
+    const floatingAt = bar.indexOf("id: floatingReveal");
+    const behaviorAt = bar.indexOf('title: "Behavior"');
+    assert.ok(floatingAt > 0 && behaviorAt > floatingAt);
+    const floating = bar.slice(floatingAt, behaviorAt);
+    assert.match(floating, /reveal:\s*Settings\.barStyle === "floating"/);
+    assert.match(floating, /settingKey:\s*"gap"/);
+    assert.match(floating, /settingKey:\s*"barRadius"/);
+    assert.doesNotMatch(bar.slice(0, floatingAt), /settingKey:\s*"(?:gap|barRadius)"/,
+        "floating-only controls must not have a second focusable copy");
+
+    assert.match(reveal, /enabled:\s*root\.reveal/);
+    assert.match(reveal, /Accessible\.ignored:\s*!root\.reveal/);
+    assert.match(picker, /root\.commit\(value\)/,
+        "mode pickers mutate only their own key, preserving hidden companion values");
+});
+
+test("bar geometry reset ownership moves from Appearance to Bar", () => {
+    const settings = read("Common/Settings.qml");
+    const appearance = read("Settings/AppearancePage.qml");
+    const bar = read("Settings/BarLayoutPage.qml");
+    const appearanceKeys = settings.match(/appearance:\s*\[([^\]]+)\]/s)?.[1] ?? "";
+    const barKeys = settings.match(/bar:\s*\[([^\]]+)\]/s)?.[1] ?? "";
+
+    for (const key of ["barHeight", "barRadius"]) {
+        assert.doesNotMatch(appearanceKeys, new RegExp(`"${key}"`));
+        assert.match(barKeys, new RegExp(`"${key}"`));
+        assert.doesNotMatch(appearance, new RegExp(`settingKey:\\s*"${key}"`));
+        assert.match(bar, new RegExp(`settingKey:\\s*"${key}"`));
+    }
+    assert.match(settings, /bar:\s*"Bar"/,
+        "the reset announcement must use the new visible page name");
+});
+
+test("wallpaper and module layouts switch before content can collide", () => {
+    const wallpaper = read("Settings/WallpaperPage.qml");
+    const modules = read("Settings/ModulesPage.qml");
+
+    assert.match(wallpaper, /columnCount:\s*width < 520 \? 1 : 2/);
+    assert.match(wallpaper, /cellWidth:\s*Math\.floor\(width \/ columnCount\)/);
+    assert.match(modules, /stacked:\s*width < 640/);
+    for (const lane of ["previewLeftLane", "previewCenterLane", "previewRightLane"])
+        assert.match(modules, new RegExp(`id:\\s*${lane}[\\s\\S]{0,180}?clip:\\s*true`),
+            `${lane} must clip its own preview chips`);
+    assert.match(modules, /rowName\.implicitWidth \+ implicitWidth/,
+        "optional module tags must fit alongside the full module name");
+    assert.match(modules, /elide:\s*Text\.ElideRight/,
+        "module captions and preview chips must be bounded");
 });
 
 test("notification settings drive the toasts and the notification center", () => {

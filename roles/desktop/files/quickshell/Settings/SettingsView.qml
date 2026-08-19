@@ -4,22 +4,20 @@ import QtQuick.Controls as Controls
 import "../Common"
 import "../Popovers"
 
-// Connected center-island settings surface (design 1c, grouped rail):
-// search on top of the rail, nav grouped under SHELL / SYSTEM, and the
-// save state in the rail footer. The host supplies the usable output
-// envelope before measuring implicit size.
+// Connected center-island settings workspace with a labeled sidebar that
+// collapses to an icon rail when the output cannot fit the preferred card.
 PopoutPanel {
     id: root
 
     // Defaults for an unhosted instance; the host assigns both.
-    availableWidth: 760
-    availableHeight: 560
-    readonly property bool compactNav: availableWidth < 680
-    readonly property int headerHeight: 44
-    readonly property int gutter: 12
-    readonly property int navWidth: compactNav ? 52 : 168
-    readonly property int preferredWidth: 760
-    readonly property int preferredHeight: 660
+    availableWidth: 900
+    availableHeight: 680
+    readonly property bool compactNav: availableWidth < 860
+    readonly property int headerHeight: 58
+    readonly property int gutter: 14
+    readonly property int navWidth: compactNav ? 60 : 188
+    readonly property int preferredWidth: 900
+    readonly property int preferredHeight: 680
     readonly property int pageIndex: Math.max(0,
         navItems.findIndex(item => item.id === Settings.page))
     readonly property bool dragActive: pageLoader.item
@@ -31,36 +29,18 @@ PopoutPanel {
 
     readonly property var navItems: [
         { id: "appearance", group: "SHELL", label: "Appearance", glyph: "palette",
-            title: "Appearance", description: "Wallpaper palette, glass, shape, type, and fixed colors",
-            keywords: "layered hug preset palette matugen glass blur solid menubar color custom hsl bar height corner radius menu font accent wallpaper theme" },
+            title: "Appearance", description: "Theme, colors, and typography" },
         { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "image",
-            title: "Wallpaper", description: "Desktop image and automatic rotation",
-            keywords: "desktop image background picture folder shuffle rotation" },
-        { id: "bar", group: "SHELL", label: "Bar layout", glyph: "space_dashboard",
-            title: "Bar layout", description: "Position, spacing, and monitor behavior",
-            keywords: "position top bottom hug floating attached gap auto hide exclusive monitor" },
+            title: "Wallpaper", description: "Desktop image and automatic rotation" },
+        { id: "bar", group: "SHELL", label: "Bar", glyph: "space_dashboard",
+            title: "Bar", description: "Placement, shape, behavior, and monitors" },
         { id: "modules", group: "SHELL", label: "Modules", glyph: "widgets",
-            title: "Modules", description: "Choose and arrange the bar’s contents",
-            keywords: "clock weather media workspaces volume wifi battery bluetooth arrange order" },
+            title: "Modules", description: "Choose and arrange the bar’s contents" },
         { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",
-            title: "Notifications", description: "Toasts, quiet hours, and the notification center",
-            keywords: "toast do not disturb dnd quiet hours duration position density icons timeout progress body preview test" },
+            title: "Notifications", description: "Toasts, quiet hours, and the notification center" },
         { id: "system", group: "SYSTEM", label: "System", glyph: "settings",
-            title: "System", description: "Formats, night light, OSD, and storage",
-            keywords: "clock format temperature unit scroll speed night light warmth osd poll usage config reset" }
+            title: "System", description: "Formats, night light, OSD, and storage" }
     ]
-
-    // ---- rail search -----------------------------------------------------
-    property string navQuery: ""
-
-    function matchesQuery(item) {
-        const query = navQuery.trim().toLowerCase();
-        if (query === "")
-            return true;
-        return (item.label + " " + item.keywords).toLowerCase().indexOf(query) !== -1;
-    }
-
-    readonly property var visibleNav: navItems.filter(item => matchesQuery(item))
 
     function navDelegate(id) {
         for (const repeater of [shellRepeater, systemRepeater]) {
@@ -74,23 +54,18 @@ PopoutPanel {
     }
 
     function selectVisible(position) {
-        if (visibleNav.length === 0)
+        if (navItems.length === 0)
             return;
-        const clamped = Math.max(0, Math.min(visibleNav.length - 1, position));
-        Settings.page = visibleNav[clamped].id;
-        const item = navDelegate(visibleNav[clamped].id);
+        const clamped = Math.max(0, Math.min(navItems.length - 1, position));
+        Settings.page = navItems[clamped].id;
+        const item = navDelegate(navItems[clamped].id);
         if (item)
             item.forceActiveFocus();
     }
 
     function selectOffset(delta) {
-        const current = visibleNav.findIndex(item => item.id === Settings.page);
+        const current = navItems.findIndex(item => item.id === Settings.page);
         selectVisible(current === -1 ? 0 : current + delta);
-    }
-
-    function clearSearch() {
-        searchInput.text = "";
-        navQuery = "";
     }
 
     function cancelDrag() {
@@ -98,8 +73,8 @@ PopoutPanel {
             pageLoader.item.cancelDrag();
     }
 
-    // Called by IslandPopout. A module drag consumes the first Escape, an
-    // open module sub-page the next, an active rail search the one after.
+    // Called by IslandPopout. A module drag consumes the first Escape and an
+    // open module sub-page the next; otherwise the host closes the panel.
     function handleEscape(): bool {
         if (dragActive) {
             cancelDrag();
@@ -107,10 +82,6 @@ PopoutPanel {
         }
         if (pageLoader.item && (pageLoader.item.subPageActive ?? false)) {
             pageLoader.item.closeSubPage();
-            return true;
-        }
-        if (navQuery !== "") {
-            clearSearch();
             return true;
         }
         return false;
@@ -123,8 +94,7 @@ PopoutPanel {
         readonly property bool current: Settings.page === modelData.id
 
         width: navColumn.width
-        height: visible ? 34 : 0
-        visible: root.matchesQuery(modelData)
+        height: 42
         radius: Theme.rowRadius
         color: current ? Theme.accentBg : "transparent"
         border.width: activeFocus ? 1 : 0
@@ -148,7 +118,7 @@ PopoutPanel {
             } else if (event.key === Qt.Key_Home) {
                 root.selectVisible(0); event.accepted = true;
             } else if (event.key === Qt.Key_End) {
-                root.selectVisible(root.visibleNav.length - 1); event.accepted = true;
+                root.selectVisible(root.navItems.length - 1); event.accepted = true;
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                     || event.key === Qt.Key_Space) {
                 navState.pulseCenter();
@@ -170,7 +140,7 @@ PopoutPanel {
         Sym {
             id: navIcon
             anchors.left: parent.left
-            anchors.leftMargin: root.compactNav ? 0 : 11
+            anchors.leftMargin: root.compactNav ? 0 : 12
             anchors.verticalCenter: parent.verticalCenter
             width: root.compactNav ? parent.width : 20
             horizontalAlignment: Text.AlignHCenter
@@ -189,6 +159,8 @@ PopoutPanel {
             font.pixelSize: Theme.fontSecondary
             font.weight: navItem.current ? Theme.weightSemibold : Theme.weightMedium
             color: navItem.current ? Theme.textHi : Theme.textLow
+            width: parent.width - x - 10
+            elide: Text.ElideRight
         }
 
         MouseArea {
@@ -229,8 +201,11 @@ PopoutPanel {
         height: root.headerHeight
 
         Column {
+            id: headerCopy
             anchors.left: parent.left
             anchors.leftMargin: root.gutter
+            anchors.right: headerActions.left
+            anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             spacing: 1
 
@@ -240,36 +215,40 @@ PopoutPanel {
                 font.pixelSize: Theme.fontHeading
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
+                width: parent.width
+                elide: Text.ElideRight
             }
 
             Text {
-                visible: root.width >= 520
                 text: root.navItems[root.pageIndex].description
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
                 color: Theme.textDim
+                width: parent.width
+                elide: Text.ElideRight
             }
         }
 
-        SettingsAction {
-            anchors.right: closeAction.left
-            anchors.rightMargin: 4
-            anchors.verticalCenter: parent.verticalCenter
-            visible: Settings.sectionDirty(Settings.page)
-            text: "Reset page"
-            glyph: "↺"
-            onTriggered: Settings.resetSection(Settings.page)
-        }
-
-        SettingsAction {
-            id: closeAction
+        Row {
+            id: headerActions
             anchors.right: parent.right
             anchors.rightMargin: root.gutter
             anchors.verticalCenter: parent.verticalCenter
-            compact: true
-            text: "Close"
-            glyph: "×"
-            onTriggered: Settings.closePanel()
+            spacing: 4
+
+            SettingsAction {
+                visible: Settings.sectionDirty(Settings.page)
+                text: "Reset page"
+                glyph: "↺"
+                onTriggered: Settings.resetSection(Settings.page)
+            }
+
+            SettingsAction {
+                compact: true
+                text: "Close"
+                glyph: "×"
+                onTriggered: Settings.closePanel()
+            }
         }
     }
 
@@ -293,99 +272,10 @@ PopoutPanel {
             width: root.navWidth - root.gutter
             spacing: 3
 
-            Rectangle {
-                id: searchBox
-                visible: !root.compactNav
-                width: parent.width
-                height: 28
-                radius: 7
-                color: searchInput.activeFocus ? Theme.hoverFillStrong : Theme.cardFill
-                border.width: searchInput.activeFocus ? 1 : 0
-                border.color: Theme.accent
-
-                Sym {
-                    id: searchGlyph
-                    anchors.left: parent.left
-                    anchors.leftMargin: 9
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "search"
-                    size: Theme.iconSmall
-                    color: Theme.textFaint
-                }
-
-                TextInput {
-                    id: searchInput
-                    anchors.left: searchGlyph.right
-                    anchors.leftMargin: 6
-                    anchors.right: searchClear.visible ? searchClear.left : parent.right
-                    anchors.rightMargin: 6
-                    anchors.verticalCenter: parent.verticalCenter
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textHi
-                    selectionColor: Theme.accentBg
-                    selectedTextColor: Theme.textHi
-                    clip: true
-                    activeFocusOnTab: true
-                    Accessible.role: Accessible.EditableText
-                    Accessible.name: "Search settings"
-                    onTextChanged: root.navQuery = text
-
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Escape && text !== "") {
-                            root.clearSearch(); event.accepted = true;
-                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                                || event.key === Qt.Key_Down) {
-                            root.selectVisible(0); event.accepted = true;
-                        }
-                    }
-
-                    Text {
-                        visible: searchInput.text === ""
-                        anchors.fill: parent
-                        verticalAlignment: Text.AlignVCenter
-                        text: "Search settings"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
-                        color: Theme.textFaint
-                        elide: Text.ElideRight
-                    }
-                }
-
-                Text {
-                    id: searchClear
-                    visible: searchInput.text !== ""
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "×"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    color: clearMouse.containsMouse ? Theme.textHi : Theme.textDim
-
-                    MouseArea {
-                        id: clearMouse
-                        anchors.fill: parent
-                        anchors.margins: -6
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.clearSearch()
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    visible: !searchInput.activeFocus
-                    cursorShape: Qt.IBeamCursor
-                    onClicked: searchInput.forceActiveFocus()
-                }
-            }
-
             GroupLabel {
                 text: "SHELL"
-                topPad: 3
+                topPad: 0
                 visible: !root.compactNav
-                    && root.visibleNav.some(item => item.group === "SHELL")
             }
 
             Repeater {
@@ -397,7 +287,6 @@ PopoutPanel {
             GroupLabel {
                 text: "SYSTEM"
                 visible: !root.compactNav
-                    && root.visibleNav.some(item => item.group === "SYSTEM")
             }
 
             Repeater {
@@ -406,16 +295,6 @@ PopoutPanel {
                 delegate: NavItem {}
             }
 
-            Text {
-                visible: !root.compactNav && root.visibleNav.length === 0
-                width: parent.width
-                leftPadding: 11
-                topPadding: 6
-                text: "No matches"
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                color: Theme.textFaint
-            }
         }
 
         // Save state lives in the rail footer (design 1c).
@@ -431,6 +310,7 @@ PopoutPanel {
             SettingsAction {
                 visible: Settings.undoAvailable
                 height: 26
+                compact: root.compactNav
                 text: "Undo"
                 glyph: "↺"
                 Accessible.name: "Undo " + Settings.resetLabel + " reset"
@@ -440,6 +320,7 @@ PopoutPanel {
             SettingsAction {
                 visible: Settings.saveError && !Settings.undoAvailable
                 height: 26
+                compact: root.compactNav
                 text: "Retry"
                 glyph: "↻"
                 onTriggered: Settings.retrySave()

@@ -54,7 +54,7 @@ Item {
     readonly property real labelTextWidth: labelText.width
     readonly property var stored: settingKey === "" ? undefined : Settings[settingKey]
 
-    height: narrow ? narrowHeight : 32
+    height: narrow ? narrowHeight : 40
 
     function commit(value) {
         if (root.settingKey !== "")
@@ -76,6 +76,8 @@ Item {
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
         color: root.labelColor
+        elide: Text.ElideRight
+        verticalAlignment: Text.AlignVCenter
     }
 
     Item {

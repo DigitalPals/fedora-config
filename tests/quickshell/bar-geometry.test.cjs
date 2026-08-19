@@ -50,3 +50,18 @@ test("the live bar keeps borderless hug corners visual-only and attached square"
     assert.doesNotMatch(bar, /id:\s*barSlab[\s\S]{0,220}?border\.width/);
     assert.doesNotMatch(bar, /DropShadow/);
 });
+
+test("Hyprland and shell surfaces share the hug corner radius", () => {
+    const theme = fs.readFileSync(path.join(shellDir, "Common/Theme.qml"), "utf8");
+    const look = fs.readFileSync(path.resolve(shellDir, "../looknfeel.lua"), "utf8");
+    const surfaceRadius = theme.match(/readonly property int surfaceRadius:\s*(\d+)/);
+    const windowRadius = look.match(/decoration\s*=\s*\{[\s\S]*?rounding\s*=\s*(\d+)/);
+
+    assert.ok(surfaceRadius, "Theme.surfaceRadius must remain a literal design token");
+    assert.ok(windowRadius, "Hyprland decoration.rounding must remain explicit");
+    assert.equal(Number(windowRadius[1]), Number(surfaceRadius[1]));
+    for (const alias of ["hugCornerSize", "popRadius", "cardRadius", "rowRadius", "tileRadius"])
+        assert.match(theme,
+            new RegExp(`readonly property int ${alias}:\\s*surfaceRadius`),
+            `Theme.${alias} must use the shared surface radius`);
+});

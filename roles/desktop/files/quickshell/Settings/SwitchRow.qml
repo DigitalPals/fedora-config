@@ -9,11 +9,12 @@ SettingsRow {
     property bool checked: root.stored === true
     signal toggled(bool value)
 
-    narrowHeight: 48
+    narrowHeight: Math.max(48, 24 + descriptionText.implicitHeight + 3)
     narrowLabelY: 2
     narrowLabelInset: 82
 
     Text {
+        id: descriptionText
         x: root.narrow ? 0 : root.labelWidth
         y: root.narrow ? 24 : (parent.height - height) / 2
         width: root.narrow ? parent.width - 4 : control.x - x - 10

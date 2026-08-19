@@ -55,7 +55,9 @@ Item {
 
     readonly property int pitch: 31          // 28px row + 3px gap
     readonly property int rowsStartY: 20     // column header + gap
-    readonly property bool stacked: width < 520
+    // Three useful columns need enough room for full module names, switches,
+    // and settings buttons. Below this threshold retain the stacked workflow.
+    readonly property bool stacked: width < 640
     readonly property var columnOrder: ["left", "center", "right"]
 
     function cancelDrag() {
@@ -237,7 +239,7 @@ Item {
         readonly property bool on: modelData.on
 
         height: 18
-        width: chipText.implicitWidth + 12
+        width: Math.min(104, chipText.implicitWidth + 12)
         radius: 4
         color: on ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
         border.width: on ? 0 : 1
@@ -246,11 +248,14 @@ Item {
         Text {
             id: chipText
             anchors.centerIn: parent
+            width: parent.width - 10
+            horizontalAlignment: Text.AlignHCenter
             text: page.moduleMeta[parent.modelData.id].short
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightMedium
             color: parent.on ? Theme.textMid : Theme.textFaint
+            elide: Text.ElideRight
         }
     }
 
@@ -360,8 +365,10 @@ Item {
 
             Text {
                 id: rowTag
+                // Optional tags yield to the complete module name. Never make
+                // the name elide merely to preserve secondary metadata.
                 visible: row.meta.tag !== undefined
-                    && implicitWidth + rowHandle.width + 40 < parent.width
+                    && rowName.implicitWidth + implicitWidth + rowHandle.width + 18 <= parent.width
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.meta.tag ?? ""
@@ -528,6 +535,7 @@ Item {
         height: 30
         radius: 9
         color: Theme.cardFill
+        clip: true
 
         // Chips laid out at token size in a 0.72-scaled space, matching the
         // design's miniature scale without a sub-floor pixel size.
@@ -537,38 +545,48 @@ Item {
             scale: 0.72
             transformOrigin: Item.TopLeft
 
-            Row {
-                anchors.left: parent.left
-                anchors.leftMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 4
-
-                Repeater {
-                    model: Settings.mods.left
-                    delegate: MiniChip {}
+            Item {
+                id: previewLeftLane
+                x: 8
+                y: 0
+                width: Math.max(0, parent.width / 3 - 12)
+                height: parent.height
+                clip: true
+                Row {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Repeater { model: Settings.mods.left; delegate: MiniChip {} }
                 }
             }
 
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 4
-
-                Repeater {
-                    model: Settings.mods.center
-                    delegate: MiniChip {}
+            Item {
+                id: previewCenterLane
+                x: parent.width / 3 + 4
+                y: 0
+                width: Math.max(0, parent.width / 3 - 8)
+                height: parent.height
+                clip: true
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Repeater { model: Settings.mods.center; delegate: MiniChip {} }
                 }
             }
 
-            Row {
-                anchors.right: parent.right
-                anchors.rightMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
-
-                Repeater {
-                    model: Settings.mods.right
-                    delegate: MiniChip {}
+            Item {
+                id: previewRightLane
+                x: parent.width * 2 / 3 + 4
+                y: 0
+                width: Math.max(0, parent.width / 3 - 12)
+                height: parent.height
+                clip: true
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 3
+                    Repeater { model: Settings.mods.right; delegate: MiniChip {} }
                 }
             }
         }
@@ -596,7 +614,7 @@ Item {
             : Math.max(columnsViewport.height,
                 Math.max(colL.naturalHeight, colC.naturalHeight, colR.naturalHeight))
 
-        readonly property real unit: (width - 16) / 3.15
+        readonly property real unit: (width - 16) / 3
 
         ModuleColumn {
             id: colL
@@ -622,7 +640,7 @@ Item {
             id: colR
             x: page.stacked ? 0 : (columnsRow.unit + 8) * 2
             y: page.stacked ? colC.y + colC.height + 8 : 0
-            width: page.stacked ? parent.width : columnsRow.unit * 1.15
+            width: page.stacked ? parent.width : columnsRow.unit
             height: page.stacked ? naturalHeight : parent.height
             colId: "right"
             title: "RIGHT"

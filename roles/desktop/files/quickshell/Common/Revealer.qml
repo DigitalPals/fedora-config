@@ -50,5 +50,10 @@ Item {
         id: contentRoot
         width: childrenRect.width
         height: childrenRect.height
+        // Keep the child alive for the closing animation, but remove all of
+        // its controls from keyboard and accessibility traversal as soon as
+        // the controlling mode is switched off.
+        enabled: root.reveal
+        Accessible.ignored: !root.reveal
     }
 }

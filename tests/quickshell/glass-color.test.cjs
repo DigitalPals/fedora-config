@@ -42,12 +42,12 @@ test("Appearance exposes live glass, palette, and stored fixed color controls", 
 
     assert.match(appearance,
         /label:\s*"Glass effect"[\s\S]{0,100}?settingKey:\s*"glassEnabled"/);
-    assert.match(appearance, /label:\s*"PALETTE"/);
+    assert.match(appearance, /title:\s*"Colors"/);
     assert.match(appearance,
         /label:\s*"Colors"[\s\S]{0,100}?settingKey:\s*"paletteMode"/);
     assert.match(appearance, /Common\.Palette\.busy/);
     assert.match(appearance, /Common\.Palette\.error/);
-    assert.match(appearance, /label:\s*"FIXED MENUBAR COLOR"/);
+    assert.match(appearance, /SectionHeader \{ label:\s*"BAR COLOR" \}/);
     assert.match(appearance, /model:\s*Settings\.barColorChoices/);
     assert.match(appearance, /Accessible\.role:\s*Accessible\.RadioButton/);
     assert.match(appearance, /Accessible\.checked:\s*selected/);
@@ -56,8 +56,13 @@ test("Appearance exposes live glass, palette, and stored fixed color controls", 
         assert.match(appearance, new RegExp(`settingKey: "${key}"`));
     assert.match(appearance, /hueTrack:\s*true/);
     assert.match(appearance, /colorTrack:\s*true/);
-    assert.match(appearance, /enabled:\s*page\.fixedPalette/,
-        "fixed choices remain visible but cannot be edited in wallpaper mode");
+    assert.match(appearance, /id:\s*fixedColorReveal[\s\S]{0,100}?reveal:\s*page\.fixedPalette/,
+        "wallpaper mode must collapse all fixed choices");
+    assert.match(appearance,
+        /id:\s*customColorReveal[\s\S]{0,100}?reveal:\s*Settings\.barColorMode === "custom"/,
+        "custom HSL controls must be progressively disclosed");
+    assert.match(read("Common/Revealer.qml"), /enabled:\s*root\.reveal/,
+        "collapsed choices must immediately leave keyboard traversal");
     assert.match(slider, /property bool colorTrack:\s*false/);
     assert.match(slider, /GradientStop \{ position: 0\.5; color: root\.trackMiddle \}/);
 });

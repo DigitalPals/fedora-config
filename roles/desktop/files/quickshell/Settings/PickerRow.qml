@@ -14,7 +14,10 @@ SettingsRow {
         : Math.min(180, captionText.implicitWidth)
     signal picked(var value)
 
-    narrowHeight: 58
+    // A narrow segmented control may wrap to two or more lines. Let the row
+    // grow with the Flow instead of painting the next row over those pills.
+    narrowHeight: 29 + Math.max(Theme.settingsControlHeight,
+        pills.implicitHeight) + 5
     narrowLabelInset: 130
 
     PillRow {
