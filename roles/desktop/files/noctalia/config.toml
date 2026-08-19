@@ -1,0 +1,131 @@
+# Managed Noctalia base configuration. Settings changed in the GUI are stored
+# separately in ~/.local/state/noctalia/settings.toml and override this file.
+
+[shell]
+font_family = "Urbanist"
+time_format = "{:%H:%M}"
+date_format = "%A, %e %B"
+telemetry_enabled = false
+setup_wizard_enabled = false
+polkit_agent = true
+settings_show_advanced = true
+clipboard_enabled = true
+clipboard_keep_from_closed_apps = false
+
+[shell.panel]
+transparency_mode = "glass"
+launcher_placement = "floating"
+clipboard_placement = "floating"
+control_center_placement = "attached"
+wallpaper_placement = "attached"
+session_placement = "attached"
+launcher_position = "center"
+clipboard_position = "center"
+
+[shell.screenshot]
+save_to_file = true
+copy_to_clipboard = true
+freeze_screen = true
+directory = "~/Pictures/Screenshots"
+filename_pattern = "screenshot_%Y%m%d_%H%M%S"
+
+[wallpaper]
+enabled = true
+directory = "~/Pictures/Wallpapers"
+fill_mode = "crop"
+transition = ["fade", "wipe", "disc", "stripes", "zoom", "honeycomb"]
+transition_duration = 1200
+
+[wallpaper.default]
+path = "~/Pictures/Wallpapers/snow-capped-mountains-with-full-moon-lo.jpg"
+
+[theme]
+mode = "dark"
+source = "builtin"
+builtin = "Noctalia"
+
+[notification]
+enable_daemon = true
+show_app_name = true
+show_actions = true
+
+[weather]
+enabled = true
+refresh_minutes = 20
+unit = "celsius"
+effects = true
+
+[location]
+latitude = 52.78
+longitude = 6.9
+
+[nightlight]
+enabled = false
+temperature_day = 6500
+temperature_night = 4200
+
+[lockscreen]
+enabled = true
+lock_before_suspend = true
+fingerprint = true
+wallpaper = "~/Pictures/Wallpapers/snow-capped-mountains-with-full-moon-lo.jpg"
+
+[idle.behavior.lock]
+timeout = 300
+action = "lock"
+enabled = true
+
+[idle.behavior.screen-off]
+timeout = 600
+action = "screen_off"
+enabled = true
+
+[bar.main]
+position = "top"
+thickness = 46
+background_opacity = 0.72
+radius = 23
+margin_ends = 10
+margin_edge = 10
+padding = 10
+widget_spacing = 6
+shadow = true
+auto_hide = false
+reserve_space = true
+capsule = false
+
+start = ["launcher", "workspaces", "media"]
+center = ["clock", "weather"]
+end = ["tray", "notifications", "clipboard", "network", "bluetooth", "volume", "brightness", "battery", "control-center", "session"]
+
+# Keep the XPS speaker filter at unity by changing the physical speaker gain.
+# On systems without that hardware-specific service, fall back to Noctalia's
+# native PipeWire controls.
+[widget.volume.actions]
+scroll_up = "exec /usr/local/libexec/xps-speaker-tuning control up || noctalia msg volume-up 5%"
+scroll_down = "exec /usr/local/libexec/xps-speaker-tuning control down || noctalia msg volume-down 5%"
+right = "exec /usr/local/libexec/xps-speaker-tuning control mute || noctalia msg volume-mute"
+
+# The managed helper retains Apple Studio Display support and sends the new
+# value back to Noctalia's OSD.
+[widget.brightness.actions]
+scroll_up = "exec ~/.local/bin/brightness-control up 5"
+scroll_down = "exec ~/.local/bin/brightness-control down 5"
+
+[[control_center.shortcuts]]
+type = "wifi"
+
+[[control_center.shortcuts]]
+type = "bluetooth"
+
+[[control_center.shortcuts]]
+type = "nightlight"
+
+[[control_center.shortcuts]]
+type = "notification"
+
+[[control_center.shortcuts]]
+type = "screen_recorder"
+
+[[control_center.shortcuts]]
+type = "session"

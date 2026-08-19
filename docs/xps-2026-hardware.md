@@ -21,8 +21,8 @@ network sinks bypass it.
 The XPS 14 profile was measured on `0DB9`; `0DBA` is included on the same basis
 as Quattro and has not been independently measured here. Fedora provides the
 filter-chain LV2 loader and `lsp-plugins-lv2` limiter. Desktop volume keys and
-the Quickshell audio UI control the physical speaker gain while the virtual
-filter master stays at unity.
+the Noctalia volume widget's scroll actions control the physical speaker gain
+while the virtual filter master stays at unity.
 
 Useful checks:
 

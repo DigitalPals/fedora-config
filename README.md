@@ -8,23 +8,21 @@ applications, development tools, shell, dotfiles, laptop services, firewall,
 and update workflow. Fedora remains responsible for the kernel, drivers,
 SELinux, and the base operating system.
 
-![Fedora running Hyprland and Quickshell](assets/fedora-hyprland-desktop.png)
-
 ## What it sets up
 
-- Hyprland with a custom Quickshell bar, launcher, notifications, and popovers
+- Hyprland with the [Noctalia](https://docs.noctalia.dev/v5/) bar, launcher, control center, notifications,
+  wallpaper, lock screen, and idle handling
 - GDM with GNOME kept installed as a fallback session
 - A curated set of desktop apps, command-line tools, fonts, and developer tools
 - Fish, Kitty, Neovim, containers, Android tooling, and Rust/Node.js toolchains
 - Laptop power management, firewall rules, hardware support, and a Plymouth theme
 - Repeatable system and Flatpak updates through one command
 
-## Third-party fonts
+## Shell font
 
-The Quickshell menubar and its popovers use
-[OPPO Sans 4.0](https://www.coloros.com/article/A00000074/). The playbook
-downloads OPPO's unmodified official archive, verifies its checksum, and keeps
-the bundled OPPO Sans Fonts License Agreement beside the installed font.
+The managed Noctalia configuration uses
+[Urbanist](https://github.com/coreyhu/Urbanist). The playbook downloads a
+commit-pinned variable font and license, then verifies both checksums.
 
 ## XPS 2026 hardware support
 
@@ -74,7 +72,7 @@ $EDITOR inventory/group_vars/all.yml
 configuration. It is safe to run again after changing the configuration.
 
 When `gdm_autologin` is enabled in `inventory/group_vars/all.yml`, the next boot
-automatically logs in to **Hyprland (Quickshell)**. From that session, check the
+automatically logs in to **Hyprland (Noctalia)**. From that session, check the
 installation with:
 
 ```bash
@@ -82,7 +80,7 @@ installation with:
 ```
 
 If `gdm_autologin` is disabled, GDM keeps presenting its normal login screen;
-choose **Hyprland (Quickshell)** there to start the configured session.
+choose **Hyprland (Noctalia)** there to start the configured session.
 
 ## Update
 
@@ -115,11 +113,7 @@ use `--full` before Ansible arguments, for example `./update --full --check
 
 | Document | Purpose |
 | --- | --- |
-| [docs/quickshell-notes.md](docs/quickshell-notes.md) | Working on the Quickshell shell: how to test it headlessly, the traps, and what has already been decided against |
-| [docs/shell-settings-manual-verification.md](docs/shell-settings-manual-verification.md) | Hand-test checklist for the settings window |
-| [docs/t3-composer-manual-verification.md](docs/t3-composer-manual-verification.md) | Hand-test checklist for the T3 composer |
-| [docs/t3-git-actions-manual-verification.md](docs/t3-git-actions-manual-verification.md) | Hand-test checklist for the T3 git actions |
 | [docs/xps-2026-hardware.md](docs/xps-2026-hardware.md) | XPS 2026 speaker, IPU7 camera, haptics, Secure Boot, and diagnostics |
 
-The automated side is `./verify`, which runs `tests/run` (Node unit tests plus
-a qmllint sweep) before the system checks.
+The automated side is `./verify`, which validates the managed Noctalia and XPS
+hardware configuration before the installed-system checks.

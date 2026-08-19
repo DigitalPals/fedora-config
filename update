@@ -20,8 +20,8 @@ Options:
 
 ANSIBLE_ARGS are accepted only with --full and are passed to ansible-playbook.
 
-With --full, ./tests/run (Quickshell unit tests + QML lint) must pass before
-the playbook is allowed to touch the machine.
+With --full, ./tests/run (Noctalia config + hardware integration checks) must
+pass before the playbook is allowed to touch the machine.
 
 Examples:
   ./update
@@ -261,8 +261,8 @@ fi
 
 printf '\n  %sCONFIGURATION%s\n' "$UI_BOLD" "$UI_RESET"
 
-# Gate the deploy on the repo checks: broken QML or a failing helper test would
-# otherwise be copied onto the machine and only surface at the next reload.
+# Gate the deploy on the repo checks: an invalid shell configuration or broken
+# hardware helper would otherwise land on the machine before being detected.
 if [[ $skip_tests == true ]]; then
   ui_warn 'Repo checks' 'skipped (--skip-tests)'
 elif ! run_step 'Repo checks' "$log_root/tests.log" ./tests/run; then

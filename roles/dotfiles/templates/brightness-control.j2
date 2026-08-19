@@ -25,6 +25,9 @@ else
   brightnessctl set "$step%-" >/dev/null
 fi
 
-# Nudge the shell's OSD: sysfs backlight writes emit nothing watchable,
-# so the pill is shown (and the % re-read) over IPC instead.
-command -v qs >/dev/null 2>&1 && qs ipc call osd brightness >/dev/null 2>&1 || true
+# External backlight writes are not always observable through Wayland. Send the
+# resulting percentage to Noctalia's display-only OSD command.
+brightness_percent=$(brightnessctl -m 2>/dev/null | awk -F, 'NR == 1 { print $4 }')
+if [[ -n $brightness_percent ]] && command -v noctalia >/dev/null 2>&1; then
+  noctalia msg brightness-osd "$brightness_percent" >/dev/null 2>&1 || true
+fi
