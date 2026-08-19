@@ -544,33 +544,31 @@ Column {
                     color: Theme.amber
                 }
 
-                Text {
-                    visible: T3Code.state !== "connected"
+                StatusPlaceholder {
+                    shown: T3Code.state !== "connected"
                     width: parent.width
-                    topPadding: 12
-                    bottomPadding: 12
-                    text: T3Code.state === "unpaired" ? "Pair T3 Code to view threads"
+                    kind: T3Code.state === "connecting" ? "loading"
+                        : T3Code.state === "unpaired" ? "empty" : "error"
+                    glyph: {
+                        if (T3Code.state === "unpaired")
+                            return "link_off";
+                        if (kind === "error")
+                            return "cloud_off";
+                        return "progress_activity";
+                    }
+                    title: T3Code.state === "unpaired" ? "Pair T3 Code to view threads"
                         : T3Code.state === "connecting" ? "Connecting…"
                         : "Server unreachable — drafts are safe"
-                    horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
-                    color: Theme.textDim
                 }
 
-                Text {
-                    visible: T3Code.state === "connected" && T3Code.shellReady
+                StatusPlaceholder {
+                    shown: T3Code.state === "connected" && T3Code.shellReady
                         && T3Code.threads.length === 0 && T3Code.pinnedThreads.length === 0
                         && T3Code.snoozedThreads.length === 0
                         && T3Code.settledThreads.length === 0
                     width: parent.width
-                    topPadding: 12
-                    bottomPadding: 12
-                    text: "No sessions"
-                    horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
-                    color: Theme.textDim
+                    glyph: "forum"
+                    title: "No sessions"
                 }
 
                 // Pinned first, like the reference sidebar. Rows keep their
@@ -688,15 +686,9 @@ Column {
             }
         }
 
-        Rectangle {
-            visible: flick.contentHeight > flick.height + 1
-            anchors.right: parent.right
-            width: 2
-            height: Math.max(24, viewport.height * flick.visibleArea.heightRatio)
-            y: flick.visibleArea.yPosition * viewport.height
-            radius: 1
-            color: Theme.textFaint
-            opacity: flick.moving ? 0.8 : 0.4
+        ScrollChrome {
+            anchors.fill: parent
+            target: flick
         }
     }
 }

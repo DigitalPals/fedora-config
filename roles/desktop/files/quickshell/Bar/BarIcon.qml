@@ -173,6 +173,7 @@ Rectangle {
         hovered: root.hovered && !root.bare
         pressed: mouse.pressed
         tint: root.fg
+        pressPoint: Qt.point(mouse.mouseX, mouse.mouseY)
     }
 
     Row {

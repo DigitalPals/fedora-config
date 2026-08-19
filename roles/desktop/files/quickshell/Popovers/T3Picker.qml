@@ -189,6 +189,7 @@ Item {
         clip: true
 
         Flickable {
+            id: pickerFlick
             anchors.fill: parent
             anchors.margins: 4
             contentWidth: width
@@ -257,6 +258,14 @@ Item {
                     }
                 }
             }
+        }
+
+        ScrollChrome {
+            anchors.fill: parent
+            anchors.margins: 4
+            target: pickerFlick
+            fadeSize: 16
+            edgeColor: Theme.surfaceMenu
         }
     }
 }

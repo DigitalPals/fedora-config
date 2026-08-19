@@ -43,11 +43,15 @@ singleton Session Session.qml
 # Popovers/ or Settings/ because both directories draw them and both already
 # import "../Common" for Theme, so unifying them cost no new import anywhere.
 Claim Claim.qml
+AnimatedText AnimatedText.qml
 HSlider HSlider.qml
 Sym Sym.qml
 NotifActions NotifActions.qml
 NotifCard NotifCard.qml
 NotifIcon NotifIcon.qml
+Revealer Revealer.qml
+ScrollChrome ScrollChrome.qml
+StatusPlaceholder StatusPlaceholder.qml
 Toggle Toggle.qml
 StateLayer StateLayer.qml
 HugCorner HugCorner.qml

@@ -26,13 +26,17 @@ Item {
     Accessible.role: Accessible.CheckBox
     Accessible.checked: checked
     Accessible.name: accessibleName
-    Accessible.onToggleAction: root.toggled(!root.checked)
+    Accessible.onToggleAction: {
+        toggleState.pulseCenter();
+        root.toggled(!root.checked);
+    }
 
     // Escape and Tab deliberately fall through: the popout's FocusScope owns
     // Escape (Bar/IslandPopout.qml) and Tab is the reason this type exists.
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
+            toggleState.pulseCenter();
             root.toggled(!root.checked); event.accepted = true;
         }
     }
@@ -48,29 +52,52 @@ Item {
         border.color: Theme.textHi
 
         StateLayer {
+            id: toggleState
             anchors.fill: parent
             radius: parent.radius
             hovered: toggleMouse.containsMouse
             pressed: toggleMouse.pressed
             focused: root.activeFocus
             tint: root.checked ? Theme.accentFg : Theme.textHi
+            pressPoint: Qt.point(toggleMouse.mouseX - track.x,
+                toggleMouse.mouseY - track.y)
         }
     }
 
     Rectangle {
+        id: thumb
+
+        readonly property real restingSize: root.checked
+            ? root.trackHeight - 4 : root.trackHeight - 8
+        readonly property real pressedSize: root.trackHeight - 1
+
         x: (root.width - root.trackWidth) / 2
-            + (root.checked ? root.trackWidth - width - 2 : 2)
+            + (root.checked ? root.trackWidth - root.trackHeight / 2
+                : root.trackHeight / 2) - width / 2
         anchors.verticalCenter: parent.verticalCenter
-        width: root.trackHeight - 4
-        height: root.trackHeight - 4
+        width: toggleMouse.pressed ? pressedSize : restingSize
+        height: width
         radius: height / 2
         color: root.checked ? Theme.accentFg : Theme.textLow
 
         Behavior on x {
             NumberAnimation {
-                duration: Theme.popoutContentFadeDuration
-                easing.type: Easing.OutCubic
+                duration: Theme.pressDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
             }
+        }
+
+        Behavior on width {
+            NumberAnimation {
+                duration: Theme.pressDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
+            }
+        }
+
+        Behavior on color {
+            ColorAnimation { duration: Theme.chipFadeDuration }
         }
     }
 

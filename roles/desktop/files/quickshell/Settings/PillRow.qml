@@ -36,7 +36,10 @@ Flow {
             Accessible.role: Accessible.RadioButton
             Accessible.name: pill.modelData.label
             Accessible.checked: pill.selected
-            Accessible.onPressAction: root.picked(pill.modelData.value)
+            Accessible.onPressAction: {
+                pillState.pulseCenter();
+                root.picked(pill.modelData.value);
+            }
 
             Keys.onPressed: event => {
                 let next = -1;
@@ -50,6 +53,7 @@ Flow {
                     next = root.model.length - 1;
                 else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                         || event.key === Qt.Key_Space) {
+                    pillState.pulseCenter();
                     root.picked(modelData.value); event.accepted = true; return;
                 }
                 if (next >= 0) {
@@ -60,12 +64,14 @@ Flow {
             }
 
             StateLayer {
+                id: pillState
                 anchors.fill: parent
                 radius: parent.radius
                 hovered: pillMouse.containsMouse
                 pressed: pillMouse.pressed
                 focused: pill.activeFocus
                 tint: pill.selected ? Theme.accent : Theme.textHi
+                pressPoint: Qt.point(pillMouse.mouseX, pillMouse.mouseY)
             }
 
             Text {

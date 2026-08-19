@@ -1,0 +1,54 @@
+import QtQuick
+
+// One-child size-and-opacity revealer. The child stays alive through the exit
+// animation, so conditional content does not disappear a frame before the
+// surrounding card has finished closing around it.
+Item {
+    id: root
+
+    default property alias content: contentRoot.data
+    property bool reveal: false
+    property int orientation: Qt.Vertical
+
+    readonly property real naturalWidth: contentRoot.childrenRect.width
+    readonly property real naturalHeight: contentRoot.childrenRect.height
+
+    implicitWidth: orientation === Qt.Horizontal
+        ? (reveal ? naturalWidth : 0) : naturalWidth
+    implicitHeight: orientation === Qt.Vertical
+        ? (reveal ? naturalHeight : 0) : naturalHeight
+    visible: reveal || implicitWidth > 0.5 || implicitHeight > 0.5
+    opacity: reveal ? 1 : 0
+    clip: true
+
+    Behavior on implicitWidth {
+        enabled: root.orientation === Qt.Horizontal
+        NumberAnimation {
+            duration: Theme.expandDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
+        }
+    }
+
+    Behavior on implicitHeight {
+        enabled: root.orientation === Qt.Vertical
+        NumberAnimation {
+            duration: Theme.expandDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.springCurve
+        }
+    }
+
+    Behavior on opacity {
+        NumberAnimation {
+            duration: Theme.chipFadeDuration
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Item {
+        id: contentRoot
+        width: childrenRect.width
+        height: childrenRect.height
+    }
+}

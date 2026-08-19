@@ -302,30 +302,11 @@ Surface {
         }
     }
 
-    Item {
-        visible: Notifs.count === 0
+    StatusPlaceholder {
+        shown: Notifs.count === 0
         width: parent.width
-        height: 70
-
-        Column {
-            anchors.centerIn: parent
-            spacing: 6
-
-            Sym {
-                anchors.horizontalCenter: parent.horizontalCenter
-                name: "notifications"
-                size: Theme.iconLarge
-                color: Theme.textFaint
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "No notifications"
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
-                color: Theme.textDim
-            }
-        }
+        glyph: "notifications"
+        title: "No notifications"
     }
 
     // ---- grouped history ------------------------------------------------

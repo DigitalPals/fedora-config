@@ -631,28 +631,37 @@ Surface {
     }
 
     // ---- body -------------------------------------------------------------
-    Flickable {
-        id: body
-
+    Item {
         width: parent.width
-        height: Math.min(contentHeight, root.maxBodyHeight)
-        contentWidth: width
-        contentHeight: pageLoader.height
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        interactive: contentHeight > height
-        activeFocusOnTab: interactive
+        height: Math.min(body.contentHeight, root.maxBodyHeight)
 
-        // Deliberately synchronous: this popover's implicit height is this
-        // page's height, and the host animates its geometry from it. An
-        // incubating page measures as zero, which opens the body in two
-        // stages and collapses it on every navigation.
-        Loader {
-            id: pageLoader
-            width: body.width - (body.contentHeight > body.height ? 5 : 0)
-            sourceComponent: root.page === "commits" ? commitsPage
-                : root.page === "repos" ? reposPage : inboxPage
-            height: item ? item.implicitHeight : 0
+        Flickable {
+            id: body
+
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: pageLoader.height
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            activeFocusOnTab: interactive
+
+            // Deliberately synchronous: this popover's implicit height is this
+            // page's height, and the host animates its geometry from it. An
+            // incubating page measures as zero, which opens the body in two
+            // stages and collapses it on every navigation.
+            Loader {
+                id: pageLoader
+                width: body.width - (body.contentHeight > body.height ? 5 : 0)
+                sourceComponent: root.page === "commits" ? commitsPage
+                    : root.page === "repos" ? reposPage : inboxPage
+                height: item ? item.implicitHeight : 0
+            }
+        }
+
+        ScrollChrome {
+            anchors.fill: parent
+            target: body
         }
     }
 
@@ -750,20 +759,24 @@ Surface {
                 color: Theme.amber
             }
 
-            Empty {
-                visible: !GitHub.inboxReady && root.inboxRows.length === 0
+            StatusPlaceholder {
+                shown: !GitHub.inboxReady && root.inboxRows.length === 0
                     && GitHub.inboxError === ""
-                text: GitHub.ciReportsEnabled
+                width: parent.width
+                kind: "loading"
+                title: GitHub.ciReportsEnabled
                     ? "Loading workflows, notifications, and repository updates…"
                     : "Loading notifications and repository updates…"
             }
 
-            Empty {
-                visible: GitHub.inboxReady && root.inboxRows.length === 0
+            StatusPlaceholder {
+                shown: GitHub.inboxReady && root.inboxRows.length === 0
                     && GitHub.inboxError === "" && GitHub.notificationError === ""
-                text: GitHub.ciReportsEnabled
-                    ? "Inbox is clear"
-                    : "Inbox is clear\nWorkflow reports are disabled in settings"
+                width: parent.width
+                glyph: "inbox"
+                title: "Inbox is clear"
+                detail: GitHub.ciReportsEnabled ? ""
+                    : "Workflow reports are disabled in settings"
             }
 
             // Active, Attention, Updates, Settled. Only the retained settled
@@ -877,14 +890,18 @@ Surface {
                 color: Theme.amber
             }
 
-            Empty {
-                visible: GitHub.error === "" && !GitHub.ready
-                text: "Loading repositories…"
+            StatusPlaceholder {
+                shown: GitHub.error === "" && !GitHub.ready
+                width: parent.width
+                kind: "loading"
+                title: "Loading repositories…"
             }
 
-            Empty {
-                visible: GitHub.error === "" && GitHub.ready && GitHub.repos.length === 0
-                text: "No repositories this account can see"
+            StatusPlaceholder {
+                shown: GitHub.error === "" && GitHub.ready && GitHub.repos.length === 0
+                width: parent.width
+                glyph: "folder_open"
+                title: "No repositories this account can see"
             }
 
             Repeater {
@@ -1089,16 +1106,20 @@ Surface {
                 color: Theme.redText
             }
 
-            Empty {
-                visible: root.commitEntry === null
+            StatusPlaceholder {
+                shown: root.commitEntry === null
                     || (root.commitEntry.loading && root.commitRows.length === 0)
-                text: "Loading commits…"
+                width: parent.width
+                kind: "loading"
+                title: "Loading commits…"
             }
 
-            Empty {
-                visible: root.commitEntry !== null && !root.commitEntry.loading
+            StatusPlaceholder {
+                shown: root.commitEntry !== null && !root.commitEntry.loading
                     && root.commitEntry.error === "" && root.commitRows.length === 0
-                text: "No commits on this branch yet"
+                width: parent.width
+                glyph: "commit"
+                title: "No commits on this branch yet"
             }
 
             Repeater {

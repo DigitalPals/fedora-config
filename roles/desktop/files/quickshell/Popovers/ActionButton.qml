@@ -35,7 +35,10 @@ Rectangle {
     activeFocusOnTab: enabled && visible && revealed
     Accessible.role: Accessible.Button
     Accessible.name: label
-    Accessible.onPressAction: root.triggered()
+    Accessible.onPressAction: {
+        actionState.pulseCenter();
+        root.triggered();
+    }
     border.width: activeFocus ? 1 : 0
     border.color: Theme.accent
 
@@ -44,18 +47,21 @@ Rectangle {
             return;
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
+            actionState.pulseCenter();
             root.triggered();
             event.accepted = true;
         }
     }
 
     StateLayer {
+        id: actionState
         anchors.fill: parent
         radius: parent.radius
         hovered: actionMouse.containsMouse && root.enabled
         pressed: actionMouse.pressed
         focused: root.activeFocus
         tint: root.tint
+        pressPoint: Qt.point(actionMouse.mouseX, actionMouse.mouseY)
     }
 
     Text {

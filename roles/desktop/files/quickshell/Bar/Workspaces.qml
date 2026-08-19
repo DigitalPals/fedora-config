@@ -180,8 +180,10 @@ Rectangle {
                 Accessible.name: "Workspace " + wsId
                     + (focused ? ", current" : urgent ? ", urgent"
                         : exists ? ", occupied" : ", empty")
-                Accessible.onPressAction: Hyprland.dispatch(
-                    "hl.dsp.focus({ workspace = " + wsId + " })")
+                Accessible.onPressAction: {
+                    workspaceState.pulseCenter();
+                    Hyprland.dispatch("hl.dsp.focus({ workspace = " + wsId + " })");
+                }
 
                 Rectangle {
                     anchors.centerIn: parent
@@ -196,12 +198,14 @@ Rectangle {
                 }
 
                 StateLayer {
+                    id: workspaceState
                     anchors.fill: parent
                     anchors.margins: 1
                     radius: Theme.pillRadius
                     hovered: wsPointer.over
                     pressed: wsMouse.pressed
                     tint: Theme.barTextHi
+                    pressPoint: Qt.point(wsMouse.mouseX - 1, wsMouse.mouseY - 1)
                     z: 2
                 }
 

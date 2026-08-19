@@ -121,7 +121,7 @@ test("shared state layers use Material interaction strengths", () => {
     assert.match(theme, /stateHoverOpacity:\s*0\.08/);
     assert.match(theme, /statePressedOpacity:\s*0\.12/);
     assert.match(layer,
-        /opacity:\s*pressed \|\| focused \? Theme\.statePressedOpacity\s*:\s*hovered \? Theme\.stateHoverOpacity : 0/);
+        /opacity:\s*root\.pressed \|\| root\.focused \? Theme\.statePressedOpacity\s*:\s*root\.hovered \? Theme\.stateHoverOpacity : 0/);
     for (const rel of [
         "Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/Workspaces.qml",
         "Common/Toggle.qml", "Popovers/ActionButton.qml", "Popovers/IconButton.qml",
@@ -131,4 +131,46 @@ test("shared state layers use Material interaction strengths", () => {
             `${rel} does not use the shared state overlay`);
     assert.match(read("Bar/BarIcon.qml"), /scale:\s*mouse\.pressed/,
         "the state layer must not replace bar press-scale feedback");
+});
+
+test("state layers ripple from the pointer and keyboard activation stays visible", () => {
+    const layer = read("Common/StateLayer.qml");
+    assert.match(layer, /function pulseAt\(x, y\)/);
+    assert.match(layer, /onPressedChanged:/);
+    assert.match(layer, /maskEnabled:\s*true/,
+        "the ripple must be clipped to the control shape");
+    assert.match(layer, /rippleAnimation\.restart\(\)/);
+
+    for (const rel of [
+        "Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/Workspaces.qml",
+        "Common/Toggle.qml", "Popovers/ActionButton.qml", "Popovers/IconButton.qml",
+        "Settings/AppearancePage.qml", "Settings/PillRow.qml",
+        "Settings/SettingsAction.qml", "Settings/SettingsView.qml"
+    ])
+        assert.match(read(rel), /pressPoint:\s*Qt\.point\(/,
+            `${rel} does not pass the pointer origin to StateLayer`);
+
+    for (const rel of [
+        "Bar/Workspaces.qml", "Common/Toggle.qml", "Popovers/ActionButton.qml",
+        "Popovers/IconButton.qml", "Settings/AppearancePage.qml",
+        "Settings/PillRow.qml", "Settings/SettingsAction.qml", "Settings/SettingsView.qml"
+    ])
+        assert.match(read(rel), /\.pulseCenter\(\)/,
+            `${rel} does not echo non-pointer activation`);
+});
+
+test("switch and slider handles morph while pressed", () => {
+    const toggle = read("Common/Toggle.qml");
+    const slider = read("Common/HSlider.qml");
+
+    assert.match(toggle, /restingSize:/);
+    assert.match(toggle, /pressedSize:/);
+    assert.match(toggle, /width:\s*toggleMouse\.pressed \? pressedSize : restingSize/);
+    assert.match(toggle, /Behavior on width/);
+
+    assert.match(slider, /width:\s*sliderMouse\.pressed \? 4 : 10/);
+    assert.match(slider, /height:\s*sliderMouse\.pressed \? 18 : 10/);
+    assert.match(slider, /Behavior on height/);
+    assert.match(slider, /onPressed:\s*mouse =>/,
+        "pointer interaction should focus the shared slider");
 });

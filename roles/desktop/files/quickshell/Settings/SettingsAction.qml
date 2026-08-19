@@ -20,24 +20,30 @@ Rectangle {
     activeFocusOnTab: true
     Accessible.role: Accessible.Button
     Accessible.name: root.text
-    Accessible.onPressAction: root.triggered()
+    Accessible.onPressAction: {
+        actionState.pulseCenter();
+        root.triggered();
+    }
     Controls.ToolTip.visible: mouse.containsMouse && (root.compact || root.text.indexOf("Reset") === 0)
     Controls.ToolTip.text: root.text
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
+            actionState.pulseCenter();
             root.triggered(); event.accepted = true;
         }
     }
 
     StateLayer {
+        id: actionState
         anchors.fill: parent
         radius: parent.radius
         hovered: mouse.containsMouse
         pressed: mouse.pressed
         focused: root.activeFocus
         tint: root.danger ? Theme.red : Theme.textHi
+        pressPoint: Qt.point(mouse.mouseX, mouse.mouseY)
     }
 
     Row {

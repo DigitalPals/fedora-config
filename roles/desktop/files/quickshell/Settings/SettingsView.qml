@@ -133,7 +133,10 @@ PopoutPanel {
         Accessible.role: Accessible.PageTab
         Accessible.name: navItem.modelData.label
         Accessible.selected: navItem.current
-        Accessible.onPressAction: Settings.page = navItem.modelData.id
+        Accessible.onPressAction: {
+            navState.pulseCenter();
+            Settings.page = navItem.modelData.id;
+        }
         Controls.ToolTip.visible: root.compactNav && navMouse.containsMouse
         Controls.ToolTip.text: navItem.modelData.label
 
@@ -148,17 +151,20 @@ PopoutPanel {
                 root.selectVisible(root.visibleNav.length - 1); event.accepted = true;
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                     || event.key === Qt.Key_Space) {
+                navState.pulseCenter();
                 Settings.page = modelData.id; event.accepted = true;
             }
         }
 
         StateLayer {
+            id: navState
             anchors.fill: parent
             radius: parent.radius
             hovered: navMouse.containsMouse
             pressed: navMouse.pressed
             focused: navItem.activeFocus
             tint: navItem.current ? Theme.accent : Theme.textHi
+            pressPoint: Qt.point(navMouse.mouseX, navMouse.mouseY)
         }
 
         Sym {

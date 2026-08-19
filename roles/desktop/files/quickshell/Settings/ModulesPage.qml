@@ -630,6 +630,12 @@ Item {
         }
     }
 
+    ScrollChrome {
+        visible: columnsViewport.visible && overflow
+        anchors.fill: columnsViewport
+        target: columnsViewport
+    }
+
     Timer {
         id: edgeScroll
         interval: 16

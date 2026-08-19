@@ -16,7 +16,10 @@ Rectangle {
 
     Accessible.role: Accessible.Button
     Accessible.name: iconButton.accessibleName
-    Accessible.onPressAction: iconButton.triggered()
+    Accessible.onPressAction: {
+        iconState.pulseCenter();
+        iconButton.triggered();
+    }
 
     width: 26
     height: Theme.controlHeight
@@ -32,18 +35,21 @@ Rectangle {
             return;
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
+            iconState.pulseCenter();
             iconButton.triggered();
             event.accepted = true;
         }
     }
 
     StateLayer {
+        id: iconState
         anchors.fill: parent
         radius: parent.radius
         hovered: iconMouse.containsMouse && iconButton.enabled
         pressed: iconMouse.pressed
         focused: iconButton.activeFocus
         tint: iconButton.tint
+        pressPoint: Qt.point(iconMouse.mouseX, iconMouse.mouseY)
     }
 
     Text {

@@ -76,8 +76,9 @@ BarModule {
         on: SysInfo.idleInhibited
     }
 
-    Text {
+    AnimatedText {
         anchors.verticalCenter: parent.verticalCenter
+        animateChange: !Settings.modOpts.clock.seconds
         text: Qt.formatDateTime(clock.date, Settings.clock24
             ? (Settings.modOpts.clock.seconds ? "HH:mm:ss" : "HH:mm")
             : (Settings.modOpts.clock.seconds ? "h:mm:ss AP" : "h:mm AP"))

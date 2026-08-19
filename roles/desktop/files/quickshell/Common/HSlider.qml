@@ -124,23 +124,45 @@ Item {
     }
 
     Rectangle {
+        id: handle
+
         visible: !root.dimmed
         x: Math.round(root.ratio * (parent.width - width))
         anchors.verticalCenter: parent.verticalCenter
-        width: 10
-        height: 10
-        radius: 5
+        width: sliderMouse.pressed ? 4 : 10
+        height: sliderMouse.pressed ? 18 : 10
+        radius: width / 2
         color: Theme.textHi
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
+
+        Behavior on width {
+            NumberAnimation {
+                duration: Theme.pressDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
+            }
+        }
+
+        Behavior on height {
+            NumberAnimation {
+                duration: Theme.pressDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
+            }
+        }
     }
 
     MouseArea {
+        id: sliderMouse
         anchors.fill: parent
         enabled: !root.dimmed
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onPressed: mouse => root.apply(mouse.x)
+        onPressed: mouse => {
+            root.forceActiveFocus();
+            root.apply(mouse.x);
+        }
         onPositionChanged: mouse => {
             if (pressed)
                 root.apply(mouse.x);

@@ -221,14 +221,15 @@ Item {
             }
         }
 
-        Text {
+        StatusPlaceholder {
             anchors.centerIn: parent
-            visible: Wallpaper.loading || Wallpaper.files.length === 0
-            text: Wallpaper.loading ? "Loading wallpapers…"
-                : "No images found in " + page.dirLabel
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
-            color: Theme.textLow
+            width: Math.max(0, parent.width - 40)
+            height: implicitHeight
+            shown: Wallpaper.loading || Wallpaper.files.length === 0
+            kind: Wallpaper.loading ? "loading" : "empty"
+            glyph: Wallpaper.loading ? "progress_activity" : "image"
+            title: Wallpaper.loading ? "Loading wallpapers…" : "No images found"
+            detail: Wallpaper.loading ? "" : page.dirLabel
         }
     }
 

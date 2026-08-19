@@ -495,7 +495,10 @@ SettingsPage {
                     Accessible.role: Accessible.RadioButton
                     Accessible.name: fontRow.modelData.label + " menu font"
                     Accessible.checked: fontRow.selected
-                    Accessible.onPressAction: Settings.set("font", fontRow.modelData.id)
+                    Accessible.onPressAction: {
+                        fontState.pulseCenter();
+                        Settings.set("font", fontRow.modelData.id);
+                    }
 
                     Keys.onPressed: event => {
                         let next = -1;
@@ -505,6 +508,7 @@ SettingsPage {
                             next = Math.min(Settings.fontChoices.length - 1, index + 1);
                         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                                 || event.key === Qt.Key_Space) {
+                            fontState.pulseCenter();
                             Settings.set("font", modelData.id); event.accepted = true; return;
                         }
                         if (next >= 0) {
@@ -515,12 +519,14 @@ SettingsPage {
                     }
 
                     StateLayer {
+                        id: fontState
                         anchors.fill: parent
                         radius: parent.radius
                         hovered: fontMouse.containsMouse
                         pressed: fontMouse.pressed
                         focused: fontRow.activeFocus
                         tint: fontRow.selected ? Theme.accent : Theme.textHi
+                        pressPoint: Qt.point(fontMouse.mouseX, fontMouse.mouseY)
                     }
 
                     Rectangle {

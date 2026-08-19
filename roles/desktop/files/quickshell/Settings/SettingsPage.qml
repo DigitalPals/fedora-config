@@ -45,15 +45,11 @@ Flickable {
         height: childrenRect.height
     }
 
-    Rectangle {
-        anchors.right: parent.right
-        anchors.rightMargin: 2
-        y: root.visibleArea.yPosition * (parent.height - height)
-        width: 3
-        height: Math.max(22, root.visibleArea.heightRatio * parent.height)
-        radius: 2
-        visible: root.scrollbarVisible
-        color: Theme.accentAlpha(root.moving ? 0.8 : 0.35)
-        Behavior on color { ColorAnimation { duration: Theme.popoutContentFadeDuration } }
+    ScrollChrome {
+        // Flickable normally reparents declarative children to contentItem;
+        // this overlay must stay fixed to the viewport while the page moves.
+        parent: root
+        anchors.fill: parent
+        target: root
     }
 }

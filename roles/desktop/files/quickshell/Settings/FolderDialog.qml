@@ -119,91 +119,101 @@ Controls.Dialog {
             }
         }
 
-        ListView {
-            id: folderList
+        Item {
             width: parent.width
             height: parent.height - 40
-            clip: true
-            spacing: 2
-            currentIndex: 0
-            model: FolderListModel {
-                id: folderModel
-                showDirs: true
-                showFiles: false
-                showDirsFirst: true
-                sortField: FolderListModel.Name
+
+            ListView {
+                id: folderList
+                anchors.fill: parent
+                clip: true
+                spacing: 2
+                currentIndex: 0
+                model: FolderListModel {
+                    id: folderModel
+                    showDirs: true
+                    showFiles: false
+                    showDirsFirst: true
+                    sortField: FolderListModel.Name
+                }
+
+                delegate: Rectangle {
+                    id: folderRow
+                    required property string fileName
+                    required property url fileUrl
+                    required property int index
+                    readonly property string path: root.localPath(fileUrl)
+                    readonly property bool selected: root.selectedPath === path
+
+                    width: folderList.width
+                    height: 34
+                    radius: Theme.rowRadius
+                    color: selected ? Theme.accentBg
+                        : rowMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+                    activeFocusOnTab: index === folderList.currentIndex
+                    Accessible.role: Accessible.ListItem
+                    Accessible.name: fileName
+                    Accessible.selected: selected
+                    Accessible.onPressAction: {
+                        root.selectedPath = path;
+                        folderList.currentIndex = index;
+                    }
+
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Up) {
+                            root.focusFolder(index - 1);
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Down) {
+                            root.focusFolder(index + 1);
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Home) {
+                            root.focusFolder(0);
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_End) {
+                            root.focusFolder(folderList.count - 1);
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                            folderModel.folder = fileUrl;
+                            root.selectedPath = "";
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Space) {
+                            root.selectedPath = path;
+                            event.accepted = true;
+                        }
+                    }
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "folder  " + folderRow.fileName
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        color: folderRow.selected ? Theme.textHi : Theme.textMid
+                    }
+
+                    MouseArea {
+                        id: rowMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.selectedPath = folderRow.path;
+                            folderList.currentIndex = folderRow.index;
+                            folderRow.forceActiveFocus();
+                        }
+                        onDoubleClicked: {
+                            folderModel.folder = folderRow.fileUrl;
+                            root.selectedPath = "";
+                        }
+                    }
+                }
             }
 
-            delegate: Rectangle {
-                id: folderRow
-                required property string fileName
-                required property url fileUrl
-                required property int index
-                readonly property string path: root.localPath(fileUrl)
-                readonly property bool selected: root.selectedPath === path
-
-                width: folderList.width
-                height: 34
-                radius: Theme.rowRadius
-                color: selected ? Theme.accentBg
-                    : rowMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
-                activeFocusOnTab: index === folderList.currentIndex
-                Accessible.role: Accessible.ListItem
-                Accessible.name: fileName
-                Accessible.selected: selected
-                Accessible.onPressAction: {
-                    root.selectedPath = path;
-                    folderList.currentIndex = index;
-                }
-
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Up) {
-                        root.focusFolder(index - 1);
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Down) {
-                        root.focusFolder(index + 1);
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Home) {
-                        root.focusFolder(0);
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_End) {
-                        root.focusFolder(folderList.count - 1);
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        folderModel.folder = fileUrl;
-                        root.selectedPath = "";
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Space) {
-                        root.selectedPath = path;
-                        event.accepted = true;
-                    }
-                }
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "folder  " + folderRow.fileName
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: folderRow.selected ? Theme.textHi : Theme.textMid
-                }
-
-                MouseArea {
-                    id: rowMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.selectedPath = folderRow.path;
-                        folderList.currentIndex = folderRow.index;
-                        folderRow.forceActiveFocus();
-                    }
-                    onDoubleClicked: {
-                        folderModel.folder = folderRow.fileUrl;
-                        root.selectedPath = "";
-                    }
-                }
+            ScrollChrome {
+                anchors.fill: parent
+                target: folderList
+                edgeColor: Theme.surfaceMenu
             }
         }
     }

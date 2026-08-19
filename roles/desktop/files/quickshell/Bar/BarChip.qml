@@ -125,6 +125,7 @@ Rectangle {
         hovered: root.hovered
         pressed: mouse.pressed
         tint: Theme.barTextHi
+        pressPoint: Qt.point(mouse.mouseX, mouse.mouseY)
     }
 
     Row {

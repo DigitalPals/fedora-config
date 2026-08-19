@@ -693,16 +693,11 @@ Column {
                 width: flick.width - (flick.contentHeight > flick.height ? 5 : 0)
                 spacing: 6
 
-                Text {
-                    visible: T3Code.detailLoading
+                StatusPlaceholder {
+                    shown: T3Code.detailLoading
                     width: parent.width
-                    topPadding: 12
-                    bottomPadding: 12
-                    text: "Loading conversation…"
-                    horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    color: Theme.textDim
+                    kind: "loading"
+                    title: "Loading conversation…"
                 }
 
                 InfoCard {
@@ -765,18 +760,13 @@ Column {
                     }
                 }
 
-                Text {
-                    visible: !root.working && !root.backgroundWorking && !root.monitoring
+                StatusPlaceholder {
+                    shown: !root.working && !root.backgroundWorking && !root.monitoring
                         && !T3Code.detailLoading
                         && T3Code.detailMessages.length === 0
                     width: parent.width
-                    topPadding: 10
-                    bottomPadding: 10
-                    text: "No messages yet"
-                    horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    color: Theme.textDim
+                    glyph: "chat"
+                    title: "No messages yet"
                 }
 
                 T3RequestCard {
@@ -1099,15 +1089,9 @@ Column {
             }
         }
 
-        Rectangle {
-            visible: flick.contentHeight > flick.height + 1
-            anchors.right: parent.right
-            width: 2
-            height: Math.max(24, viewport.height * flick.visibleArea.heightRatio)
-            y: flick.visibleArea.yPosition * viewport.height
-            radius: 1
-            color: Theme.textFaint
-            opacity: flick.moving ? 0.8 : 0.4
+        ScrollChrome {
+            anchors.fill: parent
+            target: flick
         }
     }
 
