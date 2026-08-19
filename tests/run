@@ -102,6 +102,8 @@ stage_xps_hardware() {
   local out rc=0 t0 elapsed biquads
   local shell_files=(
     roles/xps-2026/files/xps-speaker-tuning
+    roles/xps-2026/files/xps-fingerprint-detect
+    roles/xps-2026/files/xps-fingerprint-check
     roles/xps-2026/files/camera/xps-ipu7-camera-check
     roles/xps-2026/files/camera/xps-ipu7-camera-init
     roles/xps-2026/files/camera/xps-ipu7-camera-sleep
@@ -116,11 +118,54 @@ stage_xps_hardware() {
   done
 
   if ((rc == 0)); then
-    out=$(python3 -c '
+    out=$(python3 - <<'PY' 2>&1
 from pathlib import Path
-path = Path("roles/xps-2026/files/xps-haptic-touchpad")
-compile(path.read_text(), str(path), "exec")
-' 2>&1) || rc=1
+import os
+import subprocess
+import tempfile
+
+python_files = (
+    Path("roles/xps-2026/files/xps-haptic-touchpad"),
+    Path("roles/xps-2026/files/camera/xps-ipu7-abi-check"),
+    Path("roles/xps-2026/files/camera/xps-ipu7-userspace-check"),
+)
+for path in python_files:
+    compile(path.read_text(), str(path), "exec")
+
+detector = Path("roles/xps-2026/files/xps-fingerprint-detect").resolve()
+
+def detect(vendor, product_id, product="", driver=""):
+    with tempfile.TemporaryDirectory() as temporary:
+        devices = Path(temporary) / "devices"
+        device = devices / "1-1"
+        device.mkdir(parents=True)
+        (device / "idVendor").write_text(vendor + "\n")
+        (device / "idProduct").write_text(product_id + "\n")
+        if product:
+            (device / "product").write_text(product + "\n")
+        if driver:
+            target = Path(temporary) / "drivers" / driver
+            target.mkdir(parents=True)
+            interface = device / "1-1:1.0"
+            interface.mkdir()
+            (interface / "driver").symlink_to(target)
+        environment = os.environ.copy()
+        environment["XPS_USB_DEVICES_PATH"] = str(devices)
+        return subprocess.run(
+            ["bash", str(detector)], env=environment, capture_output=True
+        ).returncode == 0
+
+assert not detect("06cb", "0701", "SVP7500"), "camera bridge detected as reader"
+assert not detect("06cb", "9999", "Generic USB", "usbio-bridge"), "driven Synaptics device detected"
+assert detect("27c6", "1234"), "unclaimed known-vendor reader not detected"
+assert detect("1234", "5678", "Goodix Fingerprint USB Device", "usbhid"), "named reader not detected"
+print("Python syntax and fingerprint detection fixtures valid")
+PY
+) || rc=1
+  fi
+
+  if ((rc == 0)); then
+    out=$(python3 roles/xps-2026/files/camera/xps-ipu7-abi-check --self-test 2>&1) || rc=1
   fi
 
   biquads=$(grep -Ec 'name = s([0-9]+)_[lr]' roles/xps-2026/files/xps-speaker-filter-chain.conf)
@@ -134,6 +179,18 @@ compile(path.read_text(), str(path), "exec")
   fi
   if ((rc == 0)) && ! grep -q 'IPU7_PSYS_ONLY=1' roles/xps-2026/files/camera/patches/0005-ipu7-psys-stock-core-layout.patch; then
     out='camera patch does not enforce stock-core PSYS-only DKMS builds'
+    rc=1
+  fi
+  if ((rc == 0)) && ! grep -q 'xps-ipu7-abi-check.*kernelver' roles/xps-2026/files/camera/patches/0005-ipu7-psys-stock-core-layout.patch; then
+    out='camera DKMS build does not enforce the stock-core BTF ABI guard'
+    rc=1
+  fi
+  if ((rc == 0)) && ! grep -q 'intel-ipu7-psys[.]ko' roles/xps-2026/files/camera/xps-ipu7-abi-check; then
+    out='camera ABI guard does not yield to a future Fedora-native PSYS module'
+    rc=1
+  fi
+  if ((rc == 0)) && ! grep -q 'xps-ipu7-userspace-check --root' roles/xps-2026/templates/xps-ipu7-build.j2; then
+    out='camera package build does not prove staged userspace dependency closure'
     rc=1
   fi
   if ((rc == 0)) && ! grep -q 'ansible.builtin.meta: end_role' roles/xps-2026/tasks/camera.yml; then

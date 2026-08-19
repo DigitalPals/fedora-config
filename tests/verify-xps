@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 require_hyprland=false
 [[ ${1:-} == --require-hyprland ]] && require_hyprland=true
@@ -157,6 +158,19 @@ if $xps_2026; then
     skip 'Synaptics 06CB haptic controller absent; touchpad-specific checks'
   fi
 
+  fingerprint_detector="$repo_root/roles/xps-2026/files/xps-fingerprint-detect"
+  if fingerprint_device=$(bash "$fingerprint_detector" 2>/dev/null); then
+    pass "physical fingerprint-reader gate ($fingerprint_device)"
+    check 'Fedora fingerprint support RPMs' rpm -q libfprint fprintd fprintd-pam
+    check_diagnostic 'libfprint-supported device and Fedora PAM integration' \
+      /usr/local/libexec/xps-fingerprint-check john
+  else
+    if lsusb -d 06cb:0701 2>/dev/null | grep -q .; then
+      pass 'Synaptics SVP7500 camera bridge is not treated as a fingerprint reader'
+    fi
+    skip 'no physical fingerprint reader; fingerprint package/PAM checks'
+  fi
+
   has_ovti08f4=false
   [[ -e /sys/bus/acpi/devices/OVTI08F4:00 || -e /sys/bus/acpi/devices/OVTI08F4:01 ]] && has_ovti08f4=true
   has_ipu7=false
@@ -167,7 +181,19 @@ if $xps_2026; then
       'dkms status -m ipu7-drivers -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"'
     check 'Intel CVS DKMS built for the running kernel' bash -c \
       'dkms status -m vision-drivers -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"'
-    check_diagnostic 'HAL camera integration and endpoint health' /usr/local/libexec/xps-ipu7-camera-check
+    camera_reboot_pending=false
+    if [[ -r /var/lib/xps-hardware/ipu7/reboot-required ]] &&
+       grep -q "^boot_id=$(cat /proc/sys/kernel/random/boot_id) " \
+         /var/lib/xps-hardware/ipu7/reboot-required; then
+      camera_reboot_pending=true
+      pass 'camera DKMS upgrade is safely awaiting one normal reboot'
+      check_diagnostic 'stock IPU7 ABI guard before pending reboot' \
+        /usr/local/libexec/xps-ipu7-abi-check "$(uname -r)"
+      check_diagnostic 'installed IPU75XA userspace dependency closure' \
+        /usr/local/libexec/xps-ipu7-userspace-check
+    else
+      check_diagnostic 'HAL camera integration and endpoint health' /usr/local/libexec/xps-ipu7-camera-check
+    fi
     check 'WirePlumber suppresses only the duplicate IPU7 paths' bash -c \
       'grep -q "monitor.libcamera.*disabled" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf && grep -q "pci-0000:00:05.0" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf'
     check 'Chrome enables PipeWire camera capture' bash -c \
@@ -195,7 +221,7 @@ if $xps_2026; then
     else
       fail "wireless regulatory domain is not exclusively NL: ${countries//$'\n'/,}"
     fi
-    check 'Fedora timezone-driven regulatory helper is installed' test -x /usr/sbin/setregdomain
+    check 'Fedora timezone-driven regulatory helper is installed' command -v setregdomain
   else
     skip 'wireless interface absent; effective regulatory-domain check'
   fi

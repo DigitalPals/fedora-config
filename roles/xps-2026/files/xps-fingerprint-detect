@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Detect a plausible USB fingerprint reader before installing fprintd. Product
+# strings are authoritative; vendor-only guesses must be unclaimed by a real
+# kernel driver because these vendors also make cameras, touchpads, and touch
+# screens. Tests can point this at a fixture tree without touching sysfs.
+usb_devices_path=${XPS_USB_DEVICES_PATH:-/sys/bus/usb/devices}
+fingerprint_vendors=' 27c6 138a 06cb 08ff 1c7a 147e '
+
+has_kernel_driver() {
+  local interface driver
+
+  for interface in "$1"/*:*; do
+    [[ -e $interface/driver ]] || continue
+    driver=$(readlink -f -- "$interface/driver")
+    [[ ${driver##*/} == usbfs ]] || return 0
+  done
+  return 1
+}
+
+for device in "$usb_devices_path"/*; do
+  [[ -d $device ]] || continue
+
+  vendor=''
+  product_id=''
+  product=''
+  [[ -r $device/idVendor ]] && read -r vendor <"$device/idVendor"
+  [[ -r $device/idProduct ]] && read -r product_id <"$device/idProduct"
+  [[ -r $device/product ]] && read -r product <"$device/product"
+  vendor=${vendor,,}
+  product_id=${product_id,,}
+
+  # Synaptics SVP7500 is the IPU7 camera's USBIO bridge on this XPS. It can be
+  # unbound early in boot, so reject the exact ID before the vendor heuristic.
+  [[ $vendor:$product_id == 06cb:0701 ]] && continue
+
+  product_lower=${product,,}
+  if [[ $product_lower == *fingerprint* ||
+        $product_lower == *biometric* ||
+        $product_lower == *elan:arm-m4* ||
+        $product_lower == 'fpc '* ]]; then
+    printf 'usb=%s:%s product=%s\n' "$vendor" "$product_id" "${product:-unknown}"
+    exit 0
+  fi
+
+  if [[ $fingerprint_vendors == *" $vendor "* ]] &&
+     ! has_kernel_driver "$device"; then
+    printf 'usb=%s:%s product=%s\n' "$vendor" "$product_id" "${product:-unknown}"
+    exit 0
+  fi
+done
+
+exit 1

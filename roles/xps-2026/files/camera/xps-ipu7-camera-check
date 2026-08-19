@@ -9,6 +9,16 @@ check() {
   shift
   if "$@" >/dev/null 2>&1; then pass "$label"; else fail "$label"; fi
 }
+check_diagnostic() {
+  local label=$1 output
+  shift
+  if output=$("$@" 2>&1); then
+    pass "$label"
+  else
+    fail "$label"
+    sed 's/^/      /' <<<"$output" >&2
+  fi
+}
 
 check 'Dell XPS 2026 camera SKU' bash -c "grep -Eq '^(0DB9|0DBA)$' /sys/class/dmi/id/product_sku"
 check 'OVTI08F4 ACPI camera' bash -c 'test -e /sys/bus/acpi/devices/OVTI08F4:00 || test -e /sys/bus/acpi/devices/OVTI08F4:01'
@@ -17,6 +27,10 @@ check 'Fedora-owned Panther Lake IPU7 firmware' bash -c \
   'test -r /usr/lib/firmware/intel/ipu/ipu7ptl_fw.bin || test -r /usr/lib/firmware/intel/ipu/ipu7ptl_fw.bin.xz'
 check 'Fedora stock intel_ipu7 base module retained' bash -c "modinfo -n intel_ipu7 | grep -q '/kernel/'"
 check 'Fedora stock intel_ipu7_isys module retained' bash -c "modinfo -n intel_ipu7_isys | grep -q '/kernel/'"
+check_diagnostic 'Fedora stock IPU7 private ABI matches reviewed PSYS layout' \
+  /usr/local/libexec/xps-ipu7-abi-check "$(uname -r)"
+check_diagnostic 'minimal IPU75XA ELF/config dependency closure' \
+  /usr/local/libexec/xps-ipu7-userspace-check
 for module in intel_ipu7 intel_ipu7_isys intel_ipu7_psys intel_cvs ov08x40 v4l2loopback; do
   check "module loaded: $module" bash -c "grep -q '^${module} ' /proc/modules"
 done

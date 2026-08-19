@@ -33,6 +33,41 @@ pactl list sinks short
 journalctl --user -u xps-speaker-tuning -b
 ```
 
+## Optional fingerprint reader
+
+Fingerprint setup is separately hardware-gated. The detector trusts explicit
+fingerprint/biometric product descriptors and uses a conservative, unbound-USB
+vendor fallback. It explicitly rejects Synaptics `06cb:0701` (SVP7500), which
+is the IPU7 camera's USBIO bridge on the tested XPS 14 rather than a fingerprint
+reader. The tested SKU `0DB9` exposes that bridge but no fingerprint device to
+current `libfprint`, so the role makes no fingerprint package or PAM changes on
+that machine.
+
+If another precisely matched XPS build has a real reader, the role installs
+Fedora's `libfprint`, `fprintd`, and `fprintd-pam` packages. It asks fprintd over
+D-Bus whether the current libfprint release supports the device before enabling
+Fedora's managed `authselect` feature `with-fingerprint`. It never edits PAM
+files directly, does not enable the static D-Bus service manually, and keeps
+`pam_unix` password authentication as the fallback. No fingerprint is enrolled
+during Ansible.
+
+Enroll and test one interactively afterward:
+
+```bash
+fprintd-enroll
+fprintd-list "$USER"
+fprintd-verify
+authselect current --raw
+/usr/local/libexec/xps-fingerprint-check "$USER"
+```
+
+GDM uses Fedora's dedicated fingerprint PAM conversation, while Noctalia talks
+to fprintd for lock-screen verification. Fedora has no stock `authselect`
+feature for inserting a lid-state command into PAM, so the role does not copy
+Omarchy's custom clamshell helper. This does not matter on the tested `0DB9`
+without a reader; on a future reader-equipped configuration, password remains
+available when the reader is inaccessible.
+
 ## OVTI08F4 / IPU7 camera
 
 The camera role additionally requires the `OVTI08F4` ACPI device and Intel PCI
@@ -67,9 +102,28 @@ The source inputs are immutable archives with SHA-256 checksums in
 
 The PSYS patch is deliberately limited to the companion module: it removes an
 out-of-tree debugfs structure member that is not present in Linux 7.1's stock
-IPU7 core and prevents DKMS from compiling or installing base/ISYS. Camera
-source or build failures are non-fatal to the rest of Ansible and are recorded
-in `/var/lib/xps-hardware/ipu7/build-failed.log`.
+IPU7 core and prevents DKMS from compiling or installing base/ISYS. Before each
+DKMS build and camera start, `xps-ipu7-abi-check` reads Fedora's in-tree module
+BTF with `pahole` and compares the private `ipu7_device`, `ipu7_bus_device`, and
+`ipu7_psys_pdata` layouts that PSYS dereferences. This structural guard is not
+tied to an exact kernel version. If Fedora changes that internal ABI, it emits
+`IPU7_STOCK_ABI_CHANGED` and refuses the optional camera build/start while
+leaving the stock modules and normal kernel update path untouched.
+It also refuses DKMS if a future Fedora kernel starts shipping PSYS or CVS
+itself, preventing the optional bundle from shadowing a new native companion.
+
+The local RPM is also validated before packaging. Every staged `libcamhal`, HAL
+plugin, `libgsticamerasrc`, private icamerasrc interface, and included IPU75XA
+binary library is inspected with `readelf` and `ldd`. Missing dependencies fail
+the build, and private dependencies must resolve inside the new stage rather
+than through an older installed camera RPM. The validator also requires the
+OV08X40 AIQB, graph binary, sensor JSON, and common HAL configuration under
+`/etc/camera/ipu75xa`. Runtime checks repeat the closure validation. Camera
+source, ABI, dependency, or build failures remain non-fatal to the rest of
+Ansible and are recorded in `/var/lib/xps-hardware/ipu7/build-failed.log` or
+`/var/lib/xps-hardware/ipu7/abi-failed.log` or
+`/var/lib/xps-hardware/ipu7/dkms-failed.log`. The ABI preflight runs before the
+role prunes or upgrades any previously installed camera DKMS bundle.
 
 ### Secure Boot and kernel updates
 
@@ -94,6 +148,8 @@ dkms status
 modinfo -n intel_ipu7 intel_ipu7_isys intel_ipu7_psys intel_cvs
 systemctl status xps-ipu7-camera xps-ipu7-camera-init v4l2-relayd@ipu7
 journalctl -k -b | grep -Ei 'ipu7|intel_cvs|ov08x40'
+/usr/local/libexec/xps-ipu7-abi-check "$(uname -r)"
+/usr/local/libexec/xps-ipu7-userspace-check
 /usr/local/libexec/xps-ipu7-camera-check
 ```
 
@@ -133,10 +189,16 @@ media driver, oneVPL's `libvpl` dispatcher and `intel-vpl-gpu-rt`, and
 source-build dependencies for the hardware-gated camera RPM are installed only
 when that camera is detected.
 
-Fedora's `/usr/sbin/setregdomain` derives the regulatory country from the
-configured `Europe/Amsterdam` timezone; no Arch-style override is installed.
+Fedora's `setregdomain` (resolved through `PATH`, currently packaged under
+`/usr/bin`) derives the regulatory country from the configured
+`Europe/Amsterdam` timezone; no Arch-style override is installed.
 `./verify` requires the effective global and self-managed phy domains to be
 `NL`. Wi-Fi 7/EHT remains enabled.
+
+```bash
+command -v setregdomain
+iw reg get
+```
 
 ## Intentional stock-kernel gap
 

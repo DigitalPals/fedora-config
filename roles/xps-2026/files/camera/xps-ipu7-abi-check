@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""Refuse PSYS use when Fedora's in-tree IPU7 private ABI has changed."""
+
+from __future__ import annotations
+
+import gzip
+import lzma
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+class AbiChanged(RuntimeError):
+    pass
+
+
+# PSYS dereferences these private structures allocated/owned by the in-tree
+# base driver. This signature was recorded from Fedora 44's stock IPU7 BTF;
+# checking offsets (rather than a kernel version) permits harmless kernel
+# updates while refusing a layout that this compatibility patch has not seen.
+EXPECTED = {
+    "ipu7_device": (
+        304,
+        (
+            ("pdev", 0),
+            ("devices", 8),
+            ("isys", 24),
+            ("psys", 32),
+            ("buttress", 40),
+            ("cpd_fw", 256),
+            ("cpd_fw_name", 264),
+            ("fw_code_region", 272),
+            ("base", 280),
+            ("pb_base", 288),
+            ("hw_ver", 296),
+            ("ipc_reinit", 297),
+            ("secure_mode", 298),
+            ("ipu7_bus_ready_to_probe", 299),
+        ),
+    ),
+    "ipu7_bus_device": (
+        992,
+        (
+            ("auxdev", 0),
+            ("auxdrv", 856),
+            ("auxdrv_data", 864),
+            ("list", 872),
+            ("subsys", 888),
+            ("pdata", 896),
+            ("mmu", 904),
+            ("isp", 912),
+            ("ctrl", 920),
+            ("dma_mask", 928),
+            ("fw_sgt", 936),
+            ("fw_entry", 952),
+            ("syscom", 960),
+            ("boot_config", 968),
+            ("boot_config_dma_addr", 976),
+            ("boot_config_size", 984),
+        ),
+    ),
+    "ipu7_psys_pdata": (
+        16,
+        (("base", 0), ("ipdata", 8)),
+    ),
+}
+
+
+MEMBER_RE = re.compile(
+    r"^\s*.*?\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^]]+\])?;"
+    r"\s*/\*\s*(\d+)\s+\d+\s*\*/\s*$"
+)
+SIZE_RE = re.compile(r"/\*\s*size:\s*(\d+),.*members:\s*(\d+)\s*\*/")
+
+
+def run(argv: list[str], *, text: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(argv, check=False, capture_output=True, text=text)
+
+
+def command_output(argv: list[str]) -> str:
+    result = run(argv)
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()
+        raise AbiChanged(f"command failed ({' '.join(argv)}): {detail}")
+    return result.stdout.strip()
+
+
+def parse_layout(output: str) -> tuple[int, tuple[tuple[str, int], ...]]:
+    members: list[tuple[str, int]] = []
+    size = None
+    declared_members = None
+    for line in output.splitlines():
+        if match := MEMBER_RE.match(line):
+            members.append((match.group(1), int(match.group(2))))
+        if match := SIZE_RE.search(line):
+            size = int(match.group(1))
+            declared_members = int(match.group(2))
+    if size is None or declared_members is None or len(members) != declared_members:
+        raise AbiChanged("could not parse a complete structure layout from module BTF")
+    return size, tuple(members)
+
+
+def unpack_module(source: Path, destination: Path) -> None:
+    if source.suffix == ".xz":
+        with lzma.open(source, "rb") as incoming, destination.open("wb") as outgoing:
+            shutil.copyfileobj(incoming, outgoing)
+    elif source.suffix == ".gz":
+        with gzip.open(source, "rb") as incoming, destination.open("wb") as outgoing:
+            shutil.copyfileobj(incoming, outgoing)
+    elif source.suffix == ".zst":
+        with destination.open("wb") as outgoing:
+            result = subprocess.run(
+                ["zstd", "--quiet", "--decompress", "--stdout", str(source)],
+                check=False,
+                stdout=outgoing,
+                stderr=subprocess.PIPE,
+            )
+        if result.returncode:
+            detail = result.stderr.decode().strip()
+            raise AbiChanged(f"cannot decompress {source}: {detail}")
+    elif source.suffix == ".ko":
+        shutil.copyfile(source, destination)
+    else:
+        raise AbiChanged(f"unsupported stock-module compression: {source}")
+
+
+def stock_module(kernel: str, name: str) -> Path:
+    path = Path(command_output(["modinfo", "-k", kernel, "-n", name]))
+    intree = command_output(["modinfo", "-k", kernel, "-F", "intree", name])
+    try:
+        relative = path.resolve().relative_to(Path(f"/usr/lib/modules/{kernel}/kernel"))
+    except ValueError as error:
+        raise AbiChanged(f"{name} is not Fedora's in-tree module: {path}") from error
+    if not relative.parts or intree != "Y":
+        raise AbiChanged(f"{name} does not report intree=Y: {path}")
+    return path
+
+
+def check_kernel(kernel: str) -> None:
+    if not shutil.which("pahole"):
+        raise AbiChanged("pahole is missing (install Fedora's dwarves package)")
+
+    kernel_modules = Path(f"/usr/lib/modules/{kernel}/kernel")
+    for companion in ("intel-ipu7-psys.ko*", "intel_cvs.ko*"):
+        native = next(kernel_modules.rglob(companion), None)
+        if native is not None:
+            raise AbiChanged(
+                f"Fedora now provides the companion {native.name} in-tree; "
+                "refusing to shadow it with this DKMS bundle"
+            )
+
+    base_module = stock_module(kernel, "intel_ipu7")
+    stock_module(kernel, "intel_ipu7_isys")
+    kernel_tree = Path(f"/usr/src/kernels/{kernel}")
+    extractor = kernel_tree / "scripts/extract-vmlinux"
+    vmlinuz_candidates = (
+        Path(f"/usr/lib/modules/{kernel}/vmlinuz"),
+        Path(f"/boot/vmlinuz-{kernel}"),
+    )
+    vmlinuz = next((path for path in vmlinuz_candidates if path.is_file()), None)
+    if not extractor.is_file() or vmlinuz is None:
+        raise AbiChanged(f"kernel-devel/vmlinuz inputs are missing for {kernel}")
+
+    with tempfile.TemporaryDirectory(prefix="xps-ipu7-abi.") as work_text:
+        work = Path(work_text)
+        vmlinux = work / "vmlinux"
+        module = work / "intel-ipu7.ko"
+        with vmlinux.open("wb") as output:
+            result = subprocess.run(
+                [str(extractor), str(vmlinuz)],
+                check=False,
+                stdout=output,
+                stderr=subprocess.PIPE,
+            )
+        if result.returncode or not vmlinux.stat().st_size:
+            raise AbiChanged(
+                f"could not extract Fedora vmlinux BTF: {result.stderr.decode().strip()}"
+            )
+        unpack_module(base_module, module)
+
+        for structure, expected in EXPECTED.items():
+            result = run(
+                [
+                    "pahole",
+                    f"--btf_base={vmlinux}",
+                    "-F",
+                    "btf",
+                    "-C",
+                    structure,
+                    str(module),
+                ]
+            )
+            if result.returncode:
+                raise AbiChanged(f"stock module lacks BTF for struct {structure}")
+            actual = parse_layout(result.stdout)
+            if actual != expected:
+                raise AbiChanged(
+                    f"struct {structure} layout differs: expected {expected}, got {actual}"
+                )
+
+
+def self_test() -> None:
+    fixture = """
+struct sample {
+        void * base; /* 0 8 */
+        const void * ipdata; /* 8 8 */
+        /* size: 16, cachelines: 1, members: 2 */
+};
+"""
+    assert parse_layout(fixture) == (16, (("base", 0), ("ipdata", 8)))
+    try:
+        parse_layout(fixture.replace("members: 2", "members: 3"))
+    except AbiChanged:
+        pass
+    else:
+        raise AssertionError("incomplete layout was accepted")
+    print("IPU7 ABI parser self-test passed")
+
+
+def main() -> int:
+    if len(sys.argv) == 2 and sys.argv[1] == "--self-test":
+        self_test()
+        return 0
+    kernel = sys.argv[1] if len(sys.argv) == 2 else command_output(["uname", "-r"])
+    try:
+        check_kernel(kernel)
+    except AbiChanged as error:
+        print(
+            "IPU7_STOCK_ABI_CHANGED: Fedora's stock IPU7 ABI no longer matches "
+            f"the reviewed PSYS compatibility layer for {kernel}: {error}. "
+            "The optional camera stack will not build or start; Fedora's stock "
+            "intel_ipu7 and intel_ipu7_isys modules remain untouched.",
+            file=sys.stderr,
+        )
+        return 78
+    print(f"IPU7_STOCK_ABI_OK kernel={kernel}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

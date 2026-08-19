@@ -18,6 +18,11 @@ esac
 [[ $(cat /sys/bus/pci/devices/0000:00:05.0/device 2>/dev/null) == 0xb05d ]] \
   || die 'PCI function is not Panther Lake IPU7 (8086:b05d)'
 
+/usr/local/libexec/xps-ipu7-abi-check "$(uname -r)" \
+  || die "Fedora's stock IPU7 ABI changed; PSYS compatibility needs review"
+/usr/local/libexec/xps-ipu7-userspace-check \
+  || die 'the installed minimal IPU7 userspace dependency closure is incomplete'
+
 reboot_marker=/var/lib/xps-hardware/ipu7/reboot-required
 if [[ -r $reboot_marker ]]; then
   current_boot=$(cat /proc/sys/kernel/random/boot_id)

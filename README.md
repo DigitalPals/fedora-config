@@ -28,8 +28,9 @@ commit-pinned variable font and license, then verifies both checksums.
 
 The hardware-gated `xps-2026` role supports Dell XPS 14/16 2026 SKUs `0DB9`
 and `0DBA`: internal-speaker PipeWire tuning, the OVTI08F4/IPU7 camera path,
-configurable Synaptics haptics, explicit Panther Lake media/firmware RPMs, and
-Netherlands wireless-regulatory verification. The camera's missing PSYS/CVS
+configurable Synaptics haptics, hardware-gated Fedora fingerprint support,
+explicit Panther Lake media/firmware RPMs, and Netherlands wireless-regulatory
+verification. The camera's missing PSYS/CVS
 companions use signed DKMS modules; IPU7 base/ISYS and the entire kernel remain
 Fedora stock. Omarchy's custom Panther Lake kernel and display patches are
 intentionally not included.
@@ -113,7 +114,7 @@ use `--full` before Ansible arguments, for example `./update --full --check
 
 | Document | Purpose |
 | --- | --- |
-| [docs/xps-2026-hardware.md](docs/xps-2026-hardware.md) | XPS 2026 speaker, IPU7 camera, haptics, Secure Boot, and diagnostics |
+| [docs/xps-2026-hardware.md](docs/xps-2026-hardware.md) | XPS 2026 speaker, camera, fingerprint, haptics, Secure Boot, and diagnostics |
 
 The automated side is `./verify`, which validates the managed Noctalia and XPS
 hardware configuration before the installed-system checks.

@@ -10,6 +10,8 @@
       - v4l-utils
       - gcc
       - gcc-c++
+      - binutils
+      - zstd
       - make
       - cmake
       - autoconf
@@ -27,6 +29,8 @@
       - gstreamer1-plugins-bad-free
       - rpm-build
       - mokutil
+      # pahole reads the stock module's BTF before any PSYS DKMS build/start.
+      - dwarves
     state: present
   register: xps_2026_camera_dependencies
   failed_when: false
@@ -90,6 +94,18 @@
       dest: /usr/local/share/xps-2026/camera/patches/0005-ipu7-psys-stock-core-layout.patch
     - src: camera/xps-ipu7-camera-stack.spec
       dest: /usr/local/share/xps-2026/camera/xps-ipu7-camera-stack.spec
+  tags: [xps-2026, hardware, camera]
+
+- name: Install the IPU7 ABI and userspace closure guards
+  ansible.builtin.copy:
+    src: "camera/{{ item }}"
+    dest: "/usr/local/libexec/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - xps-ipu7-abi-check
+    - xps-ipu7-userspace-check
   tags: [xps-2026, hardware, camera]
 
 - name: Install the pinned IPU7 build and DKMS manager
@@ -194,6 +210,56 @@
   when: xps_2026_camera_build_succeeded | bool
   tags: [xps-2026, hardware, camera]
 
+- name: Preflight Fedora's stock IPU7 ABI before changing installed DKMS state
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/xps-ipu7-abi-check
+      - "{{ ansible_facts.kernel }}"
+  register: xps_2026_camera_abi_preflight
+  changed_when: false
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_build_succeeded | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Record whether the optional stock-core compatibility boundary is safe
+  ansible.builtin.set_fact:
+    xps_2026_camera_abi_ready: >-
+      {{ not ansible_check_mode
+         and xps_2026_camera_build_succeeded | bool
+         and (xps_2026_camera_abi_preflight.rc | default(1) | int) == 0 }}
+  tags: [xps-2026, hardware, camera]
+
+- name: Save an isolated stock IPU7 ABI refusal diagnostic
+  ansible.builtin.copy:
+    dest: /var/lib/xps-hardware/ipu7/abi-failed.log
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      The optional Panther Lake camera compatibility layer was refused before
+      any installed DKMS state changed. Fedora's stock IPU7 ABI needs review.
+      rc={{ xps_2026_camera_abi_preflight.rc | default('not-run') }}
+
+      stdout:
+      {{ xps_2026_camera_abi_preflight.stdout | default('') | indent(6, true) }}
+
+      stderr:
+      {{ xps_2026_camera_abi_preflight.stderr | default('') | indent(6, true) }}
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_build_succeeded | bool
+    - not xps_2026_camera_abi_ready | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Clear stale stock IPU7 ABI refusal diagnostics
+  ansible.builtin.file:
+    path: /var/lib/xps-hardware/ipu7/abi-failed.log
+    state: absent
+  when: xps_2026_camera_abi_ready | bool
+  tags: [xps-2026, hardware, camera]
+
 - name: Retire older role-managed IPU7 DKMS bundles before the RPM upgrade
   ansible.builtin.command:
     argv: [/usr/local/libexec/xps-ipu7-build, prune-dkms]
@@ -203,6 +269,7 @@
   when:
     - not ansible_check_mode
     - xps_2026_camera_build_succeeded | bool
+    - xps_2026_camera_abi_ready | bool
   tags: [xps-2026, hardware, camera]
 
 - name: Install the locally built, RPM-managed IPU7 userspace and DKMS sources
@@ -215,6 +282,7 @@
   when:
     - not ansible_check_mode
     - xps_2026_camera_build_succeeded | bool
+    - xps_2026_camera_abi_ready | bool
   tags: [xps-2026, hardware, camera]
 
 - name: Report an optional local camera RPM installation failure
@@ -226,6 +294,7 @@
   when:
     - not ansible_check_mode
     - xps_2026_camera_build_succeeded | bool
+    - xps_2026_camera_abi_ready | bool
     - (xps_2026_camera_rpm_install.rc | default(-1) | int) != 0
   tags: [xps-2026, hardware, camera]
 
@@ -245,6 +314,7 @@
   when:
     - not ansible_check_mode
     - xps_2026_camera_build_succeeded | bool
+    - xps_2026_camera_abi_ready | bool
     - (xps_2026_camera_rpm_install.rc | default(-1) | int) == 0
     - xps_2026_icamerasrc.stat.exists
   tags: [xps-2026, hardware, camera]
@@ -261,8 +331,37 @@
   when:
     - not ansible_check_mode
     - xps_2026_camera_build_succeeded | bool
+    - xps_2026_camera_abi_ready | bool
     - (xps_2026_camera_rpm_install.rc | default(-1) | int) == 0
     - xps_2026_icamerasrc.stat.exists
+  tags: [xps-2026, hardware, camera]
+
+- name: Save isolated IPU7 DKMS and stock-ABI diagnostics
+  ansible.builtin.copy:
+    dest: /var/lib/xps-hardware/ipu7/dkms-failed.log
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      The optional Panther Lake PSYS/CVS DKMS installation was refused or failed.
+      rc={{ xps_2026_camera_dkms.rc | default('not-run') }}
+
+      stdout:
+      {{ xps_2026_camera_dkms.stdout | default('') | indent(6, true) }}
+
+      stderr:
+      {{ xps_2026_camera_dkms.stderr | default('') | indent(6, true) }}
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_abi_ready | bool
+    - (xps_2026_camera_dkms.rc | default(-1) | int) not in [0, 5]
+  tags: [xps-2026, hardware, camera]
+
+- name: Clear stale IPU7 DKMS failure diagnostics
+  ansible.builtin.file:
+    path: /var/lib/xps-hardware/ipu7/dkms-failed.log
+    state: absent
+  when: (xps_2026_camera_dkms.rc | default(-1) | int) in [0, 5]
   tags: [xps-2026, hardware, camera]
 
 - name: Record whether the camera kernel extensions are usable now
@@ -282,8 +381,14 @@
   ansible.builtin.debug:
     msg: >-
       The camera userspace may be installed, but its kernel extensions are not
-      usable yet. {{ xps_2026_camera_dkms.stderr | default('DKMS was not run.') }}
-      See /var/lib/xps-hardware/ipu7/build-failed.log and
+      usable yet.
+      {{ xps_2026_camera_abi_preflight.stderr | default('') }}
+      {{ xps_2026_camera_dkms.stderr | default('DKMS was not run.') }}
+      An IPU7_STOCK_ABI_CHANGED diagnostic means Fedora changed the private
+      in-tree IPU7 layout and this optional compatibility layer needs review.
+      See /var/lib/xps-hardware/ipu7/build-failed.log,
+      /var/lib/xps-hardware/ipu7/abi-failed.log,
+      /var/lib/xps-hardware/ipu7/dkms-failed.log, and
       docs/xps-2026-hardware.md. The rest of the play continues.
   when:
     - not ansible_check_mode

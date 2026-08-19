@@ -31,9 +31,9 @@ index e3db2d4..8de8c52 100644
 +# their missing PSYS companion so DKMS cannot replace the in-tree modules.
 +if ! version_lt ${KERNEL_VERSION} ${KV_IPU7_ISYS}; then
 +    if [ -n "$BUILD_INTEL_IPU_ACPI" ]; then
-+        MAKE="make IPU7_PSYS_ONLY=1 BUILD_INTEL_IPU_ACPI=1 all-acpi KERNELRELEASE=$kernelver KERNEL_SRC=$kernel_source_dir"
++        MAKE="./xps-ipu7-abi-check $kernelver && make IPU7_PSYS_ONLY=1 BUILD_INTEL_IPU_ACPI=1 all-acpi KERNELRELEASE=$kernelver KERNEL_SRC=$kernel_source_dir"
 +    else
-+        MAKE="make IPU7_PSYS_ONLY=1 KERNELRELEASE=$kernelver KERNEL_SRC=$kernel_source_dir"
++        MAKE="./xps-ipu7-abi-check $kernelver && make IPU7_PSYS_ONLY=1 KERNELRELEASE=$kernelver KERNEL_SRC=$kernel_source_dir"
 +    fi
 +fi
 +

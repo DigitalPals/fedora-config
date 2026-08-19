@@ -104,6 +104,8 @@ build_rpm() {
     "$stage/usr/src/vision-drivers-$bundle_version"
   cp -a "$work/ipu7-drivers/." "$stage/usr/src/ipu7-drivers-$bundle_version/"
   cp -a "$work/vision-drivers/." "$stage/usr/src/vision-drivers-$bundle_version/"
+  install -m 0755 /usr/local/libexec/xps-ipu7-abi-check \
+    "$stage/usr/src/ipu7-drivers-$bundle_version/xps-ipu7-abi-check"
   sed -i "s/^PACKAGE_VERSION=.*/PACKAGE_VERSION=\"$bundle_version\"/" \
     "$stage/usr/src/ipu7-drivers-$bundle_version/dkms.conf"
   sed -i \
@@ -116,6 +118,12 @@ build_rpm() {
   # icamerasrc. Static archives and libtool metadata are deliberately omitted.
   rm -rf -- "$stage/usr/include" "$stage/usr/lib64/pkgconfig"
   find "$stage" -type f \( -name '*.a' -o -name '*.la' \) -delete
+
+  # Keep the binary package deliberately small, but prove it is a complete
+  # runtime. The validator checks every staged HAL/plugin/icamerasrc/IPU75XA
+  # ELF with readelf+ldd, rejects dependencies resolved from an older installed
+  # camera package, and requires the target OV08X40 config/data set.
+  /usr/local/libexec/xps-ipu7-userspace-check --root "$stage"
 
   install -d -m 0755 "$stage/usr/share/licenses/xps-ipu7-camera-stack"
   install -m 0644 "$work/ipu7-drivers/LICENSE" \
@@ -182,6 +190,14 @@ install_dkms() {
   kernel=${2:-$(uname -r)}
   [[ -d /usr/src/ipu7-drivers-$bundle_version ]]
   [[ -d /usr/src/vision-drivers-$bundle_version ]]
+
+  # Run this explicitly for a useful Ansible diagnostic. The same check is
+  # embedded in the IPU7 DKMS MAKE command, so future automatic rebuilds also
+  # stop before compiling against an unreviewed Fedora stock-core layout.
+  if ! /usr/src/ipu7-drivers-$bundle_version/xps-ipu7-abi-check "$kernel"; then
+    echo "IPU7_STOCK_ABI_CHANGED: refusing optional PSYS/CVS installation for $kernel" >&2
+    return 78
+  fi
 
   # RPM Fusion akmods and DKMS share one locally generated signing key. This
   # makes Secure Boot enrollment a single, explicit owner action.

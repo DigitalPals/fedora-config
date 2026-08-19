@@ -52,6 +52,22 @@
   when: not xps_2026_is_supported | bool
   tags: [always]
 
+- name: Detect a real fingerprint reader without mistaking the IPU7 USB bridge
+  ansible.builtin.script: xps-fingerprint-detect
+  register: xps_2026_fingerprint_probe
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: xps_2026_is_supported | bool
+  tags: [always, xps-2026, hardware, fingerprint]
+
+- name: Record the optional fingerprint hardware gate
+  ansible.builtin.set_fact:
+    xps_2026_has_fingerprint: >-
+      {{ xps_2026_is_supported | bool
+         and (xps_2026_fingerprint_probe.rc | default(1) | int) == 0 }}
+  tags: [always, xps-2026, hardware, fingerprint]
+
 - name: Install explicit Panther Lake media and firmware support
   ansible.builtin.import_tasks: packages.yml
   when: xps_2026_is_supported | bool
@@ -67,6 +83,12 @@
   when:
     - xps_2026_is_supported | bool
     - xps_2026_has_touchpad | bool
+
+- name: Configure an optional Fedora-supported fingerprint reader
+  ansible.builtin.import_tasks: fingerprint.yml
+  when:
+    - xps_2026_is_supported | bool
+    - xps_2026_has_fingerprint | bool
 
 - name: Configure the Panther Lake IPU7 internal camera
   ansible.builtin.import_tasks: camera.yml
