@@ -1,0 +1,18 @@
+#!/usr/bin/bash
+# Stop the userspace relay before suspend; restarting kernel IPU7 modules in a
+# sleep hook is intentionally avoided because it makes stock-kernel PM fragile.
+case "${1:-}" in
+  pre)
+    systemctl stop v4l2-relayd@ipu7.service >/dev/null 2>&1 || true
+    ;;
+  post)
+    systemd-run --no-block --collect --unit=xps-ipu7-camera-resume \
+      /usr/bin/bash -c '
+        sleep 2
+        systemctl restart xps-ipu7-camera-init.service || exit 1
+        systemctl reset-failed v4l2-relayd@ipu7.service || true
+        systemctl start v4l2-relayd@ipu7.service
+      ' >/dev/null 2>&1 || true
+    ;;
+esac
+exit 0

@@ -10,9 +10,20 @@ warnings=0
 pass() { printf '\033[32mPASS\033[0m  %s\n' "$*"; }
 fail() { printf '\033[31mFAIL\033[0m  %s\n' "$*"; failures=$((failures + 1)); }
 warn() { printf '\033[33mWARN\033[0m  %s\n' "$*"; warnings=$((warnings + 1)); }
+skip() { printf '\033[36mSKIP\033[0m  %s\n' "$*"; }
 check() {
   local label=$1; shift
   if "$@" >/dev/null 2>&1; then pass "$label"; else fail "$label"; fi
+}
+check_diagnostic() {
+  local label=$1 output
+  shift
+  if output=$("$@" 2>&1); then
+    pass "$label"
+  else
+    fail "$label"
+    sed 's/^/      /' <<<"$output"
+  fi
 }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 unit_enabled() { systemctl is-enabled --quiet "$1"; }
@@ -100,7 +111,6 @@ else
 fi
 check 'Intel graphics uses the xe driver' bash -c "lspci -k | grep -A4 -Ei 'VGA|Display' | grep -q 'Kernel driver in use: xe'"
 check 'Intel Wi-Fi uses iwlwifi' bash -c "lspci -k | grep -A4 -Ei 'Network|Wireless' | grep -q 'Kernel driver in use: iwlwifi'"
-check 'XPS touchpad is visible to libinput' bash -c "sudo -n libinput list-devices | grep -Eqi 'Touchpad|06CB'"
 if command_exists mokutil; then
   mokutil --sb-state >/dev/null 2>&1 && pass 'Secure Boot state is readable' || warn 'Secure Boot state could not be read'
 fi
@@ -108,9 +118,90 @@ for forbidden in xps-bios-fan-control mic-led-sync tlp; do
   systemctl list-unit-files "$forbidden.service" --no-legend 2>/dev/null | grep -q . \
     && fail "excluded unit exists: $forbidden" || pass "excluded unit absent: $forbidden"
 done
-check 'XPS haptic touchpad service is enabled' unit_enabled xps-haptic-touchpad.service
-check 'XPS haptic touchpad service is active' unit_active xps-haptic-touchpad.service
-check 'XPS haptic touchpad restorer is installed' test -x /usr/local/libexec/xps-haptic-touchpad
+
+product_sku=$(tr -d '[:space:]' </sys/class/dmi/id/product_sku 2>/dev/null || true)
+product_name=$(tr -d '\n' </sys/class/dmi/id/product_name 2>/dev/null || true)
+xps_2026=false
+if [[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == 'Dell Inc.' ]] &&
+   [[ $product_sku == 0DB9 || $product_sku == 0DBA ]] &&
+   [[ $product_name =~ XPS[[:space:]](14|16)|DA(14|16)260 ]] &&
+   grep -Eqi 'Intel.*(Ultra|X7)|Panther Lake' /proc/cpuinfo; then
+  xps_2026=true
+fi
+
+if $xps_2026; then
+  pass "precise XPS 2026 hardware gate (SKU $product_sku)"
+
+  panther_packages=(
+    alsa-sof-firmware linux-firmware cirrus-audio-firmware
+    intel-audio-firmware intel-gpu-firmware intel-vsc-firmware
+    iwlwifi-mld-firmware libva-intel-media-driver libvpl intel-vpl-gpu-rt
+    wireless-regdb pipewire-module-filter-chain-lv2 lsp-plugins-lv2
+  )
+  check 'explicit Panther Lake media/firmware RPMs' rpm -q "${panther_packages[@]}"
+
+  check 'XPS speaker tuning user unit is enabled' systemctl --user is-enabled --quiet xps-speaker-tuning.service
+  check 'XPS speaker tuning user unit is active' user_unit_active xps-speaker-tuning.service
+  check '13-biquad/limiter graph targets only the internal speaker' /usr/local/libexec/xps-speaker-tuning check
+  check 'desktop volume controls resolve the tuned physical sink' \
+    grep -q '/usr/local/libexec/xps-speaker-tuning control' "$HOME/.config/hypr/bindings.lua"
+
+  if [[ -e /sys/bus/i2c/devices/i2c-VEN_06CB:00 ]]; then
+    check 'XPS touchpad is visible to libinput' bash -c "sudo -n libinput list-devices | grep -Eqi 'Touchpad|06CB'"
+    check 'XPS haptic touchpad service is enabled' unit_enabled xps-haptic-touchpad.service
+    check 'XPS haptic touchpad service is active' unit_active xps-haptic-touchpad.service
+    check 'XPS haptic configuration/readback probe' sudo -n /usr/local/libexec/xps-haptic-touchpad --check
+    check 'XPS haptic controller power rules retained' \
+      grep -q 'i2c_designware[.]0.*power/control.*on' /etc/udev/rules.d/80-xps-haptic-touchpad.rules
+  else
+    skip 'Synaptics 06CB haptic controller absent; touchpad-specific checks'
+  fi
+
+  has_ovti08f4=false
+  [[ -e /sys/bus/acpi/devices/OVTI08F4:00 || -e /sys/bus/acpi/devices/OVTI08F4:01 ]] && has_ovti08f4=true
+  has_ipu7=false
+  lspci -Dn -d 8086:b05d 2>/dev/null | grep -q '8086:b05d' && has_ipu7=true
+  if $has_ovti08f4 && $has_ipu7; then
+    check 'local IPU7 userspace/DKMS RPM installed' rpm -q xps-ipu7-camera-stack
+    check 'IPU7 PSYS DKMS built for the running kernel' bash -c \
+      'dkms status -m ipu7-drivers -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"'
+    check 'Intel CVS DKMS built for the running kernel' bash -c \
+      'dkms status -m vision-drivers -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"'
+    check_diagnostic 'HAL camera integration and endpoint health' /usr/local/libexec/xps-ipu7-camera-check
+    check 'WirePlumber suppresses only the duplicate IPU7 paths' bash -c \
+      'grep -q "monitor.libcamera.*disabled" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf && grep -q "pci-0000:00:05.0" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf'
+    check 'Chrome enables PipeWire camera capture' bash -c \
+      'grep -q "PipeWireCamera" "$HOME/.config/hypr/bindings.lua" && grep -q "PipeWireCamera" "$HOME/.local/share/applications/google-chrome.desktop"'
+
+    if mokutil --sb-state 2>/dev/null | grep -qi enabled; then
+      check 'camera module signing key is enrolled for Secure Boot' \
+        mokutil --test-key /etc/pki/akmods/certs/public_key.der
+      check 'IPU7 PSYS module carries a signature' bash -c \
+        '[[ -n $(modinfo -F signer intel_ipu7_psys 2>/dev/null) ]]'
+      check 'Intel CVS module carries a signature' bash -c \
+        '[[ -n $(modinfo -F signer intel_cvs 2>/dev/null) ]]'
+    else
+      warn 'Secure Boot is disabled; camera modules are signed but MOK enforcement was not exercised'
+    fi
+  else
+    skip 'OVTI08F4/8086:b05d pair absent; IPU7 camera checks'
+  fi
+
+  if command_exists iw && iw dev 2>/dev/null | grep -q '^Interface\|^[[:space:]]*Interface'; then
+    regulatory=$(iw reg get 2>/dev/null || true)
+    countries=$(sed -n 's/^[[:space:]]*country \([A-Z0-9][A-Z0-9]\):.*/\1/p' <<<"$regulatory")
+    if [[ -n $countries ]] && ! grep -qvx NL <<<"$countries"; then
+      pass 'effective wireless regulatory domains are NL (DFS-ETSI)'
+    else
+      fail "wireless regulatory domain is not exclusively NL: ${countries//$'\n'/,}"
+    fi
+    check 'Fedora timezone-driven regulatory helper is installed' test -x /usr/sbin/setregdomain
+  else
+    skip 'wireless interface absent; effective regulatory-domain check'
+  fi
+else
+  skip 'precise Dell XPS 2026 SKU gate not matched; new hardware-role checks'
+fi
 
 check 'GDM retains GNOME session' bash -c 'compgen -G "/usr/share/wayland-sessions/*gnome*.desktop" >/dev/null'
 check 'Hyprland Quickshell GDM session exists' test -r /usr/share/wayland-sessions/hyprland-quickshell.desktop

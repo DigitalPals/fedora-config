@@ -17,7 +17,19 @@ import "Format.js" as Format
 Singleton {
     id: root
 
-    readonly property var sink: Pipewire.defaultAudioSink
+    // The XPS speaker filter is a virtual sink in front of the physical
+    // speakers. Keep the virtual node at unity gain and expose the underlying
+    // speaker as the control sink; external outputs continue to use the normal
+    // PipeWire default directly.
+    readonly property var outputSink: Pipewire.defaultAudioSink
+    readonly property var tuningSink: Pipewire.nodes.values.find(n =>
+        n.isSink && !n.isStream && n.name === "xps_speaker_tuning") ?? null
+    readonly property var speakerSink: Pipewire.nodes.values.find(n =>
+        n.isSink && !n.isStream
+            && /^alsa_output.*sof_sdw.*HiFi__Speaker__sink$/.test(n.name || "")) ?? null
+    readonly property bool tuningPresent: tuningSink !== null
+    readonly property var sink: outputSink === tuningSink && speakerSink !== null
+        ? speakerSink : outputSink
     readonly property var source: Pipewire.defaultAudioSource
 
     // A node exists before its audio group arrives, so "there is a sink"
@@ -72,6 +84,6 @@ Singleton {
     }
 
     PwObjectTracker {
-        objects: [Pipewire.defaultAudioSink, Pipewire.defaultAudioSource]
+        objects: [root.outputSink, root.sink, Pipewire.defaultAudioSource]
     }
 }

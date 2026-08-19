@@ -8,17 +8,3 @@
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
   failed_when: false
-
-- name: Reload systemd for haptic touchpad
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-
-- name: Reload udev for haptic touchpad
-  ansible.builtin.command: udevadm control --reload
-  changed_when: true
-
-- name: Restart XPS haptic touchpad
-  ansible.builtin.systemd_service:
-    name: xps-haptic-touchpad.service
-    state: restarted
-  when: not ansible_check_mode

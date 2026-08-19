@@ -1,0 +1,468 @@
+---
+- name: Install Fedora-native camera runtime and build dependencies
+  ansible.builtin.dnf:
+    name:
+      - dkms
+      - kernel-devel-matched
+      - akmod-v4l2loopback
+      - v4l2loopback
+      - v4l2-relayd
+      - v4l-utils
+      - gcc
+      - gcc-c++
+      - make
+      - cmake
+      - autoconf
+      - automake
+      - libtool
+      - patch
+      - pkgconf-pkg-config
+      - expat-devel
+      - jsoncpp-devel
+      - libdrm-devel
+      - gstreamer1-devel
+      - gstreamer1-plugins-base-devel
+      - gstreamer1-plugins-base
+      - gstreamer1-plugins-good
+      - gstreamer1-plugins-bad-free
+      - rpm-build
+      - mokutil
+    state: present
+  register: xps_2026_camera_dependencies
+  failed_when: false
+  when: not ansible_check_mode
+  tags: [xps-2026, hardware, camera]
+
+- name: Record whether the optional camera dependencies are available
+  ansible.builtin.set_fact:
+    xps_2026_camera_dependencies_ready: >-
+      {{ ansible_check_mode
+         or (xps_2026_camera_dependencies.rc | default(1) | int) == 0 }}
+  tags: [xps-2026, hardware, camera]
+
+- name: Report unavailable optional camera dependencies
+  ansible.builtin.debug:
+    msg: >-
+      Fedora/RPM Fusion camera dependencies could not be installed, so only
+      the IPU7 camera portion is skipped. DNF reported:
+      {{ xps_2026_camera_dependencies.msg | default('unknown package error') }}
+  when:
+    - not ansible_check_mode
+    - not xps_2026_camera_dependencies_ready | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: End this hardware role after an optional camera dependency failure
+  ansible.builtin.meta: end_role
+  when: not xps_2026_camera_dependencies_ready | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Create the managed IPU7 source, build, and state directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /var/cache/xps-ipu7/sources, mode: "0755" }
+    - { path: /var/cache/xps-ipu7/rpms, mode: "0755" }
+    - { path: /var/lib/xps-hardware/ipu7, mode: "0755" }
+    - { path: /usr/local/share/xps-2026/camera/patches, mode: "0755" }
+    - { path: /etc/dkms/framework.conf.d, mode: "0755" }
+    - { path: /etc/wireplumber/wireplumber.conf.d, mode: "0755" }
+    - { path: /etc/v4l2-relayd.d, mode: "0755" }
+    - { path: /etc/systemd/system/v4l2-relayd@ipu7.service.d, mode: "0755" }
+  tags: [xps-2026, hardware, camera]
+
+- name: Install the pinned Fedora IPU7 build inputs
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: camera/patches/0003-vision-ptl-cvs-owns-rgb-power.patch
+      dest: /usr/local/share/xps-2026/camera/patches/0003-vision-ptl-cvs-owns-rgb-power.patch
+    - src: camera/patches/0004-ipu7-psys-register-bus.patch
+      dest: /usr/local/share/xps-2026/camera/patches/0004-ipu7-psys-register-bus.patch
+    - src: camera/patches/0005-ipu7-psys-stock-core-layout.patch
+      dest: /usr/local/share/xps-2026/camera/patches/0005-ipu7-psys-stock-core-layout.patch
+    - src: camera/xps-ipu7-camera-stack.spec
+      dest: /usr/local/share/xps-2026/camera/xps-ipu7-camera-stack.spec
+  tags: [xps-2026, hardware, camera]
+
+- name: Install the pinned IPU7 build and DKMS manager
+  ansible.builtin.template:
+    src: xps-ipu7-build.j2
+    dest: /usr/local/libexec/xps-ipu7-build
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [xps-2026, hardware, camera]
+
+- name: Share the RPM Fusion akmods signing key with DKMS
+  ansible.builtin.copy:
+    dest: /etc/dkms/framework.conf.d/90-xps-akmods-signing.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # One key and one MOK enrollment cover both v4l2loopback (akmods) and the
+      # IPU7 PSYS/CVS modules (DKMS).
+      mok_signing_key="/etc/pki/akmods/private/private_key.priv"
+      mok_certificate="/etc/pki/akmods/certs/public_key.der"
+  tags: [xps-2026, hardware, camera]
+
+- name: Start with the IPU7 source-download gate open
+  ansible.builtin.set_fact:
+    xps_2026_camera_sources_ready: true
+    xps_2026_camera_build_succeeded: false
+  tags: [xps-2026, hardware, camera]
+
+- name: Download checksum-pinned IPU7 camera sources
+  when: not ansible_check_mode
+  tags: [xps-2026, hardware, camera]
+  block:
+    - name: Download each pinned upstream archive
+      ansible.builtin.get_url:
+        url: "{{ item.url }}"
+        dest: "/var/cache/xps-ipu7/sources/{{ item.name }}-{{ item.commit }}.tar.gz"
+        checksum: "{{ item.checksum }}"
+        owner: root
+        group: root
+        mode: "0644"
+        timeout: 60
+      loop: "{{ xps_2026_camera_sources }}"
+  rescue:
+    - name: Close the IPU7 build gate after a source failure
+      ansible.builtin.set_fact:
+        xps_2026_camera_sources_ready: false
+
+    - name: Report the optional IPU7 source failure
+      ansible.builtin.debug:
+        msg: >-
+          IPU7 camera sources could not be downloaded or did not match their
+          pinned checksums. Camera setup is skipped; the rest of the play
+          continues. Re-run with --tags xps-2026 after fixing connectivity.
+
+- name: Build the pinned camera stack as a local RPM
+  ansible.builtin.command:
+    argv: [/usr/local/libexec/xps-ipu7-build, build]
+  register: xps_2026_camera_build
+  changed_when: "'CHANGED ' in xps_2026_camera_build.stdout"
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_sources_ready | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Record whether the optional IPU7 build succeeded
+  ansible.builtin.set_fact:
+    xps_2026_camera_build_succeeded: >-
+      {{ not ansible_check_mode
+         and xps_2026_camera_sources_ready | bool
+         and xps_2026_camera_build is defined
+         and xps_2026_camera_build.rc == 0 }}
+  tags: [xps-2026, hardware, camera]
+
+- name: Save useful IPU7 build diagnostics without failing the play
+  ansible.builtin.copy:
+    dest: /var/lib/xps-hardware/ipu7/build-failed.log
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      The optional Panther Lake camera stack did not build.
+      sources_ready={{ xps_2026_camera_sources_ready }}
+      rc={{ xps_2026_camera_build.rc | default('not-run') }}
+
+      stdout:
+      {{ xps_2026_camera_build.stdout | default('') | indent(6, true) }}
+
+      stderr:
+      {{ xps_2026_camera_build.stderr | default('') | indent(6, true) }}
+  when:
+    - not ansible_check_mode
+    - not xps_2026_camera_build_succeeded | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Clear stale camera build failure diagnostics
+  ansible.builtin.file:
+    path: /var/lib/xps-hardware/ipu7/build-failed.log
+    state: absent
+  when: xps_2026_camera_build_succeeded | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Retire older role-managed IPU7 DKMS bundles before the RPM upgrade
+  ansible.builtin.command:
+    argv: [/usr/local/libexec/xps-ipu7-build, prune-dkms]
+  register: xps_2026_camera_dkms_prune
+  changed_when: "'DKMS_PRUNED' in xps_2026_camera_dkms_prune.stdout"
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_build_succeeded | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Install the locally built, RPM-managed IPU7 userspace and DKMS sources
+  ansible.builtin.dnf:
+    name: /var/cache/xps-ipu7/rpms/xps-ipu7-camera-stack.rpm
+    state: present
+    disable_gpg_check: true
+  register: xps_2026_camera_rpm_install
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_build_succeeded | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Report an optional local camera RPM installation failure
+  ansible.builtin.debug:
+    msg: >-
+      The pinned camera RPM built but DNF could not install it; the existing
+      camera stack, if any, will not be started. DNF reported:
+      {{ xps_2026_camera_rpm_install.msg | default('unknown RPM error') }}
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_build_succeeded | bool
+    - (xps_2026_camera_rpm_install.rc | default(-1) | int) != 0
+  tags: [xps-2026, hardware, camera]
+
+- name: Inspect the installed IPU7 camera plugin
+  ansible.builtin.stat:
+    path: /usr/lib64/gstreamer-1.0/libgsticamerasrc.so
+  register: xps_2026_icamerasrc
+  check_mode: false
+  tags: [xps-2026, hardware, camera]
+
+- name: Build the Fedora v4l2loopback akmod for the running stock kernel
+  ansible.builtin.command:
+    argv: [akmods, --force, --kernels, "{{ ansible_facts.kernel }}"]
+  register: xps_2026_v4l2loopback_build
+  changed_when: false
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_build_succeeded | bool
+    - (xps_2026_camera_rpm_install.rc | default(-1) | int) == 0
+    - xps_2026_icamerasrc.stat.exists
+  tags: [xps-2026, hardware, camera]
+
+- name: Register, build, and sign the IPU7 PSYS and CVS DKMS modules
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/xps-ipu7-build
+      - install-dkms
+      - "{{ ansible_facts.kernel }}"
+  register: xps_2026_camera_dkms
+  changed_when: "'DKMS_CHANGED ' in xps_2026_camera_dkms.stdout"
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_build_succeeded | bool
+    - (xps_2026_camera_rpm_install.rc | default(-1) | int) == 0
+    - xps_2026_icamerasrc.stat.exists
+  tags: [xps-2026, hardware, camera]
+
+- name: Record whether the camera kernel extensions are usable now
+  ansible.builtin.set_fact:
+    xps_2026_camera_reboot_required: >-
+      {{ (xps_2026_camera_dkms.rc | default(-1) | int) == 5 }}
+    xps_2026_camera_ready: >-
+      {{ not ansible_check_mode
+         and xps_2026_camera_build_succeeded | bool
+         and (xps_2026_camera_rpm_install.rc | default(-1) | int) == 0
+         and xps_2026_icamerasrc.stat.exists
+         and (xps_2026_v4l2loopback_build.rc | default(-1) | int) == 0
+         and (xps_2026_camera_dkms.rc | default(-1) | int) == 0 }}
+  tags: [xps-2026, hardware, camera]
+
+- name: Report IPU7 DKMS or Secure Boot diagnostics
+  ansible.builtin.debug:
+    msg: >-
+      The camera userspace may be installed, but its kernel extensions are not
+      usable yet. {{ xps_2026_camera_dkms.stderr | default('DKMS was not run.') }}
+      See /var/lib/xps-hardware/ipu7/build-failed.log and
+      docs/xps-2026-hardware.md. The rest of the play continues.
+  when:
+    - not ansible_check_mode
+    - not xps_2026_camera_ready | bool
+    - not xps_2026_camera_reboot_required | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Report a camera DKMS update awaiting one normal reboot
+  ansible.builtin.debug:
+    msg: >-
+      The signed IPU7/CVS modules were updated while an older copy was loaded.
+      The camera service remains enabled for the next boot and is intentionally
+      stopped now. Reboot normally; Fedora's stock kernel remains installed.
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_reboot_required | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Install the hardware-gated IPU7 camera integration
+  ansible.builtin.copy:
+    src: "camera/{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - src: xps-ipu7-camera-init
+      dest: /usr/local/libexec/xps-ipu7-camera-init
+      mode: "0755"
+    - src: xps-ipu7-camera-check
+      dest: /usr/local/libexec/xps-ipu7-camera-check
+      mode: "0755"
+    - src: xps-ipu7-camera-sleep
+      dest: /usr/lib/systemd/system-sleep/xps-ipu7-camera
+      mode: "0755"
+    - src: 71-xps-ipu7-hide-isys.rules
+      dest: /etc/udev/rules.d/71-xps-ipu7-hide-isys.rules
+      mode: "0644"
+    - src: 90-xps-ipu7-psys.rules
+      dest: /etc/udev/rules.d/90-xps-ipu7-psys.rules
+      mode: "0644"
+    - src: xps-ipu7-camera.modprobe.conf
+      dest: /etc/modprobe.d/xps-ipu7-camera.conf
+      mode: "0644"
+    - src: 90-xps-ipu7-v4l2.conf
+      dest: /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf
+      mode: "0644"
+    - src: v4l2-relayd-ipu7.conf
+      dest: /usr/local/share/xps-2026/camera/v4l2-relayd-ipu7.conf
+      mode: "0644"
+    - src: v4l2-relayd-override.conf
+      dest: /etc/systemd/system/v4l2-relayd@ipu7.service.d/override.conf
+      mode: "0644"
+  notify:
+    - Reload XPS 2026 systemd
+    - Reload XPS 2026 udev rules
+    - Restart XPS 2026 WirePlumber
+  tags: [xps-2026, hardware, camera]
+
+- name: Install the IPU7 camera services and user-session refresh helper
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - src: xps-ipu7-camera-init.service.j2
+      dest: /etc/systemd/system/xps-ipu7-camera-init.service
+      mode: "0644"
+    - src: xps-ipu7-camera.service.j2
+      dest: /etc/systemd/system/xps-ipu7-camera.service
+      mode: "0644"
+    - src: xps-ipu7-refresh-wireplumber.j2
+      dest: /usr/local/libexec/xps-ipu7-refresh-wireplumber
+      mode: "0755"
+  notify:
+    - Reload XPS 2026 systemd
+    - Restart XPS 2026 camera
+  tags: [xps-2026, hardware, camera]
+
+- name: Expose the IPU7 relay configuration only when its stack is ready
+  ansible.builtin.copy:
+    remote_src: true
+    src: /usr/local/share/xps-2026/camera/v4l2-relayd-ipu7.conf
+    dest: /etc/v4l2-relayd.d/ipu7.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not ansible_check_mode
+    - >-
+      xps_2026_camera_ready | bool
+      or xps_2026_camera_reboot_required | bool
+  notify:
+    - Reload XPS 2026 systemd
+    - Restart XPS 2026 camera
+  tags: [xps-2026, hardware, camera]
+
+- name: Keep an incomplete IPU7 stack out of v4l2-relayd's generator
+  ansible.builtin.file:
+    path: /etc/v4l2-relayd.d/ipu7.conf
+    state: absent
+  when:
+    - not ansible_check_mode
+    - not xps_2026_camera_ready | bool
+    - not xps_2026_camera_reboot_required | bool
+  notify: Reload XPS 2026 systemd
+  tags: [xps-2026, hardware, camera]
+
+- name: Restore SELinux labels on the IPU7 integration
+  ansible.builtin.command:
+    argv: [restorecon, -RF, /usr/local/libexec, /usr/local/share/xps-2026/camera, /etc/wireplumber, /etc/v4l2-relayd.d, /etc/systemd/system]
+  changed_when: false
+  when: not ansible_check_mode
+  tags: [xps-2026, hardware, camera]
+
+- name: Apply camera unit and device-rule handlers before the runtime probe
+  ansible.builtin.meta: flush_handlers
+  tags: [xps-2026, hardware, camera]
+
+- name: Enable the complete IPU7 camera stack
+  ansible.builtin.systemd_service:
+    name: xps-ipu7-camera.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  register: xps_2026_camera_start
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_ready | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Probe the optional camera runtime without failing the play
+  ansible.builtin.command:
+    argv: [systemctl, is-active, --quiet, xps-ipu7-camera.service]
+  register: xps_2026_camera_runtime
+  changed_when: false
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_ready | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Report camera runtime diagnostics
+  ansible.builtin.debug:
+    msg: >-
+      The optional camera stack installed but did not start in this boot. Run
+      'systemctl status xps-ipu7-camera xps-ipu7-camera-init
+      v4l2-relayd@ipu7' and '/usr/local/libexec/xps-ipu7-camera-check'. A prior
+      IPU7 kernel fault intentionally requires a normal reboot before retrying.
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_ready | bool
+    - xps_2026_camera_runtime.rc != 0
+  tags: [xps-2026, hardware, camera]
+
+- name: Disable an incomplete IPU7 camera stack safely
+  ansible.builtin.systemd_service:
+    name: xps-ipu7-camera.service
+    enabled: false
+    state: stopped
+    daemon_reload: true
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - not xps_2026_camera_ready | bool
+    - not xps_2026_camera_reboot_required | bool
+  tags: [xps-2026, hardware, camera]
+
+- name: Keep the updated camera stack enabled but stopped until reboot
+  ansible.builtin.systemd_service:
+    name: xps-ipu7-camera.service
+    enabled: true
+    state: stopped
+    daemon_reload: true
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - xps_2026_camera_reboot_required | bool
+  tags: [xps-2026, hardware, camera]

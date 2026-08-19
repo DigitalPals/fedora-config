@@ -1,0 +1,2 @@
+# Restrict the HAL's processing-system device to the existing video group.
+KERNEL=="ipu7-psys0", MODE="0660", GROUP="video", SYMLINK+="ipu-psys0"

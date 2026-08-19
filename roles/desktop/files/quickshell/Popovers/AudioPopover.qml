@@ -15,8 +15,12 @@ Surface {
     // Default sink first, then local (ALSA) devices, then network sinks;
     // capped so the popover stays compact with many cast targets around.
     readonly property var sinks: {
-        const all = Pipewire.nodes.values.filter(n => n.isSink && !n.isStream);
-        const rank = n => n === Audio.sink ? 0 : (n.name || "").startsWith("alsa") ? 1 : 2;
+        // While the tuning exists, offering its physical downstream sink would
+        // let the user bypass processing. Headphones, Bluetooth, HDMI, and USB
+        // remain ordinary choices and never enter the filter graph.
+        const all = Pipewire.nodes.values.filter(n => n.isSink && !n.isStream
+            && !(Audio.tuningPresent && n === Audio.speakerSink));
+        const rank = n => n === Audio.outputSink ? 0 : (n.name || "").startsWith("alsa") ? 1 : 2;
         return all.sort((a, b) => rank(a) - rank(b)
             || (a.description || a.name).localeCompare(b.description || b.name)).slice(0, 6);
     }
@@ -106,7 +110,7 @@ Surface {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.width - 70
-                text: Audio.sink ? (Audio.sink.description || Audio.sink.nickname || Audio.sink.name) : "No output device"
+                text: Audio.outputSink ? (Audio.outputSink.description || Audio.outputSink.nickname || Audio.outputSink.name) : "No output device"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontBody
                 color: discMouse.containsMouse ? Theme.textMid : Theme.textLow
@@ -135,7 +139,7 @@ Surface {
                 id: sink
 
                 required property var modelData
-                readonly property bool isDefault: modelData === Audio.sink
+                readonly property bool isDefault: modelData === Audio.outputSink
 
                 width: parent.width - 4
                 x: 2

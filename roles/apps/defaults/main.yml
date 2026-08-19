@@ -22,7 +22,6 @@ apps_fedora_packages:
   - podman-compose
   - inkscape
   - intel-compute-runtime
-  - libva-intel-media-driver
   - igt-gpu-tools
   - libva-utils
   # Desktop and media

@@ -16,6 +16,12 @@ expected_hardware:
   product_name_regex: "(?i)(XPS|DA14260)"
   cpu_regex: "(?i)(Intel.*(Ultra|X7)|Panther Lake)"
 
+# XPS 2026 hardware-role preferences. The camera stack is attempted only when
+# both OVTI08F4 and Intel 8086:b05d are detected; build failure is diagnostic,
+# not fatal to the rest of the play. Haptic intensity: low, mid, or high.
+xps_2026_camera_enabled: true
+xps_2026_haptic_intensity: high
+
 # Explicitly accepted local-machine security tradeoffs.
 passwordless_wheel: true
 passwordless_local_polkit: true

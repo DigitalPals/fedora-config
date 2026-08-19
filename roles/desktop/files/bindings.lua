@@ -1,6 +1,6 @@
 local mainMod = "SUPER"
 local terminal = "kitty"
-local browser = "google-chrome-stable --restore-last-session --hide-crash-restore-bubble"
+local browser = "google-chrome-stable --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --restore-last-session --hide-crash-restore-bubble"
 local home = os.getenv("HOME")
 
 local previous = rawget(_G, "__fedora_hypr_binds") or {}
@@ -80,11 +80,11 @@ bind("Print", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot region"))
 bind("SHIFT + Print", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot fullscreen"))
 bind(mainMod .. " + SHIFT + O", hl.dsp.exec_cmd(home .. "/.local/bin/screen-ocr"))
 
-bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
-bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"), { locked = true, repeating = true })
+bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("/usr/local/libexec/xps-speaker-tuning control up || wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
+bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("/usr/local/libexec/xps-speaker-tuning control down || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"), { locked = true, repeating = true })
 bind("XF86MonBrightnessUp", hl.dsp.exec_cmd(home .. "/.local/bin/brightness-control up 5"), { locked = true, repeating = true })
 bind("XF86MonBrightnessDown", hl.dsp.exec_cmd(home .. "/.local/bin/brightness-control down 5"), { locked = true, repeating = true })
-bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
+bind("XF86AudioMute", hl.dsp.exec_cmd("/usr/local/libexec/xps-speaker-tuning control mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
 bind("XF86AudioMicMute", hl.dsp.exec_cmd("voxtype --model base --language en record toggle"), { locked = true })
 bind("SHIFT + XF86AudioMicMute", hl.dsp.exec_cmd("voxtype --model base --language nl record toggle"), { locked = true })
 bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })

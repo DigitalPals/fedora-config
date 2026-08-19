@@ -1,0 +1,3 @@
+# Raw IPU7 ISYS nodes contain Bayer data, not application-ready video. Remove
+# the desktop ACL after 70-uaccess; /dev/video50 is the supported camera path.
+SUBSYSTEM=="video4linux", ATTR{name}=="Intel IPU7 ISYS Capture *", TAG-="uaccess", TAG-="seat", MODE="0600", GROUP="root"

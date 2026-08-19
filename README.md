@@ -26,6 +26,20 @@ The Quickshell menubar and its popovers use
 downloads OPPO's unmodified official archive, verifies its checksum, and keeps
 the bundled OPPO Sans Fonts License Agreement beside the installed font.
 
+## XPS 2026 hardware support
+
+The hardware-gated `xps-2026` role supports Dell XPS 14/16 2026 SKUs `0DB9`
+and `0DBA`: internal-speaker PipeWire tuning, the OVTI08F4/IPU7 camera path,
+configurable Synaptics haptics, explicit Panther Lake media/firmware RPMs, and
+Netherlands wireless-regulatory verification. The camera's missing PSYS/CVS
+companions use signed DKMS modules; IPU7 base/ISYS and the entire kernel remain
+Fedora stock. Omarchy's custom Panther Lake kernel and display patches are
+intentionally not included.
+
+See [Dell XPS 2026 / Panther Lake hardware support](docs/xps-2026-hardware.md)
+for Secure Boot enrollment, source pins, diagnostics, and the remaining
+Panel Replay/VRR gap.
+
 ## Before you install
 
 > [!WARNING]
@@ -105,6 +119,7 @@ use `--full` before Ansible arguments, for example `./update --full --check
 | [docs/shell-settings-manual-verification.md](docs/shell-settings-manual-verification.md) | Hand-test checklist for the settings window |
 | [docs/t3-composer-manual-verification.md](docs/t3-composer-manual-verification.md) | Hand-test checklist for the T3 composer |
 | [docs/t3-git-actions-manual-verification.md](docs/t3-git-actions-manual-verification.md) | Hand-test checklist for the T3 git actions |
+| [docs/xps-2026-hardware.md](docs/xps-2026-hardware.md) | XPS 2026 speaker, IPU7 camera, haptics, Secure Boot, and diagnostics |
 
 The automated side is `./verify`, which runs `tests/run` (Node unit tests plus
 a qmllint sweep) before the system checks.

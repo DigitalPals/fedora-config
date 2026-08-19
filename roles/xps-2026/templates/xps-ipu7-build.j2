@@ -1,0 +1,241 @@
+#!/usr/bin/bash
+set -euo pipefail
+
+readonly bundle_version={{ xps_2026_camera_bundle_version | quote }}
+readonly source_dir=/var/cache/xps-ipu7/sources
+readonly rpm_dir=/var/cache/xps-ipu7/rpms
+readonly output_rpm="$rpm_dir/xps-ipu7-camera-stack.rpm"
+readonly support_dir=/usr/local/share/xps-2026/camera
+
+verify_sources() {
+{% for source in xps_2026_camera_sources %}
+  printf '%s  %s\n' \
+    '{{ source.checksum | regex_replace('^sha256:', '') }}' \
+    "$source_dir/{{ source.name }}-{{ source.commit }}.tar.gz" | sha256sum --check --status
+{% endfor %}
+}
+
+extract_source() {
+  local name=$1 commit=$2 destination=$3
+  install -d -m 0755 "$destination"
+  tar -xzf "$source_dir/${name}-${commit}.tar.gz" --strip-components=1 -C "$destination"
+}
+
+build_rpm() {
+  install -d -m 0755 "$rpm_dir"
+  if [[ -r $output_rpm ]] &&
+     [[ $(rpm -qp --qf '%{VERSION}' "$output_rpm" 2>/dev/null || true) == "$bundle_version" ]]; then
+    echo "CURRENT $output_rpm"
+    return 0
+  fi
+
+  verify_sources
+  local work stage topdir spec built
+  work=$(mktemp -d /var/tmp/xps-ipu7-build.XXXXXX)
+  trap "rm -rf -- '$work'" EXIT
+  stage="$work/stage"
+  topdir="$work/rpmbuild"
+  install -d -m 0755 "$stage" "$topdir/SOURCES" "$topdir/SPECS"
+
+{% for source in xps_2026_camera_sources %}
+  extract_source {{ source.name | quote }} {{ source.commit | quote }} "$work/{{ source.name }}"
+{% endfor %}
+
+  patch --batch --forward -d "$work/ipu7-drivers" -p1 \
+    <"$support_dir/patches/0004-ipu7-psys-register-bus.patch"
+  patch --batch --forward -d "$work/ipu7-drivers" -p1 \
+    <"$support_dir/patches/0005-ipu7-psys-stock-core-layout.patch"
+  patch --batch --forward -d "$work/vision-drivers" -p1 \
+    <"$support_dir/patches/0003-vision-ptl-cvs-owns-rgb-power.patch"
+  find "$work/ipu7-drivers" "$work/vision-drivers" \
+    -type f \( -name '*.orig' -o -name '*.rej' \) -delete
+
+  # Build against only the Panther Lake/ipu75xa Intel binary interface. Keep
+  # Intel's redistributable libraries byte-for-byte unchanged in the stage.
+  install -d -m 0755 "$stage/usr/lib64/pkgconfig" "$stage/usr/include"
+  cp -a "$work/ipu7-camera-bins/lib/"*ipu75xa.so* "$stage/usr/lib64/"
+  cp -a "$work/ipu7-camera-bins/include/ipu75xa" "$stage/usr/include/"
+  # Fedora's jsoncpp-devel intentionally installs /usr/include/json, while
+  # this Intel HAL commit still includes jsoncpp/json/json.h.
+  install -d -m 0755 "$stage/usr/include/jsoncpp"
+  ln -s /usr/include/json "$stage/usr/include/jsoncpp/json"
+  install -m 0644 "$work/ipu7-camera-bins/lib/pkgconfig/ia_imaging-ipu75xa.pc" \
+    "$stage/usr/lib64/pkgconfig/"
+  sed -i \
+    -e "s|^prefix=.*|prefix=$stage/usr|" \
+    -e 's|^libdir=.*|libdir=${exec_prefix}/lib64|' \
+    "$stage/usr/lib64/pkgconfig/ia_imaging-ipu75xa.pc"
+
+  export PKG_CONFIG_PATH="$stage/usr/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+  export LIBRARY_PATH="$stage/usr/lib64${LIBRARY_PATH:+:$LIBRARY_PATH}"
+  export LD_LIBRARY_PATH="$stage/usr/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  export CPATH="$stage/usr/include${CPATH:+:$CPATH}"
+
+  cmake -S "$work/ipu7-camera-hal" -B "$work/ipu7-camera-hal-build" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INSTALL_LIBDIR=lib64 \
+    -DCMAKE_INSTALL_SYSCONFDIR=/etc \
+    -DBUILD_CAMHAL_ADAPTOR=ON \
+    -DBUILD_CAMHAL_PLUGIN=ON \
+    -DIPU_VERSIONS=ipu75xa \
+    -DUSE_STATIC_GRAPH=ON \
+    -DUSE_STATIC_GRAPH_AUTOGEN=ON \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_PREFIX_PATH="$stage/usr" \
+    -DCMAKE_LIBRARY_PATH="$stage/usr/lib64" \
+    -DCMAKE_INCLUDE_PATH="$stage/usr/include"
+  cmake --build "$work/ipu7-camera-hal-build" --parallel "$(nproc)"
+  DESTDIR="$stage" cmake --install "$work/ipu7-camera-hal-build"
+  sed -i "s|^prefix=.*|prefix=$stage/usr|" "$stage/usr/lib64/pkgconfig/libcamhal.pc"
+
+  pushd "$work/icamerasrc" >/dev/null
+  autoreconf --verbose --force --install
+  CHROME_SLIM_CAMHAL=ON ./configure --prefix=/usr --libdir=/usr/lib64
+  make --jobs="$(nproc)"
+  make DESTDIR="$stage" install
+  popd >/dev/null
+
+  # Fedora 44 already supplies and updates the IPU7 base/ISYS driver, ACPI
+  # bridge, sensor driver, and firmware. Package only the missing PSYS and CVS
+  # DKMS sources; upstream dkms.conf skips base/ISYS for kernels >= 6.17.
+  install -d -m 0755 \
+    "$stage/usr/src/ipu7-drivers-$bundle_version" \
+    "$stage/usr/src/vision-drivers-$bundle_version"
+  cp -a "$work/ipu7-drivers/." "$stage/usr/src/ipu7-drivers-$bundle_version/"
+  cp -a "$work/vision-drivers/." "$stage/usr/src/vision-drivers-$bundle_version/"
+  sed -i "s/^PACKAGE_VERSION=.*/PACKAGE_VERSION=\"$bundle_version\"/" \
+    "$stage/usr/src/ipu7-drivers-$bundle_version/dkms.conf"
+  sed -i \
+    -e 's/^PACKAGE_NAME=.*/PACKAGE_NAME="vision-drivers"/' \
+    -e "s/^PACKAGE_VERSION=.*/PACKAGE_VERSION=\"$bundle_version\"/" \
+    "$stage/usr/src/vision-drivers-$bundle_version/dkms.conf"
+
+  # Development headers and pkg-config files were only build inputs. Runtime
+  # consumers need the HAL, its ipu75xa plugin/config, Intel libraries, and
+  # icamerasrc. Static archives and libtool metadata are deliberately omitted.
+  rm -rf -- "$stage/usr/include" "$stage/usr/lib64/pkgconfig"
+  find "$stage" -type f \( -name '*.a' -o -name '*.la' \) -delete
+
+  install -d -m 0755 "$stage/usr/share/licenses/xps-ipu7-camera-stack"
+  install -m 0644 "$work/ipu7-drivers/LICENSE" \
+    "$stage/usr/share/licenses/xps-ipu7-camera-stack/ipu7-drivers-LICENSE"
+  install -m 0644 "$work/vision-drivers/LICENSE.txt" \
+    "$stage/usr/share/licenses/xps-ipu7-camera-stack/vision-drivers-LICENSE"
+  install -m 0644 "$work/ipu7-camera-bins/LICENSE" \
+    "$stage/usr/share/licenses/xps-ipu7-camera-stack/ipu7-camera-bins-LICENSE"
+  install -m 0644 "$work/ipu7-camera-hal/LICENSE" \
+    "$stage/usr/share/licenses/xps-ipu7-camera-stack/ipu7-camera-hal-LICENSE"
+  install -m 0644 "$work/icamerasrc/LICENSE" \
+    "$stage/usr/share/licenses/xps-ipu7-camera-stack/icamerasrc-LICENSE"
+
+  # Ensure RPM's post-processing cannot strip or otherwise rewrite Intel's
+  # binary-only redistributables.
+  tar -C "$stage" -czf "$topdir/SOURCES/xps-ipu7-camera-stack.tar.gz" .
+  spec="$topdir/SPECS/xps-ipu7-camera-stack.spec"
+  sed "s/@BUNDLE_VERSION@/$bundle_version/g" "$support_dir/xps-ipu7-camera-stack.spec" >"$spec"
+  rpmbuild -bb --define "_topdir $topdir" "$spec"
+  built=$(find "$topdir/RPMS/x86_64" -maxdepth 1 -type f -name 'xps-ipu7-camera-stack-*.rpm' -print -quit)
+  [[ -n $built ]]
+  install -m 0644 "$built" "$output_rpm.new"
+  mv -f -- "$output_rpm.new" "$output_rpm"
+  echo "CHANGED $output_rpm"
+}
+
+prune_dkms() {
+  local module old_version old_tree
+  local changed=0
+  local services_stopped=0
+
+  # Remove only older xps bundles owned by this role. Ordinarily DKMS still
+  # has their RPM-owned source link; the fallback handles an interrupted RPM
+  # upgrade which left a provably broken, generated registration behind.
+  for module in ipu7-drivers vision-drivers; do
+    for old_tree in /var/lib/dkms/"$module"/*.xps*; do
+      [[ -d $old_tree ]] || continue
+      old_version=${old_tree##*/}
+      [[ $old_version == "$bundle_version" ]] && continue
+      if (( ! services_stopped )); then
+        systemctl stop v4l2-relayd@ipu7.service xps-ipu7-camera.service >/dev/null 2>&1 || true
+        services_stopped=1
+      fi
+      if ! dkms remove -m "$module" -v "$old_version" --all; then
+        if [[ -e $old_tree/source ]]; then
+          return 1
+        fi
+        find "$old_tree" -depth -delete
+      fi
+      changed=1
+    done
+  done
+
+  if (( changed )); then
+    echo 'DKMS_PRUNED'
+  else
+    echo 'DKMS_PRUNE_CURRENT'
+  fi
+}
+
+install_dkms() {
+  local kernel module boot_id marker
+  local changed=0
+  kernel=${2:-$(uname -r)}
+  [[ -d /usr/src/ipu7-drivers-$bundle_version ]]
+  [[ -d /usr/src/vision-drivers-$bundle_version ]]
+
+  # RPM Fusion akmods and DKMS share one locally generated signing key. This
+  # makes Secure Boot enrollment a single, explicit owner action.
+  /usr/bin/kmodgenca -a >/dev/null
+  for module in ipu7-drivers vision-drivers; do
+    if ! dkms status -m "$module" -v "$bundle_version" 2>/dev/null | grep -q .; then
+      dkms add -m "$module" -v "$bundle_version"
+      changed=1
+    fi
+    if ! dkms status -m "$module" -v "$bundle_version" -k "$kernel" 2>/dev/null | \
+         grep -qE ':[[:space:]]+installed$'; then
+      dkms install -m "$module" -v "$bundle_version" -k "$kernel"
+      changed=1
+    fi
+  done
+  depmod -a "$kernel"
+
+  if mokutil --sb-state 2>/dev/null | grep -qi enabled &&
+     ! mokutil --test-key /etc/pki/akmods/certs/public_key.der >/dev/null 2>&1; then
+    echo 'MOK_ENROLLMENT_REQUIRED: sudo mokutil --import /etc/pki/akmods/certs/public_key.der' >&2
+    return 4
+  fi
+
+  marker=/var/lib/xps-hardware/ipu7/reboot-required
+  boot_id=$(cat /proc/sys/kernel/random/boot_id)
+  if [[ -r $marker ]] && grep -Fqx "boot_id=$boot_id bundle=$bundle_version" "$marker"; then
+    echo "DKMS_REBOOT_REQUIRED kernel=$kernel bundle=$bundle_version" >&2
+    return 5
+  fi
+
+  # A loaded module cannot be replaced in memory by DKMS. Keep the configured
+  # service enabled for the next boot, but do not start an old PSYS/CVS module
+  # against the newly installed userspace. This is safer than force-unloading
+  # an active camera graph.
+  if (( changed )) &&
+     { [[ -d /sys/module/intel_ipu7_psys ]] || [[ -d /sys/module/intel_cvs ]]; }; then
+    systemctl stop v4l2-relayd@ipu7.service xps-ipu7-camera.service >/dev/null 2>&1 || true
+    printf 'boot_id=%s bundle=%s\n' "$boot_id" "$bundle_version" >"$marker"
+    echo "DKMS_CHANGED kernel=$kernel"
+    echo "DKMS_REBOOT_REQUIRED kernel=$kernel bundle=$bundle_version" >&2
+    return 5
+  fi
+  [[ ! -e $marker ]] || unlink "$marker"
+
+  if (( changed )); then
+    echo "DKMS_CHANGED kernel=$kernel"
+  else
+    echo "DKMS_CURRENT kernel=$kernel"
+  fi
+}
+
+case "${1:-}" in
+  build) build_rpm ;;
+  prune-dkms) prune_dkms ;;
+  install-dkms) install_dkms "$@" ;;
+  *) echo 'Usage: xps-ipu7-build <build|prune-dkms|install-dkms [kernel]>' >&2; exit 2 ;;
+esac

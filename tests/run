@@ -102,13 +102,73 @@ stage_qml_lint() {
   fi
 }
 
+# ── XPS 2026 hardware integration sanity checks ────────────────────────────
+stage_xps_hardware() {
+  local out rc=0 t0 elapsed biquads
+  local shell_files=(
+    roles/xps-2026/files/xps-speaker-tuning
+    roles/xps-2026/files/camera/xps-ipu7-camera-check
+    roles/xps-2026/files/camera/xps-ipu7-camera-init
+    roles/xps-2026/files/camera/xps-ipu7-camera-sleep
+  )
+
+  t0=$(now_ms)
+  for source_file in "${shell_files[@]}"; do
+    out=$(bash -n "$source_file" 2>&1) || {
+      rc=1
+      break
+    }
+  done
+
+  if ((rc == 0)); then
+    out=$(python3 -c '
+from pathlib import Path
+path = Path("roles/xps-2026/files/xps-haptic-touchpad")
+compile(path.read_text(), str(path), "exec")
+' 2>&1) || rc=1
+  fi
+
+  biquads=$(grep -Ec 'name = s([0-9]+)_[lr]' roles/xps-2026/files/xps-speaker-filter-chain.conf)
+  if ((rc == 0)) && [[ $biquads != 26 ]]; then
+    out="speaker profile has $biquads biquads; expected 26"
+    rc=1
+  fi
+  if ((rc == 0)) && ! grep -q 'limiter_stereo' roles/xps-2026/files/xps-speaker-filter-chain.conf; then
+    out='speaker profile is missing the stereo limiter'
+    rc=1
+  fi
+  if ((rc == 0)) && ! grep -q 'IPU7_PSYS_ONLY=1' roles/xps-2026/files/camera/patches/0005-ipu7-psys-stock-core-layout.patch; then
+    out='camera patch does not enforce stock-core PSYS-only DKMS builds'
+    rc=1
+  fi
+  if ((rc == 0)) && ! grep -q 'ansible.builtin.meta: end_role' roles/xps-2026/tasks/camera.yml; then
+    out='optional camera dependency failures are not isolated from the play'
+    rc=1
+  fi
+  if ((rc == 0)); then
+    if out=$(rg -n 'linux-ptl|fred=on|disable_11be|BUILT_MODULE_NAME.*intel-ipu7(-isys)?"' \
+      roles/xps-2026/tasks roles/xps-2026/defaults roles/xps-2026/templates 2>&1); then
+      rc=1
+    fi
+  fi
+
+  elapsed=$(( $(now_ms) - t0 ))
+  if ((rc == 0)); then
+    pass 'XPS hardware' "scripts, 13-biquad graph, and stock-core camera guard $(took "$elapsed")"
+  else
+    fail 'XPS hardware' 'static hardware integration check failed'
+    excerpt "${out:-unknown failure}"
+  fi
+}
+
 stage_unit_tests
 stage_qml_lint
+stage_xps_hardware
 
 # Keep the verdict on the last line: `update` tails this output into its own
 # failure report, so the actionable summary has to survive the truncation.
 if ((${#failed_stages[@]} > 0)); then
-  printf '\n%d of 2 repo check stages failed: %s\n' \
+  printf '\n%d of 3 repo check stages failed: %s\n' \
     "${#failed_stages[@]}" "$(IFS=, ; printf '%s' "${failed_stages[*]}")"
   exit 1
 fi

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Google Chrome
-Exec=/usr/bin/google-chrome-stable --enable-features=TouchpadOverscrollHistoryNavigation --restore-last-session --hide-crash-restore-bubble %U
+Exec=/usr/bin/google-chrome-stable --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --restore-last-session --hide-crash-restore-bubble %U
 Icon=google-chrome
 Terminal=false
 Type=Application

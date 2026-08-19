@@ -37,6 +37,9 @@
     - { role: base, tags: [base] }
     - { role: desktop, tags: [desktop] }
     - { role: apps, tags: [apps] }
+    # Runs after apps because the camera uses Fedora's RPM Fusion akmod and
+    # v4l2-relayd packages; all hardware actions remain precisely DMI-gated.
+    - { role: xps-2026, tags: [xps-2026, hardware] }
     - { role: dotfiles, tags: [dotfiles] }
     - { role: private-hooks, tags: [private-hooks], when: features.private_hooks | bool }
     - { role: boot, tags: [boot] }
