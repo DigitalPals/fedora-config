@@ -59,20 +59,16 @@ $EDITOR inventory/group_vars/all.yml
 `bootstrap` installs `ansible-core` when needed and applies the complete
 configuration. It is safe to run again after changing the configuration.
 
-When it finishes, log out and choose **Hyprland (Quickshell)** in GDM. From that
-session, check the installation with:
+When `gdm_autologin` is enabled in `inventory/group_vars/all.yml`, the next boot
+automatically logs in to **Hyprland (Quickshell)**. From that session, check the
+installation with:
 
 ```bash
-./verify --pre-finalize
+./verify --require-hyprland
 ```
 
-If everything works and you want GDM to log in automatically, run the optional
-final step and reboot:
-
-```bash
-./finalize
-systemctl reboot
-```
+If `gdm_autologin` is disabled, GDM keeps presenting its normal login screen;
+choose **Hyprland (Quickshell)** there to start the configured session.
 
 ## Update
 
@@ -96,7 +92,6 @@ reapply the Ansible configuration. Detailed logs are saved under
 | `./update` | Update Fedora packages and system Flatpaks |
 | `./update --full` | Also update tools and reapply the managed configuration |
 | `./verify` | Run non-destructive checks against the installed system |
-| `./finalize` | Verify Hyprland and enable the configured GDM autologin |
 
 Extra arguments to `bootstrap` are passed to `ansible-playbook`. For `update`,
 use `--full` before Ansible arguments, for example `./update --full --check

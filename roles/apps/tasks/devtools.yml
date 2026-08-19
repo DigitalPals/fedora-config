@@ -11,8 +11,6 @@
   when: not ansible_check_mode
 
 - name: Select Voxtype GPU backend
-  become: true
-  become_user: "{{ primary_user }}"
   ansible.builtin.command: >-
     voxtype --config {{ primary_home }}/.config/voxtype/config.toml
     setup gpu --enable

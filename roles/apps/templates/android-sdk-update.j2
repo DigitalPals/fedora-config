@@ -64,20 +64,36 @@ if [[ ! -r $sdk/cmdline-tools/.version || $(<"$sdk/cmdline-tools/.version") != "
   emit_changed "Android command-line tools $version"
 fi
 
+android_cli="$sdk/cmdline-tools/latest/bin/android"
 sdkmanager="$sdk/cmdline-tools/latest/bin/sdkmanager"
-before=$("$sdkmanager" --sdk_root="$sdk" --list_installed 2>/dev/null || true)
-packages=$("$sdkmanager" --sdk_root="$sdk" --list \
-  | awk -F'|' '/^[[:space:]]*platforms;android-[0-9]+[[:space:]]*\|/ {gsub(/[[:space:]]/,"",$1); p=$1}
-             /^[[:space:]]*build-tools;[0-9.]+[[:space:]]*\|/ {gsub(/[[:space:]]/,"",$1); b=$1}
-             END {print p; print b}')
-mapfile -t selected <<<"$packages"
-[[ -n ${selected[0]:-} && -n ${selected[1]:-} ]] || {
-  echo "Unable to resolve latest platform/build-tools from sdkmanager --list" >&2
-  exit 1
-}
-yes | "$sdkmanager" --sdk_root="$sdk" --licenses >/dev/null || true
-"$sdkmanager" --sdk_root="$sdk" \
-  "platform-tools" "cmdline-tools;latest" "${selected[0]}" "${selected[1]}"
-after=$("$sdkmanager" --sdk_root="$sdk" --list_installed 2>/dev/null || true)
+if [[ -x $android_cli ]]; then
+  before=$("$android_cli" --sdk="$sdk" sdk list)
+  available=$("$android_cli" --sdk="$sdk" sdk list --all)
+  platform=$(awk '$1 ~ /^platforms\/android-[0-9]+([.][0-9]+)?$/ {print $1}' \
+    <<<"$available" | sort -V | tail -n 1)
+  build_tools=$(awk '$1 ~ /^build-tools\/[0-9]+([.][0-9]+){2}$/ {print $1}' \
+    <<<"$available" | sort -V | tail -n 1)
+  [[ -n $platform && -n $build_tools ]] || {
+    echo "Unable to resolve latest platform/build-tools from android sdk list" >&2
+    exit 1
+  }
+  "$android_cli" --sdk="$sdk" sdk install platform-tools "$platform" "$build_tools"
+  after=$("$android_cli" --sdk="$sdk" sdk list)
+else
+  before=$("$sdkmanager" --sdk_root="$sdk" --list_installed 2>/dev/null || true)
+  packages=$("$sdkmanager" --sdk_root="$sdk" --list \
+    | awk -F'|' '/^[[:space:]]*platforms;android-[0-9]+[[:space:]]*\|/ {gsub(/[[:space:]]/,"",$1); p=$1}
+               /^[[:space:]]*build-tools;[0-9.]+[[:space:]]*\|/ {gsub(/[[:space:]]/,"",$1); b=$1}
+               END {print p; print b}')
+  mapfile -t selected <<<"$packages"
+  [[ -n ${selected[0]:-} && -n ${selected[1]:-} ]] || {
+    echo "Unable to resolve latest platform/build-tools from sdkmanager --list" >&2
+    exit 1
+  }
+  yes | "$sdkmanager" --sdk_root="$sdk" --licenses >/dev/null || true
+  "$sdkmanager" --sdk_root="$sdk" \
+    "platform-tools" "cmdline-tools;latest" "${selected[0]}" "${selected[1]}"
+  after=$("$sdkmanager" --sdk_root="$sdk" --list_installed 2>/dev/null || true)
+fi
 printf '%s\n' "$metadata_sha" > "$metadata_state"
 [[ $before == "$after" ]] || emit_changed "Android SDK packages"

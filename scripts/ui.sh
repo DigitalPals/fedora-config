@@ -5,8 +5,8 @@
 # v2 — Dracula truecolor palette (matches assets/EDM115-newline2.omp.json),
 # gradient banner, rich-style progress bars, recap box. The v1 API
 # (ui_header/ui_rule/ui_section/ui_ok/ui_warn/ui_fail/ui_tail_log/
-# ui_spin_while/run_step/ui_duration) is preserved for bootstrap/verify/
-# finalize; ./update uses the new helpers below.
+# ui_spin_while/run_step/ui_duration) is preserved for bootstrap/verify;
+# ./update uses the new helpers below.
 
 if [[ -t 1 ]]; then
   _rgb() { printf '\033[38;2;%s;%s;%sm' "$@"; }

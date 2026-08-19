@@ -81,7 +81,11 @@
       net.ipv4.conf.default.accept_redirects = 0
       net.ipv6.conf.all.accept_redirects = 0
       net.ipv6.conf.default.accept_redirects = 0
-  notify: Reload sysctl
+
+- name: Apply portable kernel hardening
+  ansible.builtin.command: sysctl --load /etc/sysctl.d/60-xps-hardening.conf
+  changed_when: false
+  when: not ansible_check_mode
 
 - name: Configure strict firewalld zone
   ansible.builtin.template:
@@ -173,8 +177,8 @@
 - name: Read active physical network devices
   ansible.builtin.shell: |
     set -o pipefail
-    nmcli -t -f DEVICE,TYPE device status |
-      awk -F: '$2 == "ethernet" || $2 == "wifi" {print $1}'
+    LC_ALL=C nmcli -t -f DEVICE,TYPE,STATE device status |
+      awk -F: '($2 == "ethernet" || $2 == "wifi") && $3 == "connected" {print $1}'
   args:
     executable: /bin/bash
   register: base_active_physical_devices

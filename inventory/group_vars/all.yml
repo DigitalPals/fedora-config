@@ -19,7 +19,7 @@ expected_hardware:
 # Explicitly accepted local-machine security tradeoffs.
 passwordless_wheel: true
 passwordless_local_polkit: true
-gdm_autologin: false
+gdm_autologin: true
 
 features:
   tailscale: true

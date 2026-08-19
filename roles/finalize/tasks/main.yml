@@ -1,16 +1,8 @@
 ---
 - name: Keep autologin disabled during ordinary convergence
   ansible.builtin.debug:
-    msg: "GDM autologin remains disabled; run fedora/finalize after a successful manual Hyprland login."
+    msg: "GDM autologin remains disabled by inventory; set gdm_autologin=true to enable it."
   when: not gdm_autologin | bool
-
-- name: Require the finalize verification gate
-  ansible.builtin.assert:
-    that:
-      - manual_hyprland_verified | default(false) | bool
-      - gdm_autologin | bool
-    fail_msg: "Use ./finalize from a verified Hyprland (Quickshell) session."
-  when: gdm_autologin | bool
 
 - name: Ensure GDM daemon section exists
   ansible.builtin.lineinfile:
