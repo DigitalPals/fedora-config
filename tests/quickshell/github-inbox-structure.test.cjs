@@ -17,6 +17,7 @@ test("the GitHub singleton publishes the persistent Inbox contract", () => {
         assert.match(source, new RegExp(`property[^\n]*\\b${property}:`), property);
     for (const action of ["settleInboxItem", "unsettleInboxItem"])
         assert.match(source, new RegExp(`function ${action}\\(key\\)`));
+    assert.match(source, /function settleAllInboxItems\(\)/);
     assert.match(source,
         /property string seenAt:[\s\S]*property string activitySeenAt:[\s\S]*property var lastPush:[\s\S]*property var runBaselines:[\s\S]*property var inboxItems:[\s\S]*property var inboxSourceRevisions:/,
         "Inbox state must append to every legacy state field");
@@ -98,6 +99,23 @@ test("the popover defaults to Inbox and exposes accessible top-level tabs", () =
         ["Active", "Attention", "Updates", "Settled"]);
 });
 
+test("the GitHub workspace follows the integrated T3 module hierarchy", () => {
+    const source = read("Popovers/GitHubPopover.qml");
+    assert.match(source, /padding:\s*T3Theme\.pagePadding/);
+    assert.match(source, /surfaceColor:\s*T3Theme\.canvas/);
+    assert.match(source, /id:\s*moduleHeader[\s\S]{0,180}?radius:\s*T3Theme\.panelRadius/);
+    assert.match(source, /component GroupHeader:[\s\S]*?T3Theme\.tabularNumberFeatures/);
+    assert.match(source,
+        /height:\s*quiet \? T3Theme\.quietRowHeight : T3Theme\.activeRowHeight/,
+        "settled activity should use the same density shift as parked T3 work");
+    assert.match(source, /label:\s*"Working"|\?\s*"Working"/);
+    assert.match(source, /label:\s*"Repositories"[\s\S]{0,80}?root\.filteredRepos\.length/);
+    assert.match(source, /text:\s*"Search repositories"/);
+    assert.match(source,
+        /page === "repos" && repoSearchText !== ""[\s\S]{0,100}?repoSearchText = ""/,
+        "Escape should clear repository search before closing the panel");
+});
+
 test("Inbox cards open GitHub and expose local hover/focus settlement actions", () => {
     const source = read("Popovers/GitHubPopover.qml");
     assert.match(source, /function openInbox\(row\)[\s\S]*GitHub\.open\(row\.url\)/);
@@ -107,6 +125,11 @@ test("Inbox cards open GitHub and expose local hover/focus settlement actions", 
     assert.match(source, /label: inboxCard\.row\.lifecycle === "settled" \? "Unsettle" : "Settle"/);
     assert.match(source, /GitHub\.settleInboxItem\(inboxCard\.row\.key\)/);
     assert.match(source, /GitHub\.unsettleInboxItem\(inboxCard\.row\.key\)/);
+    assert.match(source,
+        /anchors\.topMargin:\s*showingAction[\s\S]{0,100}?settleAction\.height\) \/ 2 : 7/,
+        "passive status should align with the title while inline actions stay centered");
+    assert.match(source, /label:\s*"Settle all"/);
+    assert.match(source, /onTriggered:\s*GitHub\.settleAllInboxItems\(\)/);
     assert.match(source, /Accessible\.description:\s*"Open on GitHub"/);
     assert.doesNotMatch(source,
         /mark.*(?:notification|thread).*read|\/notifications\/threads\/[^"\s]*\b(?:PATCH|PUT)|\/rerun|\/cancel/i,

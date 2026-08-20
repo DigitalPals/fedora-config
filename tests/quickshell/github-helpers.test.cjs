@@ -702,6 +702,32 @@ test("new entities persist across restart and settlement is entirely local", () 
     assert.equal(H.inboxRows(state.items, "")[0].lifecycle, "unsettled");
 });
 
+test("bulk settlement clears actionable items but preserves live workflows", () => {
+    const issue = H.parseEvents(JSON.stringify([projectedEvent({ i: "bulk-issue",
+        ty: "IssuesEvent", ac: "opened", num: 91, t: "Review me",
+        at: iso(3 * MINUTE) })]), "o/r")[0];
+    issue.lifecycle = "unsettled";
+    issue.noticedAt = iso(2 * MINUTE);
+    const notice = H.parseNotifications(JSON.stringify([{ i: "bulk-notice", r: "o/r",
+        t: "Mention", ty: "Issue", su: "", rs: "mention", un: true,
+        at: iso(2 * MINUTE) }]))[0];
+    notice.lifecycle = "unsettled";
+    notice.noticedAt = iso(MINUTE);
+    const active = H.parseRuns(JSON.stringify([projectedRun({ i: "bulk-running",
+        st: "in_progress", c: "", up: iso(MINUTE) })]), "o/r")[0];
+    const items = H.settleAllInboxItems({
+        [issue.key]: issue,
+        [notice.key]: notice,
+        [active.key]: active
+    }, iso(30000));
+    const rows = H.inboxRows(items, "");
+    assert.equal(rows.find(row => row.key === issue.key).lifecycle, "settled");
+    assert.equal(rows.find(row => row.key === notice.key).lifecycle, "settled");
+    assert.equal(rows.find(row => row.key === active.key).lifecycle, "active");
+    assert.equal(H.inboxCounts(rows).pending, 0);
+    assert.equal(H.inboxCounts(rows).running, 1);
+});
+
 test("persisted Inbox snapshots whitelist rendered fields and GitHub links", () => {
     const raw = H.parseEvents(JSON.stringify([projectedEvent({ i: "safe", ty: "IssuesEvent",
         ac: "opened", num: 8, t: "Line one\nline two" })]), "o/r")[0];

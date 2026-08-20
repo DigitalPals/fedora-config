@@ -1674,6 +1674,25 @@ function setInboxSettlement(itemsValue, keyValue, settled, at) {
     return pruneSettledInbox(items, MAX_SETTLED_INBOX_ITEMS);
 }
 
+// Settle the whole actionable Inbox in one immutable pass. Live workflow
+// rows deliberately remain active, and previously settled timestamps remain
+// untouched so bulk cleanup does not reorder retained history unnecessarily.
+function settleAllInboxItems(itemsValue, at) {
+    var items = normalizeInboxItems(itemsValue);
+    var stamp = cleanStamp(at);
+    Object.keys(items).forEach(function (key) {
+        var row = items[key];
+        if (!row.canSettle || row.lifecycle !== "unsettled")
+            return;
+        var copy = {};
+        Object.keys(row).forEach(function (field) { copy[field] = row[field]; });
+        copy.lifecycle = "settled";
+        copy.settledAt = stamp || row.noticedAt || row.at;
+        items[key] = copy;
+    });
+    return pruneSettledInbox(items, MAX_SETTLED_INBOX_ITEMS);
+}
+
 function removeInboxSources(itemsValue, revisionsValue, prefix) {
     var items = normalizeInboxItems(itemsValue);
     var revisions = normalizeSourceRevisions(revisionsValue);
@@ -2033,6 +2052,7 @@ var exported = {
     normalizeSourceRevisions: normalizeSourceRevisions,
     reconcileInboxSource: reconcileInboxSource,
     setInboxSettlement: setInboxSettlement,
+    settleAllInboxItems: settleAllInboxItems,
     removeInboxSources: removeInboxSources,
     inboxRows: inboxRows,
     inboxSections: inboxSections,

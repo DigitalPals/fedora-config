@@ -127,6 +127,12 @@ Singleton {
         persist();
     }
 
+    function settleAllInboxItems() {
+        inboxState = Helpers.settleAllInboxItems(inboxState, nowIso());
+        publishInbox();
+        persist();
+    }
+
     function unsettleInboxItem(key) {
         inboxState = Helpers.setInboxSettlement(inboxState, key, false, nowIso());
         publishInbox();
