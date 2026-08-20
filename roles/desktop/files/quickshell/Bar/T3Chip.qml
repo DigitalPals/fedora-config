@@ -48,7 +48,7 @@ BarChip {
     tooltipAlign: 1
     tooltip: {
         if (T3Code.cloudLoginRunning)
-            return "T3 Code · finish T3 Connect sign-in in your browser";
+            return "T3 Code · finish T3 Connect sign-in in T3 Code";
         if (T3Code.state === "signed-out")
             return "T3 Code · sign in to T3 Connect";
         if (T3Code.state === "cloud-empty")

@@ -2,36 +2,31 @@
 
 // T3 Connect authentication and relay bootstrap for the Quickshell client.
 //
-// T3 Code Nightly exposes two supported cloud authentication paths. The
-// Electron UI uses Clerk's native bridge and returns browser OAuth through
-// t3code://app; non-Electron clients use the public CLI OAuth application with
-// PKCE and a loopback callback. This panel is not an Electron renderer, so it
-// follows the latter path. After the browser callback it reopens the T3 panel,
-// discovers the user's linked environments, and performs the same two DPoP
-// exchanges as the upstream web client.
+// Relay access requires the `t3-relay` Clerk JWT template used by T3 Code
+// Nightly. The public CLI OAuth token can manage linked environments but is not
+// accepted by the relay DPoP exchange. This helper therefore reuses Nightly's
+// native Clerk session, asks Clerk for the relay template JWT, then performs the
+// same two DPoP exchanges as the upstream web client.
 
 import { spawn } from "node:child_process";
 import {
+    createDecipheriv,
     createHash,
     createPrivateKey,
     generateKeyPairSync,
-    randomBytes,
+    pbkdf2Sync,
     randomUUID,
     sign as signBytes,
 } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 export const CLOUD_CONFIG = Object.freeze({
-    hostedAppUrl: process.env.T3CODE_HOSTED_APP_URL?.trim() || "https://app.t3.codes",
     clerkUrl: process.env.T3CODE_CLERK_URL?.trim() || "https://clerk.t3.codes",
-    oauthClientId: process.env.T3CODE_CLERK_CLI_OAUTH_CLIENT_ID?.trim()
-        || "hzxSgY2cH10sDU2r",
     relayUrl: process.env.T3CODE_RELAY_URL?.trim() || "https://relay.t3.codes",
-    callbackPort: Number(process.env.T3CODE_CLOUD_CALLBACK_PORT || 34338),
+    desktopCommand: process.env.T3CODE_DESKTOP_COMMAND?.trim() || "t3code-desktop",
 });
 
 const RELAY_CLIENT_ID = "t3-web";
@@ -43,10 +38,11 @@ const STANDARD_ENVIRONMENT_SCOPES = [
     "review:write",
     "relay:read",
 ];
-const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const ENVIRONMENT_REFRESH_MARGIN_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15_000;
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
+const SIGN_IN_POLL_MS = Number(process.env.T3CODE_SIGN_IN_POLL_MS || 1000);
+const CLERK_NATIVE_ELECTRON_VERSION = "0.0.33";
 const P256_ORDER = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
 
 const userHome = process.env.HOME || os.homedir();
@@ -54,10 +50,11 @@ const stateRoot = process.env.T3CODE_CLOUD_STATE_DIR
     || process.env.XDG_STATE_HOME
     || path.join(userHome, ".local", "state");
 const privateStateDir = path.join(stateRoot, "t3code-cloud");
-const helperScriptPath = fileURLToPath(import.meta.url);
+const t3CodeClerkTokenPath = process.env.T3CODE_CLERK_TOKEN_PATH
+    || path.join(userHome, ".t3", "userdata", "clerk-tokens.json");
 
 export const STATE_PATHS = Object.freeze({
-    credentials: path.join(privateStateDir, "credentials.json"),
+    legacyCredentials: path.join(privateStateDir, "credentials.json"),
     dpopKey: path.join(privateStateDir, "dpop-key.json"),
     connection: process.env.T3CODE_PANEL_STATE_PATH
         || path.join(stateRoot, "t3code-bar.json"),
@@ -162,6 +159,201 @@ async function requestJson(url, options, action) {
     return body;
 }
 
+function collectCommandOutput(command, args, action, maxBytes = 4096) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, { stdio: ["ignore", "pipe", "ignore"] });
+        let output = "";
+        child.stdout?.setEncoding("utf8");
+        child.stdout?.on("data", chunk => {
+            output += chunk;
+            if (output.length > maxBytes)
+                child.kill();
+        });
+        child.once("error", () => reject(new Error(`${action} is unavailable.`)));
+        child.once("close", status => {
+            if (status !== 0 || output === "" || output.length > maxBytes)
+                reject(new Error(`${action} failed.`));
+            else
+                resolve(output);
+        });
+    });
+}
+
+async function readT3CodeClientToken() {
+    const stored = await readJson(t3CodeClerkTokenPath);
+    const value = stored?.__clerk_client_jwt;
+    if (typeof value !== "string" || value === "")
+        return "";
+    if (value.startsWith("raw:"))
+        return value.slice("raw:".length);
+    if (!value.startsWith("enc:"))
+        throw new Error("T3 Code's saved sign-in has an unsupported format.");
+
+    const encrypted = Buffer.from(value.slice("enc:".length), "base64");
+    if (encrypted.subarray(0, 3).toString("ascii") !== "v11")
+        throw new Error("T3 Code's encrypted sign-in has an unsupported format.");
+    const password = (await collectCommandOutput(
+        "secret-tool",
+        ["lookup", "application", "t3code"],
+        "T3 Code secure storage",
+    )).trimEnd();
+    try {
+        const key = pbkdf2Sync(password, "saltysalt", 1, 16, "sha1");
+        const decipher = createDecipheriv("aes-128-cbc", key, Buffer.alloc(16, " "));
+        return Buffer.concat([
+            decipher.update(encrypted.subarray(3)),
+            decipher.final(),
+        ]).toString("utf8");
+    } catch {
+        throw new Error("T3 Code's saved sign-in could not be unlocked.");
+    }
+}
+
+async function clerkNativeRequest(resource, clientToken, options, action) {
+    const clerk = validateServiceOrigin(CLOUD_CONFIG.clerkUrl, "Clerk URL");
+    const url = new URL(resource, `${clerk}/`);
+    url.searchParams.set("_is_native", "1");
+    url.searchParams.set("_electron_sdk_version", CLERK_NATIVE_ELECTRON_VERSION);
+    let response;
+    try {
+        response = await fetch(url, {
+            ...options,
+            headers: {
+                authorization: `Bearer ${clientToken}`,
+                "content-type": "application/json",
+                ...options?.headers,
+            },
+            redirect: "error",
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+    } catch (error) {
+        if (error?.name === "TimeoutError")
+            throw new Error(`${action} timed out.`);
+        throw new Error(`${action} could not reach T3 Connect.`);
+    }
+    const text = await response.text();
+    const body = text === "" ? {} : safeJsonParse(text);
+    if (!response.ok) {
+        const responseBody = body?.response && typeof body.response === "object"
+            ? body.response : body;
+        const reason = safeHttpReason(responseBody);
+        throw new HttpError(
+            `${action} failed (HTTP ${response.status}${reason ? ` · ${reason}` : ""}).`,
+            response.status,
+        );
+    }
+    if (!body || typeof body !== "object")
+        throw new Error(`${action} returned an unreadable response.`);
+    const authorization = response.headers.get("authorization") || "";
+    return {
+        data: body.response && typeof body.response === "object" ? body.response : body,
+        clientToken: authorization.startsWith("Bearer ")
+            ? authorization.slice("Bearer ".length) : authorization || clientToken,
+    };
+}
+
+function clerkSessionIdentity(session) {
+    const user = session?.user;
+    if (!user || typeof user !== "object")
+        return "";
+    const addresses = Array.isArray(user.email_addresses) ? user.email_addresses : [];
+    const primary = addresses.find(address => address?.id === user.primary_email_address_id)
+        || addresses[0];
+    if (typeof primary?.email_address === "string" && primary.email_address.trim() !== "")
+        return primary.email_address.trim();
+    return typeof user.username === "string" ? user.username.trim() : "";
+}
+
+function jwtExpiryEpochMs(token) {
+    try {
+        const claims = safeJsonParse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+        return Number.isFinite(claims?.exp) ? claims.exp * 1000 : Date.now() + 30_000;
+    } catch {
+        return Date.now() + 30_000;
+    }
+}
+
+export async function t3CodeRelayCredentials() {
+    const initialClientToken = await readT3CodeClientToken();
+    if (initialClientToken === "")
+        return null;
+
+    let clientResult;
+    try {
+        clientResult = await clerkNativeRequest(
+            "/v1/client",
+            initialClientToken,
+            { method: "GET" },
+            "T3 Code sign-in check",
+        );
+    } catch (error) {
+        if (error instanceof HttpError && [401, 403].includes(error.status))
+            return null;
+        throw error;
+    }
+    const sessions = Array.isArray(clientResult.data.sessions)
+        ? clientResult.data.sessions : [];
+    const activeSession = sessions.find(session =>
+        session?.id === clientResult.data.last_active_session_id
+            && session?.status === "active")
+        || sessions.find(session => session?.status === "active");
+    if (!activeSession?.id)
+        return null;
+
+    const tokenResult = await clerkNativeRequest(
+        `/v1/client/sessions/${encodeURIComponent(activeSession.id)}/tokens/t3-relay?debug=skip_cache`,
+        clientResult.clientToken,
+        { method: "POST", body: "{}" },
+        "T3 Connect relay sign-in",
+    );
+    if (typeof tokenResult.data.jwt !== "string" || tokenResult.data.jwt === "")
+        throw new Error("T3 Code returned no T3 Connect relay credential.");
+    return {
+        source: "t3code-session",
+        accessToken: tokenResult.data.jwt,
+        refreshToken: "",
+        expiresAtEpochMs: jwtExpiryEpochMs(tokenResult.data.jwt),
+        identity: clerkSessionIdentity(activeSession)
+            || decodeIdentity("", tokenResult.data.jwt),
+    };
+}
+
+function openT3Code() {
+    return new Promise((resolve, reject) => {
+        const child = spawn(CLOUD_CONFIG.desktopCommand, [], {
+            detached: true,
+            stdio: "ignore",
+        });
+        child.once("error", () => reject(new Error("Could not open T3 Code Nightly.")));
+        child.once("spawn", () => {
+            child.unref();
+            resolve();
+        });
+    });
+}
+
+function delay(milliseconds) {
+    return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function waitForT3CodeRelayCredentials(interactive) {
+    const current = await t3CodeRelayCredentials();
+    if (current)
+        return current;
+    if (!interactive)
+        throw new Error("Sign in to T3 Connect in T3 Code Nightly, then try again.");
+
+    await openT3Code();
+    const deadline = Date.now() + LOGIN_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        await delay(SIGN_IN_POLL_MS);
+        const credentials = await t3CodeRelayCredentials();
+        if (credentials)
+            return credentials;
+    }
+    throw new Error("T3 Connect sign-in timed out. Sign in in T3 Code Nightly, then try again.");
+}
+
 function formBody(entries) {
     return new URLSearchParams(entries).toString();
 }
@@ -184,141 +376,6 @@ function decodeIdentity(idToken, fallbackToken = "") {
     return "";
 }
 
-function normalizeTokenResponse(response, previousIdentity = "") {
-    if (typeof response.access_token !== "string" || response.access_token === ""
-            || typeof response.expires_in !== "number")
-        throw new Error("T3 Connect returned an invalid OAuth token response.");
-    return {
-        accessToken: response.access_token,
-        refreshToken: typeof response.refresh_token === "string"
-            ? response.refresh_token : "",
-        expiresAtEpochMs: Date.now() + response.expires_in * 1000,
-        identity: decodeIdentity(response.id_token, response.access_token) || previousIdentity,
-    };
-}
-
-async function exchangeClerkToken(parameters, previousIdentity = "") {
-    const clerk = validateServiceOrigin(CLOUD_CONFIG.clerkUrl, "Clerk URL");
-    const response = await requestJson(`${clerk}/oauth/token`, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: formBody(parameters),
-    }, "T3 Connect sign-in");
-    return normalizeTokenResponse(response, previousIdentity);
-}
-
-async function refreshCredentials(credentials) {
-    if (credentials?.accessToken
-            && Number(credentials.expiresAtEpochMs) > Date.now() + TOKEN_REFRESH_MARGIN_MS)
-        return credentials;
-    if (!credentials?.refreshToken)
-        throw new Error("T3 Connect sign-in is required.");
-    const refreshed = await exchangeClerkToken({
-        grant_type: "refresh_token",
-        refresh_token: credentials.refreshToken,
-        client_id: CLOUD_CONFIG.oauthClientId,
-    }, credentials.identity || "");
-    if (refreshed.refreshToken === "")
-        refreshed.refreshToken = credentials.refreshToken;
-    await writePrivateJson(STATE_PATHS.credentials, refreshed);
-    return refreshed;
-}
-
-function buildAuthorizeUrl(state, challenge) {
-    const hosted = validateServiceOrigin(CLOUD_CONFIG.hostedAppUrl, "Hosted app URL");
-    const url = new URL("/connect", hosted);
-    url.hash = new URLSearchParams({
-        state,
-        challenge,
-        port: String(CLOUD_CONFIG.callbackPort),
-    }).toString();
-    return url.toString();
-}
-
-function hostedCallbackUri() {
-    return new URL("/connect/callback",
-        validateServiceOrigin(CLOUD_CONFIG.hostedAppUrl, "Hosted app URL")).toString();
-}
-
-export function parseConnectAuthCode(candidate, expectedState) {
-    if (typeof candidate !== "string" || candidate.length > 4096)
-        return null;
-    const value = candidate.trim();
-    const separator = value.lastIndexOf(".");
-    if (separator <= 0 || separator === value.length - 1)
-        return null;
-    const code = value.slice(0, separator);
-    const state = value.slice(separator + 1);
-    if (state !== expectedState || !/^[A-Za-z0-9_-]+$/.test(code))
-        return null;
-    return code;
-}
-
-function completionPage() {
-    return `<!doctype html><meta charset="utf-8"><title>T3 Connect sign-in complete</title>
-<style>body{font:16px system-ui;color:#eee;background:#17171d;display:grid;place-items:center;height:100vh;margin:0}main{text-align:center;max-width:32rem}h1{font-size:1.35rem}</style>
-<main><h1>T3 Connect sign-in complete</h1><p>You can close this tab. The T3 Code panel will reopen automatically.</p></main>`;
-}
-
-function openExternal(url) {
-    return new Promise((resolve, reject) => {
-        const child = spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
-        child.once("error", () => reject(new Error("Could not open the T3 Connect sign-in page.")));
-        child.once("spawn", () => {
-            child.unref();
-            resolve();
-        });
-    });
-}
-
-function watchClipboardAuthorization(expectedState) {
-    let watcher;
-    let stop = () => undefined;
-    const authorization = new Promise(resolve => {
-        // app.t3.codes may lag the Nightly client and fall back to its hosted
-        // terminal handoff. While this explicitly initiated login is pending,
-        // accept only a copied T3 code whose embedded state equals this
-        // process's fresh random state. All unrelated clipboard data is
-        // discarded by the short-lived filter subprocess.
-        watcher = spawn("wl-paste", [
-            "--type", "text", "--watch",
-            process.execPath,
-            helperScriptPath,
-            "clipboard-code",
-            expectedState,
-        ], { stdio: ["ignore", "pipe", "ignore"] });
-        let output = "";
-        watcher.stdout?.setEncoding("utf8");
-        watcher.stdout?.on("data", chunk => {
-            output += chunk;
-            const newline = output.indexOf("\n");
-            if (newline < 0)
-                return;
-            const code = output.slice(0, newline).trim();
-            if (code !== "")
-                resolve(code);
-        });
-        watcher.once("error", () => undefined);
-        stop = () => {
-            if (watcher && watcher.exitCode === null)
-                watcher.kill();
-        };
-    });
-    return { authorization, stop: () => stop() };
-}
-
-async function readStdin(maxBytes) {
-    const chunks = [];
-    let size = 0;
-    for await (const chunk of process.stdin) {
-        size += chunk.length;
-        if (size > maxBytes)
-            return "";
-        chunks.push(chunk);
-    }
-    return Buffer.concat(chunks).toString("utf8");
-}
-
 function activatePanel() {
     try {
         const child = spawn("qs", ["ipc", "call", "popouts", "open", "t3code"], {
@@ -329,75 +386,6 @@ function activatePanel() {
         child.unref();
     } catch {
         // Authentication is complete even when no running shell can be found.
-    }
-}
-
-export async function interactiveLogin() {
-    if (!Number.isInteger(CLOUD_CONFIG.callbackPort)
-            || CLOUD_CONFIG.callbackPort < 1 || CLOUD_CONFIG.callbackPort > 65535)
-        throw new Error("The T3 Connect callback port is invalid.");
-
-    const verifier = base64Url(randomBytes(32));
-    const challenge = base64Url(sha256(verifier));
-    const state = base64Url(randomBytes(16));
-    const redirectUri = `http://127.0.0.1:${CLOUD_CONFIG.callbackPort}/callback`;
-    let finish;
-    let fail;
-    const callback = new Promise((resolve, reject) => {
-        finish = resolve;
-        fail = reject;
-    });
-    const server = createServer((request, response) => {
-        const url = new URL(request.url || "/", redirectUri);
-        const code = url.searchParams.get("code") || "";
-        if (url.pathname !== "/callback" || url.searchParams.get("state") !== state || !code) {
-            response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-            response.end("Invalid T3 Connect authorization callback.");
-            return;
-        }
-        response.writeHead(200, {
-            "content-type": "text/html; charset=utf-8",
-            "cache-control": "no-store",
-        });
-        response.end(completionPage());
-        finish(code);
-    });
-    await new Promise((resolve, reject) => {
-        server.once("listening", resolve);
-        server.once("error", reject);
-        server.listen(CLOUD_CONFIG.callbackPort, "127.0.0.1");
-    }).catch(error => {
-        if (error?.code === "EADDRINUSE")
-            throw new Error("Another T3 Connect sign-in is already running.");
-        throw new Error("Could not start the local T3 Connect callback.");
-    });
-    server.on("error", () => fail(new Error("The local T3 Connect callback stopped.")));
-
-    let timer;
-    const clipboard = watchClipboardAuthorization(state);
-    try {
-        await openExternal(buildAuthorizeUrl(state, challenge));
-        const authorization = await Promise.race([
-            callback.then(code => ({ code, redirectUri })),
-            clipboard.authorization.then(code => ({ code, redirectUri: hostedCallbackUri() })),
-            new Promise((_, reject) => {
-                timer = setTimeout(() => reject(new Error("T3 Connect sign-in timed out.")),
-                    LOGIN_TIMEOUT_MS);
-            }),
-        ]);
-        const credentials = await exchangeClerkToken({
-            grant_type: "authorization_code",
-            code: authorization.code,
-            redirect_uri: authorization.redirectUri,
-            client_id: CLOUD_CONFIG.oauthClientId,
-            code_verifier: verifier,
-        });
-        await writePrivateJson(STATE_PATHS.credentials, credentials);
-        return credentials;
-    } finally {
-        clearTimeout(timer);
-        clipboard.stop();
-        await new Promise(resolve => server.close(resolve));
     }
 }
 
@@ -577,7 +565,9 @@ async function exchangeEnvironmentToken(endpoint, bootstrapCredential, key) {
 }
 
 export async function connectCloud(credentials) {
-    const currentCredentials = await refreshCredentials(credentials);
+    if (credentials?.source !== "t3code-session" || !credentials.accessToken)
+        throw new Error("A T3 Code Nightly sign-in is required for T3 Connect.");
+    const currentCredentials = credentials;
     const environments = await linkedEnvironments(currentCredentials);
     const previousState = await readJson(STATE_PATHS.connection);
     if (environments.length === 0) {
@@ -643,7 +633,7 @@ async function usableConnection() {
             && current?.accessToken && current?.httpBaseUrl && current?.wsBaseUrl
             && Number(current.expiresAtEpochMs) > Date.now() + ENVIRONMENT_REFRESH_MARGIN_MS)
         return current;
-    const credentials = await refreshCredentials(await readJson(STATE_PATHS.credentials));
+    const credentials = await waitForT3CodeRelayCredentials(false);
     const connected = await connectCloud(credentials);
     if (!connected.accessToken)
         throw new Error("No environments are linked to this T3 Connect account.");
@@ -675,7 +665,7 @@ export async function issueWebSocketTicket() {
     } catch (error) {
         if (!(error instanceof HttpError) || ![401, 403].includes(error.status))
             throw error;
-        const credentials = await refreshCredentials(await readJson(STATE_PATHS.credentials));
+        const credentials = await waitForT3CodeRelayCredentials(false);
         connection = await connectCloud(credentials);
         issued = await requestWebSocketTicket(connection, key);
     }
@@ -689,12 +679,17 @@ export async function issueWebSocketTicket() {
 }
 
 async function cloudStatus() {
-    const credentials = await readJson(STATE_PATHS.credentials);
     const connection = await readJson(STATE_PATHS.connection);
+    let credentials = null;
+    try {
+        credentials = await t3CodeRelayCredentials();
+    } catch {
+        // Status is informational; the next explicit sign-in surfaces details.
+    }
     return {
-        signedIn: Boolean(credentials?.accessToken || credentials?.refreshToken),
+        signedIn: Boolean(credentials?.accessToken),
         identity: credentials?.identity || connection?.cloudIdentity || "",
-        status: connection?.cloudStatus || "signed-out",
+        status: connection?.cloudStatus || (credentials ? "signed-in" : "signed-out"),
         environmentId: connection?.environmentId || "",
         environmentLabel: connection?.environmentLabel || "",
     };
@@ -702,7 +697,7 @@ async function cloudStatus() {
 
 async function removeCloudState() {
     await Promise.all([
-        fs.rm(STATE_PATHS.credentials, { force: true }),
+        fs.rm(STATE_PATHS.legacyCredentials, { force: true }),
         fs.rm(STATE_PATHS.dpopKey, { force: true }),
         fs.rm(STATE_PATHS.connection, { force: true }),
     ]);
@@ -710,12 +705,7 @@ async function removeCloudState() {
 
 async function loginAndConnect() {
     try {
-        let credentials = await readJson(STATE_PATHS.credentials);
-        try {
-            credentials = await refreshCredentials(credentials);
-        } catch {
-            credentials = await interactiveLogin();
-        }
+        const credentials = await waitForT3CodeRelayCredentials(true);
         const result = await connectCloud(credentials);
         return {
             status: result.cloudStatus,
@@ -724,25 +714,19 @@ async function loginAndConnect() {
             environmentLabel: result.environmentLabel || "",
         };
     } finally {
-        // Browser sign-in steals focus. Return to the module on success and on
-        // post-callback failures so the result never disappears behind it.
+        // Nightly and its browser sign-in steal focus. Return to the module on
+        // success and failures so the result never disappears behind them.
         activatePanel();
     }
 }
 
 async function main(argv) {
     const command = argv[2] || "status";
-    if (command === "clipboard-code") {
-        const code = parseConnectAuthCode(await readStdin(4096), argv[3] || "");
-        if (code !== null)
-            process.stdout.write(code + "\n");
-        return;
-    }
     let result;
     if (command === "login")
         result = await loginAndConnect();
     else if (command === "connect") {
-        const connected = await connectCloud(await readJson(STATE_PATHS.credentials));
+        const connected = await connectCloud(await waitForT3CodeRelayCredentials(false));
         result = {
             status: connected.cloudStatus,
             identity: connected.cloudIdentity,
