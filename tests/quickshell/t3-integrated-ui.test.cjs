@@ -49,6 +49,25 @@ test("T3 navigation uses one contextual header and hides relay detail in overflo
         "the raw relay host belongs in overflow, not permanent footer chrome");
 });
 
+test("T3 restores the last open non-settled thread across disposable popovers", () => {
+    const popover = read("Popovers/T3CodePopover.qml");
+    const code = read("Common/T3Code.qml");
+    const detail = read("Common/T3Detail.qml");
+
+    assert.match(detail, /property string lastViewedThreadId:\s*""/);
+    assert.match(popover,
+        /function showThread\(threadId\)[\s\S]*?T3Code\.rememberThread\(threadId\)/);
+    assert.match(popover,
+        /function showInbox\(\)[\s\S]*?T3Code\.forgetThread\(selectedThreadId\)/);
+    assert.match(popover,
+        /Component\.onCompleted:\s*root\.restoreThread\(\)/);
+    assert.match(code,
+        /function restorableThreadId\(\)[\s\S]*?!T3Threads\.shellReady[\s\S]*?thread\.lifecycle === "settled"/);
+    assert.doesNotMatch(popover,
+        /Component\.onDestruction:\s*T3Code\.forgetThread/,
+        "closing the popout must not be mistaken for navigating back");
+});
+
 test("thread header identifies the project and provider without repeating the model", () => {
     const thread = read("Popovers/T3ThreadPage.qml");
     const metadata = thread.match(
@@ -112,6 +131,12 @@ test("thread transcript follows T3 message rhythm and attaches response UI", () 
     assert.match(message[1], /textFormat:\s*messageCard\.fromUser \? Text\.PlainText : Text\.MarkdownText/);
     assert.match(message[1], /root\.themedMarkdown\(messageCard\.message\.text\)/);
     assert.match(message[1], /messageHover\.hovered \|\| activeFocus/);
+    assert.match(message[1],
+        /id:\s*messageMetadata[\s\S]*?z:\s*5[\s\S]*?id:\s*copyMessageButton/,
+        "hover metadata should float above the message instead of entering its layout");
+    assert.doesNotMatch(message[1],
+        /visible:\s*messageCard\.longMessage \|\| messageCard\.metadataVisible/,
+        "hovering must not add a metadata row to the message column");
     assert.doesNotMatch(message[1], /text:\s*messageCard\.fromUser \? "You"/,
         "permanent role labels should not interrupt the transcript");
 

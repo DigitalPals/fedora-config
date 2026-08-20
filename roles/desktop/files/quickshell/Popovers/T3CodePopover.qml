@@ -36,6 +36,7 @@ Surface {
 
     function showInbox() {
         connectionMenuOpen = false;
+        T3Code.forgetThread(selectedThreadId);
         page = "inbox";
         T3Code.closeDetail();
     }
@@ -45,7 +46,16 @@ Surface {
             return;
         connectionMenuOpen = false;
         selectedThreadId = threadId;
+        T3Code.rememberThread(threadId);
         page = "thread";
+    }
+
+    function restoreThread() {
+        if (page !== "inbox")
+            return;
+        const threadId = T3Code.restorableThreadId();
+        if (threadId !== "")
+            showThread(threadId);
     }
 
     function showNew() {
@@ -480,8 +490,13 @@ Surface {
                     && root.selectedThreadId !== "")
                 T3Code.openDetail(root.selectedThreadId);
         }
+
+        function onShellReadyChanged() {
+            if (T3Code.shellReady)
+                root.restoreThread();
+        }
     }
 
-    Component.onCompleted: root.page = "inbox"
+    Component.onCompleted: root.restoreThread()
     Component.onDestruction: T3Code.closeDetail()
 }

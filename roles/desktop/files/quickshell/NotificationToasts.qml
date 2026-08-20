@@ -6,11 +6,11 @@ import Quickshell.Wayland
 import "Common"
 import "Common/Format.js" as Format
 
-// Readable fixed-width notification cards. Newest of at most three is on top;
-// normal cards use an adaptive timer based on the configured duration, paused
-// while hovered, and critical cards persist until explicitly dismissed.
-// Corner, density, icons, body lines, and the timeout progress bar follow the
-// Notifications settings page.
+// Compact notification cards. Newest of at most three is on top; normal cards
+// use an adaptive timer based on the configured duration, paused while hovered,
+// and critical cards persist until explicitly dismissed. Corner, density,
+// icons, body lines, and the timeout progress bar follow the Notifications
+// settings page.
 PanelWindow {
     id: root
 
@@ -20,9 +20,9 @@ PanelWindow {
         && (Settings.position === "top") === onTop
     // Density scales the card's inner padding and content gap.
     readonly property int padV: Settings.notifDensity === "compact" ? 8
-        : Settings.notifDensity === "roomy" ? 17 : 12
+        : Settings.notifDensity === "roomy" ? 15 : 11
     readonly property int padH: Settings.notifDensity === "compact" ? 10
-        : Settings.notifDensity === "roomy" ? 19 : 14
+        : Settings.notifDensity === "roomy" ? 16 : 12
 
     // Toast type: an overlay surface, so it stays on the general UI face
     // rather than the menu font, and it is free of the popover scale's 12px
@@ -40,10 +40,12 @@ PanelWindow {
         trailingHeight: 18,
         close: 17,
         closeColor: Theme.textLow,
-        pill: 11
+        pill: 11,
+        stackedHeader: true
     })
 
-    visible: Notifs.toasts.length > 0
+    // Keep the layer mapped through the final card's remove transition.
+    visible: Notifs.toasts.length > 0 || reservedListHeight > 0
     screen: Screens.focused
     anchors {
         top: root.onTop
@@ -51,18 +53,30 @@ PanelWindow {
         left: root.onLeft
         right: !root.onLeft
     }
-    // PanelWindow.margins is a Quickshell group qmllint cannot resolve.
+    // PanelWindow.margins is a Quickshell group qmllint cannot resolve. The
+    // card carries its own stable 10px edge gutter; these margins only clear
+    // a bar on the same edge.
     // qmllint disable unqualified
     margins.top: root.onTop
-        ? (root.barSameEdge ? Theme.barTopMargin + Theme.barHeight : 8) : 0
+        ? (root.barSameEdge ? Theme.barTopMargin + Theme.barHeight : 0) : 0
     margins.bottom: !root.onTop
-        ? (root.barSameEdge ? Theme.barTopMargin + Theme.barHeight : 8) : 0
+        ? (root.barSameEdge ? Theme.barTopMargin + Theme.barHeight : 0) : 0
     // qmllint enable unqualified
 
-    readonly property int shadowPad: 36
-    readonly property int cardWidth: 420
-    implicitWidth: cardWidth + shadowPad + Theme.barSideMargin
-    implicitHeight: toastColumn.implicitHeight + 12 + shadowPad
+    // end-4's two current notification styles land around 344–390 logical px.
+    // This shell used 420, which made short messages read like empty banners.
+    // Keep a little more room than the compact reference while still adapting
+    // to unusually narrow outputs.
+    readonly property int edgeMargin: Math.max(10, Theme.barSideMargin)
+    readonly property int windowPad: 12
+    readonly property int cardWidth: Math.min(380, Math.max(280,
+        root.screen ? root.screen.width - edgeMargin - windowPad : 380))
+    implicitWidth: cardWidth + edgeMargin + windowPad
+    // Keep the old height just long enough for ListView's exit transition.
+    // Without this reserve the layer surface shrinks before the departing
+    // delegate can paint its slide/fade.
+    property real reservedListHeight: 0
+    implicitHeight: reservedListHeight + 24
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
 
@@ -71,7 +85,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
     mask: Region {
-        item: toastColumn
+        item: toastList.contentItem
     }
 
     property real now: Date.now()
@@ -83,117 +97,186 @@ PanelWindow {
         onTriggered: root.now = Date.now()
     }
 
-    Column {
-        id: toastColumn
+    function syncListHeight() {
+        const next = toastList.contentHeight;
+        if (next >= reservedListHeight) {
+            shrinkTimer.stop();
+            reservedListHeight = next;
+        } else {
+            shrinkTimer.restart();
+        }
+    }
+
+    Timer {
+        id: shrinkTimer
+        interval: 180
+        onTriggered: root.reservedListHeight = toastList.contentHeight
+    }
+
+    ListView {
+        id: toastList
         anchors.top: root.onTop ? parent.top : undefined
         anchors.topMargin: 12
         anchors.bottom: root.onTop ? undefined : parent.bottom
         anchors.bottomMargin: 12
         anchors.left: root.onLeft ? parent.left : undefined
-        anchors.leftMargin: Theme.barSideMargin
+        anchors.leftMargin: root.edgeMargin
         anchors.right: root.onLeft ? undefined : parent.right
-        anchors.rightMargin: Theme.barSideMargin
+        anchors.rightMargin: root.edgeMargin
         width: root.cardWidth
+        height: root.reservedListHeight
         spacing: 8
+        interactive: false
+        clip: false
+
+        onContentHeightChanged: root.syncListHeight()
+        Component.onCompleted: root.syncListHeight()
 
         add: Transition {
-            NumberAnimation {
-                property: "opacity"
-                from: 0
-                to: 1
-                duration: 140
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "opacity"
+                    from: 0
+                    to: 1
+                    duration: 160
+                    easing.type: Easing.OutCubic
+                }
+                NumberAnimation {
+                    property: "x"
+                    from: root.onLeft ? -18 : 18
+                    to: 0
+                    duration: 220
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.easeOutCurve
+                }
             }
         }
 
-        Repeater {
-            // ScriptModel diffs by entry identity, so removing one toast
-            // reuses the surviving delegates instead of recreating them —
-            // a plain array model would reset every card's countdown (and
-            // hover state) whenever a sibling expired.
-            model: ScriptModel {
-                values: Notifs.toasts
+        addDisplaced: Transition {
+            NumberAnimation {
+                property: "y"
+                duration: 240
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
+            }
+        }
+
+        remove: Transition {
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "opacity"
+                    to: 0
+                    duration: 120
+                    easing.type: Easing.InCubic
+                }
+                NumberAnimation {
+                    property: "x"
+                    to: root.onLeft ? -18 : 18
+                    duration: 165
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.easeInCurve
+                }
+            }
+        }
+
+        removeDisplaced: Transition {
+            NumberAnimation {
+                property: "y"
+                duration: 240
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
+            }
+        }
+
+        // ScriptModel diffs by entry identity, so removing one toast reuses
+        // the surviving delegates instead of recreating them — a plain array
+        // model would reset every card's countdown (and hover state) whenever
+        // a sibling expired.
+        model: ScriptModel {
+            values: Notifs.toasts
+        }
+
+        delegate: Item {
+            id: slot
+            required property var modelData
+
+            readonly property bool critical: modelData.urgency
+                === NotificationUrgency.Critical
+            readonly property int total: Notifs.timeoutFor(modelData)
+            readonly property bool showProgress: Settings.notifProgress && !critical
+            property int remaining: Notifs.timeoutFor(modelData)
+
+            width: ListView.view.width
+            implicitHeight: card.height
+
+            // One continuous countdown instead of a 100ms tick: the progress
+            // bar moves at display rate and the card needs no repeating timer.
+            // Hovering stops the sequence with `remaining` frozen; unhovering
+            // restarts it from the frozen value with a freshly captured
+            // duration.
+            SequentialAnimation {
+                running: !card.hovered && !slot.critical
+                ScriptAction {
+                    script: countdown.duration = Math.max(1, slot.remaining)
+                }
+                NumberAnimation {
+                    id: countdown
+                    target: slot
+                    property: "remaining"
+                    to: 0
+                }
+                ScriptAction {
+                    script: Notifs.hideToast(slot.modelData, true)
+                }
             }
 
-            delegate: Item {
-                id: slot
-                required property var modelData
+            NotifCard {
+                id: card
 
-                readonly property bool critical: modelData.urgency
-                    === NotificationUrgency.Critical
-                readonly property int total: Notifs.timeoutFor(modelData)
-                readonly property bool showProgress: Settings.notifProgress && !critical
-                property int remaining: Notifs.timeoutFor(modelData)
+                entry: slot.modelData
+                style: root.cardStyle
+                nowMs: root.now
+                padH: root.padH
+                padV: root.padV
+                showIcon: Settings.notifIcons
+                iconExtent: 34
+                iconSize: 24
+                framedIcon: true
 
-                width: toastColumn.width
-                implicitHeight: card.height
+                width: parent.width
+                height: contentHeight
+                radius: Theme.cardRadius
+                clip: true
+                color: slot.critical ? Theme.redBgSoft
+                    : hovered ? Theme.surfaceMenu : Theme.surfaceStrong
+                border.width: 1
+                border.color: slot.critical ? Theme.redBorder
+                    : hovered ? Theme.accentAlpha(0.32) : Theme.popBorder
 
-                // One continuous countdown instead of a 100ms tick: the
-                // progress bar moves at display rate and the card needs no
-                // repeating timer. Hovering stops the sequence with
-                // `remaining` frozen; unhovering restarts it from the frozen
-                // value with a freshly captured duration.
-                SequentialAnimation {
-                    running: !card.hovered && !slot.critical
-                    ScriptAction {
-                        script: countdown.duration = Math.max(1, slot.remaining)
-                    }
-                    NumberAnimation {
-                        id: countdown
-                        target: slot
-                        property: "remaining"
-                        to: 0
-                    }
-                    ScriptAction {
-                        script: Notifs.hideToast(slot.modelData, true)
-                    }
-                }
+                onActivated: Notifs.invokeDefault(slot.modelData)
+                onCloseRequested: Notifs.dismiss(slot.modelData)
 
-                NotifCard {
-                    id: card
+                // A thin inset bar counts down the toast's remaining time and
+                // freezes with the timer while hovered.
+                Rectangle {
+                    visible: slot.showProgress
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.leftMargin: card.padH
+                    anchors.rightMargin: card.padH
+                    anchors.bottomMargin: card.padV / 2
+                    height: 2
+                    radius: 1
+                    color: Theme.activeFill
 
-                    entry: slot.modelData
-                    style: root.cardStyle
-                    nowMs: root.now
-                    padH: root.padH
-                    padV: root.padV
-                    showIcon: Settings.notifIcons
-
-                    width: parent.width
-                    height: contentHeight
-                    radius: Theme.cardRadius
-                    clip: true
-                    color: slot.critical ? Theme.redBgSoft
-                        : hovered ? Theme.surfaceMenu : Theme.surfaceStrong
-                    border.width: 1
-                    border.color: slot.critical ? Theme.redBorder
-                        : hovered ? Qt.rgba(1, 1, 1, 0.14) : Theme.popBorder
-
-                    onActivated: Notifs.invokeDefault(slot.modelData)
-                    onCloseRequested: Notifs.dismiss(slot.modelData)
-
-                    // Timeout progress (design 1c): a thin bar counting down
-                    // the toast's remaining time. Freezes with the timer
-                    // while hovered.
                     Rectangle {
-                        visible: slot.showProgress
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.leftMargin: card.padH
-                        anchors.rightMargin: card.padH
-                        anchors.bottomMargin: card.padV / 2
-                        height: 2
+                        height: parent.height
+                        width: slot.total > 0
+                            ? parent.width * Format.clamp01(slot.remaining / slot.total)
+                            : 0
                         radius: 1
-                        color: Theme.activeFill
-
-                        Rectangle {
-                            height: parent.height
-                            width: slot.total > 0
-                                ? parent.width * Format.clamp01(slot.remaining / slot.total)
-                                : 0
-                            radius: 1
-                            color: Theme.accent
-                        }
+                        color: Theme.accent
                     }
                 }
             }

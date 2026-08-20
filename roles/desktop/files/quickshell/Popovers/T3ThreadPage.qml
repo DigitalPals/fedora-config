@@ -201,8 +201,9 @@ Column {
     }
 
     // User turns form a compact right-aligned bubble. Assistant turns remain
-    // plain markdown in the shared reading column; timestamps and copy affordance
-    // appear only on hover or keyboard focus, matching the web conversation rhythm.
+    // plain markdown in the shared reading column. Hover metadata floats above
+    // that stable geometry: inserting it into the content column made every
+    // later message jump down and back up as the pointer crossed a card.
     component MessageCard: Item {
         id: messageCard
         required property var message
@@ -212,6 +213,9 @@ Column {
             && (message.text.length > 1200 || message.text.split("\n").length > 12)
         readonly property real messageWidth: fromUser ? width * 0.82 : width
         readonly property bool metadataVisible: messageHover.hovered || activeFocus
+            || copyMessageButton.activeFocus
+        readonly property bool metadataFitsGutter: fromUser
+            && userBubble.x >= messageMetadata.width + 6
 
         width: parent ? parent.width : 0
         height: messageColumn.implicitHeight + (fromUser ? 18 : 8)
@@ -222,6 +226,7 @@ Column {
         HoverHandler { id: messageHover }
 
         Rectangle {
+            id: userBubble
             visible: messageCard.fromUser
             x: parent.width - messageCard.messageWidth
             y: 0
@@ -256,7 +261,7 @@ Column {
             }
 
             Item {
-                visible: messageCard.longMessage || messageCard.metadataVisible
+                visible: messageCard.longMessage
                 width: parent.width
                 height: visible ? 24 : 0
 
@@ -267,31 +272,48 @@ Column {
                     onTriggered: messageCard.expanded = !messageCard.expanded
                 }
 
-                Row {
-                    visible: messageCard.metadataVisible
-                    anchors.right: parent.right
+            }
+        }
+
+        Rectangle {
+            id: messageMetadata
+            visible: messageCard.metadataVisible
+            z: 5
+            x: messageCard.metadataFitsGutter
+                ? userBubble.x - width - 6 : messageCard.width - width - 4
+            y: messageCard.metadataFitsGutter ? 4
+                : Math.max(0, messageCard.height - height - (messageCard.fromUser ? 4 : 0))
+            width: metadataRow.implicitWidth + 8
+            height: 24
+            radius: height / 2
+            color: T3Theme.overlay
+            border.width: 1
+            border.color: T3Theme.borderStrong
+
+            Row {
+                id: metadataRow
+                anchors.centerIn: parent
+                spacing: 5
+
+                Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7
+                    text: messageCard.message.streaming === true ? "Streaming…"
+                        : T3Code.relTime(messageCard.message.updatedAt
+                            ?? messageCard.message.createdAt)
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontMicro
+                    font.features: T3Theme.tabularNumberFeatures
+                    color: T3Theme.textFaint
+                }
 
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: messageCard.message.streaming === true ? "Streaming…"
-                            : T3Code.relTime(messageCard.message.updatedAt
-                                ?? messageCard.message.createdAt)
-                        font.family: T3Theme.fontSans
-                        font.pixelSize: Theme.fontMicro
-                        font.features: T3Theme.tabularNumberFeatures
-                        color: T3Theme.textFaint
-                    }
-
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        controlSize: 22
-                        symbol: "content_copy"
-                        accessibleName: "Copy message"
-                        tint: T3Theme.textFaint
-                        onTriggered: Quickshell.clipboardText = messageCard.message.text ?? ""
-                    }
+                IconButton {
+                    id: copyMessageButton
+                    anchors.verticalCenter: parent.verticalCenter
+                    controlSize: 20
+                    symbol: "content_copy"
+                    accessibleName: "Copy message"
+                    tint: T3Theme.textFaint
+                    onTriggered: Quickshell.clipboardText = messageCard.message.text ?? ""
                 }
             }
         }

@@ -73,7 +73,8 @@ Surface {
         trailingHeight: 20,
         close: Theme.fontHeading,
         closeColor: Theme.textDim,
-        pill: Theme.fontCaption
+        pill: Theme.fontCaption,
+        stackedHeader: false
     })
 
     // A nested card is a row inside an expanded source group: no fill, no

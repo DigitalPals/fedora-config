@@ -497,6 +497,30 @@ Singleton {
     readonly property var detailVcs: T3Git.detailVcs
     readonly property var detailGit: T3Git.detailGit
 
+    function rememberThread(threadId) {
+        T3Detail.rememberThread(threadId);
+    }
+
+    function forgetThread(threadId) {
+        T3Detail.forgetThread(threadId);
+    }
+
+    function restorableThreadId() {
+        // During reconnect the shell snapshot is deliberately empty. Keep the
+        // remembered identity until there is authoritative lifecycle data.
+        if (!T3Threads.shellReady)
+            return "";
+        const threadId = T3Detail.lastViewedThreadId;
+        if (threadId === "")
+            return "";
+        const thread = T3Threads.projectedThread(threadId);
+        if (!thread || thread.lifecycle === "settled") {
+            T3Detail.forgetThread(threadId);
+            return "";
+        }
+        return threadId;
+    }
+
     function openDetail(threadId) {
         T3Detail.openDetail(threadId);
     }

@@ -98,6 +98,29 @@ test("the toast countdown stays inside the rounded notification card", () => {
         "a nearly edge-to-edge bar escapes the rounded card silhouette");
 });
 
+test("toast geometry and list motion stay compact and edge-aware", () => {
+    const toast = read("NotificationToasts.qml");
+
+    assert.match(toast, /readonly property int cardWidth:\s*Math\.min\(380,/,
+        "toast cards must not regress to the old 420px banner width");
+    assert.match(toast, /edgeMargin:\s*Math\.max\(10, Theme\.barSideMargin\)/,
+        "attached bars still need a screen-edge gutter");
+    assert.match(toast, /ListView\s*\{\s*id:\s*toastList/);
+    assert.match(toast, /add:\s*Transition[\s\S]*?property:\s*"x"/,
+        "new toasts should arrive from their configured screen edge");
+    assert.match(toast, /addDisplaced:\s*Transition[\s\S]*?Theme\.springCurve/,
+        "existing cards should settle when a newer toast arrives");
+    assert.match(toast, /remove:\s*Transition[\s\S]*?property:\s*"x"/,
+        "expired toasts should leave toward their configured screen edge");
+    assert.match(toast, /removeDisplaced:\s*Transition[\s\S]*?Theme\.springCurve/,
+        "surviving cards should settle instead of jumping into the gap");
+    assert.match(toast, /property real reservedListHeight:\s*0/,
+        "the panel must remain mapped while the exit transition paints");
+    assert.match(toast,
+        /visible:\s*Notifs\.toasts\.length > 0 \|\| reservedListHeight > 0/,
+        "the final toast's exit must finish before the layer is unmapped");
+});
+
 function keysSuppliedSource(rel) {
     const source = read(rel);
     const start = source.indexOf("readonly property var cardStyle: ({");

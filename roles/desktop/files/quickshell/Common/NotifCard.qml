@@ -3,8 +3,10 @@ import QtQuick
 import Quickshell.Services.Notifications
 
 // The notification card anatomy, drawn by both the toast overlay and the
-// notification centre: source icon, "app · summary" header, a timestamp that
+// notification centre: source icon, app/summary header, a timestamp that
 // becomes a close button on hover, wrapped body, and contextual action pills.
+// Toasts stack app and summary for a calmer hierarchy; compact centre rows
+// keep them together.
 //
 // Surface chrome stays with the caller. This is a Rectangle, so `color`,
 // `border` and `radius` are set at the call site the ordinary way, and extra
@@ -32,6 +34,9 @@ Rectangle {
     property bool showApp: true
     property int groupCount: 1
     property bool groupUrgent: false
+    property int iconExtent: 28
+    property int iconSize: 28
+    property bool framedIcon: false
 
     signal activated
     signal closeRequested
@@ -63,20 +68,22 @@ Rectangle {
         x: card.padH
         y: card.padV
         width: parent.width - card.padH * 2
-        spacing: card.showIcon ? 12 : 0
+        spacing: card.showIcon ? 10 : 0
 
         NotifIcon {
             visible: card.showIcon
-            width: 28
-            height: 28
+            width: card.iconExtent
+            height: card.iconExtent
+            iconSize: card.iconSize
+            framed: card.framedIcon
             entry: card.entry
             urgent: card.urgent
         }
 
         Column {
             width: cardContent.width
-                - (card.showIcon ? 28 + cardContent.spacing : 0)
-            spacing: 5
+                - (card.showIcon ? card.iconExtent + cardContent.spacing : 0)
+            spacing: 4
 
             Item {
                 width: parent.width
@@ -87,15 +94,20 @@ Rectangle {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - trailing.width - 8
-                    text: card.showApp
+                    text: card.style.stackedHeader && card.showApp
                         ? card.entry.displayAppName
-                            + (card.entry.displaySummary
-                                ? " · " + card.entry.displaySummary : "")
+                        : card.showApp
+                            ? card.entry.displayAppName
+                                + (card.entry.displaySummary
+                                    ? " · " + card.entry.displaySummary : "")
                         : (card.entry.displaySummary || card.entry.displayAppName)
                     font.family: card.style.face
-                    font.pixelSize: card.style.header
-                    font.weight: Theme.weightSemibold
-                    color: Theme.textHi
+                    font.pixelSize: card.style.stackedHeader && card.showApp
+                        ? card.style.pill : card.style.header
+                    font.weight: card.style.stackedHeader && card.showApp
+                        ? Theme.weightMedium : Theme.weightSemibold
+                    color: card.style.stackedHeader && card.showApp
+                        ? Theme.textMid : Theme.textHi
                     elide: Text.ElideRight
                 }
 
@@ -139,37 +151,71 @@ Rectangle {
                         anchors.horizontalCenter: card.style.stampCentred
                             ? parent.horizontalCenter : undefined
                         anchors.verticalCenter: parent.verticalCenter
-                        visible: !card.hovered
+                        opacity: card.hovered ? 0 : 1
                         text: Notifs.timeAgo(card.entry.arrived, card.nowMs)
                         font.family: card.style.stampFace
                         font.pixelSize: card.style.stampSize
                         font.weight: Theme.weightMedium
                         font.features: Theme.tabularNumberFeatures
                         color: Theme.textDim
+
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: Theme.chipFadeDuration / 2
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                     }
 
-                    Text {
+                    Rectangle {
                         anchors.right: card.style.stampCentred ? undefined : parent.right
                         anchors.horizontalCenter: card.style.stampCentred
                             ? parent.horizontalCenter : undefined
                         anchors.verticalCenter: parent.verticalCenter
-                        visible: card.hovered
-                        text: "×"
-                        font.family: card.style.face
-                        font.pixelSize: card.style.close
+                        width: card.style.trailingHeight + 4
+                        height: width
+                        radius: width / 2
+                        opacity: card.hovered ? 1 : 0
                         color: closeMouse.containsMouse
-                            ? Theme.textHi : card.style.closeColor
+                            ? Theme.hoverFillStrong : "transparent"
+
+                        Sym {
+                            anchors.centerIn: parent
+                            name: "close"
+                            size: card.style.close
+                            color: closeMouse.containsMouse
+                                ? Theme.textHi : card.style.closeColor
+                        }
 
                         MouseArea {
                             id: closeMouse
                             anchors.fill: parent
-                            anchors.margins: -6
+                            enabled: card.hovered
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: card.closeRequested()
                         }
+
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: Theme.chipFadeDuration / 2
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                     }
                 }
+            }
+
+            Text {
+                visible: card.style.stackedHeader && card.showApp
+                    && card.entry.displaySummary !== ""
+                width: parent.width
+                text: card.entry.displaySummary || ""
+                font.family: card.style.face
+                font.pixelSize: card.style.header
+                font.weight: Theme.weightSemibold
+                color: Theme.textHi
+                elide: Text.ElideRight
             }
 
             Text {
@@ -192,5 +238,9 @@ Rectangle {
                 pixelSize: card.style.pill
             }
         }
+    }
+
+    Behavior on color {
+        ColorAnimation { duration: Theme.chipFadeDuration }
     }
 }

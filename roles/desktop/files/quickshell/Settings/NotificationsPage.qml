@@ -75,16 +75,15 @@ SettingsPage {
                         readonly property bool onTop: Settings.notifPosition.indexOf("top") === 0
                         readonly property bool onLeft: Settings.notifPosition.indexOf("left") !== -1
                         readonly property int pad: Settings.notifDensity === "compact" ? 7
-                            : Settings.notifDensity === "roomy" ? 14 : 10
-                        width: Math.min(300, parent.width - 28)
+                            : Settings.notifDensity === "roomy" ? 13 : 9
+                        width: Math.min(276, parent.width - 28)
                         height: miniContent.implicitHeight + pad * 2
-                            + (Settings.notifProgress ? 4 : 0)
                         x: onLeft ? 14 : parent.width - width - 14
                         y: onTop
                             ? (Settings.position === "top" ? miniBar.y + miniBar.height + 7 : 7)
                             : (Settings.position === "bottom" ? miniBar.y - height - 7
                                 : parent.height - height - 7)
-                        radius: 8
+                        radius: Theme.cardRadius
                         color: Theme.surfaceStrong
                         border.width: 1
                         border.color: Theme.popBorder
@@ -94,14 +93,23 @@ SettingsPage {
                             x: miniToast.pad + 2
                             y: miniToast.pad
                             width: parent.width - (miniToast.pad + 2) * 2
-                            spacing: 8
-                            Image {
+                            spacing: 7
+                            Rectangle {
                                 id: miniIcon
                                 visible: Settings.notifIcons
-                                width: 22; height: 22
-                                source: "../assets/whatsapp.svg"
-                                sourceSize: Qt.size(22, 22)
-                                asynchronous: true
+                                width: 28; height: 28
+                                radius: 9
+                                color: Theme.accentBgSoft
+                                border.width: 1
+                                border.color: Theme.hairlineSoft
+
+                                Image {
+                                    anchors.centerIn: parent
+                                    width: 19; height: 19
+                                    source: "../assets/whatsapp.svg"
+                                    sourceSize: Qt.size(19, 19)
+                                    asynchronous: true
+                                }
                             }
                             Column {
                                 width: miniContent.width - (miniIcon.visible
@@ -109,16 +117,16 @@ SettingsPage {
                                 spacing: 2
                                 Item {
                                     width: parent.width
-                                    height: miniHeader.implicitHeight
+                                    height: Math.max(miniApp.implicitHeight, miniTime.implicitHeight)
                                     Text {
-                                        id: miniHeader
+                                        id: miniApp
                                         anchors.left: parent.left
                                         width: Math.max(0, parent.width - miniTime.width - 6)
-                                        text: "WhatsApp · Sarah Jansen"
+                                        text: "WhatsApp"
                                         font.family: Theme.fontMenu
-                                        font.pixelSize: Theme.fontCaption
-                                        font.weight: Theme.weightSemibold
-                                        color: Theme.textHi
+                                        font.pixelSize: Theme.fontTiny
+                                        font.weight: Theme.weightMedium
+                                        color: Theme.textMid
                                         elide: Text.ElideRight
                                     }
                                     Text {
@@ -129,6 +137,15 @@ SettingsPage {
                                         font.pixelSize: Theme.fontCaption
                                         color: Theme.textDim
                                     }
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: "Sarah Jansen"
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontCaption
+                                    font.weight: Theme.weightSemibold
+                                    color: Theme.textHi
+                                    elide: Text.ElideRight
                                 }
                                 Text {
                                     visible: Settings.notifBodyLines > 0
@@ -148,12 +165,16 @@ SettingsPage {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
-                            anchors.margins: 1
-                            height: 3
-                            color: Qt.rgba(1, 1, 1, 0.07)
+                            anchors.leftMargin: miniToast.pad
+                            anchors.rightMargin: miniToast.pad
+                            anchors.bottomMargin: miniToast.pad / 2
+                            height: 2
+                            radius: 1
+                            color: Theme.activeFill
                             Rectangle {
                                 height: parent.height
                                 width: parent.width * page.previewProgress
+                                radius: 1
                                 color: Theme.accent
                             }
                         }

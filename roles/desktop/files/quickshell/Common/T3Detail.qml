@@ -47,6 +47,10 @@ Singleton {
     }
 
     property string detailThreadId: ""
+    // The popover itself is disposable, but closing it is not navigation.
+    // Retain the last expanded thread here so a fresh popover can restore it;
+    // explicit Back/Escape clears this separately from closeDetail().
+    property string lastViewedThreadId: ""
     property bool detailLoading: false
     property string detailError: ""
     property var detailMessages: []
@@ -81,6 +85,16 @@ Singleton {
 
     property string detailReqId: ""
     property string pendingDetailResubscribeId: ""
+
+    function rememberThread(threadId) {
+        if (typeof threadId === "string" && threadId !== "")
+            lastViewedThreadId = threadId;
+    }
+
+    function forgetThread(threadId) {
+        if (threadId === undefined || threadId === "" || lastViewedThreadId === threadId)
+            lastViewedThreadId = "";
+    }
 
     function resetDetailData() {
         detailLoading = false;
@@ -612,6 +626,7 @@ Singleton {
             closeDetail();
             return;
         }
+        rememberThread(threadId);
         if (detailThreadId === threadId && detailReqId !== "")
             return;
         if (detailThreadId !== "" && detailThreadId !== threadId)
