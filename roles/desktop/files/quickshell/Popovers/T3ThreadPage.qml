@@ -16,6 +16,7 @@ Column {
     property bool changesExpanded: false
     property string expandedCheckpointRef: ""
     property bool gitSuccessVisible: false
+    property string dismissedTaskProgressKey: ""
     signal backRequested()
     signal newPlanRequested(var plan)
 
@@ -27,6 +28,11 @@ Column {
         && !backgroundWorking
     readonly property bool monitoring: thread !== null && thread.cls === "monitoring"
     readonly property int liveAgentCount: backgroundWorking ? T3Code.detailLiveAgentCount : 0
+    readonly property var taskProgress: T3Code.detailTaskProgress
+    readonly property bool showTaskProgress: taskProgress !== null
+        && taskProgress.key !== dismissedTaskProgressKey
+        && (taskProgress.completedCount < taskProgress.total || working
+            || backgroundWorking || monitoring)
     readonly property string backgroundStatus: monitoring ? "Monitoring in the background"
         : liveAgentCount > 0 ? liveAgentCount + " "
             + (liveAgentCount === 1 ? "agent" : "agents") + " working in the background"
@@ -412,21 +418,71 @@ Column {
                         color: T3Theme.textPrimary
                     }
 
-                    Text {
+                    Row {
+                        id: threadMetadata
                         width: parent.width
-                        text: {
-                            const parts = [];
-                            if (root.thread && root.thread.project !== "")
-                                parts.push(root.thread.project);
-                            const selection = T3Code.threadSelectionLabel(root.threadId);
-                            if (selection !== "")
-                                parts.push(selection);
-                            return parts.join(" · ");
+                        spacing: 5
+
+                        readonly property string projectName: root.thread
+                            ? String(root.thread.project ?? "") : ""
+                        readonly property string providerGlyph:
+                            T3Code.threadProviderIcon(root.threadId)
+                        readonly property int visibleItemCount:
+                            (projectName !== "" ? 2 : 0)
+                            + (providerGlyph !== "" ? 1 : 0)
+                            + (projectName !== "" && providerGlyph !== "" ? 1 : 0)
+                        readonly property real fixedWidth:
+                            (projectFolder.visible ? projectFolder.implicitWidth : 0)
+                            + (metadataSeparator.visible ? metadataSeparator.implicitWidth : 0)
+                            + (providerIcon.visible ? providerIcon.width : 0)
+                            + Math.max(0, visibleItemCount - 1) * spacing
+
+                        Sym {
+                            id: projectFolder
+                            visible: threadMetadata.projectName !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "folder"
+                            size: Theme.iconTiny
+                            symWeight: 450
+                            color: T3Theme.textFaint
                         }
-                        elide: Text.ElideRight
-                        font.family: T3Theme.fontSans
-                        font.pixelSize: Theme.fontCaption
-                        color: T3Theme.textFaint
+
+                        Text {
+                            id: projectName
+                            visible: threadMetadata.projectName !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth,
+                                Math.max(0, threadMetadata.width - threadMetadata.fixedWidth))
+                            text: threadMetadata.projectName
+                            elide: Text.ElideRight
+                            font.family: T3Theme.fontSans
+                            font.pixelSize: Theme.fontCaption
+                            color: T3Theme.textFaint
+                        }
+
+                        Text {
+                            id: metadataSeparator
+                            visible: threadMetadata.projectName !== ""
+                                && threadMetadata.providerGlyph !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "·"
+                            font.family: T3Theme.fontSans
+                            font.pixelSize: Theme.fontCaption
+                            color: T3Theme.textFaint
+                        }
+
+                        Image {
+                            id: providerIcon
+                            visible: threadMetadata.providerGlyph !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 13
+                            height: 13
+                            sourceSize: Qt.size(26, 26)
+                            fillMode: Image.PreserveAspectFit
+                            source: visible ? Quickshell.shellDir + "/assets/"
+                                + threadMetadata.providerGlyph + ".svg" : ""
+                            opacity: 0.92
+                        }
                     }
                 }
 
@@ -657,6 +713,120 @@ Column {
         onTriggered: root.gitSuccessVisible = false
     }
 
+    Rectangle {
+        id: taskProgressCard
+        visible: root.showTaskProgress
+        width: parent.width
+        height: visible ? 50 : 0
+        radius: T3Theme.panelRadius
+        color: T3Theme.surfaceRaised
+        border.width: 1
+        border.color: T3Theme.border
+        Accessible.name: root.taskProgress
+            ? "Tasks, " + root.taskProgress.activeStep + ", "
+                + root.taskProgress.completedCount + " of " + root.taskProgress.total
+                + " completed" : ""
+
+        Sym {
+            id: taskProgressGlyph
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.top: parent.top
+            anchors.topMargin: 8
+            name: "checklist"
+            size: Theme.iconSmall
+            symWeight: 500
+            color: T3Theme.textMuted
+        }
+
+        Text {
+            id: taskProgressLabel
+            anchors.left: taskProgressGlyph.right
+            anchors.leftMargin: 6
+            anchors.verticalCenter: taskProgressGlyph.verticalCenter
+            text: "Tasks"
+            font.family: T3Theme.fontSans
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemibold
+            color: T3Theme.textMuted
+        }
+
+        Text {
+            id: taskProgressTitle
+            anchors.left: taskProgressLabel.right
+            anchors.leftMargin: 9
+            anchors.right: taskProgressCount.left
+            anchors.rightMargin: 9
+            anchors.verticalCenter: taskProgressGlyph.verticalCenter
+            text: root.taskProgress ? root.taskProgress.activeStep : ""
+            elide: Text.ElideRight
+            font.family: T3Theme.fontSans
+            font.pixelSize: Theme.fontBody
+            font.weight: Theme.weightMedium
+            color: T3Theme.textPrimary
+        }
+
+        Text {
+            id: taskProgressCount
+            anchors.right: dismissTaskProgress.left
+            anchors.rightMargin: 7
+            anchors.verticalCenter: taskProgressGlyph.verticalCenter
+            text: root.taskProgress ? root.taskProgress.completedCount + "/"
+                + root.taskProgress.total : ""
+            font.family: T3Theme.fontSans
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightMedium
+            font.features: T3Theme.tabularNumberFeatures
+            color: T3Theme.textFaint
+        }
+
+        IconButton {
+            id: dismissTaskProgress
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.top: parent.top
+            anchors.topMargin: 4
+            controlSize: 24
+            symbol: "close"
+            accessibleName: "Dismiss task progress"
+            tint: T3Theme.textFaint
+            onTriggered: {
+                if (root.taskProgress)
+                    root.dismissedTaskProgressKey = root.taskProgress.key;
+            }
+        }
+
+        Row {
+            id: taskProgressSegments
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 8
+            height: 4
+            spacing: 3
+
+            Repeater {
+                id: taskProgressRepeater
+                model: root.taskProgress ? root.taskProgress.items : []
+
+                delegate: Rectangle {
+                    required property var modelData
+                    width: Math.max(3, (taskProgressSegments.width
+                        - Math.max(0, taskProgressRepeater.count - 1)
+                            * taskProgressSegments.spacing)
+                        / Math.max(1, taskProgressRepeater.count))
+                    height: taskProgressSegments.height
+                    radius: height / 2
+                    color: modelData.status === "completed" ? T3Theme.success
+                        : modelData.status === "inProgress" ? T3Theme.accent
+                        : T3Theme.borderStrong
+                }
+            }
+        }
+    }
+
     Item {
         id: gitFeedback
         visible: root.gitFeedbackText !== ""
@@ -705,7 +875,7 @@ Column {
         width: parent.width
         height: {
             const room = root.maxHeight - header.height - composer.implicitHeight
-                - gitFeedback.height - backgroundBanner.height
+                - taskProgressCard.height - gitFeedback.height - backgroundBanner.height
                 - composerAttachmentsViewport.height - composerError.implicitHeight - 18;
             return Math.max(140, Math.min(room, timeline.implicitHeight));
         }
@@ -1269,6 +1439,7 @@ Column {
         changesExpanded = false;
         expandedCheckpointRef = "";
         gitSuccessVisible = false;
+        dismissedTaskProgressKey = "";
         gitSuccessTimer.stop();
         T3Code.ensureThreadDraft(threadId);
         if (T3Code.state === "connected")

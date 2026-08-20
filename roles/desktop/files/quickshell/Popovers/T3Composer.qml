@@ -732,10 +732,27 @@ Column {
         }
     }
 
+    // Updating a draft replaces the singleton's map and emits its change
+    // signal before every dependent binding is guaranteed to have observed
+    // the replacement. Resync on the next event-loop turn: an edit originating
+    // here then compares equal and leaves the cursor alone, while an external
+    // clear/restore still reaches the editor.
+    Timer {
+        id: promptSyncTimer
+        interval: 0
+        onTriggered: root.syncPrompt()
+    }
+
     Connections {
         target: T3Code
-        function onThreadDraftsChanged() { if (!root.newThread) root.syncPrompt(); }
-        function onNewThreadDraftChanged() { if (root.newThread) root.syncPrompt(); }
+        function onThreadDraftsChanged() {
+            if (!root.newThread)
+                promptSyncTimer.restart();
+        }
+        function onNewThreadDraftChanged() {
+            if (root.newThread)
+                promptSyncTimer.restart();
+        }
     }
 
     Component.onCompleted: {

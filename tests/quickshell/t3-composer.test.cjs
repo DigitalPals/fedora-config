@@ -43,6 +43,18 @@ test("T3 composer preserves the Ultrathink prompt cue inside the glass shell", (
         /visible:\s*root\.ultrathink[\s\S]*?color:\s*T3Theme\.accentSubtle/);
 });
 
+test("draft feedback waits for the selected-draft binding before resyncing input", () => {
+    const connections = composer.match(
+        /Connections\s*\{\s*target:\s*T3Code([\s\S]*?)\n\s*}/);
+
+    assert.ok(connections, "expected composer draft connections");
+    assert.match(composer,
+        /id:\s*promptSyncTimer[\s\S]*?interval:\s*0[\s\S]*?onTriggered:\s*root\.syncPrompt\(\)/);
+    assert.match(connections[1], /promptSyncTimer\.restart\(\)/);
+    assert.doesNotMatch(connections[1], /root\.syncPrompt\(\)/,
+        "a synchronous resync can read the previous draft and undo the keystroke");
+});
+
 test("the header glyph button lives in IconButton.qml, not inline copies", () => {
     for (const page of ["Popovers/T3ThreadPage.qml", "Popovers/T3NewThreadPage.qml"]) {
         const source = fs.readFileSync(path.join(shellDir, page), "utf8");

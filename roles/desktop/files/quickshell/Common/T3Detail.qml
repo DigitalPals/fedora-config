@@ -63,6 +63,9 @@ Singleton {
     property var detailCheckpointSummary: null
     readonly property int detailLiveAgentCount: Helpers.liveAgentCount(detailActivities,
         detailSession === null ? null : detailSession.status !== "stopped")
+    readonly property var detailTaskProgress: Helpers.taskProgress(detailActivities,
+        detailLatestTurn && typeof detailLatestTurn.turnId === "string"
+            ? detailLatestTurn.turnId : "")
     property var detailDiff: ({ checkpointRef: "", loading: false, error: "",
         text: "", fullText: "", truncated: false, totalChars: 0, totalLines: 0 })
 

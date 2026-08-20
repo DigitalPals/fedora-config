@@ -627,6 +627,44 @@ test("thread glyph prefers the live session and survives a missing provider snap
     assert.equal(H.threadProviderIconName(thread({ modelSelection: null }), list), "");
 });
 
+test("task progress follows the latest plan update for the current turn", () => {
+    const progress = H.taskProgress([
+        { id: "old", kind: "turn.plan.updated", turnId: "turn-old", payload: {
+            plan: [{ step: "Old task", status: "inProgress" }]
+        } },
+        { id: "first", kind: "turn.plan.updated", turnId: "turn-new", payload: {
+            plan: [
+                { step: "Inspect", status: "completed" },
+                { step: "Implement", status: "in_progress" },
+                { step: "Verify", status: "pending" },
+            ]
+        } },
+        { id: "latest", kind: "turn.plan.updated", turnId: "turn-new", payload: {
+            plan: [
+                { step: "Inspect", status: "completed" },
+                { step: "Implement", status: "completed" },
+                { step: "Verify", status: "running" },
+                { step: "Ship", status: "unknown" },
+            ]
+        } },
+    ], "turn-new");
+
+    assert.deepEqual(progress, {
+        key: "latest",
+        items: [
+            { step: "Inspect", status: "completed" },
+            { step: "Implement", status: "completed" },
+            { step: "Verify", status: "inProgress" },
+            { step: "Ship", status: "pending" },
+        ],
+        total: 4,
+        completedCount: 2,
+        currentIndex: 2,
+        activeStep: "Verify",
+    });
+    assert.equal(H.taskProgress([], "turn-new"), null);
+});
+
 test("thread selection label pairs provider display name with the model", () => {
     assert.equal(H.threadSelectionLabel(thread(), providers()), "Codex · GPT 5.6 Sol");
     assert.equal(H.threadSelectionLabel(thread(), []), "");

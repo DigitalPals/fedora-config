@@ -186,6 +186,67 @@ function liveAgentCount(activities, sessionLive) {
     return count;
 }
 
+// The provider's update_plan calls arrive in the detail stream as persisted
+// turn.plan.updated activities. Reduce the latest update for the current turn
+// to the small, stable shape the compact thread progress card needs.
+function taskProgress(activities, turnId) {
+    var targetTurnId = typeof turnId === "string" ? turnId : "";
+    var values = Array.isArray(activities) ? activities : [];
+    var latest = null;
+    for (var i = 0; i < values.length; i++) {
+        var activity = values[i];
+        if (!activity || activity.kind !== "turn.plan.updated"
+                || targetTurnId !== "" && activity.turnId !== targetTurnId)
+            continue;
+        var rawPlan = activity.payload && Array.isArray(activity.payload.plan)
+            ? activity.payload.plan : [];
+        var items = [];
+        for (var planIndex = 0; planIndex < rawPlan.length; planIndex++) {
+            var raw = rawPlan[planIndex];
+            if (!raw || typeof raw.step !== "string" || raw.step.trim() === "")
+                continue;
+            var compactStatus = typeof raw.status === "string"
+                ? raw.status.replace(/[_-]/g, "").toLowerCase() : "";
+            var status = compactStatus === "completed" || compactStatus === "done"
+                ? "completed"
+                : compactStatus === "inprogress" || compactStatus === "running"
+                    ? "inProgress" : "pending";
+            items.push({ step: raw.step.trim(), status: status });
+        }
+        if (items.length > 0)
+            latest = { activity: activity, items: items };
+    }
+    if (!latest)
+        return null;
+
+    var completedCount = 0;
+    var currentIndex = -1;
+    for (var itemIndex = 0; itemIndex < latest.items.length; itemIndex++) {
+        if (latest.items[itemIndex].status === "completed")
+            completedCount++;
+        else if (currentIndex < 0 && latest.items[itemIndex].status === "inProgress")
+            currentIndex = itemIndex;
+    }
+    if (currentIndex < 0) {
+        for (var pendingIndex = 0; pendingIndex < latest.items.length; pendingIndex++) {
+            if (latest.items[pendingIndex].status === "pending") {
+                currentIndex = pendingIndex;
+                break;
+            }
+        }
+    }
+    return {
+        key: typeof latest.activity.id === "string" && latest.activity.id !== ""
+            ? latest.activity.id
+            : (latest.activity.createdAt || targetTurnId || JSON.stringify(latest.items)),
+        items: latest.items,
+        total: latest.items.length,
+        completedCount: completedCount,
+        currentIndex: currentIndex,
+        activeStep: currentIndex >= 0 ? latest.items[currentIndex].step : "All tasks complete"
+    };
+}
+
 function lastActivityMs(thread) {
     var turn = thread && thread.latestTurn ? thread.latestTurn : null;
     var stamps = [thread ? thread.latestUserMessageAt : null,
@@ -1494,6 +1555,7 @@ var exported = {
     formatWorkingDurationLabel: formatWorkingDurationLabel,
     formatWorkingTimerLabel: formatWorkingTimerLabel,
     liveAgentCount: liveAgentCount,
+    taskProgress: taskProgress,
     lastActivityMs: lastActivityMs,
     hasQueuedTurnStart: hasQueuedTurnStart,
     isEffectivelySettled: isEffectivelySettled,

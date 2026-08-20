@@ -487,6 +487,7 @@ Singleton {
     readonly property var detailMessages: T3Detail.detailMessages
     readonly property var detailSession: T3Detail.detailSession
     readonly property int detailLiveAgentCount: T3Detail.detailLiveAgentCount
+    readonly property var detailTaskProgress: T3Detail.detailTaskProgress
     readonly property var detailApprovals: T3Detail.detailApprovals
     readonly property var detailPendingInputs: T3Detail.detailPendingInputs
     readonly property var detailLatestActivity: T3Detail.detailLatestActivity

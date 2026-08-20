@@ -49,6 +49,36 @@ test("T3 navigation uses one contextual header and hides relay detail in overflo
         "the raw relay host belongs in overflow, not permanent footer chrome");
 });
 
+test("thread header identifies the project and provider without repeating the model", () => {
+    const thread = read("Popovers/T3ThreadPage.qml");
+    const metadata = thread.match(
+        /Row\s*\{\s*id:\s*threadMetadata\b([\s\S]*?)\n\s*}\n\s*}\n\s*IconButton\s*\{\s*id:\s*openButton/);
+
+    assert.ok(metadata, "expected the thread metadata row");
+    assert.match(metadata[1], /name:\s*"folder"/);
+    assert.match(metadata[1], /T3Code\.threadProviderIcon\(root\.threadId\)/);
+    assert.match(metadata[1], /threadMetadata\.providerGlyph \+ "\.svg"/);
+    assert.doesNotMatch(metadata[1], /threadSelectionLabel|modelSelection/,
+        "the compact header must not repeat the selected model");
+});
+
+test("thread page mirrors live task progress from plan-update activities", () => {
+    const detail = read("Common/T3Detail.qml");
+    const code = read("Common/T3Code.qml");
+    const thread = read("Popovers/T3ThreadPage.qml");
+
+    assert.match(detail,
+        /detailTaskProgress:\s*Helpers\.taskProgress\(detailActivities,/);
+    assert.match(code,
+        /detailTaskProgress:\s*T3Detail\.detailTaskProgress/);
+    assert.match(thread,
+        /id:\s*taskProgressCard[\s\S]*?text:\s*"Tasks"/);
+    assert.match(thread,
+        /modelData\.status === "completed" \? T3Theme\.success[\s\S]*?"inProgress" \? T3Theme\.accent/);
+    assert.match(thread,
+        /taskProgress\.completedCount \+ "\/"[\s\S]*?taskProgress\.total/);
+});
+
 test("the T3 composer is one rounded glass shell with inline controls", () => {
     const composer = read("Popovers/T3Composer.qml");
     const theme = read("Common/T3Theme.qml");
