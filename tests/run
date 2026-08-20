@@ -122,7 +122,7 @@ assert Path("roles/desktop/templates/hyprland-quickshell.j2").is_file()
 assert not Path("roles/desktop/files/noctalia").exists()
 assert "- quickshell" in tasks
 assert "src: quickshell/" in tasks
-assert "qs ipc call launcher toggle" in bindings
+assert 'hl.dsp.global("quickshell:launcherToggle")' in bindings
 assert "noctalia" not in autostart.lower()
 assert "qs-(bar|bar-popout|launcher|notifications|osd|power|shortcuts|wallpaper)" in look
 assert "hyprland-quickshell" in finalize

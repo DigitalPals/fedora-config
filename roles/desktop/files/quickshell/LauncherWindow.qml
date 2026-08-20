@@ -21,7 +21,11 @@ PanelWindow {
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "qs-launcher"
-    WlrLayershell.keyboardFocus: Launcher.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    // This is a keyboard-first modal surface. Exclusive focus asks the
+    // compositor for the keyboard as soon as the window maps; the view also
+    // has an early-key fallback below for the frame before its TextInput
+    // becomes the active focus item.
+    WlrLayershell.keyboardFocus: Launcher.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     HyprlandFocusGrab {
         active: Launcher.open
@@ -49,9 +53,13 @@ PanelWindow {
     FocusScope {
         id: stage
         anchors.fill: parent
-        focus: true
+        focus: Launcher.open
 
         Keys.onEscapePressed: Launcher.close()
+        Keys.onPressed: event => {
+            if (Launcher.open && !launcherView.inputActiveFocus)
+                event.accepted = launcherView.handleEarlyKey(event);
+        }
 
         // The card's top edge stays put while the result list grows and
         // shrinks; it sits where a fully populated launcher would centre
@@ -63,28 +71,29 @@ PanelWindow {
 
             x: Math.round((root.width - width) / 2)
             y: stage.anchorY
-            width: launcherLoader.item ? launcherLoader.item.implicitWidth : 560
-            height: launcherLoader.item ? launcherLoader.item.implicitHeight : 200
+            width: launcherView.implicitWidth
+            height: launcherView.implicitHeight
             radius: Theme.popRadius
             color: Theme.surfaceStrong
 
-            // The transform springs while opacity eases, so the shape
-            // arrives a beat after the content becomes legible.
+            // These animations never gate input: the warm view and selected
+            // first row are actionable before the first visible frame.
             opacity: Launcher.open ? 1 : 0
-            scale: Launcher.open ? 1 : 0.955
+            scale: Launcher.open ? 1 : Theme.launcherInitialScale
 
             Behavior on opacity {
                 NumberAnimation {
-                    duration: Theme.panelFadeDuration
-                    easing.type: Easing.OutCubic
+                    duration: Launcher.open ? Theme.launcherFadeInDuration : Theme.launcherFadeOutDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Launcher.open ? Theme.launcherEnterCurve : Theme.launcherExitCurve
                 }
             }
 
             Behavior on scale {
                 NumberAnimation {
-                    duration: Theme.panelMotionDuration
+                    duration: Launcher.open ? Theme.launcherOpenDuration : Theme.launcherCloseDuration
                     easing.type: Easing.BezierSpline
-                    easing.bezierCurve: Theme.springCurve
+                    easing.bezierCurve: Launcher.open ? Theme.launcherEnterCurve : Theme.launcherExitCurve
                 }
             }
 
@@ -93,36 +102,33 @@ PanelWindow {
             Behavior on height {
                 enabled: Launcher.open
                 NumberAnimation {
-                    duration: Theme.expandDuration
+                    duration: Theme.launcherResizeDuration
                     easing.type: Easing.BezierSpline
                     easing.bezierCurve: Theme.easeOutCurve
                 }
             }
 
             transform: Translate {
-                y: Launcher.open ? 0 : -18
+                y: Launcher.open ? 0 : -Theme.launcherTravel
 
                 Behavior on y {
                     NumberAnimation {
-                        duration: Theme.panelMotionDuration
+                        duration: Launcher.open ? Theme.launcherOpenDuration : Theme.launcherCloseDuration
                         easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Theme.springCurve
+                        easing.bezierCurve: Launcher.open ? Theme.launcherEnterCurve : Theme.launcherExitCurve
                     }
                 }
             }
 
-            Loader {
-                id: launcherLoader
-                // Stay warm after the first open so reopening is instant;
-                // the view resets its own state on each open.
-                property bool warm: false
-                active: Launcher.open || warm
-                focus: true
-                source: active ? "LauncherView.qml" : ""
-                onLoaded: {
-                    warm = true;
-                    item.drawBackground = false;
-                }
+            // Construct the launcher with the shell instead of on the first
+            // shortcut press. App sorting and the first eight delegates are
+            // therefore already warm when the compositor maps this window.
+            LauncherView {
+                id: launcherView
+                width: implicitWidth
+                height: implicitHeight
+                drawBackground: false
+                focus: Launcher.open
             }
 
             Rectangle {

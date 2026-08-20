@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import "Bar"
@@ -8,6 +9,15 @@ import "Common/PanelRegistryData.js" as PanelRegistry
 
 ShellRoot {
     id: shell
+
+    // Hyprland dispatches this in-process. Super+Space no longer waits for a
+    // new `qs ipc` client process to start and connect before opening.
+    GlobalShortcut {
+        appid: "quickshell"
+        name: "launcherToggle"
+        description: "Toggle the application launcher"
+        onPressed: Launcher.toggle()
+    }
 
     // Popout IPC lives here rather than in Bar: the bar is instantiated
     // once per output, and an IpcHandler target may only be registered
@@ -28,7 +38,7 @@ ShellRoot {
         }
     }
 
-    // Shell-wide because the connected settings panel can move between
+    // Shell-wide because the shared settings popout can move between
     // monitor-specific bar hosts. The external IPC contract stays intact.
     IpcHandler {
         target: "settings"

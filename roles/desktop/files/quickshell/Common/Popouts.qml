@@ -3,9 +3,9 @@ import QtQuick
 import Quickshell
 import "PanelRegistryData.js" as PanelRegistry
 
-// Shared state for the connected island popouts (design t5): every view
-// is fused to its bar island, each island owns one popout surface, and
-// only one popout is open shell-wide. Esc or clicking the desktop closes.
+// Shared state for the bar's detached popouts. Every view hangs from its
+// triggering module, the host morphs one card between modules, and only one
+// popout is open shell-wide. Esc or clicking the desktop closes it.
 Singleton {
     id: root
 

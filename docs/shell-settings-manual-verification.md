@@ -24,6 +24,19 @@ is manual.
       (focus grab handover).
 - [ ] Opening settings while a popout is open closes the popout first.
 
+## Launcher keyboard path
+
+- [ ] Restart Quickshell, then immediately press `Super+Space` and type. The
+      first character appears in the search field; no click or second key is
+      needed to establish focus.
+- [ ] With the empty query and its first result selected (for example,
+      1Password), press Enter immediately after `Super+Space`. It launches
+      even while the card is still completing its short entrance animation.
+- [ ] Down/Up, Tab, Home/End, Alt+1…8, Enter, and Esc all work without moving
+      focus out of the search field. Closing restores focus to the prior app.
+- [ ] Reopen repeatedly: results appear together without a row-by-row delay,
+      and the first open after shell startup feels the same as later opens.
+
 ## Persistence
 
 - [ ] First slider drag creates the JSON; `watch -n1 stat -c %y` on it shows
@@ -87,8 +100,8 @@ is manual.
 
 ## Bar page
 
-- [ ] Position Bottom moves the bar; every popout opens above it with the
-      fused surface mirrored, content upright, shadow below; tooltips flip
+- [ ] Position Bottom moves the bar; every popout opens above it with its
+      directional motion mirrored, content upright; tooltips flip
       above modules; toasts hug the top edge; Esc/hover-switching still work.
 - [ ] Style picker renders Hug as full-width with 16px concave corners,
       Floating as the existing detached rounded slab, and Attached full-width

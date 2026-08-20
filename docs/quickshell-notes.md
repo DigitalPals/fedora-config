@@ -260,9 +260,17 @@ glass and detached panels. What that added, and what it needs:
   and 12% pressed/focused overlay used by bar primitives, workspace targets,
   shared actions, toggles, and settings controls. Controls retain their press
   scale and accessibility behavior.
-- **One spring.** `Theme.springCurve` is the design's overshooting bezier, and
-  everything that moves or resizes uses it. Colour and opacity never spring —
-  an overshooting fade reads as a flicker — so they use the ease curves.
+- **One spring for continuous motion.** `Theme.springCurve` drives controls and
+  in-place movement. Bar popouts use a faster directional enter/exit and a
+  lower-overshoot morph between triggers. Colour and opacity never spring — an
+  overshooting fade reads as a flicker — so they use the ease curves.
+- **The launcher is always keyboard-ready.** Its view and first eight
+  alphabetically sorted apps are constructed at shell startup, while
+  `Super+Space` reaches it through
+  Hyprland's global-shortcut protocol instead of spawning an IPC client. It
+  takes exclusive keyboard focus while mapped, forwards an early character or
+  Enter across the mapping frame, and never stages result rows behind an
+  animation. Launcher-only motion is brief and purely visual.
 - **Schema 6 adds bar style and palette mode.** A v5 attached bar remains
   attached. A v5 floating bar adopts Hug only when height, radius, and gap are
   pristine; custom geometry remains floating. Old wallpaper-accent users and

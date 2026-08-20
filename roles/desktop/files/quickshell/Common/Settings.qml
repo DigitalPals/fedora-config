@@ -114,7 +114,7 @@ Singleton {
         system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor"]
     })
 
-    // ---- Connected-popout lifecycle -------------------------------------
+    // ---- Shared-popout lifecycle ----------------------------------------
     function showPanel(targetPage) {
         if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;

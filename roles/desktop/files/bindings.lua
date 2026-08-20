@@ -26,7 +26,7 @@ bind(mainMod .. " + Return", hl.dsp.exec_cmd(terminal))
 bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-fedora-shell"))
 bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-arch-shell"))
 bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-debian-shell"))
-bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("qs ipc call launcher toggle"))
+bind(mainMod .. " + SPACE", hl.dsp.global("quickshell:launcherToggle"))
 bind(mainMod .. " + comma", hl.dsp.exec_cmd("qs ipc call settings toggle"))
 -- Shell surfaces the menubar also opens by click. Documented in the shell's
 -- own cheatsheet (Common/Session.qml), which is what Super+K raises.

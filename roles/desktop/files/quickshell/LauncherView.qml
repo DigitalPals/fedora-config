@@ -21,6 +21,7 @@ Surface {
     readonly property int rowHeight: 48
     property int selected: 0
     readonly property string query: search.text
+    readonly property bool inputActiveFocus: search.activeFocus
     readonly property string mode: ["/", ">", "=", "@", "$"].includes(query.charAt(0)) ? query.charAt(0) : ""
     readonly property string term: mode === "" ? query.trim() : query.slice(1).trim()
 
@@ -31,36 +32,35 @@ Surface {
     property bool calcLoading: false
     property string calcError: ""
 
-    // Rows stagger in once per open, not on every keystroke: `entered` drops
-    // with the panel hidden, and the timer raises it a beat after the open so
-    // the existing delegates replay their entrance.
-    property bool entered: false
+    // The view is permanently warm. Reset synchronously on open and ask for
+    // focus both now and on the next event-loop turn: the second request
+    // covers the layer-surface mapping without clearing any text typed in the
+    // meantime.
+    function focusInput(): void {
+        search.forceActiveFocus();
+    }
 
-    Timer {
-        id: enterTimer
-        interval: 30
-        onTriggered: root.entered = true
+    function prepareOpen(): void {
+        search.text = "";
+        selected = 0;
+        focusInput();
+        Qt.callLater(() => {
+            if (Launcher.open)
+                root.focusInput();
+        });
     }
 
     Component.onCompleted: {
         if (Launcher.open)
-            enterTimer.restart();
+            prepareOpen();
     }
 
-    // The instance survives across opens, so each open must restore the
-    // fresh state a create-per-open Loader used to provide implicitly.
-    // Clearing the query also clears results and errors via onQueryChanged.
     Connections {
         target: Launcher
 
         function onOpenChanged() {
-            if (!Launcher.open)
-                return;
-            search.text = "";
-            root.selected = 0;
-            root.entered = false;
-            enterTimer.restart();
-            search.forceActiveFocus();
+            if (Launcher.open)
+                root.prepareOpen();
         }
     }
 
@@ -70,23 +70,25 @@ Surface {
 
     function appScore(app) {
         const q = term.toLowerCase();
+        // With no query the launcher is an alphabetical app directory. Launch
+        // history only breaks relevance ties after the user starts searching.
+        if (q === "")
+            return 1;
         const name = (app.name || "").toLowerCase();
         const generic = (app.genericName || "").toLowerCase();
         const id = (app.id || "").replace(/\.desktop$/i, "").toLowerCase();
         const haystack = [name, generic, id, (app.keywords || []).join(" ").toLowerCase()];
-        let match = q === "" ? 1 : -1;
-        if (q !== "") {
-            if (name === q || generic === q || id === q)
-                match = 10000;
-            else if (name.startsWith(q) || generic.startsWith(q) || id.startsWith(q))
-                match = 8000;
-            else if (haystack.some(value => root.words(value).some(word => word.startsWith(q))))
-                match = 6000;
-            else if (name.includes(q) || generic.includes(q) || id.includes(q))
-                match = 4000;
-            else if (haystack.some(value => value.includes(q)))
-                match = 2000;
-        }
+        let match = -1;
+        if (name === q || generic === q || id === q)
+            match = 10000;
+        else if (name.startsWith(q) || generic.startsWith(q) || id.startsWith(q))
+            match = 8000;
+        else if (haystack.some(value => root.words(value).some(word => word.startsWith(q))))
+            match = 6000;
+        else if (name.includes(q) || generic.includes(q) || id.includes(q))
+            match = 4000;
+        else if (haystack.some(value => value.includes(q)))
+            match = 2000;
         return match < 0 ? match : match + Launcher.usageBoost(app);
     }
 
@@ -202,6 +204,41 @@ Surface {
             Launcher.close();
             break;
         }
+    }
+
+    // Shared by the TextInput and by LauncherWindow's one-frame focus-race
+    // fallback. Enter is intentionally handled regardless of modifiers, so
+    // it can launch the selected first row even if Super has not yet lifted.
+    function handleCommandKey(event): bool {
+        if (event.key === Qt.Key_Escape) {
+            Launcher.close();
+        } else if (event.modifiers & Qt.AltModifier && event.key >= Qt.Key_1 && event.key <= Qt.Key_8) {
+            activate(rows[event.key - Qt.Key_1]);
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            activate(rows[selected]);
+        } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
+            selected = Math.min(Math.max(0, rows.length - 1), selected + 1);
+        } else if (event.key === Qt.Key_Up) {
+            selected = Math.max(0, selected - 1);
+        } else if (event.key === Qt.Key_Home) {
+            selected = 0;
+        } else if (event.key === Qt.Key_End) {
+            selected = Math.max(0, rows.length - 1);
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    function handleEarlyKey(event): bool {
+        if (handleCommandKey(event))
+            return true;
+        const commandModifiers = Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier;
+        if (event.text === "" || event.modifiers & commandModifiers)
+            return false;
+        focusInput();
+        search.insert(search.cursorPosition, event.text);
+        return true;
     }
 
     function esc(value) {
@@ -380,7 +417,7 @@ Surface {
             font.weight: Theme.weightSemibold
             color: Theme.textHi
             clip: true
-            focus: true
+            focus: Launcher.open
 
             Text {
                 visible: search.text === ""
@@ -390,30 +427,7 @@ Surface {
                 color: Theme.textDim
             }
 
-            Keys.onPressed: event => {
-                if (event.key === Qt.Key_Escape) {
-                    Launcher.close();
-                    event.accepted = true;
-                } else if (event.modifiers & Qt.AltModifier && event.key >= Qt.Key_1 && event.key <= Qt.Key_8) {
-                    root.activate(root.rows[event.key - Qt.Key_1]);
-                    event.accepted = true;
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    root.activate(root.rows[root.selected]);
-                    event.accepted = true;
-                } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
-                    root.selected = Math.min(root.rows.length - 1, root.selected + 1);
-                    event.accepted = true;
-                } else if (event.key === Qt.Key_Up) {
-                    root.selected = Math.max(0, root.selected - 1);
-                    event.accepted = true;
-                } else if (event.key === Qt.Key_Home) {
-                    root.selected = 0;
-                    event.accepted = true;
-                } else if (event.key === Qt.Key_End) {
-                    root.selected = Math.max(0, root.rows.length - 1);
-                    event.accepted = true;
-                }
-            }
+            Keys.onPressed: event => event.accepted = root.handleCommandKey(event)
         }
 
         // Active prefix mode, as the design draws its tab pill; clicking it
@@ -465,9 +479,6 @@ Surface {
             required property int index
             readonly property bool isSelected: index === root.selected
             readonly property string subtitle: root.subtitleFor(modelData)
-            readonly property int enterDelay: root.entered
-                ? 40 + Math.min(index, Theme.staggerMax) * Theme.staggerStep : 0
-
             width: resultList.width
             height: root.rowHeight
             radius: Theme.rowRadius
@@ -475,33 +486,6 @@ Surface {
 
             Behavior on color {
                 ColorAnimation { duration: Theme.chipFadeDuration }
-            }
-
-            opacity: root.entered ? 1 : 0
-
-            Behavior on opacity {
-                SequentialAnimation {
-                    PauseAnimation { duration: resultRow.enterDelay }
-                    NumberAnimation {
-                        duration: Theme.panelFadeDuration
-                        easing.type: Easing.OutCubic
-                    }
-                }
-            }
-
-            transform: Translate {
-                y: root.entered ? 0 : 10
-
-                Behavior on y {
-                    SequentialAnimation {
-                        PauseAnimation { duration: resultRow.enterDelay }
-                        NumberAnimation {
-                            duration: Theme.expandDuration
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: Theme.springCurve
-                        }
-                    }
-                }
             }
 
             Item {

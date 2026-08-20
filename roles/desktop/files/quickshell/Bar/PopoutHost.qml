@@ -74,6 +74,7 @@ Item {
     property real renderedW: Theme.popWidth
     property real renderedH: 0
     property real openProgress: 0
+    property real surfaceOpacity: 0
 
     // The point the card grows out of, in its own coordinates: the horizontal
     // centre of the trigger, clamped inside the card.
@@ -193,6 +194,7 @@ Item {
     function snapClosed(geometry) {
         geometryAnimations = false;
         openProgress = 0;
+        surfaceOpacity = 0;
         renderedX = geometry.bodyX;
         renderedW = geometry.bodyW;
         renderedH = geometry.bodyH;
@@ -206,6 +208,7 @@ Item {
         renderedW = targetW;
         renderedH = targetH;
         openProgress = 1;
+        surfaceOpacity = 1;
     }
 
     function prepareName(name) {
@@ -378,6 +381,7 @@ Item {
         loaderA.opacity = 0;
         loaderB.opacity = 0;
         geometryAnimations = true;
+        surfaceOpacity = 0;
         openProgress = 0;
         closeTimer.restart();
     }
@@ -482,6 +486,7 @@ Item {
             host.surfaceH = 0;
             host.closing = false;
             host.geometryAnimations = false;
+            host.surfaceOpacity = 0;
             host.contentAnimations = false;
             // Keeping the latched slot in front is what makes the latch pay:
             // sync() reuses frontSlot when its name matches, and prepareName
@@ -501,36 +506,45 @@ Item {
     Behavior on openProgress {
         enabled: host.geometryAnimations
         NumberAnimation {
-            duration: host.closing ? Theme.panelCloseDuration : Theme.panelMotionDuration
+            duration: host.closing ? Theme.popoutCloseDuration : Theme.popoutOpenDuration
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: host.closing ? Theme.easeInCurve : Theme.springCurve
+            easing.bezierCurve: host.closing ? Theme.popoutExitCurve : Theme.popoutEnterCurve
+        }
+    }
+
+    Behavior on surfaceOpacity {
+        enabled: host.geometryAnimations
+        NumberAnimation {
+            duration: host.closing ? Theme.popoutFadeOutDuration : Theme.popoutFadeInDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: host.closing ? Theme.easeInCurve : Theme.easeOutCurve
         }
     }
 
     Behavior on renderedX {
         enabled: host.geometryAnimations && host.openProgress > 0.01
         NumberAnimation {
-            duration: Theme.panelMotionDuration
+            duration: Theme.popoutMorphDuration
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: Theme.springCurve
+            easing.bezierCurve: Theme.popoutMorphCurve
         }
     }
 
     Behavior on renderedW {
         enabled: host.geometryAnimations && host.openProgress > 0.01
         NumberAnimation {
-            duration: Theme.panelMotionDuration
+            duration: Theme.popoutMorphDuration
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: Theme.springCurve
+            easing.bezierCurve: Theme.popoutMorphCurve
         }
     }
 
     Behavior on renderedH {
         enabled: host.geometryAnimations && host.openProgress > 0.01
         NumberAnimation {
-            duration: Theme.panelMotionDuration
+            duration: Theme.popoutMorphDuration
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: Theme.springCurve
+            easing.bezierCurve: Theme.popoutMorphCurve
         }
     }
 
@@ -547,7 +561,7 @@ Item {
         width: Math.max(1, host.renderedW)
         height: Math.max(1, host.renderedH)
         visible: host.presented && host.renderedH > 0.5
-        opacity: settle
+        opacity: Format.clamp01(host.surfaceOpacity)
 
         // Grows out of the trigger: scaled toward it and nudged back against
         // the bar, with the origin pinned to the trigger's centre on the edge
@@ -556,11 +570,14 @@ Item {
             Scale {
                 origin.x: host.originX
                 origin.y: host.bottomBar ? card.height : 0
-                xScale: 0.955 + 0.045 * card.settle
-                yScale: 0.955 + 0.045 * card.settle
+                xScale: Theme.popoutInitialScale
+                    + (1 - Theme.popoutInitialScale) * card.settle
+                yScale: Theme.popoutInitialScale
+                    + (1 - Theme.popoutInitialScale) * card.settle
             },
             Translate {
-                y: (host.bottomBar ? 14 : -14) * (1 - card.settle)
+                y: (host.bottomBar ? Theme.popoutTravel : -Theme.popoutTravel)
+                    * (1 - card.settle)
             }
         ]
 

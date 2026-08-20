@@ -431,10 +431,10 @@ Singleton {
     })
 
     // ---- motion ------------------------------------------------------------
-    // One spring, used everywhere something moves or resizes; it is the
-    // design's cubic-bezier(.34, 1.4, .28, 1) with the slight overshoot that
-    // makes the bar feel physical. Colour and opacity never spring — an
-    // overshooting fade reads as a flicker — so they use the ease curves.
+    // Continuous movement inside the shell uses one physical spring. A panel
+    // entering or leaving is directional instead: it decelerates away from
+    // its trigger and accelerates back into it. Colour and opacity never
+    // spring — an overshooting fade reads as a flicker.
     readonly property var springCurve: [0.34, 1.4, 0.28, 1.0, 1.0, 1.0]
     readonly property var easeOutCurve: [0.22, 1.0, 0.36, 1.0, 1.0, 1.0]
     readonly property var easeInCurve: [0.4, 0.0, 1.0, 1.0, 1.0, 1.0]
@@ -454,17 +454,39 @@ Singleton {
     readonly property int panelFadeDuration: 320
     readonly property int panelCloseDuration: 260
     // Cross-fade when one panel morphs into another in the same surface.
-    readonly property int popoutContentFadeDuration: 180
-    readonly property int popoutContentRevealDelay: 40
+    readonly property int popoutContentFadeDuration: 150
+    readonly property int popoutContentRevealDelay: 30
     // A row entering a list: the per-item stagger and its cap.
     readonly property int staggerStep: 26
     readonly property int staggerMax: 8
 
-    // Retained names for the popout host.
-    readonly property int popoutMotionDuration: panelMotionDuration
-    readonly property int popoutCloseDuration: panelCloseDuration
-    readonly property var popoutEnterCurve: springCurve
+    // Bar popouts answer more quickly than modal surfaces. Opening and closing
+    // are directional; only an already-open card morphing between triggers
+    // keeps a small amount of overshoot.
+    readonly property int popoutOpenDuration: 250
+    readonly property int popoutCloseDuration: 165
+    readonly property int popoutMorphDuration: 320
+    readonly property int popoutFadeInDuration: 170
+    readonly property int popoutFadeOutDuration: 120
+    readonly property real popoutInitialScale: 0.975
+    readonly property int popoutTravel: 10
+    readonly property var popoutEnterCurve: [0.05, 0.7, 0.1, 1.0, 1.0, 1.0]
     readonly property var popoutExitCurve: easeInCurve
+    readonly property var popoutMorphCurve: [0.34, 1.18, 0.28, 1.0, 1.0, 1.0]
+
+    // The launcher is keyboard-critical and its warm content is usable while
+    // the card enters. Keep its visual acknowledgment brisk and free of the
+    // slower modal spring or per-result stagger.
+    readonly property int launcherOpenDuration: 180
+    readonly property int launcherCloseDuration: 120
+    readonly property int launcherFadeInDuration: 110
+    readonly property int launcherFadeOutDuration: 80
+    readonly property int launcherResizeDuration: 140
+    readonly property real launcherInitialScale: 0.985
+    readonly property int launcherTravel: 8
+    readonly property var launcherEnterCurve: popoutEnterCurve
+    readonly property var launcherExitCurve: popoutExitCurve
+
     readonly property int popoutTabMinWidth: 104
     readonly property int popoutTabPadding: 24
     readonly property int popoutTabRadius: 17

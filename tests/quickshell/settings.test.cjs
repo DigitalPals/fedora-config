@@ -25,7 +25,7 @@ test("the settings IPC target is declared exactly once shell-wide", () => {
         ["shell.qml"]);
 });
 
-test("settings is a connected center popout rather than a modal window", () => {
+test("settings uses the shared center popout rather than a modal window", () => {
     const shell = read("shell.qml");
     const settings = read("Common/Settings.qml");
     const registry = load("PanelRegistryData.js");
@@ -58,14 +58,39 @@ test("the panel card grows out of its trigger and never out of thin air", () => 
     assert.match(host, /Scale \{[\s\S]*?origin\.x: host\.originX/);
     assert.match(host, /origin\.y: host\.bottomBar \? card\.height : 0/,
         "a bottom bar grows the card upward, from its own lower edge");
-    // Transform springs, opacity eases: an overshooting fade reads as a flicker.
-    assert.match(host, /bezierCurve: host\.closing \? Theme\.easeInCurve : Theme\.springCurve/);
+    // Entry/exit are directional, morphing has only a small overshoot, and
+    // opacity eases independently so it can never inherit the motion spring.
+    assert.match(host,
+        /Behavior on openProgress[\s\S]*?Theme\.popoutCloseDuration : Theme\.popoutOpenDuration[\s\S]*?Theme\.popoutExitCurve : Theme\.popoutEnterCurve/);
+    assert.match(host,
+        /Behavior on surfaceOpacity[\s\S]*?Theme\.popoutFadeOutDuration : Theme\.popoutFadeInDuration[\s\S]*?Theme\.easeInCurve : Theme\.easeOutCurve/);
+    assert.match(host, /opacity:\s*Format\.clamp01\(host\.surfaceOpacity\)/);
+    assert.match(host, /duration:\s*Theme\.popoutMorphDuration/);
+    assert.match(host, /bezierCurve:\s*Theme\.popoutMorphCurve/);
     assert.match(host, /bodyTop:\s*barBottom \+ Theme\.popGap/,
         "the card hangs a fixed gap below the bar");
     // The mask has to come from real geometry, not from the animating card.
     const mask = host.match(/Item \{\s*id: hitRegion[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.ok(mask !== "", "the popout host must still publish an input region");
     assert.doesNotMatch(mask, /transform|scale:/);
+});
+
+test("bar popouts use the quick detached motion profile", () => {
+    const theme = read("Common/Theme.qml");
+    const host = read("Bar/PopoutHost.qml");
+
+    assert.match(theme, /popoutOpenDuration:\s*250/);
+    assert.match(theme, /popoutCloseDuration:\s*165/);
+    assert.match(theme, /popoutMorphDuration:\s*320/);
+    assert.match(theme, /popoutFadeInDuration:\s*170/);
+    assert.match(theme, /popoutFadeOutDuration:\s*120/);
+    assert.match(theme, /popoutContentFadeDuration:\s*150/);
+    assert.match(theme, /popoutInitialScale:\s*0\.975/);
+    assert.match(theme, /popoutTravel:\s*10/);
+    assert.match(host, /bodyTop:\s*barBottom \+ Theme\.popGap/,
+        "the faster motion must retain the detached twelve-pixel gap");
+    assert.match(host, /xScale:\s*Theme\.popoutInitialScale/);
+    assert.match(host, /host\.bottomBar \? Theme\.popoutTravel : -Theme\.popoutTravel/);
 });
 
 test("settings exposes responsive output and keyboard contracts", () => {
