@@ -291,9 +291,16 @@ test("the T3 Connect browser flow authorizes and tickets a linked environment", 
     fs.mkdirSync(binDir);
     fs.writeFileSync(browserCommand, `#!/usr/bin/env node
 const fs = require("node:fs");
+const net = require("node:net");
 const { spawnSync } = require("node:child_process");
 (async () => {
     const landing = process.argv[2];
+    const local = new URL(landing);
+    const speculativeSocket = net.connect(Number(local.port), local.hostname);
+    await new Promise((resolve, reject) => {
+        speculativeSocket.once("connect", resolve);
+        speculativeSocket.once("error", reject);
+    });
     const started = await fetch(new URL("/start?provider=google", landing), {
         redirect: "manual",
     });
@@ -310,6 +317,7 @@ const { spawnSync } = require("node:child_process");
     ], { env: process.env, encoding: "utf8" });
     if (callback.status !== 0)
         process.exit(callback.status || 3);
+    await new Promise(resolve => speculativeSocket.once("close", resolve));
 })().catch(() => process.exit(4));
 `, { mode: 0o755 });
     fs.writeFileSync(mimeCommand, `#!/usr/bin/env node

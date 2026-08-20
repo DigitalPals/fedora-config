@@ -470,8 +470,7 @@ async function browserSignIn() {
                         "content-type": "application/json",
                         "cache-control": "no-store",
                     });
-                    response.end('{"handled":true}');
-                    settle();
+                    response.end('{"handled":true}', () => settle());
                 } catch (error) {
                     // This was still the panel's callback. Consume it even
                     // when Clerk reports a cancellation/failure, otherwise
@@ -480,9 +479,10 @@ async function browserSignIn() {
                         "content-type": "application/json",
                         "cache-control": "no-store",
                     });
-                    response.end('{"handled":true,"completed":false}');
-                    settle(error instanceof Error ? error
-                        : new Error("T3 Connect browser sign-in failed."));
+                    response.end('{"handled":true,"completed":false}', () => {
+                        settle(error instanceof Error ? error
+                            : new Error("T3 Connect browser sign-in failed."));
+                    });
                 }
                 return;
             }
@@ -490,8 +490,10 @@ async function browserSignIn() {
         })().catch(error => {
             if (!response.headersSent)
                 response.writeHead(500);
-            response.end();
-            settle(error instanceof Error ? error : new Error("T3 Connect sign-in failed."));
+            response.end(() => {
+                settle(error instanceof Error ? error
+                    : new Error("T3 Connect sign-in failed."));
+            });
         });
     });
     server.on("clientError", (_error, socket) => socket.destroy());
@@ -520,7 +522,15 @@ async function browserSignIn() {
     } finally {
         clearTimeout(timeout);
         await fs.rm(STATE_PATHS.browserLogin, { force: true });
-        await new Promise(resolve => server.close(resolve));
+        await new Promise(resolve => {
+            // Chrome may leave a speculative localhost socket waiting for its
+            // first request. server.close() waits for Node's 60-second header
+            // timeout on that socket, even though OAuth is already complete.
+            // Callback settlement happens only after response.end() flushes,
+            // so every remaining connection is safe to close immediately.
+            server.close(resolve);
+            server.closeAllConnections();
+        });
     }
 }
 
@@ -543,8 +553,11 @@ async function forwardBrowserCallback(rawCallback) {
         redirect: "error",
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS + 5000),
     });
+    const responseBody = await response.text();
     if (!response.ok)
         throw new Error("T3 Connect browser callback could not be completed.");
+    if (safeJsonParse(responseBody)?.handled !== true)
+        throw new Error("T3 Connect browser callback was not accepted.");
     return { handled: true };
 }
 
