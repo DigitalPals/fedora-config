@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const { shellDir, load } = require("./shell.cjs");
 
 // Material Symbols selects a glyph by *ligature*: `name: "wifi"` is the string
 // "wifi", shaped into one mark by the font. A name the font does not carry is
@@ -137,6 +137,12 @@ function collectNames() {
     const status = fs.readFileSync(path.join(shellDir, "Common/StatusHelpers.js"), "utf8");
     const players = status.slice(status.indexOf("var PLAYER_GLYPH"));
     addNames(found, blockAt(players, 0), "Common/StatusHelpers.js: PLAYER_GLYPH");
+
+    // Command-palette providers and built-in actions choose their glyphs from
+    // a pure-JS registry. User actions deliberately inherit the validated
+    // action glyph rather than accepting an arbitrary ligature from JSON.
+    for (const glyph of load("LauncherProviders.js").GLYPHS)
+        found.set(glyph, "Common/LauncherProviders.js: GLYPHS");
 
     return found;
 }

@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const { shellDir, load } = require("./shell.cjs");
 
 function read(rel) {
     return fs.readFileSync(path.join(shellDir, rel), "utf8");
@@ -48,14 +48,72 @@ test("Enter activates the selected first result without waiting for animation", 
 
 test("the empty app directory is alphabetical", () => {
     const view = read("LauncherView.qml");
-    const emptyReturn = view.indexOf('if (q === "")\n            return 1;');
-    const usageBoost = view.indexOf("Launcher.usageBoost(app)");
+    const providers = read("Common/LauncherProviders.qml");
+    const helpers = load("LauncherProviders.js");
+    const app = { id: "z.desktop", name: "Zulu", genericName: "", keywords: [] };
 
-    assert.ok(emptyReturn >= 0, "an empty query must give every app the same score");
-    assert.ok(usageBoost > emptyReturn,
-        "launch history may only influence results after the empty-query return");
+    assert.equal(helpers.appScore(app, "", 9000), 1,
+        "an empty query must give every app the same score");
+    assert.match(providers,
+        /ProviderHelpers\.appScore\(app, root\.term,[\s\S]*Launcher\.usageBoost\(app\)\)/);
+    assert.match(providers,
+        /\.sort\(\(a, b\) => b\.score - a\.score[\s\S]*a\.title\.localeCompare\(b\.title\)\)/);
+    assert.match(view, /readonly property var rows:\s*LauncherProviders\.rows/);
+});
+
+test("the view is provider-driven and owns no search subprocesses", () => {
+    const view = read("LauncherView.qml");
+    const providers = read("Common/LauncherProviders.qml");
+
+    assert.match(view, /readonly property var provider:\s*LauncherProviders\.activeProvider/);
+    assert.match(view, /LauncherProviders\.query = query/);
+    assert.match(view, /LauncherProviders\.activate\(row\)/);
+    assert.match(view, /LauncherProviders\.emptyText/);
+    assert.match(view, /LauncherProviders\.footerLeft/);
+    assert.doesNotMatch(view, /\bProcess\s*\{|\bTimer\s*\{|switch \(row\.kind\)/,
+        "providers, not the presentation, own asynchronous work and activation");
+
+    for (const process of ["fileProc", "calcProc", "clipboardListProc"])
+        assert.match(providers, new RegExp(`id:\\s*${process}`));
+});
+
+test("the launcher defaults to Apps and exposes the discoverable provider tabs", () => {
+    const view = read("LauncherView.qml");
+    const providers = read("Common/LauncherProviders.qml");
+
+    assert.match(providers, /property string selectedProviderId:\s*"apps"/);
+    assert.match(providers,
+        /activeProvider:\s*prefixActive\s*\?\s*prefixedProvider\s*:\s*ProviderHelpers\.providerById\(selectedProviderId\)/s);
+    assert.match(view, /readonly property var tabs:\s*LauncherProviders\.tabProviders/);
     assert.match(view,
-        /\.sort\(\(a, b\) => b\.score - a\.score \|\| a\.app\.name\.localeCompare\(b\.app\.name\)\)/);
+        /apps:\s*"Apps",\s*emoji:\s*"Emoji",\s*clipboard:\s*"History",\s*actions:\s*"Actions"/s);
+    assert.match(view,
+        /function prepareOpen\(\): void \{\s*LauncherProviders\.selectedProviderId = "apps";/s);
+    assert.match(view,
+        /function selectTab\(providerId\): void \{\s*LauncherProviders\.selectedProviderId = providerId;\s*search\.text = "";/s);
+    assert.match(view, /Qt\.ControlModifier[\s\S]*Qt\.Key_Tab[\s\S]*cycleTab/);
+    assert.match(view,
+        /Qt\.Key_Left\) \{\s*cycleTab\(-1\);[\s\S]*Qt\.Key_Right\) \{\s*cycleTab\(1\);/);
+    assert.doesNotMatch(view,
+        /Qt\.NoModifier[\s\S]{0,80}Qt\.Key_(?:Left|Right)/,
+        "arrow tab navigation must tolerate compositor keyboard flags");
+    assert.match(view, /"←→ tab"/);
+    assert.match(view, /Accessible\.role:\s*Accessible\.PageTab/);
+});
+
+test("clipboard, emoji, and action providers have installed data sources", () => {
+    const providers = read("Common/LauncherProviders.qml");
+    const packages = fs.readFileSync(path.resolve(shellDir,
+        "../../../apps/defaults/main.yml"), "utf8");
+    const actions = JSON.parse(read("launcher-actions.json"));
+
+    assert.match(providers, /wl-paste --type text --watch cliphist store/);
+    assert.match(providers, /wl-paste --type image --watch cliphist store/);
+    assert.match(providers, /\/usr\/share\/unicode\/emoji\/emoji-test\.txt/);
+    assert.match(providers, /watchChanges:\s*true/);
+    assert.match(packages, /^\s+- cliphist$/m);
+    assert.match(packages, /^\s+- unicode-emoji$/m);
+    assert.ok(Array.isArray(actions));
 });
 
 test("Super+Space uses Hyprland's in-process global shortcut", () => {

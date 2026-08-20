@@ -63,8 +63,8 @@ PanelWindow {
 
         // The card's top edge stays put while the result list grows and
         // shrinks; it sits where a fully populated launcher would centre
-        // (search tile, eight rows, footer — about 520 logical pixels).
-        readonly property real anchorY: Math.max(24, Math.round((root.height - 520) / 2))
+        // (tabs, search tile, eight rows, footer — about 570 logical pixels).
+        readonly property real anchorY: Math.max(24, Math.round((root.height - 570) / 2))
 
         ClippingRectangle {
             id: panel

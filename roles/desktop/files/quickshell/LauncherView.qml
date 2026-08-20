@@ -1,13 +1,12 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
-import Quickshell.Io
 import "Common"
 import "Popovers"
 
-// Eight-result launcher with explicit prefix modes:
-// / files, > shell command, = calculator, @ web, $ windows.
+// Eight-result tabbed command palette. LauncherProviders owns routing,
+// asynchronous work and activation; this permanently warm view renders
+// normalized rows.
 //
 // Visual shape from the "QuickShell Menubar" design: a recessed search tile,
 // 48px result rows with a 32px icon, the selected row lifted on the accent,
@@ -17,20 +16,22 @@ Surface {
 
     implicitWidth: 560
 
-    readonly property int maxResults: 8
+    readonly property int maxResults: LauncherProviders.maxResults
     readonly property int rowHeight: 48
     property int selected: 0
     readonly property string query: search.text
     readonly property bool inputActiveFocus: search.activeFocus
-    readonly property string mode: ["/", ">", "=", "@", "$"].includes(query.charAt(0)) ? query.charAt(0) : ""
-    readonly property string term: mode === "" ? query.trim() : query.slice(1).trim()
-
-    property var fileResults: []
-    property bool fileLoading: false
-    property string fileError: ""
-    property string calcResult: ""
-    property bool calcLoading: false
-    property string calcError: ""
+    readonly property var provider: LauncherProviders.activeProvider
+    readonly property string mode: LauncherProviders.mode
+    readonly property string term: LauncherProviders.term
+    readonly property var rows: LauncherProviders.rows
+    readonly property var tabs: LauncherProviders.tabProviders
+    readonly property string searchPlaceholder: ({
+        apps: "Search applications",
+        emoji: "Search emoji by name",
+        clipboard: "Search clipboard history",
+        actions: "Search actions"
+    })[provider.id] || "Search apps, commands and more"
 
     // The view is permanently warm. Reset synchronously on open and ask for
     // focus both now and on the next event-loop turn: the second request
@@ -41,6 +42,7 @@ Surface {
     }
 
     function prepareOpen(): void {
+        LauncherProviders.selectedProviderId = "apps";
         search.text = "";
         selected = 0;
         focusInput();
@@ -64,146 +66,35 @@ Surface {
         }
     }
 
-    function words(value) {
-        return (value || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-    }
-
-    function appScore(app) {
-        const q = term.toLowerCase();
-        // With no query the launcher is an alphabetical app directory. Launch
-        // history only breaks relevance ties after the user starts searching.
-        if (q === "")
-            return 1;
-        const name = (app.name || "").toLowerCase();
-        const generic = (app.genericName || "").toLowerCase();
-        const id = (app.id || "").replace(/\.desktop$/i, "").toLowerCase();
-        const haystack = [name, generic, id, (app.keywords || []).join(" ").toLowerCase()];
-        let match = -1;
-        if (name === q || generic === q || id === q)
-            match = 10000;
-        else if (name.startsWith(q) || generic.startsWith(q) || id.startsWith(q))
-            match = 8000;
-        else if (haystack.some(value => root.words(value).some(word => word.startsWith(q))))
-            match = 6000;
-        else if (name.includes(q) || generic.includes(q) || id.includes(q))
-            match = 4000;
-        else if (haystack.some(value => value.includes(q)))
-            match = 2000;
-        return match < 0 ? match : match + Launcher.usageBoost(app);
-    }
-
-    readonly property int appTotal: DesktopEntries.applications.values.filter(app => !app.noDisplay).length
-
-    readonly property var appRows: {
-        if (mode !== "")
-            return [];
-        return DesktopEntries.applications.values
-            .filter(app => !app.noDisplay)
-            .map(app => ({ kind: "app", app: app, score: root.appScore(app) }))
-            .filter(row => row.score >= 0)
-            .sort((a, b) => b.score - a.score || a.app.name.localeCompare(b.app.name))
-            .slice(0, maxResults);
-    }
-
-    function windowScore(win) {
-        const q = term.toLowerCase();
-        const ipc = win.lastIpcObject || {};
-        const title = (win.title || "").toLowerCase();
-        const cls = (ipc.class || ipc.initialClass || "").toLowerCase();
-        if (q === "")
-            return win.activated ? 100 : 1;
-        if (title === q || cls === q)
-            return 10000;
-        if (title.startsWith(q) || cls.startsWith(q))
-            return 8000;
-        if (root.words(title + " " + cls).some(word => word.startsWith(q)))
-            return 6000;
-        if (title.includes(q) || cls.includes(q))
-            return 4000;
-        return -1;
-    }
-
-    readonly property var windowRows: {
-        if (mode !== "$")
-            return [];
-        return Hyprland.toplevels.values
-            .map(win => ({ kind: "window", win: win, score: root.windowScore(win) }))
-            .filter(row => row.score >= 0)
-            .sort((a, b) => b.score - a.score || a.win.title.localeCompare(b.win.title))
-            .slice(0, maxResults);
-    }
-
-    readonly property var rows: {
-        switch (mode) {
-        case "/":
-            return fileResults.slice(0, maxResults).map(path => ({ kind: "file", path: path }));
-        case ">":
-            return term === "" ? [] : [{ kind: "command", command: term }];
-        case "=":
-            return calcResult === "" ? [] : [{ kind: "calc", result: calcResult }];
-        case "@":
-            return term === "" ? [] : [{ kind: "web", query: term }];
-        case "$":
-            return windowRows;
-        default:
-            return appRows;
-        }
-    }
-
     onRowsChanged: selected = Math.min(selected, Math.max(0, rows.length - 1))
     onQueryChanged: {
         selected = 0;
-        fileError = "";
-        calcError = "";
-        if (mode === "/" && term.length >= 2) {
-            fileResults = [];
-            fileLoading = true;
-            fileDebounce.restart();
-        } else {
-            fileDebounce.stop();
-            fileLoading = false;
-            fileResults = [];
-        }
-        if (mode === "=" && term !== "") {
-            calcResult = "";
-            calcLoading = true;
-            calcDebounce.restart();
-        } else {
-            calcDebounce.stop();
-            calcLoading = false;
-            calcResult = "";
-        }
+        LauncherProviders.query = query;
     }
 
-    function activate(row) {
-        if (!row)
-            return;
-        switch (row.kind) {
-        case "app":
-            Launcher.recordLaunch(row.app);
-            row.app.execute();
-            Launcher.close();
-            break;
-        case "file":
-            Quickshell.execDetached(["xdg-open", row.path]);
-            Launcher.close();
-            break;
-        case "command":
-            Launcher.executeCommand(row.command);
-            break;
-        case "calc":
-            Quickshell.clipboardText = row.result;
-            Launcher.close();
-            break;
-        case "web":
-            Quickshell.execDetached(["xdg-open", "https://duckduckgo.com/?q=" + encodeURIComponent(row.query)]);
-            Launcher.close();
-            break;
-        case "window":
-            Hyprland.dispatch("focuswindow address:" + row.win.address);
-            Launcher.close();
-            break;
+    function activate(row): void {
+        LauncherProviders.activate(row);
+    }
+
+    function selectTab(providerId): void {
+        LauncherProviders.selectedProviderId = providerId;
+        search.text = "";
+        selected = 0;
+        focusInput();
+    }
+
+    function cycleTab(offset): void {
+        let current = 0;
+        const selectedId = root.tabs.some(tab => tab.id === root.provider.id)
+            ? root.provider.id : LauncherProviders.selectedProviderId;
+        for (let i = 0; i < root.tabs.length; ++i) {
+            if (root.tabs[i].id === selectedId) {
+                current = i;
+                break;
+            }
         }
+        const next = (current + offset + root.tabs.length) % root.tabs.length;
+        root.selectTab(root.tabs[next].id);
     }
 
     // Shared by the TextInput and by LauncherWindow's one-frame focus-race
@@ -212,8 +103,20 @@ Surface {
     function handleCommandKey(event): bool {
         if (event.key === Qt.Key_Escape) {
             Launcher.close();
+        } else if (event.modifiers & Qt.ControlModifier
+                && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) {
+            cycleTab((event.key === Qt.Key_Backtab
+                || event.modifiers & Qt.ShiftModifier) ? -1 : 1);
+        } else if (event.key === Qt.Key_Left) {
+            cycleTab(-1);
+        } else if (event.key === Qt.Key_Right) {
+            cycleTab(1);
         } else if (event.modifiers & Qt.AltModifier && event.key >= Qt.Key_1 && event.key <= Qt.Key_8) {
             activate(rows[event.key - Qt.Key_1]);
+        } else if (event.modifiers & Qt.ShiftModifier
+                && event.key === Qt.Key_Delete
+                && LauncherProviders.canRemove(rows[selected])) {
+            LauncherProviders.remove(rows[selected]);
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             activate(rows[selected]);
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
@@ -259,130 +162,93 @@ Surface {
     // `muted` suppresses the accent match highlight — on the selected row the
     // accent is the background.
     function titleFor(row, muted) {
-        switch (row.kind) {
-        case "app": return highlight(row.app.name, muted);
-        case "file": return highlight(row.path.split("/").pop(), muted);
-        case "command": return "Run <font face=\"" + Theme.fontMono + "\">" + esc(row.command) + "</font>";
-        case "calc": return esc(row.result);
-        case "web": return "Search DuckDuckGo for “" + esc(row.query) + "”";
-        case "window": return highlight(row.win.title || "Untitled window", muted);
-        }
-        return "";
+        if (!row)
+            return "";
+        return row.highlight === false ? esc(row.title)
+            : highlight(row.title, muted);
     }
 
-    function subtitleFor(row) {
-        switch (row.kind) {
-        case "file": return row.path;
-        case "command": return "Explicit shell command";
-        case "calc": return "Press Enter to copy result";
-        case "web": return "DuckDuckGo";
-        case "window": {
-            const ipc = row.win.lastIpcObject || {};
-            return ipc.class || ipc.initialClass || "Hyprland window";
-        }
-        }
-        return "";
-    }
+    // ---- Provider tabs ---------------------------------------------------
+    Rectangle {
+        width: parent.width
+        height: 38
+        radius: 15
+        color: Theme.tile
 
-    function glyphFor(kind) {
-        return ({ file: "folder", command: "terminal", calc: "calculate", web: "public", window: "web_asset" })[kind] || "rocket_launch";
-    }
+        Row {
+            id: tabRow
+            x: 4
+            y: 4
+            width: parent.width - 8
+            height: parent.height - 8
+            spacing: 4
 
-    readonly property var modeMeta: ({
-        "/": { label: "FILES", enter: "open" },
-        ">": { label: "RUN", enter: "run" },
-        "=": { label: "CALC", enter: "copy" },
-        "@": { label: "WEB", enter: "search" },
-        "$": { label: "WINDOWS", enter: "focus" }
-    })
+            Repeater {
+                model: root.tabs
 
-    readonly property string footerLeft: {
-        switch (mode) {
-        case "/": return fileLoading ? "fd · searching" : "fd · " + rows.length + " results";
-        case ">": return "runs with sh -c";
-        case "=": return "libqalculate";
-        case "@": return "duckduckgo.com";
-        case "$": return rows.length + (rows.length === 1 ? " window" : " windows");
-        }
-        if (term === "")
-            return "/ files · > command · = calculate · @ web · $ windows";
-        return rows.length + " of " + appTotal + " apps";
-    }
+                delegate: Rectangle {
+                    id: providerTab
 
-    Timer {
-        id: fileDebounce
-        interval: 180
-        onTriggered: {
-            fileProc.running = false;
-            fileProc.command = ["fd", "--absolute-path", "--color", "never", "--hidden", "--fixed-strings",
-                "--max-results", String(root.maxResults), "--exclude", ".cache", "--exclude", ".git", "--", root.term,
-                Quickshell.env("HOME")];
-            fileProc.running = true;
-        }
-    }
+                    required property var modelData
+                    required property int index
+                    readonly property bool active:
+                        root.provider.id === modelData.id
+                    readonly property string label: ({
+                        apps: "Apps",
+                        emoji: "Emoji",
+                        clipboard: "History",
+                        actions: "Actions"
+                    })[modelData.id] || modelData.label
 
-    Process {
-        id: fileProc
-        property string request: ""
-        onRunningChanged: {
-            if (running)
-                request = root.term;
-        }
-        stdout: StdioCollector {
-            onStreamFinished: {
-                if (fileProc.request === root.term)
-                    root.fileResults = text.trim() === "" ? [] : text.trim().split("\n").slice(0, root.maxResults);
-            }
-        }
-        stderr: StdioCollector {
-            onStreamFinished: {
-                if (fileProc.request === root.term)
-                    root.fileError = text.trim();
-            }
-        }
-        onExited: (exitCode, exitStatus) => {
-            if (request === root.term) {
-                root.fileLoading = false;
-                if (exitCode !== 0 && root.fileError === "")
-                    root.fileError = `File search exited with status ${exitCode}`;
-            }
-        }
-    }
+                    width: (tabRow.width - tabRow.spacing
+                        * (root.tabs.length - 1)) / root.tabs.length
+                    height: tabRow.height
+                    radius: 11
+                    color: active ? Theme.accentBg
+                        : providerTabMouse.containsMouse
+                            ? Theme.hoverFillStrong : "transparent"
 
-    Timer {
-        id: calcDebounce
-        interval: 120
-        onTriggered: {
-            calcProc.running = false;
-            calcProc.command = ["qalc", "-t", root.term];
-            calcProc.running = true;
-        }
-    }
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
+                    }
 
-    Process {
-        id: calcProc
-        property string request: ""
-        onRunningChanged: {
-            if (running)
-                request = root.term;
-        }
-        stdout: StdioCollector {
-            onStreamFinished: {
-                if (calcProc.request === root.term)
-                    root.calcResult = text.trim().split("\n").pop() || "";
-            }
-        }
-        stderr: StdioCollector {
-            onStreamFinished: {
-                if (calcProc.request === root.term)
-                    root.calcError = text.trim();
-            }
-        }
-        onExited: (exitCode, exitStatus) => {
-            if (request === root.term) {
-                root.calcLoading = false;
-                if (exitCode !== 0 && root.calcError === "")
-                    root.calcError = `Calculator exited with status ${exitCode}`;
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 7
+
+                        Sym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: providerTab.modelData.glyph
+                            size: Theme.fontSecondary
+                            color: providerTab.active
+                                ? Theme.accent : Theme.textDim
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: providerTab.label
+                            font.family: Theme.fontSans
+                            font.pixelSize: Theme.fontTiny
+                            font.weight: Theme.weightBold
+                            color: providerTab.active
+                                ? Theme.textHi : Theme.textDim
+                        }
+                    }
+
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: label
+                    Accessible.selected: active
+                    Accessible.onPressAction:
+                        root.selectTab(providerTab.modelData.id)
+
+                    MouseArea {
+                        id: providerTabMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.selectTab(providerTab.modelData.id)
+                    }
+                }
             }
         }
     }
@@ -402,7 +268,7 @@ Surface {
             id: searchGlyph
             x: 16
             anchors.verticalCenter: parent.verticalCenter
-            name: root.mode === "" ? "search" : root.glyphFor(({ "/": "file", ">": "command", "=": "calc", "@": "web", "$": "window" })[root.mode])
+            name: root.provider.glyph
             size: 18
             color: Theme.textDim
         }
@@ -422,7 +288,7 @@ Surface {
             Text {
                 visible: search.text === ""
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Search apps"
+                text: root.searchPlaceholder
                 font: search.font
                 color: Theme.textDim
             }
@@ -430,8 +296,8 @@ Surface {
             Keys.onPressed: event => event.accepted = root.handleCommandKey(event)
         }
 
-        // Active prefix mode, as the design draws its tab pill; clicking it
-        // drops back to app search while keeping the typed term.
+        // A typed utility prefix temporarily overrides the selected tab.
+        // Clicking its chip removes the prefix and returns to that tab.
         Rectangle {
             id: modeChip
             visible: root.mode !== ""
@@ -446,7 +312,7 @@ Surface {
             Text {
                 id: modeLabel
                 anchors.centerIn: parent
-                text: root.mode !== "" ? root.modeMeta[root.mode].label : ""
+                text: root.mode !== "" ? root.provider.label : ""
                 font.family: Theme.fontSans
                 font.pixelSize: Theme.fontMicro
                 font.weight: Theme.weightHeavy
@@ -478,7 +344,7 @@ Surface {
             required property var modelData
             required property int index
             readonly property bool isSelected: index === root.selected
-            readonly property string subtitle: root.subtitleFor(modelData)
+            readonly property string subtitle: modelData.subtitle || ""
             width: resultList.width
             height: root.rowHeight
             radius: Theme.rowRadius
@@ -496,24 +362,34 @@ Surface {
 
                 Image {
                     anchors.fill: parent
-                    visible: resultRow.modelData.kind === "app" && source !== ""
-                    source: resultRow.modelData.kind === "app" ? Quickshell.iconPath(resultRow.modelData.app.icon, true) : ""
+                    visible: source !== ""
+                    source: resultRow.modelData.icon
+                        ? Quickshell.iconPath(resultRow.modelData.icon, true) : ""
                     sourceSize: Qt.size(64, 64)
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                 }
 
                 Rectangle {
-                    visible: resultRow.modelData.kind !== "app"
+                    visible: !resultRow.modelData.icon
                     anchors.fill: parent
                     radius: 10
                     color: Theme.chip
 
                     Sym {
                         anchors.centerIn: parent
-                        name: root.glyphFor(resultRow.modelData.kind)
+                        visible: !resultRow.modelData.iconText
+                        name: resultRow.modelData.glyph || root.provider.glyph
                         size: Theme.iconMedium
                         color: resultRow.isSelected ? Theme.textOnAccent : Theme.textMid
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        visible: !!resultRow.modelData.iconText
+                        text: resultRow.modelData.iconText || ""
+                        font.family: Theme.fontSans
+                        font.pixelSize: 20
                     }
                 }
             }
@@ -570,10 +446,17 @@ Surface {
 
             MouseArea {
                 anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.selected = resultRow.index
-                onClicked: root.activate(resultRow.modelData)
+                onClicked: mouse => {
+                    if (mouse.button === Qt.RightButton
+                            && LauncherProviders.canRemove(resultRow.modelData))
+                        LauncherProviders.remove(resultRow.modelData);
+                    else
+                        root.activate(resultRow.modelData);
+                }
             }
         }
     }
@@ -597,25 +480,11 @@ Surface {
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width - 40
             horizontalAlignment: Text.AlignHCenter
-            text: {
-                if (root.mode === "/" && root.term.length < 2)
-                    return "Type at least two characters to search files";
-                if (root.fileLoading || root.calcLoading)
-                    return "Searching…";
-                if (root.fileError !== "")
-                    return "File search failed: " + root.fileError;
-                if (root.calcError !== "")
-                    return "Calculation failed: " + root.calcError;
-                if (root.mode === ">")
-                    return "Enter a shell command";
-                if (root.mode === "@")
-                    return "Enter a web query";
-                return "No matching results";
-            }
+            text: LauncherProviders.emptyText
             font.family: Theme.fontSans
             font.pixelSize: Theme.fontTiny
             font.weight: Theme.weightBold
-            color: root.fileError !== "" || root.calcError !== "" ? Theme.redText : Theme.textDim
+            color: LauncherProviders.error !== "" ? Theme.redText : Theme.textDim
             elide: Text.ElideRight
         }
     }
@@ -631,7 +500,7 @@ Surface {
             x: 8
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - hints.width - 32
-            text: root.footerLeft
+            text: LauncherProviders.footerLeft
             font.family: Theme.fontSans
             font.pixelSize: Theme.fontMicro
             font.weight: Theme.weightBold
@@ -648,10 +517,14 @@ Surface {
 
             Repeater {
                 model: [
+                    "←→ tab",
                     "↑↓ select",
-                    "↵ " + (root.mode === "" ? "launch" : root.modeMeta[root.mode].enter),
+                    "↵ " + root.provider.enter
+                ].concat(root.provider.id === "clipboard" ? [
+                    "⇧⌫ remove"
+                ] : []).concat([
                     "esc close"
-                ]
+                ])
 
                 delegate: Text {
                     required property string modelData

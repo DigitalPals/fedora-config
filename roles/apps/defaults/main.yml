@@ -35,6 +35,8 @@ apps_fedora_packages:
   - file-roller
   - gnome-calculator
   - qalculate
+  - cliphist
+  - unicode-emoji
   - gnome-text-editor
   - pinta
   - mpv

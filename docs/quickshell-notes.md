@@ -202,6 +202,41 @@ its value, dirty state, commit and undo from the base, and per-surface styling
 travels as a single `var` object (`Theme.switchRow`, a card's `style`) rather
 than as a dozen properties.
 
+### Launcher providers and actions
+
+`Common/LauncherProviders.qml` owns command-palette routing, results and side
+effects; `LauncherView.qml` only renders its normalized rows. Every open resets
+to the Apps tab; Emoji, History (clipboard), and Actions are discoverable tabs
+beside it. `Left`/`Right` cycle tabs while `Up`/`Down` select results;
+`Ctrl+Tab` and `Ctrl+Shift+Tab` remain alternate tab shortcuts. Switching tabs
+clears the search field so results never carry across provider boundaries.
+
+Typed prefixes temporarily override the selected tab: `/` files, `>` command,
+`=` calculator, `@` web, `$` windows, `;` clipboard, `:` emoji, and `!` actions.
+Removing the prefix returns to the selected tab, so the compact tab strip does
+not displace the existing keyboard-first routes.
+
+Clipboard history is collected by `cliphist`; `Shift+Delete` or right-click
+removes the selected clipboard entry. Emoji names come from Fedora's
+`unicode-emoji` data. Both providers degrade to a readable empty-state error
+when their package is unavailable.
+
+`launcher-actions.json` at the shell root is watched for changes. Each user
+action must provide a display name and an argv-style command; a string shell
+command is rejected deliberately. For example:
+
+```json
+[
+  {
+    "id": "notes",
+    "name": "Open notes",
+    "subtitle": "Open the notes folder in Nautilus",
+    "keywords": ["documents", "writing"],
+    "command": ["nautilus", "/home/john/Documents/Notes"]
+  }
+]
+```
+
 ## Layered Hug, glass, and the wallpaper palette
 
 The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project
