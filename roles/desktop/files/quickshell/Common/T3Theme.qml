@@ -1,62 +1,60 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import "SettingsHelpers.js" as SettingsHelpers
 
-// T3 Code's visual language intentionally does not inherit the wallpaper
-// palette. The web client uses a quiet neutral canvas with a blue interaction
-// colour; keeping those roles local prevents the shell's purple/glass theme
-// from flattening the hierarchy inside this one workspace.
+// T3 Code keeps its own spacing, radii, and surface hierarchy, but participates
+// in the shell's semantic palette. This makes wallpaper and fixed accent
+// choices flow into the workspace without making individual T3 views depend on
+// shell implementation details.
 Singleton {
     id: root
 
     readonly property bool dark: Theme.dark
 
-    // Surfaces mirror the stock T3 Code palette. The popout itself is opaque
-    // enough to provide stable contrast over any wallpaper; glass is reserved
-    // for the composer and floating menus.
-    readonly property color canvas: dark ? "#0a0a0a" : "#fcfcfc"
-    readonly property color chrome: dark ? "#0a0a0a" : "#ffffff"
-    readonly property color surface: dark ? "#111111" : "#ffffff"
-    readonly property color surfaceRaised: dark ? "#141414" : "#f4f4f5"
-    readonly property color overlay: dark ? "#191919" : "#ffffff"
-    readonly property color composerGlass: dark
-        ? Qt.rgba(25 / 255, 25 / 255, 25 / 255, 0.94)
-        : Qt.rgba(1, 1, 1, 0.96)
+    // The roles preserve T3's canvas -> card -> raised-control rhythm while
+    // following the active fixed or wallpaper-derived shell colors. Floating
+    // controls intentionally retain the shell's glass/solid preference.
+    readonly property color canvas: Theme.background
+    readonly property color chrome: Theme.background
+    readonly property color surface: Theme.popBg
+    readonly property color surfaceRaised: Theme.copyReferenceBg
+    readonly property color overlay: Theme.menuBg
+    readonly property color composerGlass: Theme.surfaceMenu
 
-    readonly property color textPrimary: dark ? "#f5f5f5" : "#18181b"
-    readonly property color textSecondary: dark ? "#d4d4d8" : "#3f3f46"
-    readonly property color textMuted: dark ? "#a1a1aa" : "#52525b"
-    readonly property color textFaint: dark ? "#818181" : "#71717a"
+    readonly property color textPrimary: Theme.textHi
+    readonly property color textSecondary: Theme.textMid
+    readonly property color textMuted: Theme.textLow
+    readonly property color textFaint: Theme.textFaint
 
-    readonly property color border: dark
-        ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(24 / 255, 24 / 255, 27 / 255, 0.12)
-    readonly property color borderStrong: dark
-        ? Qt.rgba(1, 1, 1, 0.17) : Qt.rgba(24 / 255, 24 / 255, 27 / 255, 0.20)
-    readonly property color hover: dark
-        ? Qt.rgba(1, 1, 1, 0.055) : Qt.rgba(24 / 255, 24 / 255, 27 / 255, 0.055)
-    readonly property color hoverStrong: dark
-        ? Qt.rgba(1, 1, 1, 0.095) : Qt.rgba(24 / 255, 24 / 255, 27 / 255, 0.095)
+    readonly property color border: Theme.hairlineSoft
+    readonly property color borderStrong: Theme.stroke
+    readonly property color hover: Theme.hoverFill
+    readonly property color hoverStrong: Theme.hoverFillStrong
 
-    readonly property color accent: dark ? "#346bf1" : "#1b4ed8"
-    readonly property color accentHover: dark ? "#4b7cf3" : "#1644bf"
-    readonly property color accentForeground: "#ffffff"
-    readonly property color accentSoft: Qt.rgba(accent.r, accent.g, accent.b,
-        dark ? 0.20 : 0.13)
-    readonly property color accentSubtle: Qt.rgba(accent.r, accent.g, accent.b,
-        dark ? 0.10 : 0.075)
-    readonly property color focus: Qt.rgba(accent.r, accent.g, accent.b, 0.72)
+    // Accent is used as both copy (working state, links) and control fill, so
+    // lift the selected shell accent to AA against the least favorable T3
+    // surface. The paired foreground is independently checked against that
+    // adjusted fill. With the current wallpaper palette this turns the former
+    // dark blue into the shell's much brighter primary.
+    readonly property color accent: SettingsHelpers.ensureContrast(
+        Theme.accent.toString(), surfaceRaised.toString(), 4.5)
+    readonly property color accentHover: dark
+        ? Qt.lighter(accent, 1.14) : Qt.darker(accent, 1.10)
+    readonly property color accentForeground: SettingsHelpers.ensureContrast(
+        Theme.accentFg.toString(), accent.toString(), 4.5)
+    readonly property color link: accent
+    readonly property color accentSoft: Theme.accentBg
+    readonly property color accentSubtle: Theme.accentBgSoft
+    readonly property color focus: Theme.accentGlow
 
-    readonly property color amber: dark ? "#f0b849" : "#9a6500"
-    readonly property color amberSoft: Qt.rgba(amber.r, amber.g, amber.b,
-        dark ? 0.11 : 0.09)
-    readonly property color amberBorder: Qt.rgba(amber.r, amber.g, amber.b,
-        dark ? 0.26 : 0.22)
-    readonly property color red: dark ? "#ff7070" : "#c92a2a"
-    readonly property color redSoft: Qt.rgba(red.r, red.g, red.b,
-        dark ? 0.11 : 0.08)
-    readonly property color redBorder: Qt.rgba(red.r, red.g, red.b,
-        dark ? 0.27 : 0.22)
-    readonly property color success: dark ? "#54d49b" : "#147d54"
+    readonly property color amber: Theme.amber
+    readonly property color amberSoft: Theme.amberBgSoft
+    readonly property color amberBorder: Theme.amberBorder
+    readonly property color red: Theme.redText
+    readonly property color redSoft: Theme.redBgSoft
+    readonly property color redBorder: Theme.redBorder
+    readonly property color success: Theme.ok
 
     readonly property string fontSans: Theme.fontSans
     readonly property string fontMono: Theme.fontMono

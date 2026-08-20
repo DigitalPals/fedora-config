@@ -6,6 +6,23 @@ const H = load("T3CodeHelpers.js");
 
 const NOW = Date.parse("2026-08-03T12:00:00.000Z");
 
+test("Markdown links carry an explicit readable color in the rich document", () => {
+    const markdown = "at [`storage.rs`](t3://file/storage.rs#L283), see "
+        + "[build-template.sh](https://example.test/build-template.sh?a=1&b=2) "
+        + "and ![preview](https://example.test/image.png)";
+    const styled = H.styleMarkdownLinks(markdown, "#b9c3ff");
+
+    assert.match(styled,
+        /<a href="t3:\/\/file\/storage\.rs#L283"><font color="#b9c3ff"><tt>storage\.rs<\/tt><\/font><\/a>/);
+    assert.match(styled,
+        /href="https:\/\/example\.test\/build-template\.sh\?a=1&amp;b=2"/);
+    assert.match(styled, /<font color="#b9c3ff">build-template\.sh<\/font>/);
+    assert.match(styled, /!\[preview\]\(https:\/\/example\.test\/image\.png\)/,
+        "images must remain Markdown images rather than becoming text links");
+    assert.equal(H.styleMarkdownLinks("[file](https://example.test)", "blue"),
+        "<a href=\"https://example.test\"><font color=\"#ffffff\">file</font></a>");
+});
+
 function thread(overrides = {}) {
     return {
         id: "thread-1",

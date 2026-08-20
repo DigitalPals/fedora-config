@@ -1019,6 +1019,46 @@ function normalizedTitle(prompt) {
     return prompt.replace(/\s+/g, " ").trim().slice(0, 50);
 }
 
+function escapeHtml(value) {
+    return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+function escapeHtmlAttribute(value) {
+    return escapeHtml(value)
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function markdownLinkLabel(label) {
+    var code = /^`([^`\n]+)`$/.exec(label);
+    if (code)
+        return "<tt>" + escapeHtml(code[1]) + "</tt>";
+    return escapeHtml(label);
+}
+
+// QML Text.linkColor only applies to StyledText. MarkdownText is backed by a
+// rich QTextDocument and otherwise keeps Qt's literal #0000ff default. Turn
+// ordinary Markdown anchors into equivalent supported inline HTML so their
+// foreground is explicit while the rest of the document remains Markdown.
+function styleMarkdownLinks(markdown, linkColor) {
+    var source = String(markdown == null ? "" : markdown);
+    var color = String(linkColor == null ? "" : linkColor).trim();
+    if (!/^#[0-9a-f]{6}$/i.test(color))
+        color = "#ffffff";
+    var linkPattern = /(^|[^!\\])\[([^\]\n]+)\]\((<[^>\n]+>|[^)\s]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\)/g;
+    return source.replace(linkPattern, function(match, prefix, label, destination) {
+        if (destination.charAt(0) === "<"
+                && destination.charAt(destination.length - 1) === ">")
+            destination = destination.slice(1, -1);
+        return prefix + "<a href=\"" + escapeHtmlAttribute(destination)
+            + "\"><font color=\"" + color + "\">"
+            + markdownLinkLabel(label) + "</font></a>";
+    });
+}
+
 function buildPlanImplementationPrompt(planMarkdown) {
     return "PLEASE IMPLEMENT THIS PLAN:\n" + String(planMarkdown || "").trim();
 }
@@ -1483,6 +1523,7 @@ var exported = {
     modelChangeAllowed: modelChangeAllowed,
     sameSelection: sameSelection,
     normalizedTitle: normalizedTitle,
+    styleMarkdownLinks: styleMarkdownLinks,
     buildPlanImplementationPrompt: buildPlanImplementationPrompt,
     buildExistingTurnCommands: buildExistingTurnCommands,
     buildNewThreadCommand: buildNewThreadCommand,

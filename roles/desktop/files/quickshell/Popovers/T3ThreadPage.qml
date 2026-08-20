@@ -120,6 +120,10 @@ Column {
             Quickshell.execDetached(["xdg-open", url]);
     }
 
+    function themedMarkdown(markdown) {
+        return T3Code.styleMarkdownLinks(markdown, T3Theme.link.toString());
+    }
+
     // Tightest pill: the thread page packs several of these per row.
     component Action: ActionButton {
         hPadding: 14
@@ -232,9 +236,9 @@ Column {
 
             Text {
                 width: parent.width
-                text: messageCard.message.text ?? ""
+                text: messageCard.fromUser ? messageCard.message.text ?? ""
+                    : root.themedMarkdown(messageCard.message.text)
                 textFormat: messageCard.fromUser ? Text.PlainText : Text.MarkdownText
-                linkColor: T3Theme.accent
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 lineHeight: Theme.proseLineHeight
                 maximumLineCount: messageCard.expanded ? 100000 : 12
@@ -908,7 +912,7 @@ Column {
                         elide: Text.ElideMiddle
                         font.family: T3Theme.fontMono
                         font.pixelSize: Theme.fontCaption
-                        color: T3Theme.textFaint
+                        color: T3Theme.textSecondary
                     }
 
                     Rectangle {
@@ -1158,7 +1162,7 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: root.plan ? root.plan.planMarkdown : ""
+                    text: root.themedMarkdown(root.plan ? root.plan.planMarkdown : "")
                     textFormat: Text.MarkdownText
                     wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     lineHeight: Theme.proseLineHeight

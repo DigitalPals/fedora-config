@@ -14,15 +14,20 @@ const files = [
     "T3NewThreadPage.qml"
 ];
 
-test("T3 owns a stable product canvas instead of inheriting wallpaper glass", () => {
+test("T3 adapts the shell palette through one product-theme boundary", () => {
     const theme = read("Common/T3Theme.qml");
     const popover = read("Popovers/T3CodePopover.qml");
     const panel = read("Popovers/PopoutPanel.qml");
     const host = read("Bar/PopoutHost.qml");
 
-    assert.match(theme, /readonly property color canvas:\s*dark \? "#0a0a0a" : "#fcfcfc"/);
-    assert.match(theme, /readonly property color surface:\s*dark \? "#111111" : "#ffffff"/);
-    assert.match(theme, /readonly property color accent:\s*dark \? "#346bf1" : "#1b4ed8"/);
+    assert.match(theme, /readonly property color canvas:\s*Theme\.background/);
+    assert.match(theme, /readonly property color surface:\s*Theme\.popBg/);
+    assert.match(theme, /readonly property color surfaceRaised:\s*Theme\.copyReferenceBg/);
+    assert.match(theme, /readonly property color textPrimary:\s*Theme\.textHi/);
+    assert.match(theme, /readonly property color accent:\s*SettingsHelpers\.ensureContrast\([\s\S]*?Theme\.accent\.toString\(\),\s*surfaceRaised\.toString\(\), 4\.5\)/);
+    assert.match(theme, /readonly property color accentForeground:\s*SettingsHelpers\.ensureContrast\([\s\S]*?Theme\.accentFg\.toString\(\),\s*accent\.toString\(\), 4\.5\)/);
+    assert.doesNotMatch(theme, /#346bf1|#1b4ed8/,
+        "T3 must not retain a competing hard-coded blue accent");
     assert.match(popover, /surfaceColor:\s*T3Theme\.canvas/);
     assert.match(popover, /readonly property int pageMaxWidth:\s*page === "inbox" \? 460 : 520/);
     assert.match(popover, /T3Theme\.dark[\s\S]*?"t3-dark\.svg"/,
@@ -75,6 +80,7 @@ test("thread transcript follows T3 message rhythm and attaches response UI", () 
     assert.match(message[1], /fromUser \? width \* 0\.82 : width/);
     assert.match(message[1], /x:\s*parent\.width - messageCard\.messageWidth/);
     assert.match(message[1], /textFormat:\s*messageCard\.fromUser \? Text\.PlainText : Text\.MarkdownText/);
+    assert.match(message[1], /root\.themedMarkdown\(messageCard\.message\.text\)/);
     assert.match(message[1], /messageHover\.hovered \|\| activeFocus/);
     assert.doesNotMatch(message[1], /text:\s*messageCard\.fromUser \? "You"/,
         "permanent role labels should not interrupt the transcript");
@@ -86,6 +92,18 @@ test("thread transcript follows T3 message rhythm and attaches response UI", () 
     assert.ok(attachments > timeline && attachments < composer);
     assert.ok(request >= attachments && request < composer,
         "requests must be attached above the composer rather than embedded in the timeline");
+
+    const markdownCount = (thread.match(/Text\.MarkdownText/g) || []).length;
+    const themedMarkdownCount = (thread.match(/root\.themedMarkdown\(/g) || []).length;
+    assert.equal(themedMarkdownCount, markdownCount,
+        "every Markdown surface must rewrite links before Qt applies its default blue");
+    assert.match(thread,
+        /function themedMarkdown\(markdown\)[\s\S]{0,180}?T3Code\.styleMarkdownLinks/);
+    assert.doesNotMatch(thread, /linkColor:/,
+        "linkColor does not style Qt's rich Markdown document and is false assurance");
+    assert.match(thread,
+        /root\.checkpoint\.filenames\.join\(" · "\)[\s\S]{0,260}?color:\s*T3Theme\.textSecondary/,
+        "the changed-file list is readable neutral copy, not an accent or faint label");
 });
 
 test("composer-attached questions keep numbered options keyboard actionable", () => {
@@ -114,7 +132,7 @@ test("all T3 views use the product typeface and Material Symbol controls", () =>
     assert.doesNotMatch(combined, /Theme\.fontMenu|font\.family:\s*Theme\.fontMono/);
     assert.doesNotMatch(combined,
         /(?<!T3)Theme\.(?:surfaceStrong|surfaceMenu|insetSurface|textHi|textMid|textLow|textDim|textFaint|accentBg|accentFg|hoverFill|cardFill|hairlineSoft)/,
-        "T3 views must not leak wallpaper-derived shell colors into the product canvas");
+        "T3 views must consume shell colors through the T3Theme boundary");
     assert.doesNotMatch(combined, /[←↗↻⋯▴▾▸]/,
         "typographic control glyphs must use the shared symbol component");
     assert.match(combined, /Sym\s*\{/);

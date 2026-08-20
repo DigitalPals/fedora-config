@@ -177,6 +177,10 @@ Singleton {
         return T3Threads.historyPage(messages, visibleCount);
     }
 
+    function styleMarkdownLinks(markdown, linkColor) {
+        return Helpers.styleMarkdownLinks(markdown, linkColor);
+    }
+
     // ---- protocol --------------------------------------------------------
 
     function loadServerConfig() {
