@@ -9,10 +9,10 @@ import "T3CodeHelpers.js" as Helpers
 // together. It knows nothing about the protocol spoken over the socket —
 // T3Code owns that and listens to `message`.
 //
-// T3 Connect auth is implemented by scripts/t3-cloud.mjs using T3 Code
-// Nightly's native Clerk session and relay JWT template. T3 Connect environment
-// tokens are DPoP-bound, so the helper also creates each short-lived WebSocket
-// ticket. Older bearer state files remain readable.
+// T3 Connect auth is implemented by scripts/t3-cloud.mjs using a browser-backed
+// native Clerk session and relay JWT template. T3 Connect environment tokens
+// are DPoP-bound, so the helper also creates each short-lived WebSocket ticket.
+// Older bearer state files remain readable.
 Singleton {
     id: root
 

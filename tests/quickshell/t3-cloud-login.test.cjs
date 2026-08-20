@@ -2,11 +2,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
 const {
-    createCipheriv,
     createHash,
     createPublicKey,
     generateKeyPairSync,
-    pbkdf2Sync,
     verify,
 } = require("node:crypto");
 const fs = require("node:fs");
@@ -73,8 +71,8 @@ test("the signed-out T3 panel presents T3 Connect login instead of pairing", () 
     assert.doesNotMatch(inbox, /Create a pairing link|Pair this panel|Paste link|Open Nightly/);
     assert.doesNotMatch([chip, facade, popover, inbox, connection, helper].join("\n"),
         /T3 Cloud/, "T3 Connect must be used consistently as the product name");
-    assert.match(inbox, /title: T3Code\.cloudLoginRunning \? "Finish in T3 Code"/);
-    assert.match(inbox, /label: T3Code\.cloudLoginRunning \? "Waiting for T3 Code…"/);
+    assert.match(inbox, /title: T3Code\.cloudLoginRunning \? "Finish in your browser"/);
+    assert.match(inbox, /label: T3Code\.cloudLoginRunning \? "Waiting for browser…"/);
     assert.match(inbox, /onTriggered: T3Code\.loginCloud\(\)/);
     assert.match(inbox, /Sign in with Google or GitHub to access your linked environments/);
     assert.doesNotMatch(inbox, /Sign in to T3 Connect|Refresh T3 Connect/);
@@ -87,8 +85,10 @@ test("the signed-out T3 panel presents T3 Connect login instead of pairing", () 
     assert.match(shell, /function open\(name: string\): void \{\s*Popouts\.openPanel\(name\)/);
     assert.match(helper, /qs", \["ipc", "call", "popouts", "open", "t3code"\]/);
     assert.match(helper, /tokens\/t3-relay/);
-    assert.match(helper, /"secret-tool"/);
-    assert.match(helper, /desktopCommand:[^\n]+"t3code-desktop"/);
+    assert.match(helper, /Continue with Google/);
+    assert.match(helper, /Continue with GitHub/);
+    assert.match(helper, /browserCommand:[^\n]+"xdg-open"/);
+    assert.doesNotMatch(helper, /secret-tool|desktopCommand|openT3Code/);
 });
 
 test("the T3 Connect helper emits verifiable T3-compatible DPoP proofs", async () => {
@@ -142,8 +142,20 @@ test("the T3 Connect helper emits verifiable T3-compatible DPoP proofs", async (
         })).digest("base64url"));
 });
 
-test("the T3 Connect helper discovers, authorizes, and tickets a linked environment", async t => {
+test("the T3 Connect browser flow authorizes and tickets a linked environment", async t => {
     const requests = [];
+    let signedIn = false;
+    const activeSession = {
+        id: "session-browser",
+        status: "active",
+        user: {
+            primary_email_address_id: "email-browser",
+            email_addresses: [{
+                id: "email-browser",
+                email_address: "browser@example.test",
+            }],
+        },
+    };
     const server = http.createServer((request, response) => {
         let body = "";
         request.setEncoding("utf8");
@@ -155,59 +167,84 @@ test("the T3 Connect helper discovers, authorizes, and tickets a linked environm
                 headers: request.headers,
                 body,
             });
-            response.writeHead(200, { "content-type": "application/json" });
             const address = server.address();
             const base = `http://127.0.0.1:${address.port}`;
-            if (request.method === "GET" && request.url.startsWith("/v1/client?")) {
-                response.end(JSON.stringify({
+            const parsed = new URL(request.url, base);
+            const route = parsed.pathname;
+            const clerkHeaders = route.startsWith("/v1/client")
+                ? { authorization: "Bearer clerk-native-client-token" } : {};
+            const json = value => {
+                response.writeHead(200, {
+                    "content-type": "application/json",
+                    ...clerkHeaders,
+                });
+                response.end(JSON.stringify(value));
+            };
+            if (request.method === "GET" && route === "/v1/client") {
+                json({
                     response: {
                         object: "client",
-                        sessions: [{
-                            id: "session-nightly",
-                            status: "active",
-                            user: {
-                                primary_email_address_id: "email-nightly",
-                                email_addresses: [{
-                                    id: "email-nightly",
-                                    email_address: "nightly@example.test",
-                                }],
-                            },
-                        }],
-                        last_active_session_id: "session-nightly",
+                        sessions: signedIn ? [activeSession] : [],
+                        last_active_session_id: signedIn ? activeSession.id : null,
                     },
                     client: null,
-                }));
-            } else if (request.method === "POST"
-                    && request.url.startsWith(
-                        "/v1/client/sessions/session-nightly/tokens/t3-relay?")) {
-                response.end(JSON.stringify({
-                    response: { jwt: "relay-clerk-template-token" },
+                });
+            } else if (request.method === "POST" && route === "/v1/client/sign_ins") {
+                json({
+                    response: {
+                        id: "sign-in-browser",
+                        status: "needs_identifier",
+                        created_session_id: null,
+                        first_factor_verification: {
+                            status: "unverified",
+                            strategy: "oauth_google",
+                            external_verification_redirect_url:
+                                "https://accounts.example.test/t3-connect",
+                        },
+                    },
                     client: null,
-                }));
-            } else if (request.method === "GET" && request.url === "/v1/environments") {
-                response.end(JSON.stringify({ environments: [{
-                    environmentId: "env-nightly",
-                    label: "Nightly workstation",
+                });
+            } else if (request.method === "GET"
+                    && route === "/v1/client/sign_ins/sign-in-browser") {
+                signedIn = true;
+                json({
+                    response: {
+                        id: "sign-in-browser",
+                        status: "complete",
+                        created_session_id: activeSession.id,
+                    },
+                    client: {
+                        object: "client",
+                        sessions: [activeSession],
+                        last_active_session_id: activeSession.id,
+                    },
+                });
+            } else if (request.method === "POST"
+                    && route === "/v1/client/sessions/session-browser/tokens/t3-relay") {
+                json({ response: { jwt: "relay-clerk-template-token" }, client: null });
+            } else if (request.method === "GET" && route === "/v1/environments") {
+                json({ environments: [{
+                    environmentId: "env-browser",
+                    label: "Linked workstation",
                     endpoint: {
                         httpBaseUrl: base,
                         wsBaseUrl: base.replace("http:", "ws:"),
                         providerKind: "cloudflare",
                     },
                     linkedAt: "2026-08-19T18:00:00.000Z",
-                }] }));
-            } else if (request.method === "POST"
-                    && request.url === "/v1/client/dpop-token") {
-                response.end(JSON.stringify({
+                }] });
+            } else if (request.method === "POST" && route === "/v1/client/dpop-token") {
+                json({
                     access_token: "relay-access-token",
                     issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
                     token_type: "DPoP",
                     expires_in: 300,
                     scope: "environment:connect",
-                }));
+                });
             } else if (request.method === "POST"
-                    && request.url === "/v1/environments/env-nightly/connect") {
-                response.end(JSON.stringify({
-                    environmentId: "env-nightly",
+                    && route === "/v1/environments/env-browser/connect") {
+                json({
+                    environmentId: "env-browser",
                     endpoint: {
                         httpBaseUrl: base,
                         wsBaseUrl: base.replace("http:", "ws:"),
@@ -215,20 +252,20 @@ test("the T3 Connect helper discovers, authorizes, and tickets a linked environm
                     },
                     credential: "environment-bootstrap",
                     expiresAt: "2026-08-19T22:00:00.000Z",
-                }));
-            } else if (request.method === "POST" && request.url === "/oauth/token") {
-                response.end(JSON.stringify({
+                });
+            } else if (request.method === "POST" && route === "/oauth/token") {
+                json({
                     access_token: "environment-access-token",
                     issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
                     token_type: "DPoP",
                     expires_in: 3600,
                     scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
-                }));
+                });
             } else if (request.method === "POST"
-                    && request.url === "/api/auth/websocket-ticket") {
-                response.end(JSON.stringify({ ticket: "short-lived-ticket" }));
+                    && route === "/api/auth/websocket-ticket") {
+                json({ ticket: "short-lived-ticket" });
             } else {
-                response.statusCode = 404;
+                response.writeHead(404, { "content-type": "application/json" });
                 response.end(JSON.stringify({ error: "not_found" }));
             }
         });
@@ -247,58 +284,72 @@ test("the T3 Connect helper discovers, authorizes, and tickets a linked environm
     const stateRoot = path.join(temporaryHome, "state");
     const privateState = path.join(stateRoot, "t3code-cloud");
     const binDir = path.join(temporaryHome, "bin");
-    const desktopOpened = path.join(temporaryHome, "desktop-opened");
-    const desktopCommand = path.join(binDir, "t3code-desktop");
-    const safeStoragePassword = "test-safe-storage-password";
-    const safeStorageKey = pbkdf2Sync(
-        safeStoragePassword, "saltysalt", 1, 16, "sha1");
-    const cipher = createCipheriv("aes-128-cbc", safeStorageKey, Buffer.alloc(16, " "));
-    const encryptedClientToken = "enc:" + Buffer.concat([
-        Buffer.from("v11"),
-        cipher.update("clerk-native-client-token", "utf8"),
-        cipher.final(),
-    ]).toString("base64");
+    const browserOpened = path.join(temporaryHome, "browser-opened.json");
+    const mimeCalled = path.join(temporaryHome, "mime-called");
+    const browserCommand = path.join(binDir, "open-browser");
+    const mimeCommand = path.join(binDir, "xdg-mime");
     fs.mkdirSync(binDir);
-    fs.writeFileSync(desktopCommand, `#!/usr/bin/env node
+    fs.writeFileSync(browserCommand, `#!/usr/bin/env node
 const fs = require("node:fs");
-const path = require("node:path");
-const userdata = path.join(process.env.HOME, ".t3", "userdata");
-fs.mkdirSync(userdata, { recursive: true, mode: 0o700 });
-fs.writeFileSync(path.join(userdata, "clerk-tokens.json"), JSON.stringify({
-    __clerk_client_jwt: ${JSON.stringify(encryptedClientToken)},
-}), { mode: 0o600 });
-fs.writeFileSync(process.env.T3_TEST_DESKTOP_OPENED, "opened");
+const { spawnSync } = require("node:child_process");
+(async () => {
+    const landing = process.argv[2];
+    const started = await fetch(new URL("/start?provider=google", landing), {
+        redirect: "manual",
+    });
+    fs.writeFileSync(process.env.T3_TEST_BROWSER_OPENED, JSON.stringify({
+        landing,
+        providerRedirect: started.headers.get("location"),
+    }));
+    if (started.status !== 302)
+        process.exit(2);
+    const callback = spawnSync(process.execPath, [
+        process.env.T3_TEST_HELPER,
+        "oauth-callback",
+        "t3code://app/?rotating_token_nonce=test-nonce",
+    ], { env: process.env, encoding: "utf8" });
+    if (callback.status !== 0)
+        process.exit(callback.status || 3);
+})().catch(() => process.exit(4));
+`, { mode: 0o755 });
+    fs.writeFileSync(mimeCommand, `#!/usr/bin/env node
+require("node:fs").writeFileSync(
+    process.env.T3_TEST_MIME_CALLED,
+    process.argv.slice(2).join(" "),
+);
 `, { mode: 0o755 });
     fs.writeFileSync(path.join(binDir, "qs"), "#!/usr/bin/env node\n", { mode: 0o755 });
-    fs.writeFileSync(path.join(binDir, "secret-tool"),
-        `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(safeStoragePassword + "\n")});\n`,
-        { mode: 0o755 });
 
     const script = path.join(shellDir, "scripts/t3-cloud.mjs");
     const env = {
         ...process.env,
         HOME: temporaryHome,
         PATH: `${binDir}:${process.env.PATH}`,
-        T3_TEST_DESKTOP_OPENED: desktopOpened,
+        T3_TEST_BROWSER_OPENED: browserOpened,
+        T3_TEST_HELPER: script,
+        T3_TEST_MIME_CALLED: mimeCalled,
         T3CODE_CLOUD_STATE_DIR: stateRoot,
         T3CODE_CLERK_URL: backend,
         T3CODE_RELAY_URL: backend,
-        T3CODE_DESKTOP_COMMAND: desktopCommand,
-        T3CODE_SIGN_IN_POLL_MS: "10",
+        T3CODE_BROWSER_COMMAND: browserCommand,
+        T3CODE_MIME_COMMAND: mimeCommand,
     };
     const connected = await runNode(script, "login", env);
     assert.equal(connected.status, 0, connected.stderr);
     assert.equal(connected.stderr, "");
     assert.deepEqual(JSON.parse(connected.stdout), {
         status: "connected",
-        identity: "nightly@example.test",
-        environmentId: "env-nightly",
-        environmentLabel: "Nightly workstation",
+        identity: "browser@example.test",
+        environmentId: "env-browser",
+        environmentLabel: "Linked workstation",
     });
     assert.doesNotMatch(connected.stdout,
         /clerk-native-client-token|relay-clerk-template-token|relay-access-token|environment-access-token|environment-bootstrap/);
-    assert.equal(fs.readFileSync(desktopOpened, "utf8"), "opened",
-        "sign-in must open T3 Code Nightly before polling its native session");
+    const opened = JSON.parse(fs.readFileSync(browserOpened, "utf8"));
+    assert.match(opened.landing, /^http:\/\/127\.0\.0\.1:\d+\/$/);
+    assert.equal(opened.providerRedirect, "https://accounts.example.test/t3-connect");
+    assert.equal(fs.readFileSync(mimeCalled, "utf8"),
+        "default t3code-nightly.desktop x-scheme-handler/t3code");
 
     const statePath = path.join(stateRoot, "t3code-bar.json");
     const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
@@ -315,21 +366,52 @@ fs.writeFileSync(process.env.T3_TEST_DESKTOP_OPENED, "opened");
     }, {
         authMode: "cloud",
         cloudStatus: "connected",
-        cloudIdentity: "nightly@example.test",
-        environmentId: "env-nightly",
-        environmentLabel: "Nightly workstation",
+        cloudIdentity: "browser@example.test",
+        environmentId: "env-browser",
+        environmentLabel: "Linked workstation",
         httpBaseUrl: backend,
         wsBaseUrl: backend.replace("http:", "ws:"),
         accessToken: "environment-access-token",
         tokenType: "DPoP",
     });
     assert.equal(fs.statSync(statePath).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(privateState, "clerk-client.json")).mode & 0o777, 0o600);
     assert.equal(fs.statSync(path.join(privateState, "dpop-key.json")).mode & 0o777, 0o600);
+    assert.equal(fs.existsSync(path.join(privateState, "browser-login.json")), false);
+
+    const initialClient = requests.find(item => item.method === "GET"
+        && new URL(item.url, backend).pathname === "/v1/client");
+    assert.equal(initialClient.headers.authorization, undefined,
+        "the panel must create its own Clerk client instead of reading Nightly's session");
+    const clerkSignIn = requests.find(item => item.method === "POST"
+        && new URL(item.url, backend).pathname === "/v1/client/sign_ins");
+    assert.equal(clerkSignIn.headers.authorization, "Bearer clerk-native-client-token");
+    assert.equal(clerkSignIn.headers["content-type"], "application/x-www-form-urlencoded");
+    assert.deepEqual(Object.fromEntries(new URLSearchParams(clerkSignIn.body)), {
+        strategy: "oauth_google",
+        redirect_url: "t3code://app/",
+        action_complete_redirect_url: "t3code://app/",
+    });
+    const clerkCallback = requests.find(item =>
+        new URL(item.url, backend).pathname === "/v1/client/sign_ins/sign-in-browser");
+    assert.equal(new URL(clerkCallback.url, backend).searchParams.get("rotating_token_nonce"),
+        "test-nonce");
+    for (const clerkRequest of requests.filter(item => {
+        const route = new URL(item.url, backend).pathname;
+        return route !== "/v1/client/dpop-token"
+            && (route === "/v1/client" || route.startsWith("/v1/client/"));
+    })) {
+        const params = new URL(clerkRequest.url, backend).searchParams;
+        assert.equal(params.get("__clerk_api_version"), "2026-05-12");
+        assert.equal(params.get("_clerk_js_version"), "6.29.2");
+        assert.equal(params.get("_is_native"), "1");
+    }
 
     const listed = requests.find(item => item.url === "/v1/environments");
     assert.equal(listed.headers.authorization, "Bearer relay-clerk-template-token");
     const clerkTemplate = requests.find(item =>
-        item.url.startsWith("/v1/client/sessions/session-nightly/tokens/t3-relay?"));
+        new URL(item.url, backend).pathname
+            === "/v1/client/sessions/session-browser/tokens/t3-relay");
     assert.equal(clerkTemplate.headers.authorization, "Bearer clerk-native-client-token");
     const relayExchange = requests.find(item => item.url === "/v1/client/dpop-token");
     assert.match(relayExchange.headers.dpop, /^[^.]+\.[^.]+\.[^.]+$/);
@@ -354,7 +436,7 @@ fs.writeFileSync(process.env.T3_TEST_DESKTOP_OPENED, "opened");
     assert.match(ticketRequest.headers.dpop, /^[^.]+\.[^.]+\.[^.]+$/);
 });
 
-test("the nightly launcher forwards production OAuth callback URLs unchanged", () => {
+test("the nightly launcher routes pending panel callbacks and preserves its fallback", () => {
     const updater = readRepo("roles/dotfiles/templates/t3code-update.j2");
     const launcher = readRepo("roles/dotfiles/templates/t3code-desktop.j2");
     const desktop = readRepo("roles/dotfiles/files/t3code-nightly.desktop");
@@ -365,7 +447,10 @@ test("the nightly launcher forwards production OAuth callback URLs unchanged", (
         "the updater must remain pinned to prerelease nightlies");
     assert.ok(launcher.includes(
         'exec "$appimage" --appimage-extract-and-run --password-store=gnome-libsecret "$@"'),
-        "the launcher must preserve the callback URL argument");
+        "the launcher must preserve non-panel callback URL arguments");
+    assert.match(launcher, /oauth-callback "\$1"/,
+        "a pending browser sign-in must return to the panel instead of opening Nightly");
+    assert.match(launcher, /\[\[ \$\{1-\} == t3code:\/\/app\/\* \]\]/);
     assert.match(desktop, /^Exec=\/home\/john\/\.local\/bin\/t3code-desktop %U$/m);
     assert.match(desktop, /^MimeType=x-scheme-handler\/t3code;$/m);
     assert.doesNotMatch(desktop, /x-scheme-handler\/t3code-dev/,

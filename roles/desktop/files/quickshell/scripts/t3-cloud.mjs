@@ -2,23 +2,23 @@
 
 // T3 Connect authentication and relay bootstrap for the Quickshell client.
 //
-// Relay access requires the `t3-relay` Clerk JWT template used by T3 Code
-// Nightly. The public CLI OAuth token can manage linked environments but is not
-// accepted by the relay DPoP exchange. This helper therefore reuses Nightly's
-// native Clerk session, asks Clerk for the relay template JWT, then performs the
-// same two DPoP exchanges as the upstream web client.
+// Relay access requires the `t3-relay` Clerk JWT template. The public CLI OAuth
+// token can manage linked environments but is not accepted by the relay DPoP
+// exchange, so this helper owns a native Clerk session, completes its OAuth
+// flow in the browser, then performs the same DPoP exchanges as the web client.
 
 import { spawn } from "node:child_process";
 import {
-    createDecipheriv,
     createHash,
     createPrivateKey,
     generateKeyPairSync,
-    pbkdf2Sync,
+    randomBytes,
     randomUUID,
     sign as signBytes,
+    timingSafeEqual,
 } from "node:crypto";
 import { promises as fs } from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -26,7 +26,8 @@ import { pathToFileURL } from "node:url";
 export const CLOUD_CONFIG = Object.freeze({
     clerkUrl: process.env.T3CODE_CLERK_URL?.trim() || "https://clerk.t3.codes",
     relayUrl: process.env.T3CODE_RELAY_URL?.trim() || "https://relay.t3.codes",
-    desktopCommand: process.env.T3CODE_DESKTOP_COMMAND?.trim() || "t3code-desktop",
+    browserCommand: process.env.T3CODE_BROWSER_COMMAND?.trim() || "xdg-open",
+    mimeCommand: process.env.T3CODE_MIME_COMMAND?.trim() || "xdg-mime",
 });
 
 const RELAY_CLIENT_ID = "t3-web";
@@ -41,7 +42,8 @@ const STANDARD_ENVIRONMENT_SCOPES = [
 const ENVIRONMENT_REFRESH_MARGIN_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15_000;
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
-const SIGN_IN_POLL_MS = Number(process.env.T3CODE_SIGN_IN_POLL_MS || 1000);
+const CLERK_API_VERSION = "2026-05-12";
+const CLERK_JS_VERSION = "6.29.2";
 const CLERK_NATIVE_ELECTRON_VERSION = "0.0.33";
 const P256_ORDER = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
 
@@ -50,11 +52,11 @@ const stateRoot = process.env.T3CODE_CLOUD_STATE_DIR
     || process.env.XDG_STATE_HOME
     || path.join(userHome, ".local", "state");
 const privateStateDir = path.join(stateRoot, "t3code-cloud");
-const t3CodeClerkTokenPath = process.env.T3CODE_CLERK_TOKEN_PATH
-    || path.join(userHome, ".t3", "userdata", "clerk-tokens.json");
 
 export const STATE_PATHS = Object.freeze({
     legacyCredentials: path.join(privateStateDir, "credentials.json"),
+    clerkClient: path.join(privateStateDir, "clerk-client.json"),
+    browserLogin: path.join(privateStateDir, "browser-login.json"),
     dpopKey: path.join(privateStateDir, "dpop-key.json"),
     connection: process.env.T3CODE_PANEL_STATE_PATH
         || path.join(stateRoot, "t3code-bar.json"),
@@ -159,70 +161,23 @@ async function requestJson(url, options, action) {
     return body;
 }
 
-function collectCommandOutput(command, args, action, maxBytes = 4096) {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, { stdio: ["ignore", "pipe", "ignore"] });
-        let output = "";
-        child.stdout?.setEncoding("utf8");
-        child.stdout?.on("data", chunk => {
-            output += chunk;
-            if (output.length > maxBytes)
-                child.kill();
-        });
-        child.once("error", () => reject(new Error(`${action} is unavailable.`)));
-        child.once("close", status => {
-            if (status !== 0 || output === "" || output.length > maxBytes)
-                reject(new Error(`${action} failed.`));
-            else
-                resolve(output);
-        });
-    });
-}
-
-async function readT3CodeClientToken() {
-    const stored = await readJson(t3CodeClerkTokenPath);
-    const value = stored?.__clerk_client_jwt;
-    if (typeof value !== "string" || value === "")
-        return "";
-    if (value.startsWith("raw:"))
-        return value.slice("raw:".length);
-    if (!value.startsWith("enc:"))
-        throw new Error("T3 Code's saved sign-in has an unsupported format.");
-
-    const encrypted = Buffer.from(value.slice("enc:".length), "base64");
-    if (encrypted.subarray(0, 3).toString("ascii") !== "v11")
-        throw new Error("T3 Code's encrypted sign-in has an unsupported format.");
-    const password = (await collectCommandOutput(
-        "secret-tool",
-        ["lookup", "application", "t3code"],
-        "T3 Code secure storage",
-    )).trimEnd();
-    try {
-        const key = pbkdf2Sync(password, "saltysalt", 1, 16, "sha1");
-        const decipher = createDecipheriv("aes-128-cbc", key, Buffer.alloc(16, " "));
-        return Buffer.concat([
-            decipher.update(encrypted.subarray(3)),
-            decipher.final(),
-        ]).toString("utf8");
-    } catch {
-        throw new Error("T3 Code's saved sign-in could not be unlocked.");
-    }
-}
-
 async function clerkNativeRequest(resource, clientToken, options, action) {
     const clerk = validateServiceOrigin(CLOUD_CONFIG.clerkUrl, "Clerk URL");
     const url = new URL(resource, `${clerk}/`);
+    url.searchParams.set("__clerk_api_version", CLERK_API_VERSION);
+    url.searchParams.set("_clerk_js_version", CLERK_JS_VERSION);
     url.searchParams.set("_is_native", "1");
     url.searchParams.set("_electron_sdk_version", CLERK_NATIVE_ELECTRON_VERSION);
+    const headers = { ...options?.headers };
+    if (clientToken)
+        headers.authorization = `Bearer ${clientToken}`;
+    if (options?.body !== undefined && !headers["content-type"])
+        headers["content-type"] = "application/json";
     let response;
     try {
         response = await fetch(url, {
             ...options,
-            headers: {
-                authorization: `Bearer ${clientToken}`,
-                "content-type": "application/json",
-                ...options?.headers,
-            },
+            headers,
             redirect: "error",
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
@@ -247,9 +202,49 @@ async function clerkNativeRequest(resource, clientToken, options, action) {
     const authorization = response.headers.get("authorization") || "";
     return {
         data: body.response && typeof body.response === "object" ? body.response : body,
+        client: body.client && typeof body.client === "object" ? body.client : null,
         clientToken: authorization.startsWith("Bearer ")
             ? authorization.slice("Bearer ".length) : authorization || clientToken,
     };
+}
+
+async function rememberClerkClientToken(clientToken) {
+    if (typeof clientToken !== "string" || clientToken === "")
+        throw new Error("T3 Connect returned no browser session credential.");
+    await writePrivateJson(STATE_PATHS.clerkClient, { clientToken });
+    return clientToken;
+}
+
+async function initializeClerkClient() {
+    const result = await clerkNativeRequest(
+        "/v1/client",
+        "",
+        { method: "GET" },
+        "T3 Connect browser session setup",
+    );
+    await rememberClerkClientToken(result.clientToken);
+    return result;
+}
+
+async function currentClerkClient() {
+    const stored = await readJson(STATE_PATHS.clerkClient);
+    if (typeof stored?.clientToken !== "string" || stored.clientToken === "")
+        return initializeClerkClient();
+    try {
+        const result = await clerkNativeRequest(
+            "/v1/client",
+            stored.clientToken,
+            { method: "GET" },
+            "T3 Connect sign-in check",
+        );
+        await rememberClerkClientToken(result.clientToken);
+        return result;
+    } catch (error) {
+        if (!(error instanceof HttpError) || ![401, 403].includes(error.status))
+            throw error;
+        await fs.rm(STATE_PATHS.clerkClient, { force: true });
+        return initializeClerkClient();
+    }
 }
 
 function clerkSessionIdentity(session) {
@@ -274,23 +269,7 @@ function jwtExpiryEpochMs(token) {
 }
 
 export async function t3CodeRelayCredentials() {
-    const initialClientToken = await readT3CodeClientToken();
-    if (initialClientToken === "")
-        return null;
-
-    let clientResult;
-    try {
-        clientResult = await clerkNativeRequest(
-            "/v1/client",
-            initialClientToken,
-            { method: "GET" },
-            "T3 Code sign-in check",
-        );
-    } catch (error) {
-        if (error instanceof HttpError && [401, 403].includes(error.status))
-            return null;
-        throw error;
-    }
+    const clientResult = await currentClerkClient();
     const sessions = Array.isArray(clientResult.data.sessions)
         ? clientResult.data.sessions : [];
     const activeSession = sessions.find(session =>
@@ -306,10 +285,11 @@ export async function t3CodeRelayCredentials() {
         { method: "POST", body: "{}" },
         "T3 Connect relay sign-in",
     );
+    await rememberClerkClientToken(tokenResult.clientToken);
     if (typeof tokenResult.data.jwt !== "string" || tokenResult.data.jwt === "")
-        throw new Error("T3 Code returned no T3 Connect relay credential.");
+        throw new Error("T3 Connect returned no relay credential.");
     return {
-        source: "t3code-session",
+        source: "t3-connect-session",
         accessToken: tokenResult.data.jwt,
         refreshToken: "",
         expiresAtEpochMs: jwtExpiryEpochMs(tokenResult.data.jwt),
@@ -318,13 +298,22 @@ export async function t3CodeRelayCredentials() {
     };
 }
 
-function openT3Code() {
+function runCommand(command, args, action) {
     return new Promise((resolve, reject) => {
-        const child = spawn(CLOUD_CONFIG.desktopCommand, [], {
+        const child = spawn(command, args, { stdio: "ignore" });
+        child.once("error", () => reject(new Error(`${action} is unavailable.`)));
+        child.once("close", status => status === 0
+            ? resolve() : reject(new Error(`${action} failed.`)));
+    });
+}
+
+function openBrowser(url) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(CLOUD_CONFIG.browserCommand, [url], {
             detached: true,
             stdio: "ignore",
         });
-        child.once("error", () => reject(new Error("Could not open T3 Code Nightly.")));
+        child.once("error", () => reject(new Error("Could not open your browser.")));
         child.once("spawn", () => {
             child.unref();
             resolve();
@@ -332,8 +321,231 @@ function openT3Code() {
     });
 }
 
-function delay(milliseconds) {
-    return new Promise(resolve => setTimeout(resolve, milliseconds));
+function formBody(entries) {
+    return new URLSearchParams(entries).toString();
+}
+
+function loginPage() {
+    return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Sign in · T3 Connect</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#15151d;color:#eeeef5;font:16px system-ui,sans-serif}.card{width:min(430px,calc(100% - 32px));padding:36px;border:1px solid #343443;border-radius:18px;background:#1d1d27;text-align:center;box-shadow:0 24px 70px #0008}h1{margin:0 0 10px;font-size:25px}p{margin:0 0 28px;color:#b7b7c8;line-height:1.5}.actions{display:grid;gap:12px}a{display:block;padding:13px 18px;border-radius:10px;background:#303553;color:#f4f4ff;text-decoration:none;font-weight:700}a:hover{background:#3b4268}.fine{margin:24px 0 0;font-size:13px;color:#858598}
+</style></head><body><main class="card"><h1>T3 Connect</h1><p>Choose an account to access your linked environments.</p><div class="actions"><a href="/start?provider=google">Continue with Google</a><a href="/start?provider=github">Continue with GitHub</a></div><p class="fine">You’ll return to the T3 Code panel automatically.</p></main></body></html>`;
+}
+
+function sendHtml(response, status, html) {
+    response.writeHead(status, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+    });
+    response.end(html);
+}
+
+function safeSecretMatch(provided, expected) {
+    const left = Buffer.from(provided);
+    const right = Buffer.from(expected);
+    return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function readSmallBody(request, maximum = 4096) {
+    return new Promise((resolve, reject) => {
+        let body = "";
+        request.setEncoding("utf8");
+        request.on("data", chunk => {
+            body += chunk;
+            if (body.length > maximum) {
+                reject(new Error("T3 Connect callback was too large."));
+                request.destroy();
+            }
+        });
+        request.once("end", () => resolve(body));
+        request.once("error", reject);
+    });
+}
+
+async function browserSignIn() {
+    const initial = await currentClerkClient();
+    let clientToken = initial.clientToken;
+    let signInId = "";
+    let settled = false;
+    let finishResolve;
+    let finishReject;
+    const finished = new Promise((resolve, reject) => {
+        finishResolve = resolve;
+        finishReject = reject;
+    });
+    const settle = (error = null) => {
+        if (settled)
+            return;
+        settled = true;
+        if (error)
+            finishReject(error);
+        else
+            finishResolve();
+    };
+    const callbackSecret = randomBytes(32).toString("base64url");
+    const server = http.createServer((request, response) => {
+        void (async () => {
+            const localUrl = new URL(request.url || "/", "http://127.0.0.1");
+            if (request.method === "GET" && localUrl.pathname === "/") {
+                sendHtml(response, 200, loginPage());
+                return;
+            }
+            if (request.method === "GET" && localUrl.pathname === "/start") {
+                const provider = localUrl.searchParams.get("provider");
+                if (!["google", "github"].includes(provider)) {
+                    response.writeHead(400).end();
+                    return;
+                }
+                if (signInId !== "") {
+                    response.writeHead(409).end();
+                    return;
+                }
+                signInId = "starting";
+                try {
+                    const signIn = await clerkNativeRequest(
+                        "/v1/client/sign_ins",
+                        clientToken,
+                        {
+                            method: "POST",
+                            headers: { "content-type": "application/x-www-form-urlencoded" },
+                            body: formBody({
+                                strategy: `oauth_${provider}`,
+                                redirect_url: "t3code://app/",
+                                action_complete_redirect_url: "t3code://app/",
+                            }),
+                        },
+                        "T3 Connect browser sign-in",
+                    );
+                    clientToken = await rememberClerkClientToken(signIn.clientToken);
+                    const verificationUrl = signIn.data?.first_factor_verification
+                        ?.external_verification_redirect_url;
+                    const target = new URL(verificationUrl);
+                    if (target.protocol !== "https:" || !signIn.data?.id)
+                        throw new Error("T3 Connect returned an invalid browser sign-in.");
+                    signInId = signIn.data.id;
+                    response.writeHead(302, {
+                        location: target.toString(),
+                        "cache-control": "no-store",
+                    });
+                    response.end();
+                } catch {
+                    signInId = "";
+                    sendHtml(response, 502, loginPage().replace(
+                        "Choose an account to access your linked environments.",
+                        "Sign-in could not start. Return to the panel and try again.",
+                    ));
+                }
+                return;
+            }
+            if (request.method === "POST" && localUrl.pathname === "/oauth-callback") {
+                const provided = String(request.headers.authorization || "")
+                    .replace(/^Bearer\s+/i, "");
+                if (!safeSecretMatch(provided, callbackSecret)) {
+                    response.writeHead(403).end();
+                    return;
+                }
+                try {
+                    const rawCallback = await readSmallBody(request);
+                    const callback = new URL(rawCallback);
+                    const callbackFailed = callback.searchParams.get("__clerk_status") === "failed";
+                    const nonce = callback.searchParams.get("rotating_token_nonce") || "";
+                    if (callback.protocol !== "t3code:" || callback.hostname !== "app"
+                            || callbackFailed || nonce === "" || signInId === "")
+                        throw new Error("T3 Connect browser sign-in was cancelled or invalid.");
+                    const completed = await clerkNativeRequest(
+                        `/v1/client/sign_ins/${encodeURIComponent(signInId)}?rotating_token_nonce=${encodeURIComponent(nonce)}`,
+                        clientToken,
+                        { method: "GET" },
+                        "T3 Connect browser callback",
+                    );
+                    clientToken = await rememberClerkClientToken(completed.clientToken);
+                    const client = completed.client || (await currentClerkClient()).data;
+                    const sessions = Array.isArray(client?.sessions) ? client.sessions : [];
+                    if (!sessions.some(session => session?.status === "active"))
+                        throw new Error("T3 Connect did not create an active session.");
+                    response.writeHead(200, {
+                        "content-type": "application/json",
+                        "cache-control": "no-store",
+                    });
+                    response.end('{"handled":true}');
+                    settle();
+                } catch (error) {
+                    // This was still the panel's callback. Consume it even
+                    // when Clerk reports a cancellation/failure, otherwise
+                    // the launcher would fall through and open Nightly.
+                    response.writeHead(200, {
+                        "content-type": "application/json",
+                        "cache-control": "no-store",
+                    });
+                    response.end('{"handled":true,"completed":false}');
+                    settle(error instanceof Error ? error
+                        : new Error("T3 Connect browser sign-in failed."));
+                }
+                return;
+            }
+            response.writeHead(404).end();
+        })().catch(error => {
+            if (!response.headersSent)
+                response.writeHead(500);
+            response.end();
+            settle(error instanceof Error ? error : new Error("T3 Connect sign-in failed."));
+        });
+    });
+    server.on("clientError", (_error, socket) => socket.destroy());
+    await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", resolve);
+    });
+    const port = server.address().port;
+    const timeout = setTimeout(() => settle(new Error(
+        "T3 Connect sign-in timed out. Try again from the panel.",
+    )), LOGIN_TIMEOUT_MS);
+    try {
+        await writePrivateJson(STATE_PATHS.browserLogin, {
+            version: 1,
+            port,
+            callbackSecret,
+            expiresAtEpochMs: Date.now() + LOGIN_TIMEOUT_MS,
+        });
+        await runCommand(
+            CLOUD_CONFIG.mimeCommand,
+            ["default", "t3code-nightly.desktop", "x-scheme-handler/t3code"],
+            "T3 Connect callback registration",
+        );
+        await openBrowser(`http://127.0.0.1:${port}/`);
+        await finished;
+    } finally {
+        clearTimeout(timeout);
+        await fs.rm(STATE_PATHS.browserLogin, { force: true });
+        await new Promise(resolve => server.close(resolve));
+    }
+}
+
+async function forwardBrowserCallback(rawCallback) {
+    const callback = new URL(rawCallback);
+    if (callback.protocol !== "t3code:" || callback.hostname !== "app")
+        throw new Error("This is not a T3 Connect browser callback.");
+    const pending = await readJson(STATE_PATHS.browserLogin);
+    if (!Number.isInteger(pending?.port) || pending.port < 1 || pending.port > 65535
+            || typeof pending?.callbackSecret !== "string"
+            || Number(pending?.expiresAtEpochMs) < Date.now())
+        throw new Error("No T3 Connect browser sign-in is waiting.");
+    const response = await fetch(`http://127.0.0.1:${pending.port}/oauth-callback`, {
+        method: "POST",
+        headers: {
+            authorization: `Bearer ${pending.callbackSecret}`,
+            "content-type": "text/plain; charset=utf-8",
+        },
+        body: callback.toString(),
+        redirect: "error",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS + 5000),
+    });
+    if (!response.ok)
+        throw new Error("T3 Connect browser callback could not be completed.");
+    return { handled: true };
 }
 
 async function waitForT3CodeRelayCredentials(interactive) {
@@ -341,21 +553,13 @@ async function waitForT3CodeRelayCredentials(interactive) {
     if (current)
         return current;
     if (!interactive)
-        throw new Error("Sign in to T3 Connect in T3 Code Nightly, then try again.");
+        throw new Error("Sign in to T3 Connect from the panel, then try again.");
 
-    await openT3Code();
-    const deadline = Date.now() + LOGIN_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-        await delay(SIGN_IN_POLL_MS);
-        const credentials = await t3CodeRelayCredentials();
-        if (credentials)
-            return credentials;
-    }
-    throw new Error("T3 Connect sign-in timed out. Sign in in T3 Code Nightly, then try again.");
-}
-
-function formBody(entries) {
-    return new URLSearchParams(entries).toString();
+    await browserSignIn();
+    const credentials = await t3CodeRelayCredentials();
+    if (!credentials)
+        throw new Error("T3 Connect browser sign-in did not complete.");
+    return credentials;
 }
 
 function decodeIdentity(idToken, fallbackToken = "") {
@@ -565,8 +769,8 @@ async function exchangeEnvironmentToken(endpoint, bootstrapCredential, key) {
 }
 
 export async function connectCloud(credentials) {
-    if (credentials?.source !== "t3code-session" || !credentials.accessToken)
-        throw new Error("A T3 Code Nightly sign-in is required for T3 Connect.");
+    if (credentials?.source !== "t3-connect-session" || !credentials.accessToken)
+        throw new Error("A T3 Connect browser sign-in is required.");
     const currentCredentials = credentials;
     const environments = await linkedEnvironments(currentCredentials);
     const previousState = await readJson(STATE_PATHS.connection);
@@ -698,6 +902,8 @@ async function cloudStatus() {
 async function removeCloudState() {
     await Promise.all([
         fs.rm(STATE_PATHS.legacyCredentials, { force: true }),
+        fs.rm(STATE_PATHS.clerkClient, { force: true }),
+        fs.rm(STATE_PATHS.browserLogin, { force: true }),
         fs.rm(STATE_PATHS.dpopKey, { force: true }),
         fs.rm(STATE_PATHS.connection, { force: true }),
     ]);
@@ -714,8 +920,8 @@ async function loginAndConnect() {
             environmentLabel: result.environmentLabel || "",
         };
     } finally {
-        // Nightly and its browser sign-in steal focus. Return to the module on
-        // success and failures so the result never disappears behind them.
+        // Browser sign-in steals focus. Return to the module on success and
+        // failures so the result never disappears behind it.
         activatePanel();
     }
 }
@@ -738,11 +944,13 @@ async function main(argv) {
         result = await issueWebSocketTicket();
     else if (command === "status")
         result = await cloudStatus();
+    else if (command === "oauth-callback")
+        result = await forwardBrowserCallback(argv[3] || "");
     else if (command === "logout") {
         await removeCloudState();
         result = { status: "signed-out" };
     } else {
-        throw new Error("Usage: t3-cloud.mjs [login|connect|ticket|status|logout]");
+        throw new Error("Usage: t3-cloud.mjs [login|connect|ticket|status|logout|oauth-callback]");
     }
     process.stdout.write(JSON.stringify(result) + "\n");
 }

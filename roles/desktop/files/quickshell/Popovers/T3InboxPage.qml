@@ -559,14 +559,14 @@ Column {
                             return "cloud_off";
                         return "progress_activity";
                     }
-                    title: T3Code.cloudLoginRunning ? "Finish in T3 Code"
+                    title: T3Code.cloudLoginRunning ? "Finish in your browser"
                         : T3Code.state === "signed-out"
                             ? "T3 Connect"
                         : T3Code.state === "cloud-empty" ? "No linked T3 environments"
                         : T3Code.state === "connecting" ? "Connecting through T3 Connect…"
                         : "Server unreachable — drafts are safe"
                     detail: T3Code.cloudLoginRunning
-                        ? "Complete sign-in in the T3 Code window to continue."
+                        ? "Choose Google or GitHub in the browser to continue."
                         : T3Code.state === "signed-out"
                             ? "Sign in with Google or GitHub to access your linked environments."
                         : T3Code.state === "cloud-empty"
@@ -578,7 +578,7 @@ Column {
                     visible: T3Code.state === "signed-out" || T3Code.state === "cloud-empty"
                         || T3Code.cloudLoginRunning
                     anchors.horizontalCenter: parent.horizontalCenter
-                    label: T3Code.cloudLoginRunning ? "Waiting for T3 Code…"
+                    label: T3Code.cloudLoginRunning ? "Waiting for browser…"
                         : T3Code.state === "cloud-empty" ? "Refresh"
                         : "Sign in"
                     hPadding: 22

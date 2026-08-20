@@ -9,9 +9,9 @@ import "T3CodeHelpers.js" as Helpers
 // popover, plus command T3Rpc.dispatch (approvals, prompts, settle,
 // T3Rpc.interrupt) and desktop notifications on session transitions.
 //
-// Auth is owned by T3Connection. The primary path signs in to T3 Connect with
-// the public OAuth client shipped by T3 Code Nightly, discovers a linked
-// environment, and uses DPoP-bound relay and environment credentials.
+// Auth is owned by T3Connection. The primary path signs in to T3 Connect in the
+// browser, discovers a linked environment, and uses DPoP-bound relay and
+// environment credentials.
 Singleton {
     id: root
 

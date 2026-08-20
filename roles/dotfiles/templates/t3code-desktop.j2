@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Clerk's native OAuth redirect uses T3 Code's production URI scheme. While
+# the Quickshell panel has a browser sign-in pending, deliver that redirect to
+# its loopback listener; every other URI still opens the desktop client.
+if [[ ${1-} == t3code://app/* ]] \
+        && node "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/scripts/t3-cloud.mjs" \
+            oauth-callback "$1" >/dev/null 2>&1; then
+    exit 0
+fi
+
 appimage="${XDG_DATA_HOME:-$HOME/.local/share}/t3code-nightly/T3-Code-Nightly-x86_64.AppImage"
 [[ -x $appimage ]] || "$HOME/.local/bin/t3code-update"
 exec "$appimage" --appimage-extract-and-run --password-store=gnome-libsecret "$@"
