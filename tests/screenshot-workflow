@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+fixture=$(mktemp -d)
+trap 'rm -rf "$fixture"' EXIT
+
+mock_bin="$fixture/bin"
+test_home="$fixture/home"
+log_dir="$fixture/log"
+mkdir -p "$mock_bin" "$test_home" "$log_dir"
+
+write_mock() {
+  local name=$1
+  shift
+  printf '%s\n' '#!/usr/bin/env bash' "$@" > "$mock_bin/$name"
+  chmod +x "$mock_bin/$name"
+}
+
+write_mock pkill 'exit 1'
+write_mock wayfreeze 'while :; do sleep 1; done'
+write_mock slurp 'printf "%s\n" "10,20 300x200"'
+write_mock grim \
+  'printf "%s\n" "$*" > "$SCREENSHOT_TEST_LOG/grim"' \
+  'printf "%s" "captured-image" > "${@: -1}"'
+write_mock wl-copy \
+  'printf "%s\n" "$*" > "$SCREENSHOT_TEST_LOG/wl-copy-args"' \
+  'cat > "$SCREENSHOT_TEST_LOG/clipboard"'
+write_mock notify-send \
+  'printf "%s\n" "$@" > "$SCREENSHOT_TEST_LOG/notify-send"' \
+  'printf "%s\n" default'
+write_mock satty \
+  'printf "%s\n" "$@" > "$SCREENSHOT_TEST_LOG/satty"'
+
+HOME="$test_home" SCREENSHOT_TEST_LOG="$log_dir" PATH="$mock_bin:$PATH" \
+  bash "$repo_root/assets/scripts/screenshot" region
+
+for _ in {1..50}; do
+  [[ -f $log_dir/satty ]] && break
+  sleep 0.02
+done
+
+mapfile -t screenshots < <(find "$test_home/Pictures/Screenshots" -type f -name 'screenshot-*.png')
+[[ ${#screenshots[@]} -eq 1 ]]
+[[ $(<"${screenshots[0]}") == captured-image ]]
+[[ $(<"$log_dir/clipboard") == captured-image ]]
+grep -Fxq -- '--type image/png' "$log_dir/wl-copy-args"
+grep -Fxq -- '--action=default=Edit screenshot' "$log_dir/notify-send"
+grep -Fxq -- '--filename' "$log_dir/satty"
+grep -Fxq -- "${screenshots[0]}" "$log_dir/satty"
+grep -Fxq -- '--actions-on-enter' "$log_dir/satty"
+grep -Fxq -- 'save-to-clipboard' "$log_dir/satty"
+grep -Fxq -- '--save-after-copy' "$log_dir/satty"
+
+printf 'Screenshot is saved, copied, and offered to Satty through a notification action\n'
