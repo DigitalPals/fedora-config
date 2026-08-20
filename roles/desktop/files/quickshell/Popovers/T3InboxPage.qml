@@ -538,7 +538,7 @@ Column {
                     rightPadding: 7
                     topPadding: 5
                     bottomPadding: 5
-                    text: "Read-only pairing · actions are disabled"
+                    text: "Read-only access · actions are disabled"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontSecondary
                     color: Theme.amber
@@ -547,18 +547,85 @@ Column {
                 StatusPlaceholder {
                     shown: T3Code.state !== "connected"
                     width: parent.width
-                    kind: T3Code.state === "connecting" ? "loading"
-                        : T3Code.state === "unpaired" ? "empty" : "error"
+                    kind: T3Code.cloudLoginRunning || T3Code.state === "connecting" ? "loading"
+                        : T3Code.state === "signed-out" || T3Code.state === "cloud-empty"
+                            ? "empty" : "error"
                     glyph: {
-                        if (T3Code.state === "unpaired")
-                            return "link_off";
+                        if (T3Code.state === "signed-out")
+                            return "cloud";
+                        if (T3Code.state === "cloud-empty")
+                            return "cloud_off";
                         if (kind === "error")
                             return "cloud_off";
                         return "progress_activity";
                     }
-                    title: T3Code.state === "unpaired" ? "Pair T3 Code to view threads"
-                        : T3Code.state === "connecting" ? "Connecting…"
+                    title: T3Code.cloudLoginRunning ? "Finish in your browser"
+                        : T3Code.state === "signed-out"
+                            ? "T3 Connect"
+                        : T3Code.state === "cloud-empty" ? "No linked T3 environments"
+                        : T3Code.state === "connecting" ? "Connecting through T3 Connect…"
                         : "Server unreachable — drafts are safe"
+                    detail: T3Code.cloudLoginRunning
+                        ? "Complete sign-in there to continue."
+                        : T3Code.state === "signed-out"
+                            ? "Sign in with Google or GitHub to access your linked environments."
+                        : T3Code.state === "cloud-empty"
+                            ? "You're signed in, but this account has no linked environments."
+                        : ""
+                }
+
+                Action {
+                    visible: T3Code.state === "signed-out" || T3Code.state === "cloud-empty"
+                        || T3Code.cloudLoginRunning
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    label: T3Code.cloudLoginRunning ? "Waiting for browser…"
+                        : T3Code.state === "cloud-empty" ? "Refresh"
+                        : "Sign in"
+                    hPadding: 22
+                    enabled: !T3Code.cloudLoginRunning
+                    tint: Theme.accent
+                    fill: Theme.accentBgSoft
+                    onTriggered: T3Code.loginCloud()
+                }
+
+                Text {
+                    visible: T3Code.cloudLoginRunning
+                    width: Math.min(parent.width - 24, 390)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: T3Code.cloudLoginRunning
+                        ? "If a code appears, copy it to continue automatically."
+                        : ""
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    lineHeight: Theme.proseLineHeight
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.textFaint
+                }
+
+                Text {
+                    visible: T3Code.state === "cloud-empty"
+                    width: Math.min(parent.width - 24, 390)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Link an environment in T3 Code Nightly, then refresh."
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    lineHeight: Theme.proseLineHeight
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.textFaint
+                }
+
+                Text {
+                    visible: T3Code.cloudLoginError !== ""
+                    width: Math.min(parent.width - 24, 390)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: T3Code.cloudLoginError
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.redText
                 }
 
                 StatusPlaceholder {

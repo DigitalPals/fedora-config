@@ -19,6 +19,10 @@ ShellRoot {
             Popouts.toggle(name);
         }
 
+        function open(name: string): void {
+            Popouts.openPanel(name);
+        }
+
         function close(): void {
             Popouts.close();
         }

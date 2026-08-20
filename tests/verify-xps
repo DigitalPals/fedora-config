@@ -279,13 +279,22 @@ check 'Chrome launchers automatically restore after an unclean exit' bash -c \
   'grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.config/hypr/bindings.lua" && grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/applications/google-chrome.desktop"'
 check 'Firefox 1Password policy' jq -e '.policies.ExtensionSettings["{d634138d-c276-4fc8-924b-40a0ea21d284}"].installation_mode == "force_installed"' /usr/lib64/firefox/distribution/policies.json
 check 'Chrome is default HTTPS handler' grep -q '^x-scheme-handler/https=google-chrome.desktop' "$HOME/.local/share/applications/mimeapps.list"
-check 'T3 Code desktop file advertises OAuth callback handlers' \
-  grep -q '^MimeType=.*x-scheme-handler/t3code.*x-scheme-handler/t3code-dev' \
+check 'T3 Code OAuth callback dependencies are installed' rpm -q xdg-utils fuse-libs
+check 'T3 Code Nightly desktop file advertises its OAuth callback' \
+  grep -qx 'MimeType=x-scheme-handler/t3code;' \
   "$HOME/.local/share/applications/t3code-nightly.desktop"
-check 'T3 Code handles production OAuth callbacks' bash -c \
-  '[[ $(xdg-mime query default x-scheme-handler/t3code) == t3code-nightly.desktop ]]'
-check 'T3 Code handles development OAuth callbacks' bash -c \
-  '[[ $(xdg-mime query default x-scheme-handler/t3code-dev) == t3code-nightly.desktop ]]'
+check 'T3 Code Nightly receives OAuth callbacks' bash -c '
+  handler=$(xdg-mime query default x-scheme-handler/t3code)
+  if [[ $handler == t3code-nightly.desktop ]]; then
+    exit 0
+  fi
+  [[ $handler == t3code-url-handler.desktop ]] || exit 1
+  generated=$HOME/.local/share/applications/t3code-url-handler.desktop
+  grep -qx "MimeType=x-scheme-handler/t3code;" "$generated" &&
+    grep -Eq "^Exec=\"?.*/t3code-nightly/T3-Code-Nightly-x86_64[.]AppImage\"? %U$" "$generated"
+'
+check 'T3 Code development callbacks are not claimed by Nightly' bash -c \
+  '[[ $(xdg-mime query default x-scheme-handler/t3code-dev) != t3code-nightly.desktop ]]'
 if [[ -d $HOME/.config/mozilla/firefox || -d $HOME/.mozilla/firefox ]]; then
   pass 'existing Firefox profile is present'
 else

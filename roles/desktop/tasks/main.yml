@@ -22,6 +22,12 @@
       - xdg-desktop-portal-gtk
       - xdg-desktop-portal-hyprland
       - desktop-file-utils
+      # T3 Code Nightly claims its t3code:// OAuth callback on Linux with
+      # xdg-mime when the packaged client starts. That generated handler runs
+      # the AppImage directly, so it also needs the legacy FUSE 2 library even
+      # though our ordinary launcher can fall back to extract-and-run.
+      - xdg-utils
+      - fuse-libs
       - satty
       - nwg-look
       - grim

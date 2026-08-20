@@ -17,8 +17,15 @@ BarChip {
     readonly property bool busy: live && !stressed
         && (T3Code.runningCount > 0 || T3Code.monitoringCount > 0)
     readonly property string label: {
-        if (!live)
+        if (!live) {
+            if (T3Code.cloudLoginRunning)
+                return "signing in…";
+            if (T3Code.state === "signed-out")
+                return "sign in";
+            if (T3Code.state === "cloud-empty")
+                return "no links";
             return T3Code.state === "connecting" ? "connecting…" : "off";
+        }
         if (T3Code.attentionCount > 0)
             return T3Code.attentionCount + " waiting";
         if (T3Code.runningCount > 0)
@@ -40,8 +47,12 @@ BarChip {
     restFill: stressed ? Theme.barAmberBg : "transparent"
     tooltipAlign: 1
     tooltip: {
-        if (T3Code.state === "unpaired")
-            return "T3 Code · not paired";
+        if (T3Code.cloudLoginRunning)
+            return "T3 Code · finish T3 Connect sign-in in your browser";
+        if (T3Code.state === "signed-out")
+            return "T3 Code · sign in to T3 Connect";
+        if (T3Code.state === "cloud-empty")
+            return "T3 Code · no environments linked through T3 Connect";
         // Off covers a refused port, a dead name, a bad certificate and a
         // rejected ticket; say which one when the transport gave a reason
         // worth repeating.

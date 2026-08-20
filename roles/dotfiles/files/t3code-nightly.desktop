@@ -1,10 +1,10 @@
 [Desktop Entry]
-Name=T3Code Nightly
+Name=T3 Code (Nightly)
 Exec=/home/john/.local/bin/t3code-desktop %U
 Icon=visual-studio-code
-Comment=A minimal GUI for coding agents
+Comment=T3 Code nightly desktop client
 Categories=Development;
 Terminal=false
 Type=Application
 StartupWMClass=t3code
-MimeType=x-scheme-handler/t3code;x-scheme-handler/t3code-dev;
+MimeType=x-scheme-handler/t3code;

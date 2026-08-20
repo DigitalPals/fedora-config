@@ -9,10 +9,9 @@ import "T3CodeHelpers.js" as Helpers
 // popover, plus command T3Rpc.dispatch (approvals, prompts, settle,
 // T3Rpc.interrupt) and desktop notifications on session transitions.
 //
-// Auth model: `scripts/t3-pair.py <pairing-url>` exchanges a one-time
-// pairing code for a ~30-day bearer token stored in
-// ~/.local/state/t3code-bar.json. Each (re)connect trades that token
-// for a 5-minute wsTicket via HTTP, then opens wss://…/ws?wsTicket=….
+// Auth is owned by T3Connection. The primary path signs in to T3 Connect with
+// the public OAuth client shipped by T3 Code Nightly, discovers a linked
+// environment, and uses DPoP-bound relay and environment credentials.
 Singleton {
     id: root
 
@@ -23,6 +22,10 @@ Singleton {
     readonly property string state: T3Connection.state
     readonly property string connectionError: T3Connection.connectionError
     readonly property bool websocketsMissing: T3Connection.websocketsMissing
+    readonly property bool cloudLoginRunning: T3Connection.cloudLoginRunning
+    readonly property string cloudLoginError: T3Connection.cloudLoginError
+    readonly property string cloudStatus: T3Connection.cloudStatus
+    readonly property string cloudIdentity: T3Connection.cloudIdentity
     readonly property string host: T3Connection.host
     readonly property string environmentLabel: T3Connection.environmentLabel
     readonly property string environmentId: T3Connection.environmentId
@@ -33,6 +36,10 @@ Singleton {
 
     function connect() {
         T3Connection.connect();
+    }
+
+    function loginCloud() {
+        T3Connection.loginCloud();
     }
 
     readonly property var scopeInfo: T3Connection.scopeInfo

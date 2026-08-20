@@ -26,7 +26,8 @@ Surface {
     readonly property int headerHeight: Theme.rowHeight
     readonly property int footerHeight: Theme.controlHeight
     readonly property int maxPageHeight: Math.max(300, root.availableHeight
-        - root.padding * 2 - headerHeight - footerHeight - root.spacing * 2
+        - root.padding * 2 - headerHeight - root.spacing
+        - (footer.visible ? footerHeight + root.spacing : 0)
         - (noReadBanner.visible ? noReadBanner.height + root.spacing : 0))
 
     property string page: "inbox"
@@ -156,8 +157,9 @@ Surface {
                 width: Math.max(0, headerRow.width - headerActions.width - 18)
                 elide: Text.ElideRight
                 text: {
-                    if (T3Code.state === "unpaired")
-                        return "not paired";
+                    if (T3Code.cloudLoginRunning || T3Code.state === "signed-out"
+                            || T3Code.state === "cloud-empty")
+                        return "";
                     if (T3Code.state !== "connected") {
                         // The reason outranks "connecting…": it survives the
                         // retry that follows it, so the caption stays on the
@@ -296,7 +298,7 @@ Surface {
             x: 6
             y: 6
             width: parent.width - 12
-            text: "This pairing token does not grant orchestration read access."
+            text: "This credential does not grant orchestration read access."
             wrapMode: Text.WordWrap
             lineHeight: Theme.proseLineHeight
             font.family: Theme.fontMenu
@@ -321,6 +323,8 @@ Surface {
     }
 
     Item {
+        id: footer
+        visible: T3Code.state === "connected"
         width: parent.width
         height: root.footerHeight
 
@@ -336,8 +340,8 @@ Surface {
             id: connectionMeta
             anchors.left: parent.left
             anchors.leftMargin: 6
-            anchors.right: openClient.left
-            anchors.rightMargin: 10
+            anchors.right: parent.right
+            anchors.rightMargin: 6
             anchors.top: parent.top
             anchors.bottom: parent.bottom
 
@@ -372,22 +376,6 @@ Surface {
             }
         }
 
-        LinkText {
-            id: openClient
-            anchors.right: parent.right
-            anchors.rightMargin: 6
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: 2
-            text: "Open T3 Code"
-            hitMargin: 3
-            font.pixelSize: Theme.fontCaption
-            font.weight: Theme.weightSemibold
-            onClicked: {
-                Quickshell.execDetached(["xdg-open", T3Code.host !== ""
-                    ? T3Code.host : "https://app.t3.codes"]);
-                Popouts.close();
-            }
-        }
     }
 
     Connections {
