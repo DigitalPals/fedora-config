@@ -47,6 +47,9 @@ Item {
     property int requestSerial: 0
     property int frontSlot: -1
 
+    readonly property PopoutPanel activePanel: frontSlot >= 0
+        ? loaderFor(frontSlot).item as PopoutPanel : null
+
     // A little air below the card so a full-height panel does not sit flush
     // against the bottom of the screen, and the margin it will not cross at
     // the sides.
@@ -585,9 +588,10 @@ Item {
             id: surface
             anchors.fill: parent
             radius: Theme.popRadius
-            color: Theme.surfaceStrong
+            color: host.activePanel ? host.activePanel.surfaceColor : Theme.surfaceStrong
             border.width: 1
-            border.color: Theme.stroke
+            border.color: host.activePanel
+                ? host.activePanel.surfaceBorderColor : Theme.stroke
             clip: true
 
             Behavior on color {

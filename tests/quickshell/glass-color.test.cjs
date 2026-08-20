@@ -85,13 +85,18 @@ test("glass switches every shell surface through semantic fills", () => {
         "OsdWindow.qml": "surfaceStrong",
         "PowerMenu.qml": "surfaceStrong",
         "ShortcutsOverlay.qml": "surfaceStrong",
-        "Popovers/Surface.qml": "surfaceStrong",
-        "Popovers/T3Picker.qml": "surfaceMenu",
+        "Popovers/PopoutPanel.qml": "surfaceStrong",
         "Settings/FolderDialog.qml": "surfaceMenu"
     };
     for (const [file, token] of Object.entries(expected))
         assert.match(read(file), new RegExp(`Theme\\.${token}\\b`),
             `${file} does not follow the glass setting`);
+
+    assert.match(read("Popovers/Surface.qml"), /color:\s*root\.surfaceColor\b/,
+        "shared surfaces must honor the panel-specific surface contract");
+    assert.match(read("Bar/PopoutHost.qml"),
+        /host\.activePanel \? host\.activePanel\.surfaceColor : Theme\.surfaceStrong/,
+        "the host must preserve global glass as the default while allowing product canvases");
 
     for (const file of qmlFiles(".")) {
         if (file === path.join(shellDir, "Common", "Theme.qml"))

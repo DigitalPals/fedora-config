@@ -9,7 +9,7 @@ Item {
 
     property string label: ""
     property string value: ""
-    property color valueColor: Theme.textMid
+    property color valueColor: T3Theme.textSecondary
     property var options: []
     property bool expanded: false
     property bool openUpward: true
@@ -76,6 +76,13 @@ Item {
         } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
             root.move(-1);
             event.accepted = true;
+        } else if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+            const at = event.key - Qt.Key_1;
+            if (at < root.options.length && root.options[at].disabled !== true) {
+                root.selected(root.optionId(root.options[at]));
+                root.expanded = false;
+                event.accepted = true;
+            }
         } else if (event.key === Qt.Key_Escape && root.expanded) {
             root.expanded = false;
             event.accepted = true;
@@ -110,11 +117,12 @@ Item {
         id: button
 
         anchors.fill: parent
-        radius: 6
-        color: pickerMouse.containsMouse && root.enabled ? Theme.hoverFillStrong : Theme.hoverFill
+        radius: T3Theme.controlRadius
+        color: pickerMouse.containsMouse && root.enabled
+            ? T3Theme.hoverStrong : T3Theme.surfaceRaised
         opacity: root.enabled ? 1 : 0.45
         border.width: root.activeFocus || root.expanded ? 1 : 0
-        border.color: Theme.accent
+        border.color: T3Theme.focus
 
         Column {
             anchors.left: parent.left
@@ -127,34 +135,33 @@ Item {
             Text {
                 visible: root.label !== ""
                 width: parent.width
-                text: root.label.toUpperCase()
+                text: root.label
                 elide: Text.ElideRight
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                font.weight: Theme.weightSemibold
-                font.letterSpacing: 0.5
-                color: Theme.textDim
+                font.family: T3Theme.fontSans
+                font.pixelSize: Theme.fontMicro
+                font.weight: Theme.weightMedium
+                color: T3Theme.textFaint
             }
 
             Text {
                 width: parent.width
                 text: root.selectedLabel()
                 elide: Text.ElideRight
-                font.family: Theme.fontMenu
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontSecondary
                 color: root.valueColor
             }
         }
 
-        Text {
+        Sym {
             id: chevron
             anchors.right: parent.right
             anchors.rightMargin: 7
             anchors.verticalCenter: parent.verticalCenter
-            text: root.expanded ? "▴" : "▾"
-            font.family: Theme.fontMono
-            font.pixelSize: Theme.fontCaption
-            color: Theme.textDim
+            name: root.expanded ? "expand_less" : "expand_more"
+            size: Theme.iconSmall
+            symWeight: 450
+            color: T3Theme.textFaint
         }
 
         MouseArea {
@@ -179,13 +186,13 @@ Item {
         anchors.right: parent.right
         y: root.openUpward ? -height - 4 : root.height + 4
         height: Math.min(root.menuRows, root.options.length) * 30 + 8
-        radius: 8
+        radius: T3Theme.panelRadius
         // This panel floats over the rest of the composer. A recessed tile
         // fill is intentionally very translucent and lets the controls below
         // compete with the choices, so use the dense menu glass instead.
-        color: Theme.surfaceMenu
+        color: T3Theme.overlay
         border.width: 1
-        border.color: Theme.popBorder
+        border.color: T3Theme.borderStrong
         clip: true
 
         Flickable {
@@ -209,38 +216,52 @@ Item {
                         id: choice
 
                         required property var modelData
+                        required property int index
                         readonly property string choiceId: root.optionId(modelData)
                         readonly property bool chosen: choiceId === root.value
 
                         width: parent.width
                         height: Theme.pickerRowHeight
-                        radius: 5
-                        color: chosen ? Theme.accentBg
-                            : choiceMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+                        radius: T3Theme.controlRadius
+                        color: chosen ? T3Theme.accentSoft
+                            : choiceMouse.containsMouse ? T3Theme.hoverStrong : "transparent"
                         opacity: modelData.disabled === true ? 0.35 : 1
 
                         Text {
                             anchors.left: parent.left
                             anchors.leftMargin: 7
-                            anchors.right: mark.left
+                            anchors.right: shortcut.left
                             anchors.rightMargin: 5
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.optionLabel(choice.modelData)
                             elide: Text.ElideRight
-                            font.family: Theme.fontMenu
+                            font.family: T3Theme.fontSans
                             font.pixelSize: Theme.fontSecondary
-                            color: choice.chosen ? Theme.textHi : Theme.textMid
+                            color: choice.chosen ? T3Theme.textPrimary : T3Theme.textSecondary
                         }
 
                         Text {
+                            id: shortcut
+                            anchors.right: parent.right
+                            anchors.rightMargin: mark.visible ? 27 : 9
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: choice.index < 9 ? String(choice.index + 1) : ""
+                            font.family: T3Theme.fontSans
+                            font.pixelSize: Theme.fontMicro
+                            font.features: T3Theme.tabularNumberFeatures
+                            color: T3Theme.textFaint
+                        }
+
+                        Sym {
                             id: mark
+                            visible: choice.chosen
                             anchors.right: parent.right
                             anchors.rightMargin: 7
                             anchors.verticalCenter: parent.verticalCenter
-                            text: choice.chosen ? "✓" : ""
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontCaption
-                            color: Theme.accent
+                            name: "check"
+                            size: Theme.iconSmall
+                            symWeight: 550
+                            color: T3Theme.accent
                         }
 
                         MouseArea {
@@ -265,7 +286,8 @@ Item {
             anchors.margins: 4
             target: pickerFlick
             fadeSize: 16
-            edgeColor: Theme.surfaceMenu
+            edgeColor: T3Theme.overlay
+            thumbColor: T3Theme.accent
         }
     }
 }

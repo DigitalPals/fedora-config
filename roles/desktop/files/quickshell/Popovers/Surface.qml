@@ -22,9 +22,9 @@ PopoutPanel {
         visible: root.drawBackground
         anchors.fill: parent
         radius: Theme.popRadius
-        color: Theme.surfaceStrong
+        color: root.surfaceColor
         border.width: 1
-        border.color: Theme.stroke
+        border.color: root.surfaceBorderColor
 
         Behavior on color {
             ColorAnimation { duration: Theme.surfaceDuration }

@@ -1,14 +1,14 @@
 import QtQuick
 import "../Common"
 
-// The slim glyph button the T3 pages use for header navigation — Back, Open
-// in browser, the ⋯ menu. Extracted from T3ThreadPage so the New-thread
-// header shares it instead of growing another near-identical inline copy
-// (ActionButton.qml tells the same story for the label pill).
+// Compact T3 header icon button. Material Symbols avoid the baseline and
+// weight inconsistencies of typographic arrows while retaining a text-only
+// accessible name at every call site.
 Rectangle {
     id: iconButton
-    property string glyph: ""
-    property color tint: Theme.textMid
+    property string symbol: ""
+    property color tint: T3Theme.textMuted
+    property int controlSize: T3Theme.iconButtonSize
     // A glyph is not a label. Every call site names itself, because a
     // focus ring on an unnamed arrow is worse than no focus ring.
     property string accessibleName: ""
@@ -21,14 +21,14 @@ Rectangle {
         iconButton.triggered();
     }
 
-    width: 26
-    height: Theme.controlHeight
-    radius: 7
-    color: Theme.hoverFill
+    width: controlSize
+    height: controlSize
+    radius: T3Theme.controlRadius
+    color: iconMouse.containsMouse || activeFocus ? T3Theme.hoverStrong : "transparent"
     opacity: enabled ? 1 : 0.4
     activeFocusOnTab: enabled && visible
     border.width: activeFocus ? 1 : 0
-    border.color: Theme.accent
+    border.color: T3Theme.focus
 
     Keys.onPressed: event => {
         if (!iconButton.enabled)
@@ -52,12 +52,11 @@ Rectangle {
         pressPoint: Qt.point(iconMouse.mouseX, iconMouse.mouseY)
     }
 
-    Text {
+    Sym {
         anchors.centerIn: parent
-        text: iconButton.glyph
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontBody
-        font.weight: Theme.weightSemibold
+        name: iconButton.symbol
+        size: Theme.iconMedium
+        symWeight: 450
         color: iconButton.tint
     }
 

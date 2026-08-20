@@ -5,29 +5,32 @@ select trait and a boolean trait.
 
 ## Disclosure and layout
 
-- [ ] Open an existing thread and New Thread. Confirm the prompt appears first,
-  `Run settings` is directly beneath it, and the disclosure starts collapsed on
-  both page types.
+- [ ] Open an existing thread and New Thread. Confirm each uses one rounded
+  glass composer: prompt above, compact provider/model/mode summary and access
+  chip below, and a circular send arrow at the lower right.
 - [ ] Open New Thread and confirm the prompt starts focused with its placeholder
   still visible, typing lands immediately, and `Escape` still returns to the
   inbox.
-- [ ] Toggle the disclosure, leave the page, reopen it, and confirm it resets to
-  collapsed instead of persisting the previous choice.
-- [ ] Confirm the collapsed header has a right-pointing chevron; the expanded
-  header has a downward chevron and a subtle divider above its fields.
-- [ ] Confirm the collapsed header stays one row, shows an elided
-  provider/model/reasoning/mode summary, and expands when clicked anywhere.
-- [ ] Confirm access remains visible as a chip in both disclosure states;
-  `Full access` is amber there and in the expanded Access picker.
-- [ ] At 520 px popover width, confirm controls use two columns. At 320 px,
-  confirm the summary elides, the access chip remains visible, and expanded
-  controls stack without horizontal clipping. On a short screen, confirm the
-  popover stays bounded and its existing scroll areas remain usable.
+- [ ] Activate the tune/summary row and confirm the Run settings drawer attaches
+  immediately above the composer. Leave the page, reopen it, and confirm the
+  drawer resets to collapsed instead of persisting the previous choice.
+- [ ] Confirm the toolbar stays one row and its summary elides before colliding
+  with the access chip or send button. The drawer must have a Material Symbol
+  close control rather than a typographic chevron.
+- [ ] Confirm `Full access` is amber in both the toolbar chip and expanded Access
+  picker. Below 405 px, confirm the chip folds away but Access remains available
+  in the drawer and in the toolbar's accessible description.
+- [ ] On New Thread, confirm Project appears as a compact shoulder directly
+  above the composer rather than as a separate full-page form section.
+- [ ] At 520 px popover width, confirm controls use two columns. At 360 px,
+  confirm the summary elides and expanded controls stack without horizontal
+  clipping. On a short screen, confirm the popover stays bounded and its scroll
+  areas remain usable.
 
 ## Input and state
 
-- [ ] Toggle the whole header with the mouse, then use `Tab`, `Enter`, and
-  `Space`; confirm keyboard focus has a visible ring and the chevron follows the
+- [ ] Toggle the settings row with the mouse, then use `Tab`, `Enter`, and
+  `Space`; confirm keyboard focus has a visible ring and the drawer follows the
   state.
 - [ ] Repeat while the composer is read-only, running, or sending; the header
   must still open for inspection while each setting remains disabled.
@@ -38,7 +41,8 @@ select trait and a boolean trait.
   menu is opaque and stays above the other settings, prompt, buttons, and error
   text; opening a second picker must close the first. Reopen it and click
   elsewhere in the popout without selecting an option; the menu must close and
-  the underlying control must still receive that click.
+  the underlying control must still receive that click. Selected options should
+  show a check and the first nine choices should show shortcut numbers.
 - [ ] Test idle, running, read-only, sending, plan-ready, and provider-locked
   threads. Confirm the prior enablement, model-locking, prompt, and send behavior
   is unchanged.
@@ -46,8 +50,11 @@ select trait and a boolean trait.
   Confirm Mode only appears when supported, and exercise every advertised
   select and boolean trait.
 - [ ] Select Ultrathink and confirm prompt injection and the prompt highlight
-  still work. Trigger a trait validation error, collapse the disclosure, and
-  confirm the error remains visible.
+  still work. Trigger a trait validation error and confirm it remains visible in
+  the open settings drawer.
+- [ ] On a thread with an approval or structured question, confirm the request
+  is in a bounded drawer immediately above the composer—not in the transcript—
+  and that overflow remains scrollable. Repeat with a ready plan.
 
 ## Automated and runtime checks
 

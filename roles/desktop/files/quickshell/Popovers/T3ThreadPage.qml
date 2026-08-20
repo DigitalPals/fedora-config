@@ -114,22 +114,47 @@ Column {
         T3Code.runGitAction(threadId, action);
     }
 
+    function openMessageLink(link) {
+        const url = String(link ?? "");
+        if (/^https?:\/\//i.test(url))
+            Quickshell.execDetached(["xdg-open", url]);
+    }
+
     // Tightest pill: the thread page packs several of these per row.
     component Action: ActionButton {
         hPadding: 14
+        fontFamily: T3Theme.fontSans
+        focusColor: T3Theme.focus
+        buttonRadius: T3Theme.controlRadius
+        tint: T3Theme.textMuted
+        fill: T3Theme.hover
+    }
+
+    component T3Status: StatusPlaceholder {
+        fontFamily: T3Theme.fontSans
+        accentColor: T3Theme.accent
+        accentFill: T3Theme.accentSubtle
+        outlineColor: T3Theme.border
+        primaryTextColor: T3Theme.textSecondary
+        secondaryTextColor: T3Theme.textFaint
+        errorColor: T3Theme.red
+        errorFill: T3Theme.redSoft
+        errorOutline: T3Theme.redBorder
+        transitionDuration: T3Theme.normalDuration
+        fadeDuration: T3Theme.fastDuration
     }
 
     component InfoCard: Rectangle {
         id: card
         property string heading: ""
         property string body: ""
-        property color headingColor: Theme.textDim
-        property color fill: Theme.cardFill
-        property color outline: Theme.hairlineSoft
+        property color headingColor: T3Theme.textFaint
+        property color fill: T3Theme.surfaceRaised
+        property color outline: T3Theme.border
 
         width: parent ? parent.width : 0
         height: cardColumn.implicitHeight + 14
-        radius: 8
+        radius: T3Theme.panelRadius
         color: fill
         border.width: 1
         border.color: outline
@@ -144,10 +169,10 @@ Column {
             Text {
                 width: parent.width
                 text: card.heading
-                font.family: Theme.fontMenu
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontCaption
                 font.weight: Theme.weightSemibold
-                font.letterSpacing: 0.7
+                font.letterSpacing: 0.1
                 color: card.headingColor
             }
 
@@ -158,98 +183,106 @@ Column {
                 lineHeight: Theme.proseLineHeight
                 maximumLineCount: 5
                 elide: Text.ElideRight
-                font.family: Theme.fontMenu
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontBody
-                color: Theme.textMid
+                color: T3Theme.textSecondary
             }
         }
     }
 
-    // Your messages get a tinted card; T3's replies are plain prose on a
-    // 2px rail (design 5c). Prose wraps at word boundaries — mid-word breaks
-    // only happen when a single token exceeds the line.
+    // User turns form a compact right-aligned bubble. Assistant turns remain
+    // plain markdown in the shared reading column; timestamps and copy affordance
+    // appear only on hover or keyboard focus, matching the web conversation rhythm.
     component MessageCard: Item {
         id: messageCard
         required property var message
         property bool expanded: false
         readonly property bool fromUser: message.role === "user"
         readonly property bool longMessage: typeof message.text === "string"
-            && (message.text.length > 700 || message.text.split("\n").length > 8)
+            && (message.text.length > 1200 || message.text.split("\n").length > 12)
+        readonly property real messageWidth: fromUser ? width * 0.82 : width
+        readonly property bool metadataVisible: messageHover.hovered || activeFocus
 
         width: parent ? parent.width : 0
-        height: messageColumn.implicitHeight + (fromUser ? 20 : 6)
+        height: messageColumn.implicitHeight + (fromUser ? 18 : 8)
+        activeFocusOnTab: true
+        Accessible.role: Accessible.StaticText
+        Accessible.name: (fromUser ? "You" : "T3 Code") + ": " + (message.text ?? "")
+
+        HoverHandler { id: messageHover }
 
         Rectangle {
             visible: messageCard.fromUser
-            anchors.fill: parent
-            radius: 10
-            color: Theme.accentBgSoft
+            x: parent.width - messageCard.messageWidth
+            y: 0
+            width: messageCard.messageWidth
+            height: parent.height
+            radius: 16
+            color: T3Theme.surfaceRaised
             border.width: 1
-            border.color: Theme.accentAlpha(0.18)
-        }
-
-        Rectangle {
-            visible: !messageCard.fromUser
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: 2
-            radius: 1
-            color: Qt.rgba(1, 1, 1, 0.10)
+            border.color: T3Theme.border
         }
 
         Column {
             id: messageColumn
-            x: messageCard.fromUser ? 11 : 13
-            y: messageCard.fromUser ? 10 : 3
-            width: parent.width - (messageCard.fromUser ? 22 : 15)
-            spacing: 4
-
-            Item {
-                width: parent.width
-                height: Math.max(roleText.implicitHeight, messageTime.implicitHeight)
-
-                Text {
-                    id: roleText
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: messageCard.fromUser ? "You"
-                        : messageCard.message.role === "assistant" ? "T3 Code" : "System"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightSemibold
-                    color: messageCard.fromUser ? Theme.accent : Theme.textLow
-                }
-
-                Text {
-                    id: messageTime
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: messageCard.message.streaming === true ? "streaming…"
-                        : T3Code.relTime(messageCard.message.updatedAt
-                            ?? messageCard.message.createdAt)
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textDim
-                }
-            }
+            x: messageCard.fromUser ? parent.width - messageCard.messageWidth + 12 : 4
+            y: messageCard.fromUser ? 9 : 4
+            width: messageCard.messageWidth - (messageCard.fromUser ? 24 : 8)
+            spacing: 5
 
             Text {
                 width: parent.width
                 text: messageCard.message.text ?? ""
+                textFormat: messageCard.fromUser ? Text.PlainText : Text.MarkdownText
+                linkColor: T3Theme.accent
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 lineHeight: Theme.proseLineHeight
-                maximumLineCount: messageCard.expanded ? 100000 : 8
+                maximumLineCount: messageCard.expanded ? 100000 : 12
                 elide: messageCard.expanded ? Text.ElideNone : Text.ElideRight
-                font.family: Theme.fontMenu
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontBody
-                color: Theme.textMid
+                color: messageCard.fromUser ? T3Theme.textPrimary : T3Theme.textSecondary
+                onLinkActivated: link => root.openMessageLink(link)
             }
 
-            Action {
-                visible: messageCard.longMessage
-                label: messageCard.expanded ? "Show less" : "Expand"
-                onTriggered: messageCard.expanded = !messageCard.expanded
+            Item {
+                visible: messageCard.longMessage || messageCard.metadataVisible
+                width: parent.width
+                height: visible ? 24 : 0
+
+                Action {
+                    visible: messageCard.longMessage
+                    anchors.left: parent.left
+                    label: messageCard.expanded ? "Show less" : "Show more"
+                    onTriggered: messageCard.expanded = !messageCard.expanded
+                }
+
+                Row {
+                    visible: messageCard.metadataVisible
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 7
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: messageCard.message.streaming === true ? "Streaming…"
+                            : T3Code.relTime(messageCard.message.updatedAt
+                                ?? messageCard.message.createdAt)
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontMicro
+                        font.features: T3Theme.tabularNumberFeatures
+                        color: T3Theme.textFaint
+                    }
+
+                    IconButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        controlSize: 22
+                        symbol: "content_copy"
+                        accessibleName: "Copy message"
+                        tint: T3Theme.textFaint
+                        onTriggered: Quickshell.clipboardText = messageCard.message.text ?? ""
+                    }
+                }
             }
         }
     }
@@ -257,7 +290,7 @@ Column {
     component MenuEntry: Rectangle {
         id: menuEntry
         property string label: ""
-        property color tint: Theme.textMid
+        property color tint: T3Theme.textSecondary
         signal triggered()
 
         Accessible.role: Accessible.Button
@@ -266,12 +299,12 @@ Column {
 
         width: parent ? parent.width : 0
         height: Theme.controlHeight
-        radius: 6
-        color: entryMouse.containsMouse && enabled ? Theme.hoverFillStrong : "transparent"
+        radius: T3Theme.controlRadius
+        color: entryMouse.containsMouse && enabled ? T3Theme.hoverStrong : "transparent"
         opacity: enabled ? 1 : 0.4
         activeFocusOnTab: enabled && visible
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: T3Theme.focus
 
         Keys.onPressed: event => {
             if (!menuEntry.enabled)
@@ -291,7 +324,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             text: menuEntry.label
             elide: Text.ElideRight
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontSecondary
             font.weight: Theme.weightMedium
             color: menuEntry.tint
@@ -311,10 +344,10 @@ Column {
         width: parent ? parent.width - 10 : 0
         height: 1
         x: 5
-        color: Theme.hairlineSoft
+        color: T3Theme.border
     }
 
-    // Left-aligned header; Stop / Snooze / Settle live behind ⋯ so the
+    // Left-aligned header; Stop / Snooze / Settle live behind the overflow menu so the
     // always-on row is just navigation (design 5c).
     Item {
         id: header
@@ -352,7 +385,7 @@ Column {
                     id: backButton
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    glyph: "←"
+                    symbol: "arrow_back"
                     accessibleName: "Back to inbox"
                     onTriggered: root.backRequested()
                 }
@@ -369,10 +402,10 @@ Column {
                         width: parent.width
                         text: root.thread ? root.thread.title : "Thread"
                         elide: Text.ElideRight
-                        font.family: Theme.fontMenu
+                        font.family: T3Theme.fontSans
                         font.pixelSize: Theme.fontBody
                         font.weight: Theme.weightSemibold
-                        color: Theme.textHi
+                        color: T3Theme.textPrimary
                     }
 
                     Text {
@@ -387,9 +420,9 @@ Column {
                             return parts.join(" · ");
                         }
                         elide: Text.ElideRight
-                        font.family: Theme.fontMenu
+                        font.family: T3Theme.fontSans
                         font.pixelSize: Theme.fontCaption
-                        color: Theme.textDim
+                        color: T3Theme.textFaint
                     }
                 }
 
@@ -398,9 +431,9 @@ Column {
                     anchors.right: menuButton.visible ? menuButton.left : parent.right
                     anchors.rightMargin: menuButton.visible ? 6 : 0
                     anchors.verticalCenter: parent.verticalCenter
-                    glyph: "↗"
+                    symbol: "open_in_new"
                     accessibleName: "Open in browser"
-                    tint: Theme.accent
+                    tint: T3Theme.accent
                     onTriggered: {
                         Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
                         Popouts.close();
@@ -412,9 +445,9 @@ Column {
                     visible: header.hasMenuItems
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    glyph: "⋯"
+                    symbol: "more_horiz"
                     accessibleName: "Thread menu"
-                    tint: root.menuOpen ? Theme.accent : Theme.textMid
+                    tint: root.menuOpen ? T3Theme.accent : T3Theme.textMuted
                     onTriggered: root.menuOpen = !root.menuOpen
                 }
             }
@@ -447,10 +480,10 @@ Column {
             y: 32
             width: 190
             height: menuColumn.implicitHeight + 10
-            radius: 8
-            color: Theme.insetSurface
+            radius: T3Theme.panelRadius
+            color: T3Theme.overlay
             border.width: 1
-            border.color: Theme.popBorder
+            border.color: T3Theme.borderStrong
 
             Column {
                 id: menuColumn
@@ -462,7 +495,7 @@ Column {
                     visible: root.showCommit
                     label: root.gitPending && root.git.action === "commit_push"
                         && root.git.label !== "" ? root.git.label : "Commit & Push"
-                    tint: Theme.accent
+                    tint: T3Theme.accent
                     enabled: T3Code.canDispatch && !root.gitPending
                     onTriggered: root.beginGitAction("commit_push")
                 }
@@ -471,15 +504,15 @@ Column {
                     visible: root.showPush
                     label: root.gitPending && root.git.action === "push"
                         && root.git.label !== "" ? root.git.label : "Push"
-                    tint: Theme.accent
+                    tint: T3Theme.accent
                     enabled: T3Code.canDispatch && !root.gitPending
                     onTriggered: root.beginGitAction("push")
                 }
 
                 MenuEntry {
                     visible: root.prUrl !== ""
-                    label: "View PR ↗"
-                    tint: Theme.accent
+                    label: "View pull request"
+                    tint: T3Theme.accent
                     onTriggered: {
                         root.menuOpen = false;
                         Quickshell.execDetached(["xdg-open", root.prUrl]);
@@ -518,7 +551,7 @@ Column {
                     label: root.confirmStop ? "Confirm stop session"
                         : T3Code.actionPending("session-stop", root.threadId, "")
                             ? "Stopping…" : "Stop session"
-                    tint: root.confirmStop ? Theme.redText : Theme.textMid
+                    tint: root.confirmStop ? T3Theme.red : T3Theme.textSecondary
                     enabled: T3Code.canDispatch
                         && !T3Code.actionPending("session-stop", root.threadId, "")
                     onTriggered: {
@@ -547,7 +580,7 @@ Column {
                     visible: header.canWakeHere
                     label: T3Code.actionPending("unsnooze", root.threadId, "")
                         ? "Waking…" : "Wake now"
-                    tint: Theme.accent
+                    tint: T3Theme.accent
                     enabled: T3Code.canDispatch
                         && !T3Code.actionPending("unsnooze", root.threadId, "")
                     onTriggered: {
@@ -560,7 +593,7 @@ Column {
                     visible: header.canSettleHere
                     label: T3Code.actionPending("settle", root.threadId, "")
                         ? "Settling…" : "Settle"
-                    tint: Theme.accent
+                    tint: T3Theme.accent
                     enabled: T3Code.canDispatch && root.thread !== null && root.thread.canLifecycle
                         && !T3Code.actionPending("settle", root.threadId, "")
                     onTriggered: {
@@ -573,7 +606,7 @@ Column {
                     visible: header.canUnsettleHere
                     label: T3Code.actionPending("unsettle", root.threadId, "")
                         ? "Unsettling…" : "Unsettle"
-                    tint: Theme.accent
+                    tint: T3Theme.accent
                     enabled: T3Code.canDispatch
                         && !T3Code.actionPending("unsettle", root.threadId, "")
                     onTriggered: {
@@ -632,7 +665,7 @@ Column {
             anchors.bottom: parent.bottom
             width: 2
             radius: 1
-            color: root.gitFeedbackFailed ? Theme.red : Theme.accent
+            color: root.gitFeedbackFailed ? T3Theme.red : T3Theme.accent
         }
 
         Text {
@@ -647,9 +680,9 @@ Column {
             maximumLineCount: 2
             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             lineHeight: Theme.proseLineHeight
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontCaption
-            color: root.gitFeedbackFailed ? Theme.redText : Theme.textLow
+            color: root.gitFeedbackFailed ? T3Theme.red : T3Theme.textMuted
         }
 
         Action {
@@ -658,7 +691,7 @@ Column {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             label: "Retry"
-            tint: Theme.accent
+            tint: T3Theme.accent
             onTriggered: T3Code.refreshVcsStatus(root.threadId, true)
         }
     }
@@ -669,7 +702,7 @@ Column {
         height: {
             const room = root.maxHeight - header.height - composer.implicitHeight
                 - gitFeedback.height - backgroundBanner.height
-                - composerError.implicitHeight - 18;
+                - composerAttachmentsViewport.height - composerError.implicitHeight - 18;
             return Math.max(140, Math.min(room, timeline.implicitHeight));
         }
 
@@ -693,7 +726,7 @@ Column {
                 width: flick.width - (flick.contentHeight > flick.height ? 5 : 0)
                 spacing: 6
 
-                StatusPlaceholder {
+                T3Status {
                     shown: T3Code.detailLoading
                     width: parent.width
                     kind: "loading"
@@ -702,11 +735,11 @@ Column {
 
                 InfoCard {
                     visible: T3Code.detailError !== ""
-                    heading: "THREAD UNAVAILABLE"
+                    heading: "Thread unavailable"
                     body: T3Code.detailError
-                    headingColor: Theme.redText
-                    fill: Theme.redBgSoft
-                    outline: Theme.redBorder
+                    headingColor: T3Theme.red
+                    fill: T3Theme.redSoft
+                    outline: T3Theme.redBorder
                 }
 
                 Action {
@@ -731,164 +764,33 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 7
 
-                        Rectangle {
-                            property real pulse: 1
-
+                        Sym {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 6
-                            height: 6
-                            radius: 3
-                            color: Theme.accent
-                            opacity: pulse
-
-                            SequentialAnimation on pulse {
-                                running: root.working
-                                loops: Animation.Infinite
-                                NumberAnimation { to: 0.3; duration: 750 }
-                                NumberAnimation { to: 1; duration: 750 }
-                            }
+                            name: "progress_activity"
+                            size: Theme.iconSmall
+                            symWeight: 500
+                            color: T3Theme.accent
                         }
 
                         Text {
                             text: root.workingTime !== ""
                                 ? "Working for " + root.workingTime : "Working…"
-                            font.family: Theme.fontMono
+                            font.family: T3Theme.fontSans
                             font.pixelSize: Theme.fontCaption
                             font.weight: Theme.weightMedium
-                            color: Theme.textLow
+                            font.features: T3Theme.tabularNumberFeatures
+                            color: T3Theme.textMuted
                         }
                     }
                 }
 
-                StatusPlaceholder {
+                T3Status {
                     shown: !root.working && !root.backgroundWorking && !root.monitoring
                         && !T3Code.detailLoading
                         && T3Code.detailMessages.length === 0
                     width: parent.width
                     glyph: "chat"
                     title: "No messages yet"
-                }
-
-                T3RequestCard {
-                    visible: T3Code.detailPendingInputs.length > 0
-                    threadId: root.threadId
-                    kind: "input"
-                    request: T3Code.detailPendingInputs.length > 0
-                        ? T3Code.detailPendingInputs[0] : ({ requestId: "", questions: [] })
-                    queuedCount: Math.max(0, T3Code.detailPendingInputs.length - 1)
-                }
-
-                Repeater {
-                    model: T3Code.detailApprovals
-                    delegate: T3RequestCard {
-                        required property var modelData
-                        threadId: root.threadId
-                        kind: "approval"
-                        request: modelData
-                    }
-                }
-
-                InfoCard {
-                    visible: root.thread !== null && root.thread.pendingInput
-                        && !T3Code.detailLoading && T3Code.detailPendingInputs.length === 0
-                    heading: "QUESTION"
-                    body: "This question needs the full T3 Code client."
-                    headingColor: Theme.amber
-                    fill: Theme.amberBgSoft
-                    outline: Theme.amberBorder
-                }
-
-                InfoCard {
-                    visible: root.thread !== null && root.thread.pendingApprovals
-                        && !T3Code.detailLoading && T3Code.detailApprovals.length === 0
-                    heading: "APPROVAL"
-                    body: "This approval needs the full T3 Code client."
-                    headingColor: Theme.amber
-                    fill: Theme.amberBgSoft
-                    outline: Theme.amberBorder
-                }
-
-                Rectangle {
-                    visible: root.plan !== null
-                    width: parent.width
-                    height: planColumn.implicitHeight + 14
-                    radius: 8
-                    color: Theme.accentBgSoft
-                    border.width: 1
-                    border.color: Theme.accentAlpha(0.3)
-
-                    Column {
-                        id: planColumn
-                        x: 7
-                        y: 7
-                        width: parent.width - 14
-                        spacing: 5
-
-                        Text {
-                            width: parent.width
-                            text: "READY PLAN"
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightSemibold
-                            font.letterSpacing: 0.7
-                            color: Theme.accent
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: root.plan ? root.plan.planMarkdown : ""
-                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                            lineHeight: Theme.proseLineHeight
-                            maximumLineCount: 14
-                            elide: Text.ElideRight
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontBody
-                            color: Theme.textMid
-                        }
-
-                        Flow {
-                            width: parent.width
-                            spacing: 4
-
-                            Action {
-                                label: T3Code.actionPending("prompt", root.threadId, "")
-                                    ? "Starting…" : "Implement here"
-                                enabled: T3Code.canDispatch && root.composerIdle && !root.planTooLong
-                                    && !T3Code.actionPending("prompt", root.threadId, "")
-                                tint: Theme.accentFg
-                                fill: Theme.accent
-                                onTriggered: T3Code.implementPlanHere(root.threadId, root.plan)
-                            }
-
-                            Action {
-                                label: "Refine"
-                                enabled: T3Code.canDispatch && root.composerIdle
-                                tint: Theme.accent
-                                fill: Theme.accentBg
-                                onTriggered: {
-                                    T3Code.refinePlan(root.threadId);
-                                    composer.focusPrompt();
-                                }
-                            }
-
-                            Action {
-                                label: "New thread"
-                                enabled: T3Code.canDispatch && T3Code.hasReadyProvider
-                                    && T3Code.hasProjects && !root.planTooLong
-                                onTriggered: root.newPlanRequested(root.plan)
-                            }
-
-                            Action {
-                                visible: root.planTooLong
-                                label: "Open T3 Code ↗"
-                                tint: Theme.accent
-                                onTriggered: {
-                                    Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
-                                    Popouts.close();
-                                }
-                            }
-                        }
-                    }
                 }
 
                 Item {
@@ -902,7 +804,7 @@ Column {
                         anchors.bottom: parent.bottom
                         width: 2
                         radius: 1
-                        color: Theme.red
+                        color: T3Theme.red
                     }
 
                     Text {
@@ -915,9 +817,9 @@ Column {
                         lineHeight: Theme.proseLineHeight
                         maximumLineCount: 3
                         elide: Text.ElideRight
-                        font.family: Theme.fontMenu
+                        font.family: T3Theme.fontSans
                         font.pixelSize: Theme.fontCaption
-                        color: Theme.redText
+                        color: T3Theme.red
                     }
                 }
 
@@ -930,10 +832,10 @@ Column {
                     width: parent.width
                     height: Theme.controlHeight
                     radius: 6
-                    color: changesMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+                    color: changesMouse.containsMouse ? T3Theme.hoverStrong : "transparent"
                     activeFocusOnTab: visible
                     border.width: activeFocus ? 1 : 0
-                    border.color: Theme.accent
+                    border.color: T3Theme.focus
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -943,14 +845,14 @@ Column {
                         }
                     }
 
-                    Text {
+                    Sym {
                         anchors.left: parent.left
                         anchors.leftMargin: 7
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.changesExpanded ? "▾" : "▸"
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontCaption
-                        color: root.changesExpanded ? Theme.accent : Theme.textLow
+                        name: root.changesExpanded ? "expand_more" : "chevron_right"
+                        size: Theme.iconSmall
+                        symWeight: 450
+                        color: root.changesExpanded ? T3Theme.accent : T3Theme.textMuted
                     }
 
                     Text {
@@ -963,10 +865,10 @@ Column {
                             + (root.checkpoint.fileCount === 1 ? "" : "s") + " · +"
                             + root.checkpoint.additions + " −" + root.checkpoint.deletions : ""
                         elide: Text.ElideRight
-                        font.family: Theme.fontMenu
+                        font.family: T3Theme.fontSans
                         font.pixelSize: Theme.fontCaption
                         font.weight: Theme.weightSemibold
-                        color: Theme.textMid
+                        color: T3Theme.textSecondary
                     }
 
                     Text {
@@ -976,9 +878,9 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         text: T3Code.detailDiff.loading && root.changesExpanded ? "Loading…"
                             : root.changesExpanded ? "Hide diff" : "View diff"
-                        font.family: Theme.fontMenu
+                        font.family: T3Theme.fontSans
                         font.pixelSize: Theme.fontCaption
-                        color: Theme.textDim
+                        color: T3Theme.textFaint
                     }
 
                     MouseArea {
@@ -1004,9 +906,9 @@ Column {
                         width: parent.width
                         text: root.checkpoint ? root.checkpoint.filenames.join(" · ") : ""
                         elide: Text.ElideMiddle
-                        font.family: Theme.fontMono
+                        font.family: T3Theme.fontMono
                         font.pixelSize: Theme.fontCaption
-                        color: Theme.textDim
+                        color: T3Theme.textFaint
                     }
 
                     Rectangle {
@@ -1016,7 +918,7 @@ Column {
                         radius: 6
                         color: Qt.rgba(0, 0, 0, 0.28)
                         border.width: 1
-                        border.color: Theme.hairlineSoft
+                        border.color: T3Theme.border
 
                         Flickable {
                             anchors.fill: parent
@@ -1031,9 +933,9 @@ Column {
                                 text: T3Code.detailDiff.text
                                 textFormat: Text.PlainText
                                 wrapMode: Text.NoWrap
-                                font.family: Theme.fontMono
+                                font.family: T3Theme.fontMono
                                 font.pixelSize: Theme.fontCaption
-                                color: Theme.textLow
+                                color: T3Theme.textMuted
                             }
                         }
                     }
@@ -1052,22 +954,22 @@ Column {
                         Action {
                             visible: T3Code.detailDiff.error !== ""
                             label: "Retry diff"
-                            tint: Theme.accent
+                            tint: T3Theme.accent
                             onTriggered: T3Code.loadFullThreadDiff(root.threadId, root.checkpoint)
                         }
 
                         Text {
                             visible: T3Code.detailDiff.truncated
                             text: "Preview truncated at 100,000 characters / 2,000 lines"
-                            font.family: Theme.fontMenu
+                            font.family: T3Theme.fontSans
                             font.pixelSize: Theme.fontCaption
-                            color: Theme.amber
+                            color: T3Theme.amber
                         }
 
                         Action {
                             visible: T3Code.detailDiff.truncated
-                            label: "Open T3 Code ↗"
-                            tint: Theme.accent
+                            label: "Open T3 Code"
+                            tint: T3Theme.accent
                             onTriggered: {
                                 Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
                                 Popouts.close();
@@ -1081,9 +983,9 @@ Column {
                         text: T3Code.detailDiff.error
                         wrapMode: Text.WordWrap
                         lineHeight: Theme.proseLineHeight
-                        font.family: Theme.fontMenu
+                        font.family: T3Theme.fontSans
                         font.pixelSize: Theme.fontCaption
-                        color: Theme.redText
+                        color: T3Theme.red
                     }
                 }
             }
@@ -1092,6 +994,8 @@ Column {
         ScrollChrome {
             anchors.fill: parent
             target: flick
+            edgeColor: T3Theme.canvas
+            thumbColor: T3Theme.accent
         }
     }
 
@@ -1101,29 +1005,19 @@ Column {
         visible: root.backgroundWorking || root.monitoring
         width: parent.width
         height: visible ? Theme.controlHeight + 8 : 0
-        radius: 9
-        color: Theme.cardFill
+        radius: T3Theme.panelRadius
+        color: T3Theme.surfaceRaised
         border.width: 1
-        border.color: Theme.hairlineSoft
+        border.color: T3Theme.border
 
-        Rectangle {
-            property real pulse: 1
-
+        Sym {
             anchors.left: parent.left
-            anchors.leftMargin: 12
+            anchors.leftMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            width: 6
-            height: 6
-            radius: 3
-            color: Theme.accent
-            opacity: root.backgroundWorking ? pulse : 1
-
-            SequentialAnimation on pulse {
-                running: root.backgroundWorking
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.3; duration: 750 }
-                NumberAnimation { to: 1; duration: 750 }
-            }
+            name: root.monitoring ? "visibility" : "progress_activity"
+            size: Theme.iconSmall
+            symWeight: 500
+            color: T3Theme.accent
         }
 
         Action {
@@ -1141,23 +1035,193 @@ Column {
 
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 28
+            anchors.leftMargin: 32
             anchors.right: stopBackgroundButton.left
             anchors.rightMargin: 7
             anchors.verticalCenter: parent.verticalCenter
             text: root.backgroundStatus
             elide: Text.ElideRight
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontBody
             font.weight: Theme.weightMedium
-            color: Theme.textMid
+            color: T3Theme.textSecondary
         }
     }
 
-    Rectangle {
+    // Response UI belongs at the point of response. Requests and ready plans
+    // attach directly to the composer instead of interrupting transcript flow.
+    Item {
+        id: composerAttachmentsViewport
         width: parent.width
-        height: 1
-        color: Theme.hairlineSoft
+        visible: composerAttachments.implicitHeight > 0
+        height: visible ? Math.min(300, composerAttachments.implicitHeight) : 0
+
+        Flickable {
+            id: attachmentsFlick
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: composerAttachments.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            activeFocusOnTab: interactive
+
+            Column {
+                id: composerAttachments
+                width: attachmentsFlick.width
+                    - (attachmentsFlick.contentHeight > attachmentsFlick.height ? 5 : 0)
+                spacing: 4
+
+                T3RequestCard {
+            visible: T3Code.detailPendingInputs.length > 0
+            threadId: root.threadId
+            kind: "input"
+            request: T3Code.detailPendingInputs.length > 0
+                ? T3Code.detailPendingInputs[0] : ({ requestId: "", questions: [] })
+            queuedCount: Math.max(0, T3Code.detailPendingInputs.length - 1)
+        }
+
+                Repeater {
+            model: T3Code.detailApprovals
+            delegate: T3RequestCard {
+                required property var modelData
+                threadId: root.threadId
+                kind: "approval"
+                request: modelData
+            }
+        }
+
+                InfoCard {
+            visible: root.thread !== null && root.thread.pendingInput
+                && !T3Code.detailLoading && T3Code.detailPendingInputs.length === 0
+            heading: "Question"
+            body: "This question needs the full T3 Code client."
+            headingColor: T3Theme.amber
+            fill: T3Theme.amberSoft
+            outline: T3Theme.amberBorder
+        }
+
+                InfoCard {
+            visible: root.thread !== null && root.thread.pendingApprovals
+                && !T3Code.detailLoading && T3Code.detailApprovals.length === 0
+            heading: "Approval"
+            body: "This approval needs the full T3 Code client."
+            headingColor: T3Theme.amber
+            fill: T3Theme.amberSoft
+            outline: T3Theme.amberBorder
+        }
+
+                Rectangle {
+            visible: root.plan !== null
+            width: parent.width
+            height: attachedPlanColumn.implicitHeight + 16
+            radius: T3Theme.panelRadius
+            color: T3Theme.surfaceRaised
+            border.width: 1
+            border.color: T3Theme.borderStrong
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 2
+                radius: 1
+                color: T3Theme.accent
+            }
+
+            Column {
+                id: attachedPlanColumn
+                x: 8
+                y: 8
+                width: parent.width - 16
+                spacing: 6
+
+                Row {
+                    spacing: 6
+
+                    Sym {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "description"
+                        size: Theme.iconSmall
+                        color: T3Theme.accent
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Ready plan"
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
+                        color: T3Theme.accent
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    text: root.plan ? root.plan.planMarkdown : ""
+                    textFormat: Text.MarkdownText
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                    lineHeight: Theme.proseLineHeight
+                    maximumLineCount: 12
+                    elide: Text.ElideRight
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontBody
+                    color: T3Theme.textSecondary
+                }
+
+                Flow {
+                    width: parent.width
+                    spacing: 4
+
+                    Action {
+                        label: T3Code.actionPending("prompt", root.threadId, "")
+                            ? "Starting…" : "Implement here"
+                        enabled: T3Code.canDispatch && root.composerIdle && !root.planTooLong
+                            && !T3Code.actionPending("prompt", root.threadId, "")
+                        tint: T3Theme.accentForeground
+                        fill: T3Theme.accent
+                        onTriggered: T3Code.implementPlanHere(root.threadId, root.plan)
+                    }
+
+                    Action {
+                        label: "Refine"
+                        enabled: T3Code.canDispatch && root.composerIdle
+                        tint: T3Theme.accent
+                        fill: T3Theme.accentSoft
+                        onTriggered: {
+                            T3Code.refinePlan(root.threadId);
+                            composer.focusPrompt();
+                        }
+                    }
+
+                    Action {
+                        label: "New thread"
+                        enabled: T3Code.canDispatch && T3Code.hasReadyProvider
+                            && T3Code.hasProjects && !root.planTooLong
+                        onTriggered: root.newPlanRequested(root.plan)
+                    }
+
+                    Action {
+                        visible: root.planTooLong
+                        label: "Open T3 Code"
+                        tint: T3Theme.accent
+                        onTriggered: {
+                            Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
+                            Popouts.close();
+                        }
+                    }
+                }
+            }
+                }
+            }
+        }
+
+        ScrollChrome {
+            anchors.fill: parent
+            target: attachmentsFlick
+            edgeColor: T3Theme.canvas
+            thumbColor: T3Theme.accent
+        }
     }
 
     T3Composer {
@@ -1187,9 +1251,9 @@ Column {
         lineHeight: Theme.proseLineHeight
         maximumLineCount: 3
         elide: Text.ElideRight
-        font.family: Theme.fontMenu
+        font.family: T3Theme.fontSans
         font.pixelSize: Theme.fontCaption
-        color: Theme.redText
+        color: T3Theme.red
     }
 
     onThreadIdChanged: {

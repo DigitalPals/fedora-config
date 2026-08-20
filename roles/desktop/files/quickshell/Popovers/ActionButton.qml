@@ -18,6 +18,9 @@ Rectangle {
     property string label: ""
     property color tint: Theme.textLow
     property color fill: Theme.hoverFill
+    property color focusColor: Theme.accent
+    property string fontFamily: Theme.fontMenu
+    property int buttonRadius: 6
     // Side padding either side of the label.
     property real hPadding: 18
     // False while the row this sits in is collapsed: a hidden action must not
@@ -29,7 +32,7 @@ Rectangle {
 
     width: labelText.implicitWidth + hPadding
     height: Theme.inlineActionHeight
-    radius: 6
+    radius: buttonRadius
     color: fill
     opacity: enabled ? 1 : 0.4
     activeFocusOnTab: enabled && visible && revealed
@@ -40,7 +43,7 @@ Rectangle {
         root.triggered();
     }
     border.width: activeFocus ? 1 : 0
-    border.color: Theme.accent
+    border.color: focusColor
 
     Keys.onPressed: event => {
         if (!root.enabled)
@@ -68,7 +71,7 @@ Rectangle {
         id: labelText
         anchors.centerIn: parent
         text: root.label
-        font.family: Theme.fontMenu
+        font.family: root.fontFamily
         font.pixelSize: Theme.fontCaption
         font.weight: Theme.weightSemibold
         color: root.tint

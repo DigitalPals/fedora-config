@@ -2,8 +2,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
-// Compact approval or structured-question card. Question answers and paging
-// live in T3Code, so rejected requests remain intact across navigation.
+// Composer-attached approval or structured-question drawer. Question answers
+// and paging live in T3Code, so rejected requests remain intact across navigation.
 Rectangle {
     id: root
 
@@ -29,15 +29,28 @@ Rectangle {
 
     width: parent ? parent.width : 0
     height: content.implicitHeight + 14
-    radius: 8
-    color: Theme.amberBgSoft
+    radius: T3Theme.panelRadius
+    color: T3Theme.surfaceRaised
     border.width: 1
-    border.color: Theme.amberBorder
+    border.color: T3Theme.borderStrong
 
     // Tighter pill, and a brighter default tint than the other pages.
     component Action: ActionButton {
         hPadding: 16
-        tint: Theme.textMid
+        fontFamily: T3Theme.fontSans
+        focusColor: T3Theme.focus
+        buttonRadius: T3Theme.controlRadius
+        tint: T3Theme.textMuted
+        fill: T3Theme.hover
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 2
+        radius: 1
+        color: T3Theme.amber
     }
 
     Column {
@@ -56,14 +69,13 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.isInput && root.question
-                    ? root.question.header.toUpperCase()
-                    : root.request.kind === "file-change" ? "EDIT APPROVAL"
-                    : root.request.kind === "file-read" ? "READ APPROVAL" : "COMMAND APPROVAL"
-                font.family: Theme.fontMenu
+                    ? root.question.header
+                    : root.request.kind === "file-change" ? "Edit approval"
+                    : root.request.kind === "file-read" ? "Read approval" : "Command approval"
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontCaption
                 font.weight: Theme.weightSemibold
-                font.letterSpacing: 0.7
-                color: Theme.amber
+                color: T3Theme.amber
             }
 
             Text {
@@ -73,9 +85,10 @@ Rectangle {
                 text: root.isInput ? (root.questionIndex + 1) + "/" + root.questions.length
                     + (root.queuedCount > 0 ? "  ·  +" + root.queuedCount + " queued" : "")
                     : "needs you"
-                font.family: Theme.fontMono
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontCaption
-                color: Theme.textDim
+                font.features: T3Theme.tabularNumberFeatures
+                color: T3Theme.textFaint
             }
         }
 
@@ -88,9 +101,9 @@ Rectangle {
             lineHeight: Theme.proseLineHeight
             maximumLineCount: root.isInput ? 5 : 6
             elide: Text.ElideRight
-            font.family: root.isInput ? Theme.fontMenu : Theme.fontMono
+            font.family: root.isInput ? T3Theme.fontSans : T3Theme.fontMono
             font.pixelSize: Theme.fontBody
-            color: Theme.textMid
+            color: T3Theme.textSecondary
         }
 
         Text {
@@ -98,9 +111,9 @@ Rectangle {
                 && root.question.multiSelect === true
             width: parent.width
             text: "Select one or more options."
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontCaption
-            color: Theme.textDim
+            color: T3Theme.textFaint
         }
 
         Column {
@@ -114,6 +127,7 @@ Rectangle {
                 delegate: Rectangle {
                     id: option
                     required property var modelData
+                    required property int index
 
                     readonly property bool chosen: root.question
                         && T3Code.inputCustomAnswer(root.threadId,
@@ -124,10 +138,9 @@ Rectangle {
 
                     width: parent.width
                     height: optionText.implicitHeight + 10
-                    radius: 6
-                    color: chosen ? Theme.accentBg
-                        : optionMouse.containsMouse ? Theme.hoverFillStrong
-                        : Qt.rgba(0, 0, 0, 0.17)
+                    radius: T3Theme.controlRadius
+                    color: chosen ? T3Theme.accentSoft
+                        : optionMouse.containsMouse ? T3Theme.hoverStrong : "transparent"
                     opacity: root.actionable ? 1 : 0.5
                     activeFocusOnTab: root.actionable
                     Accessible.role: root.question && root.question.multiSelect
@@ -138,7 +151,16 @@ Rectangle {
                     Keys.onPressed: event => {
                         if (!root.actionable)
                             return;
-                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+                            const at = event.key - Qt.Key_1;
+                            if (root.question && at < root.question.options.length) {
+                                const selectedOption = root.question.options[at];
+                                T3Code.toggleInputOption(root.threadId, root.request.requestId,
+                                    root.question.id, selectedOption.label,
+                                    root.question.multiSelect);
+                                event.accepted = true;
+                            }
+                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                                 || event.key === Qt.Key_Space) {
                             T3Code.toggleInputOption(root.threadId, root.request.requestId,
                                 root.question.id, option.modelData.label,
@@ -147,25 +169,23 @@ Rectangle {
                         }
                     }
 
-                    Text {
+                    Sym {
                         id: marker
                         x: 7
                         anchors.verticalCenter: parent.verticalCenter
-                        // Checkbox marks for multi-select, radio marks for
-                        // pick-one — mirrors the reference client's controls.
-                        text: root.question && root.question.multiSelect
-                            ? (option.chosen ? "■" : "□")
-                            : (option.chosen ? "●" : "○")
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontCaption
-                        color: option.chosen ? Theme.accent : Theme.textDim
+                        name: root.question && root.question.multiSelect
+                            ? (option.chosen ? "check_box" : "check_box_outline_blank")
+                            : (option.chosen ? "radio_button_checked" : "radio_button_unchecked")
+                        size: Theme.iconSmall
+                        symWeight: 500
+                        color: option.chosen ? T3Theme.accent : T3Theme.textFaint
                     }
 
                     Column {
                         id: optionText
                         x: 23
                         y: 5
-                        width: parent.width - 30
+                        width: parent.width - 52
                         spacing: 1
 
                         Text {
@@ -173,9 +193,9 @@ Rectangle {
                             text: option.modelData.label
                             wrapMode: Text.WordWrap
                             lineHeight: Theme.proseLineHeight
-                            font.family: Theme.fontMenu
+                            font.family: T3Theme.fontSans
                             font.pixelSize: Theme.fontSecondary
-                            color: option.chosen ? Theme.textHi : Theme.textMid
+                            color: option.chosen ? T3Theme.textPrimary : T3Theme.textSecondary
                         }
 
                         Text {
@@ -186,10 +206,21 @@ Rectangle {
                             elide: Text.ElideRight
                             wrapMode: Text.WordWrap
                             lineHeight: Theme.proseLineHeight
-                            font.family: Theme.fontMenu
+                            font.family: T3Theme.fontSans
                             font.pixelSize: Theme.fontCaption
-                            color: Theme.textDim
+                            color: T3Theme.textFaint
                         }
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: option.index < 9 ? String(option.index + 1) : ""
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontMicro
+                        font.features: T3Theme.tabularNumberFeatures
+                        color: T3Theme.textFaint
                     }
 
                     MouseArea {
@@ -210,10 +241,10 @@ Rectangle {
             visible: root.isInput && root.question !== null
             width: parent.width
             height: Theme.controlHeight
-            radius: 6
-            color: Qt.rgba(0, 0, 0, 0.2)
+            radius: T3Theme.controlRadius
+            color: T3Theme.surface
             border.width: 1
-            border.color: custom.activeFocus ? Theme.accentBgSoft : Theme.hairlineSoft
+            border.color: custom.activeFocus ? T3Theme.focus : T3Theme.border
 
             TextInput {
                 id: custom
@@ -242,9 +273,9 @@ Rectangle {
                 verticalAlignment: TextInput.AlignVCenter
                 enabled: root.actionable
                 clip: true
-                font.family: Theme.fontMenu
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontSecondary
-                color: Theme.textHi
+                color: T3Theme.textPrimary
                 onDraftKeyChanged: syncDraft()
                 onTextChanged: {
                     if (!syncing && activeFocus && root.question)
@@ -257,9 +288,9 @@ Rectangle {
                     visible: custom.text === "" && !custom.activeFocus
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Or type a custom answer…"
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontSecondary
-                    color: Theme.textFaint
+                    color: T3Theme.textFaint
                 }
 
                 Connections {
@@ -284,8 +315,8 @@ Rectangle {
                 visible: root.questionIndex < root.questions.length - 1
                 label: "Next"
                 enabled: root.actionable && root.answered
-                tint: Theme.accentFg
-                fill: Theme.accent
+                tint: T3Theme.accentForeground
+                fill: T3Theme.accent
                 onTriggered: T3Code.setInputQuestionIndex(root.threadId,
                     root.request.requestId, root.questionIndex + 1)
             }
@@ -294,8 +325,8 @@ Rectangle {
                 visible: root.questionIndex >= root.questions.length - 1
                 label: root.pending ? "Sending…" : "Submit"
                 enabled: root.actionable && root.answers !== null
-                tint: Theme.accentFg
-                fill: Theme.accent
+                tint: T3Theme.accentForeground
+                fill: T3Theme.accent
                 onTriggered: {
                     const answers = T3Code.buildInputAnswers(root.threadId, root.request);
                     if (answers !== null)
@@ -313,7 +344,7 @@ Rectangle {
             spacing: 5
 
             Action {
-                label: "Cancel turn"
+                label: "Cancel"
                 enabled: !root.pending && T3Code.canDispatch
                 onTriggered: T3Code.respondApproval(root.threadId,
                     root.request.requestId, "cancel")
@@ -322,8 +353,8 @@ Rectangle {
             Action {
                 label: "Decline"
                 enabled: !root.pending && T3Code.canDispatch
-                tint: Theme.redText
-                fill: Theme.redBg
+                tint: T3Theme.red
+                fill: T3Theme.redSoft
                 onTriggered: T3Code.respondApproval(root.threadId,
                     root.request.requestId, "decline")
             }
@@ -331,17 +362,17 @@ Rectangle {
             Action {
                 label: "Always allow this session"
                 enabled: !root.pending && T3Code.canDispatch
-                tint: Theme.accent
-                fill: Theme.accentBg
+                tint: T3Theme.accent
+                fill: T3Theme.accentSoft
                 onTriggered: T3Code.respondApproval(root.threadId,
                     root.request.requestId, "acceptForSession")
             }
 
             Action {
-                label: root.pending ? "Sending…" : "Approve once"
+                label: root.pending ? "Sending…" : "Approve"
                 enabled: !root.pending && T3Code.canDispatch
-                tint: Theme.accentFg
-                fill: Theme.accent
+                tint: T3Theme.accentForeground
+                fill: T3Theme.accent
                 onTriggered: T3Code.respondApproval(root.threadId,
                     root.request.requestId, "accept")
             }
@@ -355,9 +386,9 @@ Rectangle {
             lineHeight: Theme.proseLineHeight
             maximumLineCount: 3
             elide: Text.ElideRight
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontCaption
-            color: Theme.redText
+            color: T3Theme.red
         }
     }
 }

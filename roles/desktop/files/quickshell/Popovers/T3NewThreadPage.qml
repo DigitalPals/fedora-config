@@ -15,8 +15,7 @@ Item {
 
     implicitHeight: header.height + 6 + viewport.height
 
-    // Left-aligned header matching the thread page: slim glyph back button,
-    // title beside it (design 5c).
+    // Contextual page header replaces the inbox brand header while composing.
     Item {
         id: header
         width: parent.width
@@ -26,7 +25,7 @@ Item {
             id: backButton
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            glyph: "←"
+            symbol: "arrow_back"
             accessibleName: "Back to inbox"
             onTriggered: root.backRequested()
         }
@@ -38,10 +37,10 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: "New thread"
             elide: Text.ElideRight
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontBody
             font.weight: Theme.weightSemibold
-            color: Theme.textHi
+            color: T3Theme.textPrimary
         }
     }
 
@@ -65,16 +64,16 @@ Item {
             Column {
                 id: form
                 width: flick.width - (flick.contentHeight > flick.height ? 5 : 0)
-                spacing: 6
+                spacing: 4
 
                 Rectangle {
                     visible: !T3Code.hasReadyProvider
                     width: parent.width
                     height: configText.implicitHeight + 14
-                    radius: 8
-                    color: Theme.amberBgSoft
+                    radius: T3Theme.panelRadius
+                    color: T3Theme.amberSoft
                     border.width: 1
-                    border.color: Theme.amberBorder
+                    border.color: T3Theme.amberBorder
 
                     Text {
                         id: configText
@@ -88,21 +87,32 @@ Item {
                                 : "A ready provider configuration is required."
                         wrapMode: Text.WordWrap
                         lineHeight: Theme.proseLineHeight
-                        font.family: Theme.fontMenu
+                        font.family: T3Theme.fontSans
                         font.pixelSize: Theme.fontCaption
-                        color: Theme.amber
+                        color: T3Theme.amber
                     }
                 }
 
-                T3Picker {
+                Rectangle {
+                    id: projectShoulder
                     width: parent.width
-                    label: "Project · current checkout"
-                    value: root.draft.projectId ?? ""
-                    options: root.projects
-                    openUpward: false
-                    enabled: T3Code.hasReadyProvider && root.draft.projectFixed !== true
-                        && !T3Code.actionPending("new", "", "")
-                    onSelected: value => T3Code.setNewProject(value)
+                    height: 44
+                    radius: T3Theme.panelRadius
+                    color: T3Theme.surfaceRaised
+                    border.width: 1
+                    border.color: T3Theme.border
+
+                    T3Picker {
+                        anchors.fill: parent
+                        anchors.margins: 5
+                        label: "Project"
+                        value: root.draft.projectId ?? ""
+                        options: root.projects
+                        openUpward: false
+                        enabled: T3Code.hasReadyProvider && root.draft.projectFixed !== true
+                            && !T3Code.actionPending("new", "", "")
+                        onSelected: value => T3Code.setNewProject(value)
+                    }
                 }
 
                 Text {
@@ -111,9 +121,9 @@ Item {
                     text: "This plan stays in the source project and Default mode. Provider, model, traits, and access remain adjustable."
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontCaption
-                    color: Theme.textDim
+                    color: T3Theme.textFaint
                 }
 
                 T3Composer {
@@ -135,9 +145,9 @@ Item {
                     lineHeight: Theme.proseLineHeight
                     maximumLineCount: 3
                     elide: Text.ElideRight
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontCaption
-                    color: Theme.redText
+                    color: T3Theme.red
                 }
 
                 Text {
@@ -145,22 +155,18 @@ Item {
                     width: parent.width
                     text: T3Code.pendingNewThreadId !== ""
                         ? "Creating thread and waiting for shell confirmation…" : "Creating thread…"
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontCaption
-                    color: Theme.textDim
+                    color: T3Theme.textFaint
                 }
             }
         }
 
-        Rectangle {
-            visible: flick.contentHeight > flick.height + 1
-            anchors.right: parent.right
-            width: 2
-            height: Math.max(24, viewport.height * flick.visibleArea.heightRatio)
-            y: flick.visibleArea.yPosition * viewport.height
-            radius: 1
-            color: Theme.textFaint
-            opacity: flick.moving ? 0.8 : 0.4
+        ScrollChrome {
+            anchors.fill: parent
+            target: flick
+            edgeColor: T3Theme.canvas
+            thumbColor: T3Theme.accent
         }
     }
 

@@ -17,6 +17,18 @@ Item {
     }
     property string title: ""
     property string detail: ""
+    property string fontFamily: Theme.fontMenu
+    property color accentColor: Theme.accent
+    property color accentFill: Theme.accentBgSoft
+    property color outlineColor: Theme.hairlineSoft
+    property color primaryTextColor: Theme.textMid
+    property color secondaryTextColor: Theme.textDim
+    property color errorColor: Theme.redText
+    property color errorFill: Theme.redBgSoft
+    property color errorOutline: Theme.redBorder
+    property int transitionDuration: Theme.expandDuration
+    property int fadeDuration: Theme.chipFadeDuration
+    property int loadingDuration: 1100
 
     implicitHeight: shown ? content.implicitHeight + 12 : 0
     visible: shown || opacity > 0.001
@@ -28,7 +40,7 @@ Item {
 
         Behavior on y {
             NumberAnimation {
-                duration: Theme.expandDuration
+                duration: root.transitionDuration
                 easing.type: Easing.BezierSpline
                 easing.bezierCurve: Theme.springCurve
             }
@@ -37,14 +49,14 @@ Item {
 
     Behavior on implicitHeight {
         NumberAnimation {
-            duration: Theme.expandDuration
+            duration: root.transitionDuration
             easing.type: Easing.BezierSpline
             easing.bezierCurve: Theme.springCurve
         }
     }
 
     Behavior on opacity {
-        NumberAnimation { duration: Theme.chipFadeDuration; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: root.fadeDuration; easing.type: Easing.OutCubic }
     }
 
     Column {
@@ -59,9 +71,9 @@ Item {
             width: 44
             height: 44
             radius: 16
-            color: root.kind === "error" ? Theme.redBgSoft : Theme.accentBgSoft
+            color: root.kind === "error" ? root.errorFill : root.accentFill
             border.width: 1
-            border.color: root.kind === "error" ? Theme.redBorder : Theme.hairlineSoft
+            border.color: root.kind === "error" ? root.errorOutline : root.outlineColor
 
             Sym {
                 id: statusGlyph
@@ -69,13 +81,13 @@ Item {
                 name: root.glyph
                 size: Theme.iconLarge
                 fill: root.kind === "loading" ? 0 : 1
-                color: root.kind === "error" ? Theme.redText : Theme.accent
+                color: root.kind === "error" ? root.errorColor : root.accentColor
 
                 RotationAnimation on rotation {
                     running: root.shown && root.kind === "loading"
                     from: 0
                     to: 360
-                    duration: 1100
+                    duration: root.loadingDuration
                     loops: Animation.Infinite
                 }
             }
@@ -88,10 +100,10 @@ Item {
             text: root.title
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
-            font.family: Theme.fontMenu
+            font.family: root.fontFamily
             font.pixelSize: Theme.fontSecondary
             font.weight: Theme.weightSemibold
-            color: root.kind === "error" ? Theme.redText : Theme.textMid
+            color: root.kind === "error" ? root.errorColor : root.primaryTextColor
         }
 
         Text {
@@ -104,9 +116,9 @@ Item {
             maximumLineCount: 3
             elide: Text.ElideRight
             lineHeight: Theme.proseLineHeight
-            font.family: Theme.fontMenu
+            font.family: root.fontFamily
             font.pixelSize: Theme.fontCaption
-            color: Theme.textDim
+            color: root.secondaryTextColor
         }
     }
 }

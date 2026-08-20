@@ -3,39 +3,39 @@ import QtQuick
 import Quickshell
 import "../Common"
 
-// Responsive three-page T3 mini-client. This Loader is recreated whenever
-// the dropdown opens, so navigation always begins at Inbox; all drafts live
-// in the T3Code singleton and therefore survive that teardown.
+// Responsive T3 Code mini-client. T3 owns the inner canvas and type system;
+// the surrounding popout still supplies the shell shadow and opening motion.
 Surface {
     id: root
 
     spacing: 6
+    padding: T3Theme.pagePadding
+    surfaceColor: T3Theme.canvas
+    surfaceBorderColor: T3Theme.borderStrong
 
-    // The host (Bar/IslandPopout) hands us the usable envelope of the output
-    // it is drawn on — it has already taken off the side margins, the bar and
-    // a shadow budget, so nothing here subtracts them a second time. Reading
-    // Screens.focused instead would size against the wrong monitor whenever
-    // the bar is pinned to one. The defaults stand in for a host that sets
-    // neither, and reproduce the old 484x800 fallback.
     availableWidth: 484 - Theme.barSideMargin * 2
     availableHeight: 800 - Theme.barTopMargin - Theme.barHeight - 16
 
+    readonly property int pageMaxWidth: page === "inbox" ? 460 : 520
     implicitWidth: Math.max(Theme.t3MinWidth,
-        Math.min(Theme.t3MaxWidth, root.availableWidth))
+        Math.min(pageMaxWidth, root.availableWidth))
 
-    readonly property int headerHeight: Theme.rowHeight
-    readonly property int footerHeight: Theme.controlHeight
+    readonly property int headerHeight: inboxHeader.visible ? inboxHeader.height : 0
+    readonly property int footerHeight: footer.visible ? footer.height : 0
     readonly property int maxPageHeight: Math.max(300, root.availableHeight
-        - root.padding * 2 - headerHeight - root.spacing
-        - (footer.visible ? footerHeight + root.spacing : 0)
+        - root.padding * 2 - headerHeight
+        - (inboxHeader.visible ? root.spacing : 0)
+        - footerHeight - (footer.visible ? root.spacing : 0)
         - (noReadBanner.visible ? noReadBanner.height + root.spacing : 0))
 
     property string page: "inbox"
     property string selectedThreadId: ""
     property bool inboxSnoozedExpanded: false
     property bool inboxSettledExpanded: false
+    property bool connectionMenuOpen: false
 
     function showInbox() {
+        connectionMenuOpen = false;
         page = "inbox";
         T3Code.closeDetail();
     }
@@ -43,11 +43,13 @@ Surface {
     function showThread(threadId) {
         if (typeof threadId !== "string" || threadId === "")
             return;
+        connectionMenuOpen = false;
         selectedThreadId = threadId;
         page = "thread";
     }
 
     function showNew() {
+        connectionMenuOpen = false;
         T3Code.ensureNewThreadDraft(selectedThreadId);
         page = "new";
         T3Code.closeDetail();
@@ -55,20 +57,41 @@ Surface {
 
     function showPlanInNewThread(plan) {
         if (T3Code.prepareNewThreadForPlan(selectedThreadId, plan)) {
+            connectionMenuOpen = false;
             page = "new";
             T3Code.closeDetail();
         }
     }
 
-    // Escape goes back one page rather than dismissing the whole popout — the
-    // inbox is the root, so from there the host may close as usual. Drafts
-    // live in the T3Code singleton, so backing out of the composer never
-    // discards typing.
     function handleEscape(): bool {
+        if (connectionMenuOpen) {
+            connectionMenuOpen = false;
+            return true;
+        }
         if (page === "inbox")
             return false;
         showInbox();
         return true;
+    }
+
+    function containsConnectionMenuPoint(item, x, y) {
+        const inMenu = connectionMenu.mapFromItem(item, x, y);
+        const inButton = connectionMenuButton.mapFromItem(item, x, y);
+        return inMenu.x >= 0 && inMenu.x <= connectionMenu.width
+                && inMenu.y >= 0 && inMenu.y <= connectionMenu.height
+            || inButton.x >= 0 && inButton.x <= connectionMenuButton.width
+                && inButton.y >= 0 && inButton.y <= connectionMenuButton.height;
+    }
+
+    TapHandler {
+        enabled: root.connectionMenuOpen
+        margin: root.Window.window
+            ? Math.max(root.Window.window.width, root.Window.window.height) : 0
+        onTapped: eventPoint => {
+            if (!root.containsConnectionMenuPoint(root,
+                    eventPoint.position.x, eventPoint.position.y))
+                root.connectionMenuOpen = false;
+        }
     }
 
     Component {
@@ -108,13 +131,36 @@ Surface {
         }
     }
 
-    Item {
-        id: headerRow
+    Rectangle {
+        id: inboxHeader
+        visible: root.page === "inbox"
+        z: 100
         width: parent.width
-        height: root.headerHeight
+        height: T3Theme.headerHeight
+        radius: T3Theme.panelRadius
+        color: T3Theme.chrome
+        border.width: 1
+        border.color: T3Theme.border
+
+        // A restrained Nightly wash recalls the web sidebar stage artwork
+        // without turning the full panel into a branded gradient.
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            opacity: T3Theme.dark ? 0.42 : 0.22
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: T3Theme.accentSubtle }
+                GradientStop { position: 0.58; color: "transparent" }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
 
         Column {
-            x: 4
+            anchors.left: parent.left
+            anchors.leftMargin: 11
+            anchors.right: headerActions.left
+            anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
 
@@ -123,161 +169,200 @@ Surface {
 
                 Image {
                     anchors.verticalCenter: parent.verticalCenter
-                    height: 11
                     width: 18
+                    height: 11
                     sourceSize: Qt.size(36, 22)
                     fillMode: Image.PreserveAspectFit
-                    source: Quickshell.shellDir + "/assets/"
-                        + (T3Code.state === "connected" ? "t3.svg" : "t3-dim.svg")
+                    source: Quickshell.shellDir + "/assets/" + (T3Theme.dark
+                        ? (T3Code.state === "connected" ? "t3.svg" : "t3-dim.svg")
+                        : (T3Code.state === "connected" ? "t3-dark.svg" : "t3-light-dim.svg"))
                 }
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Code"
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontBody
-                    font.weight: Theme.weightBold
-                    font.letterSpacing: -0.3
-                    color: "#fafafa"
+                    font.weight: Theme.weightSemibold
+                    font.letterSpacing: -0.25
+                    color: T3Theme.textPrimary
                 }
 
-                Text {
-                    visible: root.page !== "inbox"
+                Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "· " + (root.page === "thread" ? "Thread" : "New")
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textDim
+                    width: nightlyText.implicitWidth + 10
+                    height: 18
+                    radius: 5
+                    color: T3Theme.accentSubtle
+
+                    Text {
+                        id: nightlyText
+                        anchors.centerIn: parent
+                        text: "Nightly"
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Theme.weightMedium
+                        color: T3Theme.accent
+                    }
                 }
             }
 
-            Text {
-                // Long enough for a transport error, never long enough to
-                // reach the buttons on the other side of the header.
-                width: Math.max(0, headerRow.width - headerActions.width - 18)
-                elide: Text.ElideRight
-                text: {
-                    if (T3Code.cloudLoginRunning || T3Code.state === "signed-out"
-                            || T3Code.state === "cloud-empty")
-                        return "";
-                    if (T3Code.state !== "connected") {
-                        // The reason outranks "connecting…": it survives the
-                        // retry that follows it, so the caption stays on the
-                        // failure instead of flickering back to a generic
-                        // line every time the retry timer fires. A missing
-                        // QtWebSockets is the one reason nothing retries.
-                        if (T3Code.connectionError !== "")
-                            return T3Code.connectionError
-                                + (T3Code.websocketsMissing ? "" : " — retrying");
-                        return T3Code.state === "connecting" ? "connecting…"
-                            : "server unreachable — retrying";
-                    }
-                    const environment = T3Code.environmentLabel !== ""
-                        ? T3Code.environmentLabel : "connected";
-                    return environment + " · " + T3Code.runningCount + " running · "
-                        + (T3Code.monitoringCount > 0
-                            ? T3Code.monitoringCount + " monitoring · " : "")
-                        + T3Code.attentionCount + " waiting"
-                        + (T3Code.readOnly ? " · read-only" : "");
+            Row {
+                spacing: 6
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 5
+                    height: 5
+                    radius: 3
+                    color: T3Code.state === "connected" ? T3Theme.success
+                        : T3Code.state === "connecting" ? T3Theme.amber : T3Theme.red
                 }
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                color: T3Code.readOnly ? Theme.amber : Theme.textDim
+
+                Text {
+                    width: Math.max(0, inboxHeader.width - headerActions.width - 54)
+                    anchors.verticalCenter: parent.verticalCenter
+                    elide: Text.ElideRight
+                    text: {
+                        if (T3Code.cloudLoginRunning)
+                            return "Finish signing in in your browser";
+                        if (T3Code.state === "signed-out" || T3Code.state === "cloud-empty")
+                            return "T3 Connect";
+                        if (T3Code.state !== "connected")
+                            return T3Code.connectionError !== "" ? T3Code.connectionError
+                                : T3Code.state === "connecting" ? "Connecting…" : "Unavailable";
+                        return (T3Code.environmentLabel || "Connected")
+                            + (T3Code.readOnly ? " · read-only" : "");
+                    }
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontCaption
+                    color: T3Code.readOnly ? T3Theme.amber : T3Theme.textFaint
+                }
             }
         }
 
         Row {
             id: headerActions
             anchors.right: parent.right
-            anchors.rightMargin: 4
+            anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 6
+            spacing: 2
 
-            // "＋ New" lives in the header (design 5a) so the inbox needs no
-            // title band of its own.
-            Rectangle {
+            IconButton {
                 id: newButton
-                visible: T3Code.paired && root.page !== "new"
-                anchors.verticalCenter: parent.verticalCenter
-                width: newText.implicitWidth + 22
-                height: Theme.controlHeight
-                radius: 7
+                visible: T3Code.paired
                 readonly property bool usable: T3Code.canDispatch && T3Code.hasReadyProvider
                     && T3Code.hasProjects
-                Accessible.role: Accessible.Button
-                Accessible.name: "New thread"
-                Accessible.onPressAction: root.showNew()
-                color: newMouse.containsMouse && usable
-                    ? Qt.lighter(Theme.accentBg, 1.2) : Theme.accentBg
-                opacity: usable ? 1 : 0.4
-                activeFocusOnTab: usable && visible
-                border.width: activeFocus ? 1 : 0
-                border.color: Theme.accent
-
-                Keys.onPressed: event => {
-                    if (!newButton.usable)
-                        return;
-                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                            || event.key === Qt.Key_Space) {
-                        root.showNew();
-                        event.accepted = true;
-                    }
-                }
-
-                Text {
-                    id: newText
-                    anchors.centerIn: parent
-                    text: "＋ New"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    font.weight: Theme.weightSemibold
-                    color: Theme.accent
-                }
-
-                MouseArea {
-                    id: newMouse
-                    anchors.fill: parent
-                    enabled: newButton.usable
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.showNew()
-                }
+                enabled: usable
+                symbol: "edit_square"
+                accessibleName: "New thread"
+                tint: usable ? T3Theme.accent : T3Theme.textFaint
+                onTriggered: root.showNew()
             }
 
-            Rectangle {
+            IconButton {
+                id: connectionMenuButton
                 visible: T3Code.paired
-                anchors.verticalCenter: parent.verticalCenter
-                width: 27
-                height: Theme.controlHeight
-                radius: 6
-                color: refreshMouse.containsMouse ? Theme.hoverFill : "transparent"
-                activeFocusOnTab: true
-                Accessible.role: Accessible.Button
-                Accessible.name: "Reconnect"
-                Accessible.onPressAction: T3Code.connect()
+                symbol: "more_horiz"
+                accessibleName: "Connection menu"
+                tint: root.connectionMenuOpen ? T3Theme.accent : T3Theme.textMuted
+                onTriggered: root.connectionMenuOpen = !root.connectionMenuOpen
+            }
+        }
 
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                            || event.key === Qt.Key_Space) {
-                        T3Code.connect();
-                        event.accepted = true;
-                    }
+        Rectangle {
+            id: connectionMenu
+            visible: root.connectionMenuOpen
+            z: 1000
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            y: parent.height + 4
+            width: Math.min(250, inboxHeader.width - 8)
+            height: connectionMenuColumn.implicitHeight + 12
+            radius: T3Theme.panelRadius
+            color: T3Theme.overlay
+            border.width: 1
+            border.color: T3Theme.borderStrong
+
+            Column {
+                id: connectionMenuColumn
+                x: 6
+                y: 6
+                width: parent.width - 12
+                spacing: 2
+
+                Text {
+                    width: parent.width
+                    leftPadding: 8
+                    rightPadding: 8
+                    topPadding: 6
+                    bottomPadding: 4
+                    text: T3Code.environmentLabel || "T3 Code Nightly"
+                    elide: Text.ElideRight
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontSecondary
+                    font.weight: Theme.weightSemibold
+                    color: T3Theme.textPrimary
                 }
 
                 Text {
-                    anchors.centerIn: parent
-                    text: "↻"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
-                    color: refreshMouse.containsMouse ? Theme.textMid : Theme.textLow
+                    visible: T3Code.host !== ""
+                    width: parent.width
+                    leftPadding: 8
+                    rightPadding: 8
+                    bottomPadding: 6
+                    text: T3Code.host.replace(/^https?:\/\//, "")
+                    elide: Text.ElideMiddle
+                    font.family: T3Theme.fontMono
+                    font.pixelSize: Theme.fontMicro
+                    color: T3Theme.textFaint
                 }
 
-                MouseArea {
-                    id: refreshMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: T3Code.connect()
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: T3Theme.border
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 36
+                    radius: T3Theme.controlRadius
+                    color: reconnectMouse.containsMouse ? T3Theme.hoverStrong : "transparent"
+                    activeFocusOnTab: visible
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Reconnect"
+                    Accessible.onPressAction: T3Code.connect()
+
+                    Sym {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "refresh"
+                        size: Theme.iconSmall
+                        color: T3Theme.textMuted
+                    }
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 30
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Reconnect"
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontSecondary
+                        color: T3Theme.textSecondary
+                    }
+
+                    MouseArea {
+                        id: reconnectMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.connectionMenuOpen = false;
+                            T3Code.connect();
+                        }
+                    }
                 }
             }
         }
@@ -288,10 +373,10 @@ Surface {
         visible: T3Code.scopeMetadataKnown && !T3Code.canRead
         width: parent.width
         height: noReadText.implicitHeight + 12
-        radius: 7
-        color: Theme.redBgSoft
+        radius: T3Theme.controlRadius
+        color: T3Theme.redSoft
         border.width: 1
-        border.color: Theme.redBorder
+        border.color: T3Theme.redBorder
 
         Text {
             id: noReadText
@@ -301,19 +386,12 @@ Surface {
             text: "This credential does not grant orchestration read access."
             wrapMode: Text.WordWrap
             lineHeight: Theme.proseLineHeight
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontCaption
-            color: Theme.redText
+            color: T3Theme.red
         }
     }
 
-    // Deliberately synchronous: this popover's implicit height is the page's
-    // height, and the host animates its geometry (and resizes the layer
-    // surface) from it. An incubating page measures as zero, which opens the
-    // body in two stages and collapses it on every navigation — the exact
-    // per-frame resize commit 3f9c1d2 removed. The page is built inside the
-    // host's own asynchronous incubation either way, so nothing here lands on
-    // the click frame.
     Loader {
         id: pageLoader
         width: parent.width
@@ -324,58 +402,54 @@ Surface {
 
     Item {
         id: footer
-        visible: T3Code.state === "connected"
+        visible: T3Code.state === "connected" && root.page === "inbox"
         width: parent.width
-        height: root.footerHeight
+        height: T3Theme.footerHeight
 
         Rectangle {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             height: 1
-            color: Theme.hairlineSoft
+            color: T3Theme.border
         }
 
-        Item {
-            id: connectionMeta
+        Row {
             anchors.left: parent.left
-            anchors.leftMargin: 6
-            anchors.right: parent.right
-            anchors.rightMargin: 6
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
+            anchors.leftMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: 1
+            spacing: 6
 
             Rectangle {
-                id: connectedDot
-                visible: T3Code.state === "connected"
-                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: 2
                 width: 5
                 height: 5
                 radius: 3
-                color: Theme.connected
-                opacity: 0.8
+                color: T3Theme.success
             }
 
             Text {
-                anchors.left: connectedDot.visible ? connectedDot.right : parent.left
-                anchors.leftMargin: connectedDot.visible ? 6 : 0
-                anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: 2
-                text: {
-                    const status = T3Code.state === "connected" ? "connected" : T3Code.state;
-                    return status + (T3Code.host !== ""
-                        ? " · " + T3Code.host.replace(/^https?:\/\//, "") : "");
-                }
-                elide: Text.ElideRight
-                font.family: Theme.fontMono
+                text: T3Code.environmentLabel || "Connected"
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontCaption
-                color: Theme.textDim
+                color: T3Theme.textFaint
             }
         }
 
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: 1
+            text: T3Code.runningCount + " active"
+                + (T3Code.attentionCount > 0 ? " · " + T3Code.attentionCount + " waiting" : "")
+            font.family: T3Theme.fontSans
+            font.pixelSize: Theme.fontCaption
+            font.features: T3Theme.tabularNumberFeatures
+            color: T3Theme.textFaint
+        }
     }
 
     Connections {

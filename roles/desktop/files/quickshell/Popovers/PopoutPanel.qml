@@ -1,4 +1,5 @@
 import QtQuick
+import "../Common"
 
 // The contract the popout host has with whatever it loads.
 //
@@ -17,6 +18,11 @@ import QtQuick
 // slots claiming focus at once, including the one that is off screen.
 FocusScope {
     id: root
+
+    // Most panels use the shell surface. A product-integrated panel can
+    // supply its own canvas without teaching the host about panel names.
+    property color surfaceColor: Theme.surfaceStrong
+    property color surfaceBorderColor: Theme.stroke
 
     // The host paints the surface itself while it morphs the panel out of the
     // bar. A panel that draws its own background turns this off then, so the

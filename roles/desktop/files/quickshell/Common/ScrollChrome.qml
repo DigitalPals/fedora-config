@@ -10,6 +10,7 @@ Item {
     property int orientation: Qt.Vertical
     property real fadeSize: 24
     property color edgeColor: Theme.surfaceStrong
+    property color thumbColor: Theme.accent
 
     readonly property bool vertical: orientation === Qt.Vertical
     readonly property bool overflow: vertical
@@ -74,7 +75,7 @@ Item {
             ? Math.max(22, root.target.visibleArea.heightRatio * root.height)
             : (root.target.moving ? 4 : 3)
         radius: 2
-        color: Theme.accent
+        color: root.thumbColor
         opacity: root.target.moving ? 0.78 : 0.22
 
         Behavior on width { NumberAnimation { duration: Theme.chipFadeDuration / 2 } }

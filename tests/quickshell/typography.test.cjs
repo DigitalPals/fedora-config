@@ -109,11 +109,19 @@ test("settings-driven tokens default to the original menu metrics", () => {
     assert.match(theme, /readonly property color accentSoft:\s*paletteActive/);
 });
 
-test("the menu face is scoped to the bar and its popovers", () => {
+test("the menu face is scoped to shell chrome while T3 keeps its product face", () => {
     for (const file of [...qmlFiles("Bar"), ...qmlFiles("Popovers"), ...qmlFiles("Settings")]) {
         const source = fs.readFileSync(file, "utf8");
         const label = path.relative(shellDir, file);
-        assert.doesNotMatch(source, /Theme\.fontSans/, `${label} bypasses Theme.fontMenu`);
+        if (/^Popovers\/T3.*\.qml$/.test(label)) {
+            assert.match(source, /T3Theme\.fontSans/,
+                `${label} must use the stable T3 product face`);
+            assert.doesNotMatch(source, /Theme\.fontMenu/,
+                `${label} must not inherit the user-selected shell menu face`);
+        } else {
+            assert.doesNotMatch(source, /(?<!T3)Theme\.fontSans/,
+                `${label} bypasses Theme.fontMenu`);
+        }
     }
 
     for (const name of ["LauncherView.qml", "NotificationToasts.qml"]) {

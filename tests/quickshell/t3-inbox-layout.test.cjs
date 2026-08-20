@@ -15,21 +15,24 @@ function intToken(source, name) {
     return Number(match[1]);
 }
 
-test("inline action pills fit beside a T3 inbox tile's second line", () => {
+test("inline actions fit inside a full T3 work row while parked rows stay compact", () => {
     const theme = read("Common/Theme.qml");
+    const t3Theme = read("Common/T3Theme.qml");
     const action = read("Popovers/ActionButton.qml");
+    const inbox = read("Popovers/T3InboxPage.qml");
 
     assert.match(action, /height:\s*Theme\.inlineActionHeight/,
         "shared inline actions must not inherit the full-size form control height");
 
     const actionHeight = intToken(theme, "inlineActionHeight");
     const secondaryText = intToken(theme, "fontSecondary");
-    const tileHeight = intToken(theme, "tileHeight");
+    const activeRowHeight = intToken(t3Theme, "activeRowHeight");
+    const quietRowHeight = intToken(t3Theme, "quietRowHeight");
 
-    // T3InboxPage stacks the revealed action/title line, 3px of spacing, and
-    // a secondary project line inside one tile. Keep room for font leading as
-    // well as the declared pixel sizes; the old 46px control left -2px before
-    // leading and visibly pushed that second line through the card edge.
-    assert.ok(actionHeight + 3 + secondaryText <= tileHeight - 8,
-        "inline actions leave too little room for the T3 tile's project line");
+    assert.ok(actionHeight + 2 + secondaryText <= activeRowHeight - 8,
+        "inline actions leave too little room for the active row's project line");
+    assert.ok(quietRowHeight < activeRowHeight,
+        "settled and snoozed rows must remain visibly denser than active work");
+    assert.match(inbox,
+        /height:\s*entry\.compact \? T3Theme\.quietRowHeight : T3Theme\.activeRowHeight/);
 });

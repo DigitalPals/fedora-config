@@ -2,9 +2,9 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
-// Text-only composer with a local disclosure for provider/model/runtime/mode
-// and every model trait advertised by server.getConfig. The singleton owns
-// all draft values; disclosure state lasts only as long as this page instance.
+// T3's composer is one recognisable glass surface: prompt above, contextual
+// controls and a round send action below. Detailed run settings unfold as a
+// compact drawer attached to that surface instead of becoming another form.
 Column {
     id: root
 
@@ -24,14 +24,13 @@ Column {
     readonly property bool showInteraction: draft.modeFixed !== true
         && T3Code.providerShowsInteraction(draft.instanceId)
     readonly property bool overLimit: promptEdit.text.length > T3Code.maxPromptChars
+    readonly property bool ultrathink: /\bultrathink\b/i.test(promptEdit.text)
     readonly property string actionKind: newThread ? "new" : "prompt"
     readonly property string actionThreadId: newThread ? "" : threadId
     readonly property bool sending: T3Code.actionPending(actionKind, actionThreadId, "")
 
-    spacing: 5
-    // A picker menu has to escape both the settings card's and this
-    // composer's stacking contexts to cover controls declared after it.
-    z: settingsPresentation.activePicker !== null ? 100 : 0
+    spacing: 4
+    z: settingsPresentation.activePicker !== null || settingsPresentation.expanded ? 100 : 0
 
     QtObject {
         id: settingsPresentation
@@ -39,7 +38,7 @@ Column {
         property bool expanded: false
         property Item activePicker: null
         property string activePickerGroup: ""
-        readonly property bool narrow: root.width < 360
+        readonly property bool narrow: root.width < 400
         readonly property var accessOptions: [
             { id: "approval-required", label: "Ask first" },
             { id: "auto-accept-edits", label: "Auto edits" },
@@ -66,11 +65,6 @@ Column {
         onExpandedChanged: {
             if (!expanded && activePicker !== null)
                 activePicker.expanded = false;
-        }
-
-        onActivePickerChanged: {
-            if (activePicker === null)
-                activePickerGroup = "";
         }
 
         function settingId(option) {
@@ -100,17 +94,15 @@ Column {
             return found ? settingLabel(found) : displaySettingValue(value, fallback);
         }
 
-        // Labels combined into the compact disclosure summary. Empty strings
-        // are omitted so unsupported controls consume no width.
         function reasoningSummary() {
             const descriptor = (Array.isArray(root.traits) ? root.traits : [])
                 .find(candidate => root.traitLabel(candidate) === "Reasoning");
             if (!descriptor)
                 return "";
             if (descriptor.type === "boolean")
-                return "Reasoning " + (descriptor.currentValue === true ? "On" : "Off");
-            return "Reasoning " + selectedSettingLabel(descriptor.options,
-                String(descriptor.currentValue ?? ""), "—");
+                return descriptor.currentValue === true ? "Reasoning on" : "Reasoning off";
+            return selectedSettingLabel(descriptor.options,
+                String(descriptor.currentValue ?? ""), "");
         }
 
         function accessSummary() {
@@ -134,13 +126,17 @@ Column {
             if (!root.showInteraction)
                 return "";
             return String(root.draft?.interactionMode ?? "default") === "plan"
-                ? "Plan mode" : "Default mode";
+                ? "Plan" : "Default";
         }
 
         function compactSummary() {
-            const parts = [providerModelSummary(), reasoningSummary(), modeSummary()]
+            const parts = [providerModelSummary(), modeSummary(), reasoningSummary()]
                 .filter(value => value !== "");
             return parts.join(" · ");
+        }
+
+        function accessibleSummary() {
+            return compactSummary() + " · Access: " + accessSummary();
         }
     }
 
@@ -221,491 +217,518 @@ Column {
     }
 
     Rectangle {
-        id: promptBox
-
+        id: settingsDrawer
+        visible: settingsPresentation.expanded
         width: parent.width
-        height: Math.max(62, Math.min(112, promptEdit.contentHeight + 18))
-        radius: 8
-        color: /\bultrathink\b/i.test(promptEdit.text) ? Theme.accentBgSoft
-            : Qt.rgba(0, 0, 0, 0.24)
+        height: settingsDrawerColumn.implicitHeight + 16
+        z: settingsPresentation.activePicker !== null ? 200 : 1
+        radius: T3Theme.panelRadius
+        color: T3Theme.overlay
         border.width: 1
-        border.color: root.overLimit ? Theme.redBorder
-            : promptEdit.activeFocus ? Theme.accentBgSoft : Theme.hairlineSoft
-
-        Flickable {
-            id: promptFlick
-            anchors.left: parent.left
-            anchors.right: sendButton.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.margins: 8
-            anchors.rightMargin: 7
-            contentWidth: width
-            contentHeight: Math.max(height, promptEdit.contentHeight)
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-
-            TextEdit {
-                id: promptEdit
-
-                property bool syncing: false
-
-                width: promptFlick.width
-                height: Math.max(promptFlick.height, contentHeight)
-                enabled: root.editable && !root.sending
-                wrapMode: TextEdit.Wrap
-                selectByMouse: true
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
-                color: Theme.textHi
-                selectionColor: Theme.accentBg
-                selectedTextColor: Theme.textHi
-                onTextChanged: {
-                    if (!syncing && activeFocus)
-                        root.persistPrompt(text);
-                }
-                onCursorRectangleChanged: {
-                    if (cursorRectangle.y + cursorRectangle.height > promptFlick.contentY
-                            + promptFlick.height)
-                        promptFlick.contentY = cursorRectangle.y + cursorRectangle.height
-                            - promptFlick.height;
-                    else if (cursorRectangle.y < promptFlick.contentY)
-                        promptFlick.contentY = cursorRectangle.y;
-                }
-
-                Keys.onPressed: event => {
-                    if (event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
-                        return;
-                    if (event.modifiers & Qt.ControlModifier)
-                        root.insertNewline();
-                    else if (root.sendEnabled && !root.sending && !root.overLimit
-                            && promptEdit.text.trim() !== "")
-                        root.sendRequested();
-                    event.accepted = true;
-                }
-
-                Text {
-                    // Stays up while the field is merely focused — the page
-                    // autofocuses the prompt, and the cue must survive that.
-                    visible: promptEdit.text === ""
-                    text: root.newThread ? "Describe the first task…" : "Send a follow-up…"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
-                    color: Theme.textFaint
-                }
-            }
-        }
-
-        Rectangle {
-            id: sendButton
-
-            anchors.right: parent.right
-            anchors.rightMargin: 7
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 7
-            width: Math.max(31, sendText.implicitWidth + 18)
-            height: Theme.inlineActionHeight
-            Accessible.role: Accessible.Button
-            Accessible.name: root.sendLabel
-            Accessible.onPressAction: root.sendRequested()
-            radius: 7
-            color: sendMouse.containsMouse && sendMouse.enabled
-                ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
-            opacity: sendMouse.enabled ? 1 : 0.35
-            activeFocusOnTab: sendMouse.enabled
-
-            Keys.onPressed: event => {
-                if (!sendMouse.enabled)
-                    return;
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                        || event.key === Qt.Key_Space) {
-                    root.sendRequested();
-                    event.accepted = true;
-                }
-            }
-
-            Text {
-                id: sendText
-                anchors.centerIn: parent
-                text: root.sending ? "…" : root.sendLabel
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
-                font.weight: Theme.weightSemibold
-                color: Theme.accentFg
-            }
-
-            MouseArea {
-                id: sendMouse
-                anchors.fill: parent
-                enabled: root.sendEnabled && !root.sending && !root.overLimit
-                    && promptEdit.text.trim() !== ""
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.sendRequested()
-            }
-        }
-    }
-
-    Rectangle {
-        id: settingsCard
-
-        width: parent.width
-        height: settingsColumn.implicitHeight + (settingsPresentation.expanded ? 2 : 0)
-        z: settingsPresentation.activePicker !== null ? 100 : 0
-        radius: 8
-        color: settingsPresentation.expanded ? Theme.cardFill : "transparent"
-        border.width: settingsPresentation.expanded ? 1 : 0
-        border.color: Theme.hairlineSoft
+        border.color: T3Theme.borderStrong
 
         Column {
-            id: settingsColumn
+            id: settingsDrawerColumn
+            x: 8
+            y: 8
+            width: parent.width - 16
+            spacing: 6
 
-            x: settingsPresentation.expanded ? 1 : 0
-            y: settingsPresentation.expanded ? 1 : 0
-            width: parent.width - (settingsPresentation.expanded ? 2 : 0)
-
-            // Keep the collapsed state to one footer-like row. The detailed
-            // controls remain available without competing with the prompt.
-            Rectangle {
-                id: settingsHeader
-
+            Item {
                 width: parent.width
-                height: Theme.controlHeight
-                radius: 7
-                color: settingsMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
-                activeFocusOnTab: true
-                Accessible.role: Accessible.Button
-                Accessible.name: "Composer settings"
-                border.width: activeFocus ? 1 : 0
-                border.color: Theme.accent
+                height: 28
 
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                            || event.key === Qt.Key_Space) {
-                        settingsPresentation.expanded = !settingsPresentation.expanded;
-                        event.accepted = true;
-                    }
-                }
-
-                Text {
-                    id: settingsChevron
-
+                Row {
                     anchors.left: parent.left
-                    anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    text: settingsPresentation.expanded ? "▾" : "▸"
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
-                    color: settingsPresentation.expanded ? Theme.accent : Theme.textLow
-                }
+                    spacing: 7
 
-                Text {
-                    id: settingsTitle
-
-                    anchors.left: settingsChevron.right
-                    anchors.leftMargin: 6
-                    anchors.verticalCenter: settingsChevron.verticalCenter
-                    text: "Run settings"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    font.weight: Theme.weightSemibold
-                    color: Theme.textHi
-                }
-
-                Text {
-                    visible: !settingsPresentation.expanded
-                    anchors.left: settingsTitle.right
-                    anchors.leftMargin: 8
-                    anchors.right: accessChip.left
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: settingsChevron.verticalCenter
-                    text: settingsPresentation.compactSummary()
-                    elide: Text.ElideRight
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textDim
-                }
-
-                Rectangle {
-                    id: accessChip
-
-                    anchors.right: parent.right
-                    anchors.rightMargin: 6
-                    anchors.verticalCenter: settingsChevron.verticalCenter
-                    width: accessText.implicitWidth + 18
-                    height: Theme.chipInnerHeight
-                    radius: Theme.chipRadius
-                    color: root.draft?.runtimeMode === "full-access"
-                        ? Theme.amberBg : Theme.hoverFill
+                    Sym {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "tune"
+                        size: Theme.iconSmall
+                        color: T3Theme.accent
+                    }
 
                     Text {
-                        id: accessText
-                        anchors.centerIn: parent
-                        text: settingsPresentation.accessSummary()
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Run settings"
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontSecondary
                         font.weight: Theme.weightSemibold
-                        color: root.draft?.runtimeMode === "full-access"
-                            ? Theme.amber : Theme.textLow
+                        color: T3Theme.textPrimary
                     }
                 }
 
-                MouseArea {
-                    id: settingsMouse
-
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        settingsHeader.forceActiveFocus();
-                        settingsPresentation.expanded = !settingsPresentation.expanded;
-                    }
+                IconButton {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    controlSize: 28
+                    symbol: "close"
+                    accessibleName: "Close run settings"
+                    onTriggered: settingsPresentation.expanded = false
                 }
             }
 
-            Item {
-                id: settingsBody
-
-                visible: settingsPresentation.expanded
+            Flow {
+                id: providerModelFields
                 width: parent.width
-                height: settingsFields.implicitHeight + 15
+                spacing: 5
+                z: settingsPresentation.activePickerGroup === "provider-model" ? 100 : 0
 
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 7
-                    anchors.right: parent.right
-                    anchors.rightMargin: 7
-                    anchors.top: parent.top
-                    height: 1
-                    color: Theme.hairlineSoft
+                T3Picker {
+                    id: providerPicker
+                    width: settingsPresentation.narrow ? parent.width : (parent.width - 5) / 2
+                    label: "Provider"
+                    value: root.draft.instanceId ?? ""
+                    options: root.providers
+                    openUpward: !root.newThread
+                    enabled: root.editable && !root.sending && options.length > 0
+                    onSelected: value => root.chooseProvider(value)
+                    onExpandedChanged: settingsPresentation.trackPicker(
+                        providerPicker, "provider-model")
                 }
 
-                Column {
-                    id: settingsFields
+                T3Picker {
+                    id: modelPicker
+                    width: settingsPresentation.narrow ? parent.width : (parent.width - 5) / 2
+                    label: "Model"
+                    value: root.draft.model ?? ""
+                    options: root.models
+                    openUpward: !root.newThread
+                    menuRows: 8
+                    enabled: root.editable && !root.sending && options.length > 0
+                    onSelected: value => root.chooseModel(value)
+                    onExpandedChanged: settingsPresentation.trackPicker(
+                        modelPicker, "provider-model")
+                }
+            }
 
-                    x: 7
-                    y: 8
-                    width: parent.width - 14
-                    spacing: 5
+            Flow {
+                id: runtimeFields
+                width: parent.width
+                spacing: 5
+                z: settingsPresentation.activePickerGroup === "runtime" ? 100 : 0
 
-                    Flow {
-                        id: providerModelFields
+                T3Picker {
+                    id: accessPicker
+                    width: settingsPresentation.narrow || !root.showInteraction
+                        ? parent.width : (parent.width - 5) / 2
+                    label: "Access"
+                    value: root.draft.runtimeMode ?? "full-access"
+                    valueColor: root.draft?.runtimeMode === "full-access"
+                        ? T3Theme.amber : T3Theme.textSecondary
+                    options: settingsPresentation.accessOptions
+                    openUpward: !root.newThread
+                    enabled: root.editable && !root.sending
+                    onSelected: value => root.chooseRuntime(value)
+                    onExpandedChanged: settingsPresentation.trackPicker(
+                        accessPicker, "runtime")
+                }
 
-                        width: parent.width
-                        spacing: 5
-                        z: settingsPresentation.activePickerGroup === "provider-model" ? 100 : 0
+                T3Picker {
+                    id: interactionPicker
+                    visible: root.showInteraction
+                    width: settingsPresentation.narrow ? parent.width : (parent.width - 5) / 2
+                    label: "Mode"
+                    value: root.draft.interactionMode ?? "default"
+                    options: settingsPresentation.interactionOptions
+                    openUpward: !root.newThread
+                    enabled: root.editable && !root.sending
+                    onSelected: value => root.chooseInteraction(value)
+                    onExpandedChanged: settingsPresentation.trackPicker(
+                        interactionPicker, "runtime")
+                }
+            }
+
+            Flow {
+                id: traitFields
+                visible: root.traits.length > 0
+                width: parent.width
+                spacing: 5
+                z: settingsPresentation.activePickerGroup === "traits" ? 100 : 0
+
+                Repeater {
+                    model: root.traits
+
+                    delegate: Item {
+                        id: traitRow
+                        required property var modelData
+                        width: settingsPresentation.narrow ? parent.width : (parent.width - 5) / 2
+                        height: modelData.type === "select" ? 34 : 30
+                        z: traitPicker.expanded ? 100 : 0
 
                         T3Picker {
-                            id: providerPicker
-
-                            width: settingsPresentation.narrow
-                                ? parent.width : (parent.width - 5) / 2
-                            label: "Provider"
-                            value: root.draft.instanceId ?? ""
-                            options: root.providers
-                            openUpward: !root.newThread
-                            enabled: root.editable && !root.sending && options.length > 0
-                            onSelected: value => root.chooseProvider(value)
-                            onExpandedChanged: settingsPresentation.trackPicker(
-                                providerPicker, "provider-model")
-                        }
-
-                        T3Picker {
-                            id: modelPicker
-
-                            width: settingsPresentation.narrow
-                                ? parent.width : (parent.width - 5) / 2
-                            label: "Model"
-                            value: root.draft.model ?? ""
-                            options: root.models
-                            openUpward: !root.newThread
-                            menuRows: 8
-                            enabled: root.editable && !root.sending && options.length > 0
-                            onSelected: value => root.chooseModel(value)
-                            onExpandedChanged: settingsPresentation.trackPicker(
-                                modelPicker, "provider-model")
-                        }
-                    }
-
-                    Flow {
-                        id: runtimeFields
-
-                        width: parent.width
-                        spacing: 5
-                        z: settingsPresentation.activePickerGroup === "runtime" ? 100 : 0
-
-                        T3Picker {
-                            id: accessPicker
-
-                            width: settingsPresentation.narrow || !root.showInteraction
-                                ? parent.width : (parent.width - 5) / 2
-                            label: "Access"
-                            value: root.draft.runtimeMode ?? "full-access"
-                            valueColor: root.draft?.runtimeMode === "full-access"
-                                ? Theme.amber : Theme.textMid
-                            options: settingsPresentation.accessOptions
-                            openUpward: !root.newThread
+                            id: traitPicker
+                            visible: traitRow.modelData.type === "select"
+                            anchors.fill: parent
+                            label: root.traitLabel(traitRow.modelData)
+                            value: traitRow.modelData.currentValue ?? ""
+                            options: traitRow.modelData.options ?? []
                             enabled: root.editable && !root.sending
-                            onSelected: value => root.chooseRuntime(value)
+                            onSelected: value => root.chooseTrait(traitRow.modelData.id, value)
                             onExpandedChanged: settingsPresentation.trackPicker(
-                                accessPicker, "runtime")
+                                traitPicker, "traits")
                         }
 
-                        T3Picker {
-                            id: interactionPicker
+                        Rectangle {
+                            id: traitToggle
+                            visible: traitRow.modelData.type === "boolean"
+                            anchors.fill: parent
+                            radius: T3Theme.controlRadius
+                            color: traitMouse.containsMouse && root.editable
+                                ? T3Theme.hoverStrong : T3Theme.surfaceRaised
+                            Accessible.role: Accessible.CheckBox
+                            Accessible.name: root.traitLabel(traitRow.modelData)
+                            Accessible.checked: traitRow.modelData.currentValue === true
+                            opacity: root.editable && !root.sending ? 1 : 0.48
+                            activeFocusOnTab: root.editable && !root.sending
+                            border.width: activeFocus ? 1 : 0
+                            border.color: T3Theme.focus
 
-                            visible: root.showInteraction
-                            width: settingsPresentation.narrow
-                                ? parent.width : (parent.width - 5) / 2
-                            label: "Mode"
-                            value: root.draft.interactionMode ?? "default"
-                            options: settingsPresentation.interactionOptions
-                            openUpward: !root.newThread
-                            enabled: root.editable && !root.sending
-                            onSelected: value => root.chooseInteraction(value)
-                            onExpandedChanged: settingsPresentation.trackPicker(
-                                interactionPicker, "runtime")
-                        }
-                    }
-
-                    Flow {
-                        id: traitFields
-
-                        visible: root.traits.length > 0
-                        width: parent.width
-                        spacing: 5
-                        z: settingsPresentation.activePickerGroup === "traits" ? 100 : 0
-
-                        Repeater {
-                            model: root.traits
-
-                            delegate: Item {
-                                id: traitRow
-
-                                required property var modelData
-                                width: settingsPresentation.narrow
-                                    ? parent.width : (parent.width - 5) / 2
-                                height: modelData.type === "select" ? 34 : 28
-                                z: traitPicker.expanded ? 100 : 0
-
-                                T3Picker {
-                                    id: traitPicker
-
-                                    visible: traitRow.modelData.type === "select"
-                                    anchors.fill: parent
-                                    label: root.traitLabel(traitRow.modelData)
-                                    value: traitRow.modelData.currentValue ?? ""
-                                    options: traitRow.modelData.options ?? []
-                                    enabled: root.editable && !root.sending
-                                    onSelected: value => root.chooseTrait(
-                                        traitRow.modelData.id, value)
-                                    onExpandedChanged: settingsPresentation.trackPicker(
-                                        traitPicker, "traits")
+                            Keys.onPressed: event => {
+                                if (!root.editable || root.sending)
+                                    return;
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                        || event.key === Qt.Key_Space) {
+                                    root.chooseTrait(traitRow.modelData.id,
+                                        traitRow.modelData.currentValue !== true);
+                                    event.accepted = true;
                                 }
+                            }
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.traitLabel(traitRow.modelData)
+                                font.family: T3Theme.fontSans
+                                font.pixelSize: Theme.fontSecondary
+                                color: T3Theme.textSecondary
+                            }
+
+                            Rectangle {
+                                anchors.right: parent.right
+                                anchors.rightMargin: 7
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 28
+                                height: 16
+                                radius: 8
+                                color: traitRow.modelData.currentValue === true
+                                    ? T3Theme.accent : T3Theme.borderStrong
 
                                 Rectangle {
-                                    id: traitToggle
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: traitRow.modelData.currentValue === true ? parent.width - width - 3 : 3
+                                    width: 10
+                                    height: 10
+                                    radius: 5
+                                    color: T3Theme.accentForeground
 
-                                    visible: traitRow.modelData.type === "boolean"
-                                    anchors.fill: parent
-                                    radius: 6
-                                    color: traitMouse.containsMouse && root.editable
-                                        ? Theme.hoverFillStrong : Theme.hoverFill
-                                    Accessible.role: Accessible.CheckBox
-                                    Accessible.name: root.traitLabel(traitRow.modelData)
-                                    Accessible.checked: traitRow.modelData.currentValue === true
-                                    opacity: root.editable && !root.sending ? 1 : 0.48
-                                    activeFocusOnTab: root.editable && !root.sending
-                                    border.width: activeFocus ? 1 : 0
-                                    border.color: Theme.accent
-
-                                    Keys.onPressed: event => {
-                                        if (!root.editable || root.sending)
-                                            return;
-                                        if (event.key === Qt.Key_Return
-                                                || event.key === Qt.Key_Enter
-                                                || event.key === Qt.Key_Space) {
-                                            root.chooseTrait(traitRow.modelData.id,
-                                                traitRow.modelData.currentValue !== true);
-                                            event.accepted = true;
+                                    Behavior on x {
+                                        NumberAnimation {
+                                            duration: T3Theme.fastDuration
+                                            easing.type: Easing.OutCubic
                                         }
                                     }
+                                }
+                            }
 
-                                    Text {
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: 8
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: root.traitLabel(traitRow.modelData)
-                                        font.family: Theme.fontMenu
-                                        font.pixelSize: Theme.fontSecondary
-                                        color: Theme.textMid
-                                    }
-
-                                    Text {
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 8
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: traitRow.modelData.currentValue === true ? "ON" : "OFF"
-                                        font.family: Theme.fontMono
-                                        font.pixelSize: Theme.fontCaption
-                                        font.weight: Theme.weightSemibold
-                                        color: traitRow.modelData.currentValue === true
-                                            ? Theme.accent : Theme.textDim
-                                    }
-
-                                    MouseArea {
-                                        id: traitMouse
-
-                                        anchors.fill: parent
-                                        enabled: root.editable && !root.sending
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            traitToggle.forceActiveFocus();
-                                            root.chooseTrait(traitRow.modelData.id,
-                                                traitRow.modelData.currentValue !== true);
-                                        }
-                                    }
+                            MouseArea {
+                                id: traitMouse
+                                anchors.fill: parent
+                                enabled: root.editable && !root.sending
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    traitToggle.forceActiveFocus();
+                                    root.chooseTrait(traitRow.modelData.id,
+                                        traitRow.modelData.currentValue !== true);
                                 }
                             }
                         }
                     }
                 }
             }
+
+            Text {
+                visible: root.draft.traitError !== ""
+                width: parent.width
+                text: root.draft.traitError ?? ""
+                wrapMode: Text.WordWrap
+                font.family: T3Theme.fontSans
+                font.pixelSize: Theme.fontCaption
+                color: T3Theme.amber
+            }
         }
     }
 
-    Text {
-        visible: root.draft.traitError !== ""
+    Rectangle {
+        id: composerShell
         width: parent.width
-        text: root.draft.traitError ?? ""
-        wrapMode: Text.WordWrap
-        lineHeight: Theme.proseLineHeight
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
-        color: Theme.amber
-    }
+        height: composerContent.implicitHeight + 20
+        radius: T3Theme.composerRadius
+        color: T3Theme.composerGlass
+        border.width: 1
+        border.color: root.overLimit ? T3Theme.redBorder
+            : promptEdit.activeFocus ? T3Theme.focus : T3Theme.borderStrong
 
-    Row {
-        width: parent.width
-
-        Text {
-            text: root.overLimit ? "Prompt too long — open T3 Code"
-                : "Enter to send · Ctrl+Enter for newline"
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            color: root.overLimit ? Theme.redText : Theme.textDim
+        Behavior on border.color {
+            ColorAnimation { duration: T3Theme.fastDuration }
         }
 
-        Item { width: Math.max(0, parent.width - parent.children[0].width - count.width); height: 1 }
+        Rectangle {
+            visible: root.ultrathink
+            anchors.fill: parent
+            radius: parent.radius
+            color: T3Theme.accentSubtle
+        }
 
-        Text {
-            id: count
-            visible: promptEdit.text.length > 100000
-            text: promptEdit.text.length + "/" + T3Code.maxPromptChars
-            font.family: Theme.fontMono
-            font.pixelSize: Theme.fontCaption
-            color: root.overLimit ? Theme.redText : Theme.textDim
+        Column {
+            id: composerContent
+            x: 10
+            y: 10
+            width: parent.width - 20
+            spacing: 7
+
+            Item {
+                id: promptBox
+                width: parent.width
+                height: Math.max(58, Math.min(118, promptEdit.contentHeight + 8))
+
+                Flickable {
+                    id: promptFlick
+                    anchors.fill: parent
+                    contentWidth: width
+                    contentHeight: Math.max(height, promptEdit.contentHeight)
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    TextEdit {
+                        id: promptEdit
+                        property bool syncing: false
+
+                        width: promptFlick.width
+                        height: Math.max(promptFlick.height, contentHeight)
+                        enabled: root.editable && !root.sending
+                        wrapMode: TextEdit.Wrap
+                        selectByMouse: true
+                        Accessible.description: "Enter to send. Control Enter inserts a newline."
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontBody
+                        color: T3Theme.textPrimary
+                        selectionColor: T3Theme.accentSoft
+                        selectedTextColor: T3Theme.textPrimary
+                        onTextChanged: {
+                            if (!syncing && activeFocus)
+                                root.persistPrompt(text);
+                        }
+                        onCursorRectangleChanged: {
+                            if (cursorRectangle.y + cursorRectangle.height > promptFlick.contentY
+                                    + promptFlick.height)
+                                promptFlick.contentY = cursorRectangle.y + cursorRectangle.height
+                                    - promptFlick.height;
+                            else if (cursorRectangle.y < promptFlick.contentY)
+                                promptFlick.contentY = cursorRectangle.y;
+                        }
+
+                        Keys.onPressed: event => {
+                            if (event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
+                                return;
+                            if (event.modifiers & Qt.ControlModifier)
+                                root.insertNewline();
+                            else if (root.sendEnabled && !root.sending && !root.overLimit
+                                    && promptEdit.text.trim() !== "")
+                                root.sendRequested();
+                            event.accepted = true;
+                        }
+
+                        Text {
+                            visible: promptEdit.text === ""
+                            text: "Ask anything…"
+                            font.family: T3Theme.fontSans
+                            font.pixelSize: Theme.fontBody
+                            color: T3Theme.textFaint
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: T3Theme.border
+            }
+
+            Item {
+                width: parent.width
+                height: Theme.inlineActionHeight
+
+                Rectangle {
+                    id: settingsButton
+                    anchors.left: parent.left
+                    anchors.right: accessChip.visible ? accessChip.left : sendButton.left
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: Theme.inlineActionHeight
+                    radius: T3Theme.controlRadius
+                    color: settingsMouse.containsMouse || settingsPresentation.expanded
+                        ? T3Theme.hoverStrong : "transparent"
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Run settings"
+                    Accessible.description: settingsPresentation.accessibleSummary()
+                    Accessible.onPressAction:
+                        settingsPresentation.expanded = !settingsPresentation.expanded
+                    border.width: activeFocus ? 1 : 0
+                    border.color: T3Theme.focus
+
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space) {
+                            settingsPresentation.expanded = !settingsPresentation.expanded;
+                            event.accepted = true;
+                        }
+                    }
+
+                    Sym {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "tune"
+                        size: Theme.iconSmall
+                        symWeight: 450
+                        color: settingsPresentation.expanded
+                            ? T3Theme.accent : T3Theme.textFaint
+                    }
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 28
+                        anchors.right: parent.right
+                        anchors.rightMargin: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: settingsPresentation.compactSummary()
+                        elide: Text.ElideRight
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontCaption
+                        color: T3Theme.textMuted
+                    }
+
+                    MouseArea {
+                        id: settingsMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            settingsButton.forceActiveFocus();
+                            settingsPresentation.expanded = !settingsPresentation.expanded;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: accessChip
+                    visible: root.width >= 405
+                    anchors.right: sendButton.left
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(104, accessText.implicitWidth + 18)
+                    height: Theme.chipInnerHeight
+                    radius: height / 2
+                    color: root.draft?.runtimeMode === "full-access"
+                        ? T3Theme.amberSoft : T3Theme.hover
+                    activeFocusOnTab: visible
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Access: " + settingsPresentation.accessSummary()
+                    Accessible.onPressAction: settingsPresentation.expanded = true
+                    border.width: activeFocus ? 1 : 0
+                    border.color: T3Theme.focus
+
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space) {
+                            settingsPresentation.expanded = true;
+                            event.accepted = true;
+                        }
+                    }
+
+                    Text {
+                        id: accessText
+                        anchors.centerIn: parent
+                        width: Math.min(90, implicitWidth)
+                        text: settingsPresentation.accessSummary()
+                        elide: Text.ElideRight
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightMedium
+                        color: root.draft?.runtimeMode === "full-access"
+                            ? T3Theme.amber : T3Theme.textFaint
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: settingsPresentation.expanded = true
+                    }
+                }
+
+                Rectangle {
+                    id: sendButton
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Theme.inlineActionHeight
+                    height: Theme.inlineActionHeight
+                    radius: width / 2
+                    color: sendMouse.containsMouse && sendMouse.enabled
+                        ? T3Theme.accentHover : T3Theme.accent
+                    opacity: sendMouse.enabled ? 1 : 0.32
+                    activeFocusOnTab: sendMouse.enabled
+                    Accessible.role: Accessible.Button
+                    Accessible.name: root.sendLabel
+                    Accessible.onPressAction: root.sendRequested()
+                    border.width: activeFocus ? 2 : 0
+                    border.color: T3Theme.accentForeground
+
+                    Keys.onPressed: event => {
+                        if (!sendMouse.enabled)
+                            return;
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space) {
+                            root.sendRequested();
+                            event.accepted = true;
+                        }
+                    }
+
+                    Sym {
+                        anchors.centerIn: parent
+                        name: root.sending ? "more_horiz" : "arrow_upward"
+                        size: Theme.iconMedium
+                        symWeight: 600
+                        color: T3Theme.accentForeground
+                    }
+
+                    MouseArea {
+                        id: sendMouse
+                        anchors.fill: parent
+                        enabled: root.sendEnabled && !root.sending && !root.overLimit
+                            && promptEdit.text.trim() !== ""
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.sendRequested()
+                    }
+                }
+            }
+
+            Text {
+                visible: root.overLimit
+                width: parent.width
+                text: "Prompt too long — open T3 Code"
+                font.family: T3Theme.fontSans
+                font.pixelSize: Theme.fontCaption
+                color: T3Theme.red
+            }
         }
     }
 

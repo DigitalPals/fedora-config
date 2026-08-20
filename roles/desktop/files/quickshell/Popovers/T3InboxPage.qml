@@ -9,33 +9,67 @@ Column {
     property int maxHeight: 560
     property bool snoozedExpanded: false
     property bool settledExpanded: false
+    property string searchText: ""
     signal threadRequested(string threadId)
 
-    readonly property var needsYou: T3Code.threads.filter(thread =>
+    readonly property int totalThreadCount: T3Code.threads.length
+        + T3Code.pinnedThreads.length + T3Code.snoozedThreads.length
+        + T3Code.settledThreads.length
+    readonly property var pinnedThreads: filtered(T3Code.pinnedThreads)
+    readonly property var snoozedThreads: filtered(T3Code.snoozedThreads)
+    readonly property var settledThreads: filtered(T3Code.settledThreads)
+    readonly property var needsYou: filtered(T3Code.threads).filter(thread =>
         thread.cls === "attention" || thread.cls === "error")
-    readonly property var readyPlans: T3Code.threads.filter(thread =>
+    readonly property var readyPlans: filtered(T3Code.threads).filter(thread =>
         thread.planReady && thread.cls !== "attention" && thread.cls !== "error")
-    readonly property var runningThreads: T3Code.threads.filter(thread =>
+    readonly property var runningThreads: filtered(T3Code.threads).filter(thread =>
         (thread.cls === "running" || thread.cls === "monitoring") && !thread.planReady)
-    readonly property var quietThreads: T3Code.threads.filter(thread =>
+    readonly property var quietThreads: filtered(T3Code.threads).filter(thread =>
         (thread.cls === "done" || thread.cls === "idle") && !thread.planReady)
 
     spacing: 5
 
-    // The page's own defaults over the shared pill; call sites override further.
-    component Action: ActionButton {}
+    function filtered(threads) {
+        const query = searchText.trim().toLowerCase();
+        if (query === "")
+            return Array.isArray(threads) ? threads : [];
+        return (Array.isArray(threads) ? threads : []).filter(thread =>
+            [thread.title, thread.project, thread.branch, thread.sessionStatus]
+                .some(value => String(value ?? "").toLowerCase().includes(query)));
+    }
+
+    // The page's own T3 defaults over the shell's shared action primitive.
+    component Action: ActionButton {
+        fontFamily: T3Theme.fontSans
+        focusColor: T3Theme.focus
+        buttonRadius: T3Theme.controlRadius
+        tint: T3Theme.textMuted
+        fill: T3Theme.hover
+    }
+
+    component T3Status: StatusPlaceholder {
+        fontFamily: T3Theme.fontSans
+        accentColor: T3Theme.accent
+        accentFill: T3Theme.accentSubtle
+        outlineColor: T3Theme.border
+        primaryTextColor: T3Theme.textSecondary
+        secondaryTextColor: T3Theme.textFaint
+        errorColor: T3Theme.red
+        errorFill: T3Theme.redSoft
+        errorOutline: T3Theme.redBorder
+        transitionDuration: T3Theme.normalDuration
+        fadeDuration: T3Theme.fastDuration
+    }
 
     component GroupHeader: Item {
         id: group
         property string label: ""
         property int count: 0
-        property color tint: Theme.textLow
-        // Explicit rather than derived from `tint`: the two neutral sections
-        // want the hairline they have always had, not textLow at rule alpha.
-        property color rule: Theme.hairlineSoft
+        property color tint: T3Theme.textMuted
+        property color rule: T3Theme.border
 
         width: parent ? parent.width : 0
-        height: Theme.controlHeight
+        height: 30
 
         Text {
             id: groupLabel
@@ -43,10 +77,10 @@ Column {
             anchors.leftMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             text: group.label
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightSemibold
-            font.letterSpacing: 0.9
+            font.letterSpacing: 0.1
             color: group.tint
         }
 
@@ -56,10 +90,11 @@ Column {
             anchors.leftMargin: 7
             anchors.verticalCenter: parent.verticalCenter
             text: group.count
-            font.family: Theme.fontMono
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightMedium
-            color: Theme.textDim
+            font.features: T3Theme.tabularNumberFeatures
+            color: T3Theme.textFaint
         }
 
         Rectangle {
@@ -79,13 +114,20 @@ Column {
         readonly property bool active: thread.lifecycle === "active"
         readonly property bool settled: thread.lifecycle === "settled"
         readonly property bool snoozed: thread.lifecycle === "snoozed"
+        readonly property bool pinned: thread.pinned === true
         readonly property bool quiet: settled || snoozed
             || thread.cls === "done" || thread.cls === "idle"
-        // Actions replace the status word on hover; keyboard focus on the row
-        // or an action keeps them revealed so tab users are not locked out.
+        readonly property bool compact: quiet && !pinned
+        readonly property bool flagged: thread.cls === "error" || thread.cls === "attention"
         readonly property bool revealed: rowHover.hovered || row.activeFocus
             || actionsScope.activeFocus
         readonly property string glyph: T3Code.threadProviderIcon(thread.id)
+        readonly property string statusSymbol: thread.cls === "error" ? "error"
+            : thread.cls === "attention" ? "help"
+            : thread.planReady ? "description"
+            : thread.cls === "running" ? "sync"
+            : thread.cls === "monitoring" ? "visibility"
+            : snoozed ? "snooze" : settled ? "archive" : "check_circle"
         readonly property string statusWord: {
             if (entry.snoozed)
                 return thread.snoozedUntil
@@ -116,20 +158,9 @@ Column {
             }
             return T3Code.relTime(thread.updatedAt);
         }
-        readonly property color statusColor: thread.cls === "error" ? Theme.redText
-            : thread.cls === "attention" ? Theme.amber
-            : entry.quiet ? Theme.textDim
-            : Theme.accent
-        // The row's own chrome, keyed off the same state as the status word so
-        // a row can never read amber on one side and neutral on the other. A
-        // row that wants you is a tinted card; one that is merely busy gets the
-        // rail alone; a quiet one stays flat, or the list stops being a list.
-        readonly property bool flagged: thread.cls === "error" || thread.cls === "attention"
-        readonly property color stateFill: thread.cls === "error" ? Theme.redBgSoft
-            : thread.cls === "attention" ? Theme.amberBgSoft : "transparent"
-        readonly property color stateBorder: thread.cls === "error" ? Theme.redBorder
-            : thread.cls === "attention" ? Theme.amberBorder : "transparent"
-        readonly property bool railed: !entry.quiet || thread.planReady
+        readonly property color statusColor: thread.cls === "error" ? T3Theme.red
+            : thread.cls === "attention" ? T3Theme.amber
+            : entry.quiet ? T3Theme.textFaint : T3Theme.accent
 
         width: parent.width
         spacing: 3
@@ -137,22 +168,21 @@ Column {
         Rectangle {
             id: row
             width: parent.width
-            height: Theme.tileHeight
-            radius: 9
-            color: entry.stateFill
-            border.width: activeFocus || entry.flagged ? 1 : 0
-            border.color: activeFocus ? Theme.accent : entry.stateBorder
+            height: entry.compact ? T3Theme.quietRowHeight : T3Theme.activeRowHeight
+            radius: T3Theme.rowRadius
+            color: entry.flagged ? (entry.thread.cls === "error"
+                    ? T3Theme.redSoft : T3Theme.amberSoft)
+                : entry.compact ? "transparent" : T3Theme.surface
+            border.width: activeFocus || entry.flagged || !entry.compact ? 1 : 0
+            border.color: activeFocus ? T3Theme.focus
+                : entry.thread.cls === "error" ? T3Theme.redBorder
+                : entry.thread.cls === "attention" ? T3Theme.amberBorder : T3Theme.border
             activeFocusOnTab: true
             Accessible.role: Accessible.Button
-            Accessible.name: entry.thread.title
+            Accessible.name: entry.thread.title + ", " + entry.statusWord
             Accessible.onPressAction: root.threadRequested(entry.thread.id)
 
-            // A passive handler keeps the row hovered while the pointer is
-            // over one of its child actions. A MouseArea loses containsMouse
-            // to those children, which made the actions and status alternate.
-            HoverHandler {
-                id: rowHover
-            }
+            HoverHandler { id: rowHover }
 
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -163,97 +193,57 @@ Column {
             }
 
             MouseArea {
-                id: rowMouse
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.threadRequested(entry.thread.id)
             }
 
-            // Hover is its own translucent layer now that `color` carries the
-            // state tint — one Rectangle cannot hold both, and tinting the
-            // hover fill per state would make a flagged row flash on approach.
-            // Declared ahead of the content so it never paints over the title.
             Rectangle {
                 anchors.fill: parent
                 radius: parent.radius
-                color: rowHover.hovered ? Theme.hoverFill : "transparent"
+                color: rowHover.hovered ? T3Theme.hoverStrong : "transparent"
 
                 Behavior on color {
-                    ColorAnimation { duration: Theme.chipFadeDuration }
-                }
-            }
-
-            // State rail. Carries colour on the running and ready rows, which
-            // are too numerous to tint whole but still want to be findable.
-            Rectangle {
-                id: rail
-                property real pulse: 1
-
-                visible: entry.railed
-                x: 3
-                anchors.verticalCenter: parent.verticalCenter
-                width: 3
-                height: parent.height - 18
-                radius: 2
-                color: entry.statusColor
-                // Bound rather than animated directly, so a thread that leaves
-                // "running" mid-fade cannot strand the rail at 0.35.
-                opacity: entry.thread.cls === "running" ? rail.pulse : 1
-
-                SequentialAnimation on pulse {
-                    running: entry.thread.cls === "running"
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.35; duration: 750 }
-                    NumberAnimation { to: 1; duration: 750 }
+                    ColorAnimation { duration: T3Theme.fastDuration }
                 }
             }
 
             Item {
                 id: glyphSlot
-                x: 12
+                x: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: 15
-                height: 15
+                width: entry.compact ? 14 : 18
+                height: width
 
-                // A quiet row dims with opacity rather than swapping in the grey
-                // `-dim` asset: most of the list is quiet most of the time, and
-                // the brand marks are the only provider cue a row has once its
-                // status word has gone neutral.
                 Image {
                     visible: entry.glyph !== ""
                     anchors.fill: parent
-                    sourceSize: Qt.size(30, 30)
+                    sourceSize: Qt.size(36, 36)
                     fillMode: Image.PreserveAspectFit
                     source: entry.glyph !== ""
                         ? Quickshell.shellDir + "/assets/" + entry.glyph + ".svg" : ""
-                    opacity: entry.quiet ? 0.55 : 1
+                    opacity: entry.compact ? 0.58 : 0.92
                 }
 
-                Rectangle {
+                Sym {
                     visible: entry.glyph === ""
                     anchors.centerIn: parent
-                    width: 7
-                    height: 7
-                    radius: 4
-                    color: entry.quiet ? Theme.dotDim : entry.statusColor
+                    name: "terminal"
+                    size: entry.compact ? Theme.iconTiny : Theme.iconSmall
+                    symWeight: 450
+                    color: entry.compact ? T3Theme.textFaint : T3Theme.textMuted
                 }
 
-                // State badge over the mark, for the rows worth spotting in a
-                // scan. The ring is the popover's own background, so the dot
-                // separates from whatever artwork sits under it.
                 Rectangle {
-                    visible: entry.glyph !== ""
-                        && (entry.flagged || entry.thread.cls === "running"
-                            || entry.thread.cls === "monitoring")
+                    visible: entry.flagged || entry.thread.cls === "running"
+                        || entry.thread.cls === "monitoring" || entry.thread.planReady
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     anchors.margins: -2
-                    width: 8
-                    height: 8
-                    radius: 4
-                    // Punches the status dot out of the card behind it, so it
-                    // takes the card's own glass rather than an opaque disc.
-                    color: Theme.surfaceStrong
+                    width: 9
+                    height: 9
+                    radius: 5
+                    color: entry.compact ? T3Theme.canvas : row.color
 
                     Rectangle {
                         anchors.centerIn: parent
@@ -269,9 +259,9 @@ Column {
                 anchors.left: glyphSlot.right
                 anchors.leftMargin: 10
                 anchors.right: parent.right
-                anchors.rightMargin: 8
+                anchors.rightMargin: 9
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
+                spacing: 2
 
                 Item {
                     width: parent.width
@@ -286,10 +276,10 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         text: entry.thread.title
                         elide: Text.ElideRight
-                        font.family: Theme.fontMenu
+                        font.family: T3Theme.fontSans
                         font.pixelSize: Theme.fontBody
-                        font.weight: entry.quiet ? Theme.weightMedium : Theme.weightSemibold
-                        color: entry.quiet ? Theme.textMid : Theme.textHi
+                        font.weight: entry.compact ? Theme.weightMedium : Theme.weightSemibold
+                        color: entry.compact ? T3Theme.textSecondary : T3Theme.textPrimary
                     }
 
                     Item {
@@ -297,19 +287,34 @@ Column {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         width: entry.revealed ? actionsScope.implicitWidth
-                            : statusText.implicitWidth
+                            : statusRow.implicitWidth
                         height: parent.height
 
-                        Text {
-                            id: statusText
+                        Row {
+                            id: statusRow
                             visible: !entry.revealed
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            text: entry.statusWord
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightMedium
-                            color: entry.statusColor
+                            spacing: 4
+
+                            Sym {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: entry.statusSymbol
+                                size: Theme.iconTiny
+                                symWeight: 500
+                                color: entry.statusColor
+                            }
+
+                            Text {
+                                id: statusText
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: entry.statusWord
+                                font.family: T3Theme.fontSans
+                                font.pixelSize: Theme.fontCaption
+                                font.weight: Theme.weightMedium
+                                font.features: T3Theme.tabularNumberFeatures
+                                color: entry.statusColor
+                            }
                         }
 
                         FocusScope {
@@ -327,6 +332,7 @@ Column {
                                 Action {
                                     visible: T3Code.supportsPinning
                                     revealed: entry.revealed
+                                    hPadding: 12
                                     readonly property string kind: entry.thread.pinned
                                         ? "unpin" : "pin"
                                     label: T3Code.actionPending(kind, entry.thread.id, "")
@@ -334,53 +340,53 @@ Column {
                                     enabled: T3Code.canDispatch
                                         && !T3Code.actionPending(kind, entry.thread.id, "")
                                     onTriggered: entry.thread.pinned
-                                        ? T3Code.unpin(entry.thread.id)
-                                        : T3Code.pin(entry.thread.id)
+                                        ? T3Code.unpin(entry.thread.id) : T3Code.pin(entry.thread.id)
                                 }
 
                                 Action {
                                     visible: entry.active && T3Code.supportsSettlement
                                     revealed: entry.revealed
+                                    hPadding: 12
                                     label: T3Code.actionPending("settle", entry.thread.id, "")
                                         ? "…" : "Settle"
                                     enabled: T3Code.canDispatch && entry.thread.canLifecycle
                                         && !T3Code.actionPending("settle", entry.thread.id, "")
-                                    tint: Theme.accent
-                                    fill: Theme.accentBg
+                                    tint: T3Theme.accent
+                                    fill: T3Theme.accentSoft
                                     onTriggered: T3Code.settle(entry.thread.id)
                                 }
 
                                 Action {
                                     visible: entry.settled && T3Code.supportsSettlement
                                     revealed: entry.revealed
+                                    hPadding: 12
                                     label: T3Code.actionPending("unsettle", entry.thread.id, "")
                                         ? "…" : "Unsettle"
                                     enabled: T3Code.canDispatch
                                         && !T3Code.actionPending("unsettle", entry.thread.id, "")
-                                    tint: Theme.accent
-                                    fill: Theme.accentBg
+                                    tint: T3Theme.accent
+                                    fill: T3Theme.accentSoft
                                     onTriggered: T3Code.unsettle(entry.thread.id)
                                 }
 
                                 Action {
                                     visible: entry.snoozed && T3Code.supportsSnooze
                                     revealed: entry.revealed
+                                    hPadding: 12
                                     label: T3Code.actionPending("unsnooze", entry.thread.id, "")
                                         ? "…" : "Wake"
                                     enabled: T3Code.canDispatch
                                         && !T3Code.actionPending("unsnooze", entry.thread.id, "")
-                                    tint: Theme.accent
-                                    fill: Theme.accentBg
+                                    tint: T3Theme.accent
+                                    fill: T3Theme.accentSoft
                                     onTriggered: T3Code.unsnooze(entry.thread.id)
                                 }
 
                                 Action {
                                     revealed: entry.revealed
-                                    label: "↗"
-                                    // The same control on the thread page is
-                                    // accent (T3ThreadPage.qml:445); a grey
-                                    // twin here read as a disabled sibling.
-                                    tint: Theme.accent
+                                    hPadding: 12
+                                    label: "Open"
+                                    tint: T3Theme.accent
                                     onTriggered: {
                                         Quickshell.execDetached(["xdg-open",
                                             T3Code.threadUrl(entry.thread.id)]);
@@ -393,6 +399,7 @@ Column {
                 }
 
                 Text {
+                    visible: !entry.compact
                     width: parent.width
                     text: {
                         const parts = [];
@@ -410,18 +417,17 @@ Column {
                         return parts.join(" · ");
                     }
                     elide: Text.ElideRight
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontSecondary
-                    color: entry.thread.cls === "error" ? Theme.redText : Theme.textLow
+                    color: entry.thread.cls === "error" ? T3Theme.red : T3Theme.textFaint
                 }
             }
         }
 
         Text {
             visible: text !== ""
-            // Aligned under the title, which the rail pushed 4px right.
-            x: 37
-            width: parent.width - 43
+            x: 38
+            width: parent.width - 46
             text: {
                 for (const kind of ["pin", "unpin", "settle", "unsettle", "snooze", "unsnooze"]) {
                     const error = T3Code.actionError(kind, entry.thread.id, "");
@@ -434,9 +440,9 @@ Column {
             lineHeight: Theme.proseLineHeight
             maximumLineCount: 2
             elide: Text.ElideRight
-            font.family: Theme.fontMenu
+            font.family: T3Theme.fontSans
             font.pixelSize: Theme.fontCaption
-            color: Theme.redText
+            color: T3Theme.red
         }
     }
 
@@ -448,16 +454,16 @@ Column {
         property bool subdued: false
         signal toggled()
 
-        height: Theme.controlHeight
-        radius: 7
-        color: drawerMouse.containsMouse ? Theme.hoverFill
-            : drawer.subdued ? "transparent" : Theme.cardFill
+        height: 36
+        radius: T3Theme.controlRadius
+        color: drawerMouse.containsMouse ? T3Theme.hoverStrong
+            : drawer.subdued ? "transparent" : T3Theme.surface
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
         Accessible.name: drawer.label + ", " + drawer.count
         Accessible.onPressAction: drawer.toggled()
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: T3Theme.focus
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -476,30 +482,31 @@ Column {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: drawer.label
-                font.family: Theme.fontMenu
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontSecondary
                 font.weight: drawer.subdued ? Theme.weightRegular : Theme.weightSemibold
-                color: drawer.subdued ? Theme.textFaint : Theme.textLow
+                color: drawer.subdued ? T3Theme.textFaint : T3Theme.textMuted
             }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: drawer.count
-                font.family: Theme.fontMono
+                font.family: T3Theme.fontSans
                 font.pixelSize: Theme.fontCaption
                 font.weight: Theme.weightMedium
-                color: drawer.subdued ? Theme.textFaint : Theme.textDim
+                font.features: T3Theme.tabularNumberFeatures
+                color: T3Theme.textFaint
             }
         }
 
-        Text {
+        Sym {
             anchors.right: parent.right
             anchors.rightMargin: 11
             anchors.verticalCenter: parent.verticalCenter
-            text: drawer.expanded ? "▴" : "▾"
-            font.family: Theme.fontMono
-            font.pixelSize: Theme.fontCaption
-            color: drawer.subdued ? Theme.textFaint : Theme.textDim
+            name: drawer.expanded ? "expand_less" : "expand_more"
+            size: Theme.iconSmall
+            symWeight: 450
+            color: T3Theme.textFaint
         }
 
         MouseArea {
@@ -531,6 +538,69 @@ Column {
                 width: flick.width - (flick.contentHeight > flick.height ? 5 : 0)
                 spacing: 4
 
+                Rectangle {
+                    id: searchBox
+                    visible: root.totalThreadCount > 6 || root.searchText !== ""
+                    width: parent.width
+                    height: 36
+                    radius: T3Theme.controlRadius
+                    color: T3Theme.surface
+                    border.width: searchInput.activeFocus ? 1 : 0
+                    border.color: T3Theme.focus
+
+                    Sym {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "search"
+                        size: Theme.iconSmall
+                        symWeight: 450
+                        color: T3Theme.textFaint
+                    }
+
+                    TextInput {
+                        id: searchInput
+                        anchors.left: parent.left
+                        anchors.leftMargin: 32
+                        anchors.right: clearSearch.visible ? clearSearch.left : parent.right
+                        anchors.rightMargin: clearSearch.visible ? 4 : 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.searchText
+                        onTextEdited: root.searchText = text
+                        clip: true
+                        selectByMouse: true
+                        font.family: T3Theme.fontSans
+                        font.pixelSize: Theme.fontSecondary
+                        color: T3Theme.textPrimary
+
+                        Text {
+                            visible: searchInput.text === ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Search threads"
+                            font.family: T3Theme.fontSans
+                            font.pixelSize: Theme.fontSecondary
+                            color: T3Theme.textFaint
+                        }
+                    }
+
+                    IconButton {
+                        id: clearSearch
+                        visible: searchInput.text !== ""
+                        anchors.right: parent.right
+                        anchors.rightMargin: 5
+                        anchors.verticalCenter: parent.verticalCenter
+                        controlSize: 26
+                        symbol: "close"
+                        accessibleName: "Clear thread search"
+                        tint: T3Theme.textFaint
+                        onTriggered: {
+                            root.searchText = "";
+                            searchInput.text = "";
+                            searchInput.forceActiveFocus();
+                        }
+                    }
+                }
+
                 Text {
                     visible: T3Code.readOnly
                     width: parent.width
@@ -539,12 +609,12 @@ Column {
                     topPadding: 5
                     bottomPadding: 5
                     text: "Read-only access · actions are disabled"
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontSecondary
-                    color: Theme.amber
+                    color: T3Theme.amber
                 }
 
-                StatusPlaceholder {
+                T3Status {
                     shown: T3Code.state !== "connected"
                     width: parent.width
                     kind: T3Code.cloudLoginRunning || T3Code.state === "connecting" ? "loading"
@@ -583,8 +653,8 @@ Column {
                         : "Sign in"
                     hPadding: 22
                     enabled: !T3Code.cloudLoginRunning
-                    tint: Theme.accent
-                    fill: Theme.accentBgSoft
+                    tint: T3Theme.accent
+                    fill: T3Theme.accentSubtle
                     onTriggered: T3Code.loginCloud()
                 }
 
@@ -598,9 +668,9 @@ Column {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontCaption
-                    color: Theme.textFaint
+                    color: T3Theme.textFaint
                 }
 
                 Text {
@@ -611,9 +681,9 @@ Column {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontCaption
-                    color: Theme.textFaint
+                    color: T3Theme.textFaint
                 }
 
                 Text {
@@ -623,12 +693,12 @@ Column {
                     text: T3Code.cloudLoginError
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    font.family: Theme.fontMenu
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontCaption
-                    color: Theme.redText
+                    color: T3Theme.red
                 }
 
-                StatusPlaceholder {
+                T3Status {
                     shown: T3Code.state === "connected" && T3Code.shellReady
                         && T3Code.threads.length === 0 && T3Code.pinnedThreads.length === 0
                         && T3Code.snoozedThreads.length === 0
@@ -638,25 +708,41 @@ Column {
                     title: "No sessions"
                 }
 
+                Text {
+                    visible: root.searchText !== "" && root.pinnedThreads.length === 0
+                        && root.needsYou.length === 0 && root.readyPlans.length === 0
+                        && root.runningThreads.length === 0 && root.quietThreads.length === 0
+                        && root.snoozedThreads.length === 0 && root.settledThreads.length === 0
+                    width: parent.width
+                    topPadding: 24
+                    bottomPadding: 24
+                    text: "No threads match “" + root.searchText + "”"
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontSecondary
+                    color: T3Theme.textFaint
+                }
+
                 // Pinned first, like the reference sidebar. Rows keep their
                 // live status word, so a pinned thread that needs you still
                 // reads amber — it is just anchored here instead of sorted.
                 GroupHeader {
-                    visible: T3Code.pinnedThreads.length > 0
-                    label: "PINNED"
-                    count: T3Code.pinnedThreads.length
+                    visible: root.pinnedThreads.length > 0
+                    label: "Pinned"
+                    count: root.pinnedThreads.length
                 }
                 Repeater {
-                    model: T3Code.pinnedThreads
+                    model: root.pinnedThreads
                     delegate: ThreadRow { required property var modelData; thread: modelData }
                 }
 
                 GroupHeader {
                     visible: root.needsYou.length > 0
-                    label: "NEEDS YOU"
+                    label: "Needs you"
                     count: root.needsYou.length
-                    tint: Theme.amber
-                    rule: Theme.amberBorder
+                    tint: T3Theme.amber
+                    rule: T3Theme.amberBorder
                 }
                 Repeater {
                     model: root.needsYou
@@ -665,10 +751,10 @@ Column {
 
                 GroupHeader {
                     visible: root.readyPlans.length > 0
-                    label: "READY TO REVIEW"
+                    label: "Ready to review"
                     count: root.readyPlans.length
-                    tint: Theme.accent
-                    rule: Theme.accentAlpha(0.3)
+                    tint: T3Theme.accent
+                    rule: T3Theme.accentSoft
                 }
                 Repeater {
                     model: root.readyPlans
@@ -677,7 +763,7 @@ Column {
 
                 GroupHeader {
                     visible: root.runningThreads.length > 0
-                    label: "WORKING"
+                    label: "Working"
                     count: root.runningThreads.length
                 }
                 Repeater {
@@ -692,29 +778,29 @@ Column {
 
                 Row {
                     id: drawerRow
-                    visible: T3Code.snoozedThreads.length > 0 || T3Code.settledThreads.length > 0
+                    visible: root.snoozedThreads.length > 0 || root.settledThreads.length > 0
                     width: parent.width
                     spacing: 6
 
-                    readonly property bool both: T3Code.snoozedThreads.length > 0
-                        && T3Code.settledThreads.length > 0
+                    readonly property bool both: root.snoozedThreads.length > 0
+                        && root.settledThreads.length > 0
 
                     DrawerHeader {
-                        visible: T3Code.snoozedThreads.length > 0
+                        visible: root.snoozedThreads.length > 0
                         width: drawerRow.both ? (drawerRow.width - drawerRow.spacing) / 2
                             : drawerRow.width
                         label: "Snoozed"
-                        count: T3Code.snoozedThreads.length
+                        count: root.snoozedThreads.length
                         expanded: root.snoozedExpanded
                         onToggled: root.snoozedExpanded = !root.snoozedExpanded
                     }
 
                     DrawerHeader {
-                        visible: T3Code.settledThreads.length > 0
+                        visible: root.settledThreads.length > 0
                         width: drawerRow.both ? (drawerRow.width - drawerRow.spacing) / 2
                             : drawerRow.width
                         label: "Settled"
-                        count: T3Code.settledThreads.length
+                        count: root.settledThreads.length
                         expanded: root.settledExpanded
                         subdued: true
                         onToggled: root.settledExpanded = !root.settledExpanded
@@ -722,33 +808,33 @@ Column {
                 }
 
                 Repeater {
-                    model: root.snoozedExpanded ? T3Code.snoozedThreads.slice(0, 5) : []
+                    model: root.snoozedExpanded ? root.snoozedThreads.slice(0, 5) : []
                     delegate: ThreadRow { required property var modelData; thread: modelData }
                 }
 
                 Text {
-                    visible: root.snoozedExpanded && T3Code.snoozedThreads.length > 5
+                    visible: root.snoozedExpanded && root.snoozedThreads.length > 5
                     width: parent.width
                     leftPadding: 9
-                    text: "+" + (T3Code.snoozedThreads.length - 5) + " more in T3 Code"
-                    font.family: Theme.fontMenu
+                    text: "+" + (root.snoozedThreads.length - 5) + " more in T3 Code"
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontCaption
-                    color: Theme.textDim
+                    color: T3Theme.textFaint
                 }
 
                 Repeater {
-                    model: root.settledExpanded ? T3Code.settledThreads.slice(0, 5) : []
+                    model: root.settledExpanded ? root.settledThreads.slice(0, 5) : []
                     delegate: ThreadRow { required property var modelData; thread: modelData }
                 }
 
                 Text {
-                    visible: root.settledExpanded && T3Code.settledThreads.length > 5
+                    visible: root.settledExpanded && root.settledThreads.length > 5
                     width: parent.width
                     leftPadding: 9
-                    text: "+" + (T3Code.settledThreads.length - 5) + " more in T3 Code"
-                    font.family: Theme.fontMenu
+                    text: "+" + (root.settledThreads.length - 5) + " more in T3 Code"
+                    font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontCaption
-                    color: Theme.textDim
+                    color: T3Theme.textFaint
                 }
             }
         }
@@ -756,6 +842,8 @@ Column {
         ScrollChrome {
             anchors.fill: parent
             target: flick
+            edgeColor: T3Theme.canvas
+            thumbColor: T3Theme.accent
         }
     }
 }
