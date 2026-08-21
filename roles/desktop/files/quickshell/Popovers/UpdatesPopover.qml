@@ -18,7 +18,9 @@ Surface {
 
     readonly property string mode: Updates.runState
 
-    implicitWidth: mode === "idle" ? 340 : 392
+    // The run views hold a transaction table; full package names are the
+    // point, so they take the wide panel width.
+    implicitWidth: mode === "idle" ? 340 : Theme.popWideWidth
     spacing: 10
 
     readonly property var rows: {
@@ -428,6 +430,9 @@ Surface {
         property int rc: 0
         property string idleText
         property string doneText
+        // "downloading" / "installing" beside the dnf counter — the two
+        // counters count different things, so the word is load-bearing.
+        property string phaseWord: ""
 
         width: parent.width
         spacing: 7
@@ -479,7 +484,8 @@ Surface {
                 text: stepLine.finished
                     ? (stepLine.rc === 0 ? stepLine.doneText : "failed")
                     : stepLine.total > 0
-                    ? stepLine.cur + " / " + stepLine.total + " · "
+                    ? (stepLine.phaseWord !== "" ? stepLine.phaseWord + " " : "")
+                        + stepLine.cur + " / " + stepLine.total + " · "
                         + Math.floor(stepLine.cur * 100 / stepLine.total) + "%"
                     : stepLine.idleText
                 font.family: Theme.fontMono
@@ -537,7 +543,10 @@ Surface {
                 total: Updates.dnfTotal
                 finished: Updates.runDnfDone
                 rc: Updates.runDnfRc
-                idleText: "downloading & resolving…"
+                phaseWord: Updates.dnfPhase === "installing"
+                    ? "installing" : "downloading"
+                idleText: Updates.dnfPhase === "installing"
+                    ? "preparing…" : "downloading & resolving…"
                 doneText: Updates.runPkgCount > 0
                     ? Updates.runPkgCount + " packages" : "completed"
             }
@@ -789,8 +798,9 @@ Surface {
             ListView {
                 id: feedView
 
-                // Pinned to the tail while the run streams; scrolling away
-                // parks it and the pill below offers the way back.
+                // Tracks the row the transaction is working through; scrolling
+                // away parks it and the pill below offers the way back. The
+                // plan itself lands top-down, so appends never scroll.
                 property bool following: true
 
                 width: parent.width
@@ -805,9 +815,16 @@ Surface {
                     if (atYEnd)
                         following = true;
                 }
-                onCountChanged: {
-                    if (following && root.mode === "running")
-                        Qt.callLater(() => feedView.positionViewAtEnd());
+
+                Connections {
+                    target: Updates
+
+                    function onLastDoneIndexChanged() {
+                        if (feedView.following && root.mode === "running"
+                                && Updates.lastDoneIndex >= 0)
+                            feedView.positionViewAtIndex(Updates.lastDoneIndex,
+                                ListView.Contain);
+                    }
                 }
 
                 delegate: Row {
@@ -816,19 +833,31 @@ Surface {
                     required property var model
                     required property int index
 
-                    readonly property bool newest: index === feedView.count - 1
-                        && root.mode === "running"
+                    readonly property bool newest: root.mode === "running"
+                        && index === Updates.lastDoneIndex
+
+                    // Planned rows wait at half strength and light up as the
+                    // transaction reaches them — the whole plan is readable
+                    // from the start, nothing truncated to make it "stream".
+                    opacity: root.mode === "running" && !model.done ? 0.45 : 1
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: Theme.chipFadeDuration }
+                    }
 
                     // Widths come from TextMetrics, never from an elided
                     // Text's own implicitWidth — binding width to that loops,
-                    // because eliding re-lays the text out.
+                    // because eliding re-lays the text out. The name is the
+                    // identity, so it is never the part that gives way: the
+                    // version yields, down to hiding entirely on the rare row
+                    // where the name alone fills the line.
                     readonly property real textBudget: width - 26 - 11
                         - spacing * 3
+                    readonly property real nameWidth: Math.min(
+                        nameMetrics.advanceWidth + 2, textBudget)
                     readonly property real verWidth: model.ver === "" ? 0
-                        : Math.min(verMetrics.advanceWidth + 2, textBudget * 0.5)
-                    readonly property real nameWidth: Math.max(0,
-                        Math.min(nameMetrics.advanceWidth + 2,
-                            textBudget - verWidth))
+                        : Math.max(0, Math.min(verMetrics.advanceWidth + 2,
+                            textBudget - nameWidth))
 
                     width: feedView.width
                     height: 21
@@ -887,7 +916,7 @@ Surface {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         width: feedRow.verWidth
-                        visible: feedRow.model.ver !== ""
+                        visible: feedRow.model.ver !== "" && feedRow.verWidth > 24
                         text: feedRow.model.ver
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.fontTiny

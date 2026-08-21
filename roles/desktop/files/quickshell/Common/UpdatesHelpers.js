@@ -29,17 +29,57 @@ function shouldNotify(complete, hasBaseline, previousTotal, nextTotal, enabled) 
 }
 
 // ---- native run parsing ----------------------------------------------------
-// The in-shell upgrade streams the same non-TTY dnf5/flatpak output the update
-// script's dashboard greps; these turn its lines into typeset feed rows.
+// The in-shell upgrade streams the same non-TTY dnf5 output the update
+// script's dashboard greps. Two sources, two jobs: the resolved transaction
+// TABLE ("Upgrading:" sections) carries every package's full name and
+// version and is the only place they appear untruncated — dnf5 clips the
+// bracketed progress lines to a fixed column — so the table builds the feed,
+// and the bracketed lines only advance progress and mark table rows done.
 
-// Architecture suffixes dnf appends to a transaction element.
-var NEVRA_ARCHES = ["x86_64", "noarch", "i686", "aarch64", "riscv64",
-    "ppc64le", "s390x"];
+// Table section headings, and the feed verb each one's rows become.
+var DNF_TABLE_SECTIONS = {
+    "Upgrading": "up",
+    "Installing": "add",
+    "Installing dependencies": "add",
+    "Installing weak dependencies": "add",
+    "Installing group/module packages": "add",
+    "Reinstalling": "up",
+    "Downgrading": "down",
+    "Removing": "del",
+    "Removing dependent packages": "del",
+    "Removing unused dependencies": "del"
+};
 
-// Transaction verbs that name a package, and the feed verb each becomes.
-// Non-package bracketed lines (Prepare, Verify, scriptlets) still advance the
-// progress counter but add no row; so does Cleanup, which would otherwise
-// shadow every upgrade with a second row for the outgoing version.
+// A table section heading, e.g. "Upgrading:" -> "up". Null otherwise.
+function dnfSection(line) {
+    var match = String(line || "").match(/^([A-Za-z][A-Za-z /-]*):\s*$/);
+    if (!match)
+        return null;
+    return DNF_TABLE_SECTIONS.hasOwnProperty(match[1])
+        ? DNF_TABLE_SECTIONS[match[1]] : null;
+}
+
+// One package row inside a table section:
+//   " firefox    x86_64 0:154.0-3.fc44  updates  287.1 MiB"
+// Exactly one leading space; the "   replacing …" continuations sit deeper
+// and are the outgoing versions, not packages of their own. `evr` keeps the
+// epoch for matching against progress lines; `version` drops it for people.
+function dnfTableRow(line) {
+    var text = String(line || "");
+    var match = text.match(/^ (\S+) +(\S+) +(\S+) +\S/);
+    if (!match || /^ {2,}/.test(text))
+        return null;
+    return {
+        name: match[1],
+        arch: match[2],
+        evr: match[3],
+        version: match[3].replace(/^[0-9]+:/, "")
+    };
+}
+
+// The running phase's package verbs. Cleanup of a replaced version prints as
+// "Removing old-evr…" here; it never matches a table row (the table carries
+// the incoming evr), so it advances progress without touching the feed.
 var DNF_RUN_VERBS = {
     "Upgrading": "up",
     "Installing": "add",
@@ -47,55 +87,45 @@ var DNF_RUN_VERBS = {
     "Downgrading": "down",
     "Removing": "del",
     "Erasing": "del",
-    "Replacing": "del"
+    "Cleanup": "del"
 };
 
-// "kernel-core-0:7.1.9-200.fc44.x86_64" -> { name, version }. NEVRA splits
-// from the right: release after the last dash, version after the one before
-// it, the optional epoch folded away since nobody reads "0:" in a feed.
-function splitNevra(text) {
-    var value = String(text || "").trim();
-    for (var i = 0; i < NEVRA_ARCHES.length; i++) {
-        var suffix = "." + NEVRA_ARCHES[i];
-        if (value.length > suffix.length
-                && value.slice(-suffix.length) === suffix) {
-            value = value.slice(0, -suffix.length);
-            break;
-        }
-    }
-    var release = value.lastIndexOf("-");
-    var version = release > 0 ? value.lastIndexOf("-", release - 1) : -1;
-    if (version <= 0)
-        return { name: value, version: "" };
-    return {
-        name: value.slice(0, version),
-        version: value.slice(version + 1).replace(/^[0-9]+:/, "")
-    };
-}
-
-// One line of `dnf upgrade` output. Null for anything outside the running
-// transaction; a bare { cur, total } for a transaction step that names no
-// package, so callers can advance progress without drawing a row.
+// One bracketed progress line, download or running phase:
+//   "[10/28] less-0:704-4.fc44.x86_64  100% | 2.2 MiB/s | …"
+//   "[11/58] Upgrading less-0:704-4.fc 100% | 29.5 MiB/s | …"
+// Null off-format. `token` is dnf's (column-clipped) package text when the
+// body names one through a verb; empty for Verify/Prepare/download lines.
 function parseDnfRunLine(line) {
     var match = String(line || "").replace(/\r/g, "")
-        .match(/^\[ *([0-9]+)\/([0-9]+)\] +(.*)$/);
+        .match(/^\[ *([0-9]+)\/ *([0-9]+)\] +(.*)$/);
     if (!match)
         return null;
     var out = {
         cur: parseInt(match[1], 10),
         total: parseInt(match[2], 10),
         verb: "",
-        name: "",
-        version: ""
+        token: ""
     };
-    var action = match[3].trim().match(/^([A-Za-z]+):? +(\S+)/);
+    var action = match[3].match(/^([A-Za-z]+) +(\S+)/);
     if (action && DNF_RUN_VERBS.hasOwnProperty(action[1])) {
-        var nevra = splitNevra(action[2]);
         out.verb = DNF_RUN_VERBS[action[1]];
-        out.name = nevra.name;
-        out.version = nevra.version;
+        out.token = action[2];
     }
     return out;
+}
+
+// Does dnf's clipped progress token name this table row? The full identity
+// is "name-evr"; the token is that string cut anywhere (possibly extending
+// into ".arch"), so containment must hold in whichever direction is longer.
+// "less-0:704…" never matches the "less-color-0:704…" row and vice versa.
+function rowMatchesToken(name, evr, token) {
+    if (typeof token !== "string" || token === "")
+        return false;
+    var key = name + "-" + evr;
+    return token.length >= key.length
+        ? token.slice(0, key.length + 1) === key + "."
+            || token === key
+        : key.slice(0, token.length) === token;
 }
 
 // Application ids read as their most distinctive segment: org.signal.Signal
@@ -184,8 +214,10 @@ var exported = {
     dnfNames: dnfNames,
     flatpakNames: flatpakNames,
     shouldNotify: shouldNotify,
-    splitNevra: splitNevra,
+    dnfSection: dnfSection,
+    dnfTableRow: dnfTableRow,
     parseDnfRunLine: parseDnfRunLine,
+    rowMatchesToken: rowMatchesToken,
     flatpakRefName: flatpakRefName,
     parseFlatpakRunLine: parseFlatpakRunLine,
     runPercent: runPercent,

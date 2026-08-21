@@ -207,6 +207,12 @@ Singleton {
     property int runElapsed: 0
     property int runDuration: 0
     property string runStamp: ""
+    // resolving -> downloading -> installing, keyed off dnf's own milestones.
+    property string dnfPhase: "resolving"
+    // The table section currently streaming in; "" outside the table.
+    property string tableVerb: ""
+    // Feed index of the row the transaction most recently completed.
+    property int lastDoneIndex: -1
     property int dnfCur: 0
     property int dnfTotal: 0
     property int fpCur: 0
@@ -262,6 +268,9 @@ Singleton {
         runStamp = UpdatesHelpers.logStamp(new Date());
         runStartedAt = Date.now();
         runElapsed = 0;
+        dnfPhase = "resolving";
+        tableVerb = "";
+        lastDoneIndex = -1;
         runDnfDone = false;
         runFpDone = !flatpakEnabled;
         runState = "running";
@@ -275,27 +284,71 @@ Singleton {
         const text = String(line).replace(/\r/g, "");
         if (text.trim() !== "")
             rawTail = rawTail.concat([text]).slice(-10);
+
+        // The resolved table is the one place dnf prints every package's
+        // full name and version, so its rows build the feed; the bracketed
+        // progress lines below are column-clipped by dnf and only advance
+        // the counter and tick rows off.
+        const section = UpdatesHelpers.dnfSection(text);
+        if (section !== null) {
+            tableVerb = section;
+            return;
+        }
+        if (tableVerb !== "") {
+            const row = UpdatesHelpers.dnfTableRow(text);
+            if (row !== null) {
+                feedModel.append({ tag: "dnf", verb: tableVerb, name: row.name,
+                    ver: row.version, evr: row.evr, done: false });
+                if (tableVerb === "up")
+                    upCount++;
+                else if (tableVerb === "del")
+                    delCount++;
+                else
+                    addCount++;
+                if (kernelPending === "")
+                    kernelPending = UpdatesHelpers.kernelHint(row.name,
+                        tableVerb, row.version);
+                if (tableVerb !== "del" && topNames.length < 3
+                        && topNames.indexOf(row.name) === -1)
+                    topNames = topNames.concat([row.name]);
+                return;
+            }
+            // Any other column-0 line ("Transaction Summary:") closes the
+            // section; the "   replacing …" continuations sit deeper and do
+            // not, so an interleaved outgoing version cannot end the table.
+            if (/^\S/.test(text))
+                tableVerb = "";
+        }
+
+        if (text === "Running transaction") {
+            dnfPhase = "installing";
+            dnfCur = 0;
+            dnfTotal = 0;
+            return;
+        }
+
         const step = UpdatesHelpers.parseDnfRunLine(text);
         if (step === null)
             return;
+        if (dnfPhase === "resolving")
+            dnfPhase = "downloading";
         dnfCur = step.cur;
         dnfTotal = step.total;
-        if (step.verb === "")
+        if (step.token === "")
             return;
-        feedModel.append({ tag: "dnf", verb: step.verb, name: step.name,
-            ver: step.version });
-        if (step.verb === "up")
-            upCount++;
-        else if (step.verb === "add" || step.verb === "down")
-            addCount++;
-        else
-            delCount++;
-        if (kernelPending === "")
-            kernelPending = UpdatesHelpers.kernelHint(step.name, step.verb,
-                step.version);
-        if (step.verb !== "del" && topNames.length < 3
-                && topNames.indexOf(step.name) === -1)
-            topNames = topNames.concat([step.name]);
+        // Cleanup of a replaced version carries the outgoing evr and matches
+        // nothing here — progress moves, the feed stays truthful.
+        for (let i = 0; i < feedModel.count; i++) {
+            const entry = feedModel.get(i);
+            if (entry.tag !== "dnf" || entry.done)
+                continue;
+            if (UpdatesHelpers.rowMatchesToken(entry.name, entry.evr,
+                    step.token)) {
+                feedModel.setProperty(i, "done", true);
+                lastDoneIndex = i;
+                break;
+            }
+        }
     }
 
     function fpLine(line) {
@@ -307,7 +360,8 @@ Singleton {
             return;
         }
         feedModel.append({ tag: "fpk", verb: parsed.verb, name: parsed.name,
-            ver: "" });
+            ver: "", evr: "", done: true });
+        lastDoneIndex = feedModel.count - 1;
         if (!parsed.runtime) {
             fpCur = Math.min(fpCur + 1, Math.max(fpTotal, fpCur + 1));
             appCount++;

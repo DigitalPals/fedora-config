@@ -41,28 +41,62 @@ test("only a complete post-baseline zero-to-positive transition notifies", () =>
     assert.equal(H.shouldNotify(true, true, 0, 3, false), false);
 });
 
-test("NEVRA elements split into a name and a readable version", () => {
-    assert.deepEqual(H.splitNevra("kernel-core-0:7.1.9-200.fc44.x86_64"),
-        { name: "kernel-core", version: "7.1.9-200.fc44" });
-    assert.deepEqual(H.splitNevra("java-21-openjdk-headless-1:21.0.9.0.10-1.fc44.x86_64"),
-        { name: "java-21-openjdk-headless", version: "21.0.9.0.10-1.fc44" });
-    assert.deepEqual(H.splitNevra("python3-foo+bar-1.4-2.fc44.noarch"),
-        { name: "python3-foo+bar", version: "1.4-2.fc44" });
-    assert.deepEqual(H.splitNevra("dashless"),
-        { name: "dashless", version: "" });
+test("table sections map to feed verbs and reject prose", () => {
+    assert.equal(H.dnfSection("Upgrading:"), "up");
+    assert.equal(H.dnfSection("Installing dependencies:"), "add");
+    assert.equal(H.dnfSection("Removing unused dependencies:"), "del");
+    assert.equal(H.dnfSection("Transaction Summary:"), null);
+    assert.equal(H.dnfSection(" firefox   x86_64 0:154.0-3.fc44 updates 287.1 MiB"),
+        null);
+    assert.equal(H.dnfSection(""), null);
 });
 
-test("dnf transaction lines advance progress; only package verbs draw rows", () => {
-    assert.deepEqual(H.parseDnfRunLine("[ 12/226] Upgrading kernel-core-0:7.1.9-200.fc44.x86_64"),
-        { cur: 12, total: 226, verb: "up", name: "kernel-core", version: "7.1.9-200.fc44" });
-    assert.deepEqual(H.parseDnfRunLine("[226/226] Removing kernel-core-0:7.1.4-100.fc44.x86_64"),
-        { cur: 226, total: 226, verb: "del", name: "kernel-core", version: "7.1.4-100.fc44" });
-    assert.equal(H.parseDnfRunLine("[  1/226] Prepare transaction").verb, "",
-        "a bracketed non-package step keeps the counter without a row");
-    assert.equal(H.parseDnfRunLine("[ 40/226] Running scriptlet: glibc-0:2.41-4.fc44.x86_64").verb, "",
-        "scriptlets are progress, not feed");
-    assert.equal(H.parseDnfRunLine("Downloading Packages:"), null);
+test("table rows carry the full untruncated name and version", () => {
+    // Verbatim lines from a real fc44 transaction table.
+    assert.deepEqual(H.dnfTableRow(
+        " gnome-shell-extension-launch-new-instance             noarch 0:50.3-1.fc44      updates                            1.4 KiB"),
+        { name: "gnome-shell-extension-launch-new-instance", arch: "noarch",
+            evr: "0:50.3-1.fc44", version: "50.3-1.fc44" });
+    assert.deepEqual(H.dnfTableRow(
+        " vim-minimal                                           x86_64 2:9.2.967-1.fc44   updates                            1.8 MiB").version,
+        "9.2.967-1.fc44", "the epoch is for matching, not for reading");
+    assert.equal(H.dnfTableRow(
+        "   replacing firefox                                   x86_64 0:153.0.3-1.fc44   updates                          282.0 MiB"),
+        null, "outgoing versions are continuations, not packages");
+    assert.equal(H.dnfTableRow("Transaction Summary:"), null);
+    assert.equal(H.dnfTableRow(""), null);
+});
+
+test("bracketed progress lines advance the counter; verbs carry dnf's clipped token", () => {
+    assert.deepEqual(H.parseDnfRunLine(
+        "[11/58] Upgrading less-0:704-4.fc44.x86 100% |  29.5 MiB/s | 483.2 KiB |  00m00s"),
+        { cur: 11, total: 58, verb: "up", token: "less-0:704-4.fc44.x86" });
+    assert.deepEqual(H.parseDnfRunLine(
+        "[53/58] Removing tmux-0:3.7b-2.fc44.x86 100% | 636.0   B/s |  14.0   B |  00m00s"),
+        { cur: 53, total: 58, verb: "del", token: "tmux-0:3.7b-2.fc44.x86" });
+    assert.deepEqual(H.parseDnfRunLine(
+        "[10/28] less-0:704-4.fc44.x86_64        100% |   2.2 MiB/s | 227.8 KiB |  00m00s"),
+        { cur: 10, total: 28, verb: "", token: "" },
+        "download lines are progress only");
+    assert.equal(H.parseDnfRunLine(
+        "[ 1/58] Verify package files            100% |  51.0   B/s |  28.0   B |  00m01s").verb,
+        "", "aux steps keep the counter without naming a package");
+    assert.equal(H.parseDnfRunLine("Running transaction"), null);
     assert.equal(H.parseDnfRunLine(""), null);
+});
+
+test("clipped tokens find their table row, and only theirs", () => {
+    assert.ok(H.rowMatchesToken("less", "0:704-4.fc44", "less-0:704-4.fc"),
+        "a token cut inside the evr still matches");
+    assert.ok(H.rowMatchesToken("less", "0:704-4.fc44", "less-0:704-4.fc44.x86"),
+        "a token extending into the arch still matches");
+    assert.ok(!H.rowMatchesToken("less-color", "0:704-4.fc44", "less-0:704-4.fc44.x86"),
+        "a longer-named sibling must not claim the token");
+    assert.ok(!H.rowMatchesToken("less", "0:704-4.fc44", "less-color-0:704-4.fc"),
+        "nor the reverse");
+    assert.ok(!H.rowMatchesToken("tmux", "0:3.7c-1.fc44", "tmux-0:3.7b-2.fc44.x86"),
+        "cleanup of the outgoing version matches no incoming row");
+    assert.ok(!H.rowMatchesToken("less", "0:704-4.fc44", ""));
 });
 
 test("flatpak lines separate the plan from the work and name apps sensibly", () => {
