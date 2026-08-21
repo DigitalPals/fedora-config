@@ -1,11 +1,13 @@
 pragma Singleton
 import QtQuick
+import QtQml.Models
 import Quickshell
 import Quickshell.Io
 import "ProcHelpers.js" as ProcHelpers
 import "UpdatesHelpers.js" as UpdatesHelpers
 
-// Pending system updates: dnf packages and Flatpak refs.
+// Pending system updates: dnf packages and Flatpak refs — and the native run
+// that installs them without leaving the shell.
 //
 // Polling is inherent here — there is nothing to subscribe to — so this is one
 // timer, at the interval the module's settings choose, plus a manual refresh
@@ -16,6 +18,12 @@ import "UpdatesHelpers.js" as UpdatesHelpers
 // has no terminal to answer with — it simply hangs. Reading the cache that
 // dnf-makecache.timer already keeps warm is both the honest and the cheap
 // answer, and it is what the panel's footnote says it is doing.
+//
+// The run itself streams here rather than into a terminal. Root comes from
+// `sudo -n` where the wheel sudoers drop-in makes that silent, else `pkexec`,
+// whose dialog is the polkit agent's native one. State lives in this
+// singleton, never in the popover: the panel can close and reopen mid-run and
+// the transaction neither notices nor cares.
 Singleton {
     id: root
 
@@ -99,6 +107,11 @@ Singleton {
     }
 
     function check() {
+        // A poll firing mid-transaction would read the cache while dnf is
+        // rewriting the installed set; whatever it said would be wrong by the
+        // time it landed. finishRun schedules the recount instead.
+        if (runActive)
+            return;
         if (busy) {
             checkAgain = true;
             return;
@@ -181,18 +194,282 @@ Singleton {
             Qt.callLater(root.check);
     }
 
-    // The upgrade itself is interactive — it asks for a password and prints
-    // a transaction to approve — so it runs in a terminal rather than being
-    // swallowed by the shell.
+    // ---- the native run ---------------------------------------------------
+    // idle | running | done | failed. `done` clears once the user has opened
+    // and closed the finished panel (or after a quiet timeout); `failed`
+    // stays until dismissed or retried, so an unattended failure cannot
+    // vanish. The feed is a ListModel so the transcript appends in place —
+    // reassigning a var array would reset the view and lose scrollback.
+    property string runState: "idle"
+    readonly property bool runActive: runState === "running"
+    property double runStartedAt: 0
+    property double runFinishedAt: 0
+    property int runElapsed: 0
+    property int runDuration: 0
+    property string runStamp: ""
+    property int dnfCur: 0
+    property int dnfTotal: 0
+    property int fpCur: 0
+    property int fpTotal: 0
+    property bool runDnfDone: true
+    property bool runFpDone: true
+    property int runDnfRc: 0
+    property int runFpRc: 0
+    property int upCount: 0
+    property int addCount: 0
+    property int delCount: 0
+    property int appCount: 0
+    property var topNames: []
+    property string kernelPending: ""
+    property string failHeadline: ""
+    property var failTail: []
+    property var rawTail: []
+    property string fpWarning: ""
+    // The finished panel has been opened; closing it then retires `done`.
+    property bool runSeen: false
+
+    readonly property int runPercent: UpdatesHelpers.runPercent(
+        dnfCur, dnfTotal, fpCur, fpTotal)
+    readonly property int runPkgCount: upCount + addCount + delCount
+    readonly property string runLogLabel: "xps-update/logs/" + runStamp
+
+    ListModel {
+        id: feedModel
+    }
+    readonly property ListModel feed: feedModel
+
     function run() {
-        Quickshell.execDetached(["kitty", "--title", "System updates", "sh", "-c",
-            "sudo dnf upgrade --refresh"
-            + (root.flatpakEnabled ? "; flatpak update" : "")
-            + "; printf '\\nDone. Press enter to close.'; read _"]);
-        Popouts.close();
-        // The transaction takes as long as it takes; re-check on a slow beat
-        // afterwards so the chip clears itself once it has finished.
+        if (runActive)
+            return;
+        feedModel.clear();
+        dnfCur = 0;
+        dnfTotal = 0;
+        fpCur = 0;
+        fpTotal = 0;
+        upCount = 0;
+        addCount = 0;
+        delCount = 0;
+        appCount = 0;
+        topNames = [];
+        kernelPending = "";
+        failHeadline = "";
+        failTail = [];
+        rawTail = [];
+        fpWarning = "";
+        runSeen = false;
+        runDnfRc = 0;
+        runFpRc = 0;
+        runStamp = UpdatesHelpers.logStamp(new Date());
+        runStartedAt = Date.now();
+        runElapsed = 0;
+        runDnfDone = false;
+        runFpDone = !flatpakEnabled;
+        runState = "running";
+        doneClear.stop();
+        runDnfProc.running = true;
+        if (flatpakEnabled)
+            runFpProc.running = true;
+    }
+
+    function dnfLine(line) {
+        const text = String(line).replace(/\r/g, "");
+        if (text.trim() !== "")
+            rawTail = rawTail.concat([text]).slice(-10);
+        const step = UpdatesHelpers.parseDnfRunLine(text);
+        if (step === null)
+            return;
+        dnfCur = step.cur;
+        dnfTotal = step.total;
+        if (step.verb === "")
+            return;
+        feedModel.append({ tag: "dnf", verb: step.verb, name: step.name,
+            ver: step.version });
+        if (step.verb === "up")
+            upCount++;
+        else if (step.verb === "add" || step.verb === "down")
+            addCount++;
+        else
+            delCount++;
+        if (kernelPending === "")
+            kernelPending = UpdatesHelpers.kernelHint(step.name, step.verb,
+                step.version);
+        if (step.verb !== "del" && topNames.length < 3
+                && topNames.indexOf(step.name) === -1)
+            topNames = topNames.concat([step.name]);
+    }
+
+    function fpLine(line) {
+        const parsed = UpdatesHelpers.parseFlatpakRunLine(String(line));
+        if (parsed === null)
+            return;
+        if (parsed.kind === "planned") {
+            fpTotal = Math.max(fpTotal, parsed.n);
+            return;
+        }
+        feedModel.append({ tag: "fpk", verb: parsed.verb, name: parsed.name,
+            ver: "" });
+        if (!parsed.runtime) {
+            fpCur = Math.min(fpCur + 1, Math.max(fpTotal, fpCur + 1));
+            appCount++;
+        }
+    }
+
+    function finishRunDnf(exitCode) {
+        runDnfRc = exitCode;
+        runDnfDone = true;
+        finishRun();
+    }
+
+    function finishRunFp(exitCode) {
+        runFpRc = exitCode;
+        runFpDone = true;
+        finishRun();
+    }
+
+    function finishRun() {
+        if (!runDnfDone || !runFpDone || !runActive)
+            return;
+        runFinishedAt = Date.now();
+        runDuration = Math.round((runFinishedAt - runStartedAt) / 1000);
+        if (runDnfRc !== 0) {
+            failTail = rawTail;
+            failHeadline = UpdatesHelpers.failureHeadline(rawTail);
+            if (failHeadline === "")
+                failHeadline = runDnfRc === 126 || runDnfRc === 127
+                    ? "Authorization dismissed"
+                    : runDnfRc === ProcHelpers.NOT_STARTED
+                    ? "dnf could not be started"
+                    : "dnf exited with status " + runDnfRc;
+            runState = "failed";
+        } else {
+            // A Flathub hiccup should not turn a completed system upgrade
+            // into a failure banner; it gets a warning line instead.
+            if (flatpakEnabled && runFpRc !== 0)
+                fpWarning = "flatpak update failed — see the log";
+            runState = "done";
+            doneClear.restart();
+        }
+        // The counts the panel shows must agree with what is now installed.
         recheck.restart();
+        Qt.callLater(root.check);
+    }
+
+    function dismissRun() {
+        runState = "idle";
+        runSeen = false;
+        doneClear.stop();
+    }
+
+    // Raw transcript, in the pager everyone already has. The log file is the
+    // one place the full unparsed output survives, so the escape hatch opens
+    // it rather than re-rendering it.
+    function openLog(file) {
+        Quickshell.execDetached(["kitty", "--title", "Update log", "bash",
+            "-c", "exec less -R \"${XDG_STATE_HOME:-$HOME/.local/state}/"
+            + "xps-update/logs/" + runStamp + "/" + file + "\""]);
+    }
+
+    Timer {
+        interval: 1000
+        running: root.runActive
+        repeat: true
+        onTriggered: root.runElapsed =
+            Math.round((Date.now() - root.runStartedAt) / 1000)
+    }
+
+    // An unvisited ✓ should not sit in the bar all afternoon: after a quiet
+    // quarter hour the result retires itself and the auto rule tucks the
+    // module away. The full log keeps the story.
+    Timer {
+        id: doneClear
+        interval: 15 * 60000
+        onTriggered: {
+            if (root.runState === "done")
+                root.dismissRun();
+        }
+    }
+
+    // Opening the finished panel is the acknowledgement; the close after it
+    // retires the result. A failure never self-acknowledges — dismiss and
+    // retry are explicit actions in the panel.
+    Connections {
+        target: Popouts
+
+        function onChanged() {
+            if (Popouts.open && Popouts.currentName === "updates") {
+                if (root.runState === "done")
+                    root.runSeen = true;
+            } else if (!Popouts.open && root.runSeen
+                    && root.runState === "done") {
+                root.dismissRun();
+            }
+        }
+    }
+
+    // Root through the silent path when the wheel drop-in provides it, else
+    // pkexec and the polkit agent's dialog. Output tees into the same log
+    // shelf the ./update script uses, and the pipefail keeps dnf's own exit
+    // status through the tee.
+    Process {
+        id: runDnfProc
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["bash", "-c",
+            "set -o pipefail; "
+            + "d=\"${XDG_STATE_HOME:-$HOME/.local/state}/xps-update/logs/"
+            + root.runStamp + "\"; mkdir -p \"$d\"; "
+            + "if sudo -n true 2>/dev/null; then auth='sudo -n'; "
+            + "else auth='pkexec'; fi; "
+            + "$auth dnf -y upgrade --refresh 2>&1 | tee \"$d/dnf.log\""]
+
+        stdout: SplitParser {
+            onRead: data => root.dnfLine(data)
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            runDnfProc.exitSeen = true;
+            runDnfProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+            } else {
+                root.finishRunDnf(exitSeen ? lastExit : ProcHelpers.NOT_STARTED);
+            }
+        }
+    }
+
+    Process {
+        id: runFpProc
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["bash", "-c",
+            "set -o pipefail; "
+            + "d=\"${XDG_STATE_HOME:-$HOME/.local/state}/xps-update/logs/"
+            + root.runStamp + "\"; mkdir -p \"$d\"; "
+            + "if sudo -n true 2>/dev/null; then auth='sudo -n'; else auth=''; fi; "
+            + "$auth flatpak update --system --noninteractive 2>&1 "
+            + "| tee \"$d/flatpak.log\""]
+
+        stdout: SplitParser {
+            onRead: data => root.fpLine(data)
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            runFpProc.exitSeen = true;
+            runFpProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+            } else {
+                root.finishRunFp(exitSeen ? lastExit : ProcHelpers.NOT_STARTED);
+            }
+        }
     }
 
     Timer {

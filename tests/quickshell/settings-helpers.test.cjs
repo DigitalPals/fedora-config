@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 6);
+    assert.equal(H.VERSION, 7);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, true);
     assert.equal(d.barColorMode, "default");
@@ -15,7 +15,7 @@ test("defaults carry the design values", () => {
         [247, 29, 11]);
     assert.equal(d.barHeight, 46);
     assert.equal(d.barRadius, 23);
-    assert.equal(d.font, "urbanist");
+    assert.equal(d.font, "google");
     assert.equal(d.accent, "#5e9bff");
     assert.equal(d.paletteMode, "wallpaper");
     assert.equal(d.position, "top");
@@ -305,7 +305,7 @@ test("merge clamps and snaps numeric ranges", () => {
 });
 
 test("merge falls back on invalid enums, colors and names", () => {
-    assert.equal(H.merge({ font: "comic-sans" }).font, "urbanist");
+    assert.equal(H.merge({ font: "comic-sans" }).font, "google");
     assert.equal(H.merge({ v: H.VERSION, font: "oppo" }).font, "oppo",
         "the previous menu face stays selectable");
     assert.equal(H.merge({ themeMode: "sepia" }).themeMode, "dark");
@@ -374,6 +374,15 @@ test("schema-6 migration preserves module order and centered clock/weather", () 
     assert.equal(migrated.mods.right[0].id, "batt");
 });
 
+test("schema-7 adopts Google Sans only from the previous default", () => {
+    assert.equal(H.merge({ v: 6, font: "urbanist" }).font, "google",
+        "the old untouched default follows the softer typography pass");
+    assert.equal(H.merge({ v: 6, font: "plex" }).font, "plex",
+        "an explicit previous-schema choice survives");
+    assert.equal(H.merge({ v: H.VERSION, font: "urbanist" }).font, "urbanist",
+        "Urbanist remains selectable after migration");
+});
+
 test("normalizeMods drops unknown ids and dedupes across columns", () => {
     const next = H.normalizeMods({
         left: [{ id: "clock", on: true }, { id: "flux", on: true }, { id: "clock", on: false }],
@@ -417,7 +426,7 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
     assert.equal(untouched.barRadius, 23);
     assert.equal(untouched.gap, 10);
     assert.equal(untouched.accent, "#5e9bff");
-    assert.equal(untouched.font, "urbanist");
+    assert.equal(untouched.font, "google");
     assert.equal(untouched.osd, "bottom");
     assert.equal(untouched.modOpts.ws.style, "dots");
     assert.equal(untouched.modOpts.media.maxWidth, 180);

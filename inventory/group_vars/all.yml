@@ -100,10 +100,18 @@ pinned_font_archives:
 
 # Single-file fonts, which upstream publishes as bare variable TTFs rather than
 # archives. The URL is pinned to a commit and the checksum pins the bytes, so
-# the version below is only the directory label. Both are what the Quickshell
-# menubar draws: Urbanist is Theme.fontMenu's default face, and Material
-# Symbols Rounded is every icon in the shell (Common/Sym.qml).
+# the version below is only the directory label. Google Sans Flex is the
+# Quickshell UI default, Urbanist remains an appearance choice, and Material
+# Symbols Rounded supplies every icon in the shell (Common/Sym.qml).
 pinned_font_files:
+  - name: google-sans-flex
+    version: "2025.11.18"
+    url: https://raw.githubusercontent.com/end-4/google-sans-flex/251aa5abd30496368f634e54ce2a508fe5a2fdfa/GoogleSansFlex-VariableFont_GRAD%2CROND%2Copsz%2Cslnt%2Cwdth%2Cwght.ttf
+    checksum: sha256:2510a8b7a24beb1fe8163e9a49813ccfe96b5453444b9443d42665ca4fa320c9
+    filename: GoogleSansFlex[GRAD,ROND,opsz,slnt,wdth,wght].ttf
+    license_url: https://raw.githubusercontent.com/end-4/google-sans-flex/251aa5abd30496368f634e54ce2a508fe5a2fdfa/LICENSE
+    license_checksum: sha256:1d361a8f8e8ce6e68457dcd93fb56e162e6baa3bbb7e7573a290d44399f6b57e
+    license_filename: OFL.txt
   - name: urbanist
     version: "1.321"
     url: https://raw.githubusercontent.com/coreyhu/Urbanist/cf64de52fe255c01a13db5f25c6deeb51a240311/fonts/variable/Urbanist%5Bwght%5D.ttf

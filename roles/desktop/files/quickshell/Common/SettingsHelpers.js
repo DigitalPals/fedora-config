@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 6;
+var VERSION = 7;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -27,6 +27,7 @@ var DETAIL_IDS = ["media", "weather", "clock", "t3", "usage", "gh", "updates",
 var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
 var FONT_CHOICES = [
+    { id: "google", label: "Google Sans Flex", family: "Google Sans Flex" },
     { id: "urbanist", label: "Urbanist", family: "Urbanist" },
     { id: "oppo", label: "OPPO Sans 4.0", family: "OPPO Sans 4.0" },
     { id: "plex", label: "IBM Plex Sans", family: "IBM Plex Sans" },
@@ -123,7 +124,7 @@ function defaults() {
         barCustomLightness: 11,
         barHeight: 46,
         barRadius: 23,
-        font: "urbanist",
+        font: "google",
         accent: "#5e9bff",
         paletteMode: "wallpaper",
         position: "top",
@@ -591,6 +592,19 @@ function adoptRedesign(parsed) {
     return next;
 }
 
+// Schema 7 makes the softer variable face the shell default. As with the
+// schema-4 redesign, a stored value equal to the previous default is treated
+// as untouched; every other valid font remains an explicit user choice.
+function adoptSofterTypography(parsed) {
+    if (!parsed || typeof parsed !== "object"
+            || (typeof parsed.v === "number" && parsed.v >= 7))
+        return parsed;
+    var next = clone(parsed);
+    if (next.font === undefined || next.font === "urbanist")
+        next.font = "google";
+    return next;
+}
+
 // Schema 6 replaces two booleans with explicit visual modes. A v5 floating
 // bar whose geometry was never changed becomes the new edge-hugging default;
 // customized floating geometry remains floating, and the old edge-to-edge
@@ -645,7 +659,7 @@ function merge(raw) {
     var d = defaults();
     if (!raw || typeof raw !== "object")
         return d;
-    var parsed = adoptRedesign(raw);
+    var parsed = adoptSofterTypography(adoptRedesign(raw));
     return {
         wall: nameIn(parsed.wall, d.wall),
         wallDir: pathIn(parsed.wallDir, d.wallDir),

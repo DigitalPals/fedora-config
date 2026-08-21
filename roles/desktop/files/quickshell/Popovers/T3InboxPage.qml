@@ -316,85 +316,6 @@ Column {
                                 color: entry.statusColor
                             }
                         }
-
-                        FocusScope {
-                            id: actionsScope
-                            visible: entry.revealed
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            implicitWidth: actions.implicitWidth
-                            implicitHeight: actions.implicitHeight
-
-                            Row {
-                                id: actions
-                                spacing: 4
-
-                                Action {
-                                    visible: T3Code.supportsPinning
-                                    revealed: entry.revealed
-                                    hPadding: 12
-                                    readonly property string kind: entry.thread.pinned
-                                        ? "unpin" : "pin"
-                                    label: T3Code.actionPending(kind, entry.thread.id, "")
-                                        ? "…" : (entry.thread.pinned ? "Unpin" : "Pin")
-                                    enabled: T3Code.canDispatch
-                                        && !T3Code.actionPending(kind, entry.thread.id, "")
-                                    onTriggered: entry.thread.pinned
-                                        ? T3Code.unpin(entry.thread.id) : T3Code.pin(entry.thread.id)
-                                }
-
-                                Action {
-                                    visible: entry.active && T3Code.supportsSettlement
-                                    revealed: entry.revealed
-                                    hPadding: 12
-                                    label: T3Code.actionPending("settle", entry.thread.id, "")
-                                        ? "…" : "Settle"
-                                    enabled: T3Code.canDispatch && entry.thread.canLifecycle
-                                        && !T3Code.actionPending("settle", entry.thread.id, "")
-                                    tint: T3Theme.accent
-                                    fill: T3Theme.accentSoft
-                                    onTriggered: T3Code.settle(entry.thread.id)
-                                }
-
-                                Action {
-                                    visible: entry.settled && T3Code.supportsSettlement
-                                    revealed: entry.revealed
-                                    hPadding: 12
-                                    label: T3Code.actionPending("unsettle", entry.thread.id, "")
-                                        ? "…" : "Unsettle"
-                                    enabled: T3Code.canDispatch
-                                        && !T3Code.actionPending("unsettle", entry.thread.id, "")
-                                    tint: T3Theme.accent
-                                    fill: T3Theme.accentSoft
-                                    onTriggered: T3Code.unsettle(entry.thread.id)
-                                }
-
-                                Action {
-                                    visible: entry.snoozed && T3Code.supportsSnooze
-                                    revealed: entry.revealed
-                                    hPadding: 12
-                                    label: T3Code.actionPending("unsnooze", entry.thread.id, "")
-                                        ? "…" : "Wake"
-                                    enabled: T3Code.canDispatch
-                                        && !T3Code.actionPending("unsnooze", entry.thread.id, "")
-                                    tint: T3Theme.accent
-                                    fill: T3Theme.accentSoft
-                                    onTriggered: T3Code.unsnooze(entry.thread.id)
-                                }
-
-                                Action {
-                                    revealed: entry.revealed
-                                    hPadding: 12
-                                    label: "Open"
-                                    tint: T3Theme.accent
-                                    onTriggered: {
-                                        Quickshell.execDetached(["xdg-open",
-                                            T3Code.threadUrl(entry.thread.id)]);
-                                        Popouts.close();
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -420,6 +341,86 @@ Column {
                     font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontSecondary
                     color: entry.thread.cls === "error" ? T3Theme.red : T3Theme.textFaint
+                }
+            }
+
+            FocusScope {
+                id: actionsScope
+                visible: entry.revealed
+                anchors.right: row.right
+                anchors.rightMargin: 9
+                anchors.verticalCenter: row.verticalCenter
+                implicitWidth: actions.implicitWidth
+                implicitHeight: actions.implicitHeight
+
+                Row {
+                    id: actions
+                    spacing: 4
+
+                    Action {
+                        visible: T3Code.supportsPinning
+                        revealed: entry.revealed
+                        hPadding: 12
+                        readonly property string kind: entry.thread.pinned
+                            ? "unpin" : "pin"
+                        label: T3Code.actionPending(kind, entry.thread.id, "")
+                            ? "…" : (entry.thread.pinned ? "Unpin" : "Pin")
+                        enabled: T3Code.canDispatch
+                            && !T3Code.actionPending(kind, entry.thread.id, "")
+                        onTriggered: entry.thread.pinned
+                            ? T3Code.unpin(entry.thread.id) : T3Code.pin(entry.thread.id)
+                    }
+
+                    Action {
+                        visible: entry.active && T3Code.supportsSettlement
+                        revealed: entry.revealed
+                        hPadding: 12
+                        label: T3Code.actionPending("settle", entry.thread.id, "")
+                            ? "…" : "Settle"
+                        enabled: T3Code.canDispatch && entry.thread.canLifecycle
+                            && !T3Code.actionPending("settle", entry.thread.id, "")
+                        tint: T3Theme.accent
+                        fill: T3Theme.accentSoft
+                        onTriggered: T3Code.settle(entry.thread.id)
+                    }
+
+                    Action {
+                        visible: entry.settled && T3Code.supportsSettlement
+                        revealed: entry.revealed
+                        hPadding: 12
+                        label: T3Code.actionPending("unsettle", entry.thread.id, "")
+                            ? "…" : "Unsettle"
+                        enabled: T3Code.canDispatch
+                            && !T3Code.actionPending("unsettle", entry.thread.id, "")
+                        tint: T3Theme.accent
+                        fill: T3Theme.accentSoft
+                        onTriggered: T3Code.unsettle(entry.thread.id)
+                    }
+
+                    Action {
+                        visible: entry.snoozed && T3Code.supportsSnooze
+                        revealed: entry.revealed
+                        hPadding: 12
+                        label: T3Code.actionPending("unsnooze", entry.thread.id, "")
+                            ? "…" : "Wake"
+                        enabled: T3Code.canDispatch
+                            && !T3Code.actionPending("unsnooze", entry.thread.id, "")
+                        tint: T3Theme.accent
+                        fill: T3Theme.accentSoft
+                        onTriggered: T3Code.unsnooze(entry.thread.id)
+                    }
+
+                    Action {
+                        revealed: entry.revealed
+                        hPadding: 12
+                        label: "Open"
+                        tint: T3Theme.accent
+                        onTriggered: {
+                            Quickshell.execDetached(["xdg-open",
+                                T3Code.threadUrl(entry.thread.id)]);
+                            Popouts.close();
+                        }
+                    }
                 }
             }
         }

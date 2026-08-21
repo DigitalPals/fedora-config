@@ -314,9 +314,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema six adds layered bar and wallpaper palette modes", () => {
+test("schema seven adds softer typography over the layered palette", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 6/);
+    assert.match(helpers, /var VERSION = 7/);
     assert.match(helpers, /"updates", "gh", "t3", "usage", "tray"/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
@@ -329,6 +329,7 @@ test("schema six adds layered bar and wallpaper palette modes", () => {
     assert.match(helpers, /barStyle:\s*"hug"/);
     assert.match(helpers, /function migrateBarStyle\(parsed, defaultsValue\)/);
     assert.match(helpers, /function migratePaletteMode\(parsed, defaultsValue\)/);
+    assert.match(helpers, /function adoptSofterTypography\(parsed\)/);
     assert.match(helpers, /mod\("media", true\)/);
     assert.match(helpers, /mod\("bt", false\)/);
     assert.match(helpers, /wallDir:\s*"~\/Pictures\/Wallpapers"/);

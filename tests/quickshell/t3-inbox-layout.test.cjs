@@ -35,4 +35,7 @@ test("inline actions fit inside a full T3 work row while parked rows stay compac
         "settled and snoozed rows must remain visibly denser than active work");
     assert.match(inbox,
         /height:\s*entry\.compact \? T3Theme\.quietRowHeight : T3Theme\.activeRowHeight/);
+    assert.match(inbox,
+        /id:\s*actionsScope[\s\S]*?anchors\.verticalCenter:\s*row\.verticalCenter/,
+        "hover actions must be centered against the full thread row");
 });

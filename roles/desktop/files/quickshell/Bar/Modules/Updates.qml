@@ -1,10 +1,12 @@
 import QtQuick
 import ".."
 import "../../Common"
+import "../../Common/Format.js" as Format
 
-// Pending updates. The bar's auto-rule hides this module while a completed
-// check has nothing to report, but leaves failures and manual rechecks visible
-// so the user is never locked out of recovery.
+// Pending updates, and the native run's progress once one is going. The bar's
+// auto-rule hides this module while a completed check has nothing to report,
+// but leaves failures, manual rechecks, and every run state visible — closing
+// the panel mid-run hands the story to this chip, so it must not vanish.
 BarModule {
     id: root
 
@@ -13,19 +15,43 @@ BarModule {
 
     BarIcon {
         id: chip
+
+        // Indirection keeps the `glyph:` line to one validated ligature; the
+        // icon-name test reads every string on that line as one.
+        readonly property string stateGlyph: Updates.runState === "done"
+            ? "check_circle" : "deployed_code_update"
+
         host: root.host
         panelName: "updates"
         isle: root.isle
         anchorItem: root.groupAnchor ?? chip
-        glyph: "deployed_code_update"
+        glyph: chip.stateGlyph
         glyphSize: Theme.barIconSize - 1
         glyphWeight: 600
-        idleColor: Theme.barTextMid
-        label: Updates.busy ? "…" : Updates.error !== "" ? "!" : Updates.total
+        glyphFill: Updates.runState === "done" || chip.alert ? 1 : 0
+        // Pinned: the glyph, the ✓ and the progress ring trade places here,
+        // and the right cluster is right-anchored, so a wobbling column would
+        // slide every module beside it.
+        glyphWidth: Theme.barIconSize
+        progress: Updates.runActive
+            ? Math.max(0.04, Updates.runPercent / 100) : -1
+        idleColor: Updates.runState === "done" ? Theme.barGreen : Theme.barTextMid
+        label: Updates.runActive
+            ? (Updates.runPercent >= 0 ? Updates.runPercent + "%" : "…")
+            : Updates.runState === "done" ? ""
+            : Updates.runState === "failed" ? "!"
+            : Updates.busy ? "…" : Updates.error !== "" ? "!" : Updates.total
         compact: root.compact
-        labelColor: Theme.barTextMid
-        alert: Updates.error !== ""
-        tooltip: "Updates · " + Updates.summary
+        labelColor: Updates.runActive ? Theme.barAccent : Theme.barTextMid
+        alert: Updates.runState === "failed"
+            || (Updates.error !== "" && Updates.runState === "idle")
+        tooltip: Updates.runActive
+            ? "Updating · " + (Updates.runPercent >= 0
+                ? Updates.runPercent + "% · " : "")
+                + Format.mmss(Updates.runElapsed)
+            : Updates.runState === "done" ? "Update finished · open for the transcript"
+            : Updates.runState === "failed" ? "Update failed · " + Updates.failHeadline
+            : "Updates · " + Updates.summary
         tooltipAlign: 1
     }
 }

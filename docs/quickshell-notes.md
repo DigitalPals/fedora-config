@@ -243,8 +243,9 @@ The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project
 `facd7f56`) replaced an opaque bar and its bar-fused popouts with translucent
 glass and detached panels. What that added, and what it needs:
 
-- **Two pinned fonts.** `Urbanist` is the menu face and `Material Symbols
-  Rounded` is every icon. Both install from
+- **Three pinned fonts.** `Google Sans Flex` is the default UI face,
+  `Urbanist` remains an optional menu face, and `Material Symbols Rounded` is
+  every icon. All three install from
   `inventory/group_vars/all.yml → pinned_font_files`. **Qt reads the font
   database once at startup**, so a freshly installed face needs
   `systemctl --user restart quickshell.service`, not a hot reload — a missing
@@ -306,6 +307,11 @@ glass and detached panels. What that added, and what it needs:
   takes exclusive keyboard focus while mapped, forwards an early character or
   Enter across the mapping frame, and never stages result rows behind an
   animation. Launcher-only motion is brief and purely visual.
+- **Schema 7 adopts the softer type and density pass.** A stored `Urbanist`
+  value from an older schema follows the new `Google Sans Flex` default;
+  OPPO Sans, IBM Plex Sans, and JetBrains Mono remain explicit choices. Shared
+  popovers gain modest width and padding, metadata floors at 11px, and soft
+  inner hairlines recede while outer surface boundaries remain intact.
 - **Schema 6 adds bar style and palette mode.** A v5 attached bar remains
   attached. A v5 floating bar adopts Hug only when height, radius, and gap are
   pristine; custom geometry remains floating. Old wallpaper-accent users and

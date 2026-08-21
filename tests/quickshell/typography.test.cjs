@@ -56,9 +56,7 @@ function contrast(a, b) {
 }
 
 test("semantic typography tokens retain the intended logical-pixel scale", () => {
-    // The glass menubar is denser than what came before, so the scale grew two
-    // steps at the bottom. It did not grow a third: the design descends to
-    // 8.5px for meta copy, and 10 is where this shell stops.
+    // The softer pass removes ten-pixel metadata without inflating body copy.
     assert.deepEqual([
         intToken("fontMicro"),
         intToken("fontTiny"),
@@ -69,11 +67,11 @@ test("semantic typography tokens retain the intended logical-pixel scale", () =>
         intToken("fontProminent"),
         intToken("fontDisplay"),
         intToken("fontHero"),
-    ], [10, 11, 12, 13, 14, 16, 20, 28, 34]);
+    ], [11, 12, 12, 13, 14, 16, 20, 28, 34]);
 });
 
 test("menu typography keeps the bar's own compact metrics", () => {
-    assert.equal(stringToken("fontSans"), "IBM Plex Sans");
+    assert.equal(stringToken("fontSans"), "Google Sans Flex");
     assert.equal(stringToken("fontIcon"), "Material Symbols Rounded");
     assert.deepEqual([
         intToken("chipHeight"),
@@ -85,7 +83,7 @@ test("menu typography keeps the bar's own compact metrics", () => {
     assert.match(theme, /readonly property var tabularNumberFeatures:\s*\(\{\s*"tnum":\s*1\s*\}\)/);
 });
 
-test("settings-driven tokens default to the original menu metrics", () => {
+test("settings-driven tokens default to the softer menu face", () => {
     // fontMenu / barHeight / clusterRadius moved from literals to Shell
     // settings bindings; the defaults must still reproduce the design values
     // and Theme must actually bind to Settings rather than re-hardcode.
@@ -97,7 +95,7 @@ test("settings-driven tokens default to the original menu metrics", () => {
     assert.equal(d.barStyle, "hug");
     assert.equal(d.accent, "#5e9bff");
     const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
-    assert.equal(menuChoice.family, "Urbanist");
+    assert.equal(menuChoice.family, "Google Sans Flex");
 
     assert.match(theme, /readonly property int barHeight:\s*Settings\.barHeight/);
     assert.match(theme, /readonly property bool barFloating:\s*Settings\.barStyle === "floating"/);
@@ -107,6 +105,16 @@ test("settings-driven tokens default to the original menu metrics", () => {
     // Derived accent fills must track the dynamic accent, not a literal.
     assert.doesNotMatch(theme, /158 \/ 255/);
     assert.match(theme, /readonly property color accentSoft:\s*paletteActive/);
+});
+
+test("shared surfaces carry the roomier density tokens", () => {
+    assert.deepEqual([
+        intToken("popWidth"),
+        intToken("popWideWidth"),
+        intToken("surfacePadding"),
+        intToken("rowHeight"),
+        intToken("tileHeight"),
+    ], [408, 448, 16, 52, 64]);
 });
 
 test("the menu face is scoped to shell chrome while T3 keeps its product face", () => {
@@ -150,12 +158,12 @@ test("all visible bar values use the menu face with tabular figures", () => {
     }
 });
 
-test("bar and popovers use semantic sizes with a ten-pixel text floor", () => {
+test("bar and popovers use semantic sizes with an eleven-pixel text floor", () => {
     const files = [...qmlFiles("Bar"), ...qmlFiles("Popovers"), ...qmlFiles("Settings")];
     const textTokens = [...theme.matchAll(/readonly property int (font\w+):\s*(\d+)/g)];
     assert.ok(textTokens.length > 0);
     for (const [, name, value] of textTokens)
-        assert.ok(Number(value) >= 10, `Theme.${name} falls below the 10 px floor`);
+        assert.ok(Number(value) >= 11, `Theme.${name} falls below the 11 px floor`);
 
     for (const file of files) {
         const source = fs.readFileSync(file, "utf8");

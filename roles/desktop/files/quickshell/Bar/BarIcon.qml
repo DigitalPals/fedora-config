@@ -1,5 +1,7 @@
 import QtQuick
+import QtQuick.Shapes
 import "../Common"
+import "../Common/Format.js" as Format
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 
 // A glyph button in the bar: one Material Symbols mark, an optional value
@@ -80,6 +82,12 @@ Rectangle {
     // Material Symbols ligature name, e.g. "wifi".
     property string glyph
     property real glyphSize: Theme.barIconSize
+    // Determinate task progress, 0..1. Anything at or above zero replaces the
+    // glyph with a small ring so a long job reads at a glance; -1 restores
+    // the glyph. The ring lives in the glyph's column, so a module that pins
+    // `glyphWidth` keeps its width through the swap.
+    property real progress: -1
+    property color progressColor: Theme.barAccent
     // Fixed column for the glyph. The right cluster is right-anchored, so a
     // module that changes width slides every module beside it: pin the width
     // for icons that differ between states. 0 sizes to the glyph.
@@ -185,7 +193,7 @@ Rectangle {
         // these marks overflow their advance box, so giving the Text an
         // explicit width shifts what it draws.
         Item {
-            visible: root.glyph !== ""
+            visible: root.glyph !== "" && root.progress < 0
             anchors.verticalCenter: parent.verticalCenter
             width: root.glyphWidth > 0 ? root.glyphWidth : glyphText.implicitWidth
             height: glyphText.implicitHeight
@@ -198,6 +206,59 @@ Rectangle {
                 fill: root.glyphFill
                 symWeight: root.glyphWeight
                 color: root.fg
+            }
+        }
+
+        Item {
+            visible: root.progress >= 0
+            anchors.verticalCenter: parent.verticalCenter
+            width: root.glyphWidth > 0 ? root.glyphWidth : ring.width
+            height: ring.height
+
+            Shape {
+                id: ring
+                anchors.centerIn: parent
+                width: 15
+                height: 15
+                preferredRendererType: Shape.CurveRenderer
+
+                ShapePath {
+                    strokeColor: Theme.barDotDim
+                    strokeWidth: 2.2
+                    fillColor: "transparent"
+
+                    PathAngleArc {
+                        centerX: 7.5
+                        centerY: 7.5
+                        radiusX: 5.6
+                        radiusY: 5.6
+                        startAngle: -90
+                        sweepAngle: 360
+                    }
+                }
+
+                ShapePath {
+                    strokeColor: root.progressColor
+                    strokeWidth: 2.2
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+
+                    PathAngleArc {
+                        centerX: 7.5
+                        centerY: 7.5
+                        radiusX: 5.6
+                        radiusY: 5.6
+                        startAngle: -90
+                        sweepAngle: 360 * Format.clamp01(root.progress)
+
+                        Behavior on sweepAngle {
+                            NumberAnimation {
+                                duration: Theme.chipFadeDuration
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+                    }
+                }
             }
         }
 

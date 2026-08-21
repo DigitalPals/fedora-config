@@ -70,9 +70,9 @@ Singleton {
     readonly property color hairline: stroke
     readonly property color hairlineSoft: paletteActive
         ? Qt.rgba(Common.Palette.outlineVariant.r, Common.Palette.outlineVariant.g,
-            Common.Palette.outlineVariant.b, 0.58)
-        : dark ? Qt.rgba(1, 1, 1, 0.08)
-        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.10)
+            Common.Palette.outlineVariant.b, 0.32)
+        : dark ? Qt.rgba(1, 1, 1, 0.05)
+        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.06)
 
     // ---- menubar palette -------------------------------------------------
     // A chosen bar colour may deliberately disagree with the shell's global
@@ -127,6 +127,9 @@ Singleton {
         barBg.toString(), 4.5)
     readonly property var barAmberPalette: SettingsHelpers.barPalette(barAmber)
     readonly property color barAmberFg: barAmberPalette.foreground
+    readonly property color barGreen: SettingsHelpers.ensureContrast(
+        barLightForeground ? "#63d68c" : "#1f9d57",
+        barBg.toString(), 4.5)
     readonly property color barRedBg: Qt.rgba(
         barRedText.r, barRedText.g, barRedText.b, 0.18)
     readonly property color barAmberBg: Qt.rgba(
@@ -271,6 +274,27 @@ Singleton {
     readonly property color ok: SettingsHelpers.ensureContrast(
         dark ? "#63d68c" : "#1f9d57", copyReferenceBg.toString(), 4.5)
     readonly property color connected: ok
+    readonly property color okBg: dark
+        ? Qt.rgba(99 / 255, 214 / 255, 140 / 255, 0.16)
+        : Qt.rgba(31 / 255, 157 / 255, 87 / 255, 0.14)
+    readonly property color okBgSoft: dark
+        ? Qt.rgba(99 / 255, 214 / 255, 140 / 255, 0.10)
+        : Qt.rgba(31 / 255, 157 / 255, 87 / 255, 0.08)
+    readonly property color okBorder: dark
+        ? Qt.rgba(99 / 255, 214 / 255, 140 / 255, 0.30)
+        : Qt.rgba(31 / 255, 157 / 255, 87 / 255, 0.30)
+
+    // The update run's transaction feed. The tags keep the terminal update
+    // script's cyan/pink source identity, recalibrated for the panel; `well`
+    // is the one recessed console surface, the only fill that sits below the
+    // tile instead of above it.
+    readonly property color feedDnf: SettingsHelpers.ensureContrast(
+        dark ? "#6cc7ec" : "#1d7fae", copyReferenceBg.toString(), 4.5)
+    readonly property color feedFlatpak: SettingsHelpers.ensureContrast(
+        dark ? "#e98fd2" : "#a83d8a", copyReferenceBg.toString(), 4.5)
+    readonly property color well: dark
+        ? Qt.rgba(16 / 255, 14 / 255, 28 / 255, 0.55)
+        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.05)
 
     // Accent at an arbitrary alpha, for the few fills outside the standard
     // tints. Tracks the settings accent like accentSoft does.
@@ -309,10 +333,10 @@ Singleton {
     // ---- typography --------------------------------------------------------
     // fontMenu is settings-driven; the family strings live in
     // SettingsHelpers.FONT_CHOICES so the picker and this token agree.
-    readonly property string fontSans: "IBM Plex Sans"
+    readonly property string fontSans: "Google Sans Flex"
     readonly property string fontMenu: {
         const choice = Settings.fontChoices.find(f => f.id === Settings.font);
-        return choice ? choice.family : "Urbanist";
+        return choice ? choice.family : "Google Sans Flex";
     }
     readonly property string fontMono: "JetBrains Mono"
     // Material Symbols Rounded, installed as a pinned variable font by the
@@ -324,11 +348,10 @@ Singleton {
     // (provider marks in prose, the Fedora logo).
     readonly property string fontNerd: "JetBrainsMono Nerd Font"
 
-    // Semantic logical-pixel type scale. The design descends to 8.5px for
-    // meta copy; this scale floors at 10 and is verified by the typography
-    // test, so the hierarchy is preserved without shipping unreadable text.
-    readonly property int fontMicro: 10
-    readonly property int fontTiny: 11
+    // Semantic logical-pixel type scale. Metadata now floors at 11px and the
+    // roomier Google Sans metrics keep compact copy from feeling compressed.
+    readonly property int fontMicro: 11
+    readonly property int fontTiny: 12
     readonly property int fontCaption: 12
     readonly property int fontSecondary: 13
     readonly property int fontBody: 14
@@ -338,13 +361,14 @@ Singleton {
     readonly property int fontHero: 34
     readonly property real proseLineHeight: 1.45
 
-    // Urbanist is a variable face, so every one of these maps to a real
-    // instance rather than a synthesised one.
-    readonly property int weightRegular: Font.Normal
-    readonly property int weightMedium: Font.Medium
-    readonly property int weightSemibold: Font.DemiBold
-    readonly property int weightBold: Font.Bold
-    readonly property int weightHeavy: Font.ExtraBold
+    // Google Sans Flex accepts continuous weights. The slightly inkier 450
+    // body and 550 heading steps mirror end-4 without making compact labels
+    // look bold; static fallback faces simply select their nearest instance.
+    readonly property int weightRegular: 450
+    readonly property int weightMedium: 500
+    readonly property int weightSemibold: 550
+    readonly property int weightBold: 650
+    readonly property int weightHeavy: 750
 
     readonly property int iconTiny: 11
     readonly property int iconSmall: 13
@@ -387,19 +411,19 @@ Singleton {
     readonly property int roundButton: 32
     readonly property int tooltipHeight: 28
 
-    readonly property int popWidth: 392
-    readonly property int popWideWidth: 430
+    readonly property int popWidth: 408
+    readonly property int popWideWidth: 448
     readonly property int t3MinWidth: 360
     readonly property int t3MaxWidth: 520
-    readonly property int surfacePadding: 14
+    readonly property int surfacePadding: 16
     readonly property int controlHeight: 46
     // Inline action pills sit beside copy inside compact cards. They need a
     // smaller target than standalone header, footer and form controls so a
     // two-line tile does not grow or clip when its actions are revealed.
     readonly property int inlineActionHeight: 32
     readonly property int settingsControlHeight: 28
-    readonly property int rowHeight: 50
-    readonly property int tileHeight: 60
+    readonly property int rowHeight: 52
+    readonly property int tileHeight: 64
     readonly property int calendarCellSize: 22
     readonly property int pickerRowHeight: 40
     readonly property int popRadius: surfaceRadius

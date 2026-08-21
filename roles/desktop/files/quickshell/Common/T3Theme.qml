@@ -62,14 +62,14 @@ Singleton {
 
     readonly property int outerRadius: 16
     readonly property int composerRadius: 22
-    readonly property int panelRadius: 12
-    readonly property int rowRadius: 8
-    readonly property int controlRadius: 8
-    readonly property int pagePadding: 12
-    readonly property int headerHeight: 52
-    readonly property int footerHeight: 30
-    readonly property int activeRowHeight: 58
-    readonly property int quietRowHeight: 38
+    readonly property int panelRadius: 14
+    readonly property int rowRadius: 10
+    readonly property int controlRadius: 10
+    readonly property int pagePadding: 16
+    readonly property int headerHeight: 56
+    readonly property int footerHeight: 34
+    readonly property int activeRowHeight: 64
+    readonly property int quietRowHeight: 42
     readonly property int iconButtonSize: 32
 
     // T3 interactions are deliberately quick. Continuous state animation is
