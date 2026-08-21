@@ -19,6 +19,14 @@ PanelWindow {
     }
     property var compactIds: []
     property real centerShift: 0
+    // Follow the clock's local geometry synchronously. Updating this from the
+    // deferred fit pass left it one rendered frame behind an animated child,
+    // which showed up as a right/left rebound during indicator disclosure.
+    readonly property real centerPinBias: {
+        void slotRegistryRevision;
+        const actual = currentCenterExtents();
+        return centerCluster.width / 2 - actual.left;
+    }
     // What the centre pill is actually drawn at. The fit pass moves
     // `centerShift` in one step when a module appears or the bar is resized;
     // routing it through a second property lets the pill glide there, and a
@@ -37,6 +45,11 @@ PanelWindow {
     // exit when the pointer leaves this layer surface, while the full-window
     // handler below still reports that the bar itself is no longer hovered.
     readonly property bool tooltipPointerInside: barHover.hovered
+    property bool indicatorActionHovered: false
+    // Indicators owns the width spring while its inactive block opens or
+    // closes. The center pill observes this to avoid wrapping that motion in
+    // its older width animation and making the clock rebound.
+    property bool indicatorDisclosureAnimating: false
     property point tooltipPointerPosition: Qt.point(-1, -1)
     readonly property int safetyGutter: 8
     readonly property int closedHeight: Theme.barTopMargin + Theme.barHeight + 34
@@ -168,7 +181,8 @@ PanelWindow {
         Theme.barSideMargin, Theme.barTopMargin,
         leftSection.width + Theme.barPadding, Theme.barHeight)
     readonly property rect centerIslandRect: Qt.rect(
-        Math.round((barWindow.width - centerCluster.width) / 2), Theme.barTopMargin,
+        Math.round((barWindow.width - centerCluster.width) / 2
+            + barWindow.centerPinBias + barWindow.animatedCenterShift), Theme.barTopMargin,
         Math.max(1, centerCluster.width), Theme.barHeight)
     readonly property rect rightIslandRect: Qt.rect(
         barWindow.width - Theme.barSideMargin - rightSection.width - Theme.barPadding,
@@ -252,15 +266,20 @@ PanelWindow {
     // inside group pills, so the fit pass registers them here on the way in
     // rather than trying to walk two levels of Repeater back out.
     property var slotRegistry: ({})
+    // Object key mutation has no QML notify signal of its own. This revision
+    // makes bindings that resolve a registered slot rerun on lifecycle changes.
+    property int slotRegistryRevision: 0
 
     function registerSlot(id, slot) {
         slotRegistry[id] = slot;
+        slotRegistryRevision++;
         scheduleFit();
     }
 
     function unregisterSlot(id, slot) {
         if (slotRegistry[id] === slot) {
             delete slotRegistry[id];
+            slotRegistryRevision++;
             scheduleFit();
         }
     }
@@ -273,6 +292,7 @@ PanelWindow {
     // would save and which column it would save it in.
     function measuredSlots() {
         const entries = [];
+        const metrics = currentCenterExtents();
         for (const id of Object.keys(slotRegistry)) {
             const slot = slotRegistry[id];
             if (!slot || !slot.active || slot.detailSaving <= 0)
@@ -281,10 +301,38 @@ PanelWindow {
                 id: id,
                 col: slot.col,
                 saving: slot.detailSaving,
-                policy: slot.modelData.detail ?? "auto"
+                policy: slot.modelData.detail ?? "auto",
+                centerSide: slot.col === "center" && id !== "clock"
+                    && slot.mapToItem(centerCluster, 0, 0).x + slot.width / 2
+                        <= metrics.left ? "left" : "right"
             });
         }
         return entries;
+    }
+
+    function currentCenterExtents() {
+        const clockSlot = slotRegistry.clock;
+        let pin = centerCluster.width / 2;
+        if (clockSlot && clockSlot.active && clockSlot.col === "center") {
+            const point = clockSlot.mapToItem(centerCluster, 0, 0);
+            pin = point.x + clockSlot.width / 2;
+        }
+        return {
+            left: Math.max(0, pin),
+            right: Math.max(0, centerCluster.width - pin)
+        };
+    }
+
+    function reconstructedCenterExtents(entries) {
+        const actual = currentCenterExtents();
+        const result = { left: actual.left, right: actual.right };
+        for (const entry of entries) {
+            if (entry.col !== "center" || !moduleCompact(entry.id))
+                continue;
+            const side = entry.centerSide === "left" ? "left" : "right";
+            result[side] += entry.saving;
+        }
+        return result;
     }
 
     // The width a section would occupy with nothing compacted, which is what
@@ -301,6 +349,7 @@ PanelWindow {
 
     function recomputeFit() {
         const entries = measuredSlots();
+        const centerExtents = reconstructedCenterExtents(entries);
         const result = LayoutHelpers.fitBar({
             width: width,
             sideMargin: Theme.barSideMargin + Theme.barPadding,
@@ -310,6 +359,7 @@ PanelWindow {
                 center: reconstructedWidth(centerCluster.width, "center", entries),
                 right: reconstructedWidth(rightSection.width, "right", entries)
             },
+            centerExtents: centerExtents,
             entries: entries
         });
         if (JSON.stringify(compactIds) !== JSON.stringify(result.compact))
@@ -358,6 +408,7 @@ PanelWindow {
     readonly property var moduleSources: ({
         ws: "Modules/Workspaces.qml", media: "Modules/Media.qml",
         clock: "Modules/Clock.qml", weather: "Modules/Weather.qml",
+        indicators: "Modules/Indicators.qml",
         t3: "Modules/T3.qml", usage: "Modules/Usage.qml",
         gh: "Modules/GitHub.qml", updates: "Modules/Updates.qml",
         tray: "Modules/Tray.qml",
@@ -494,6 +545,10 @@ PanelWindow {
                     point.position.x, point.position.y);
                 barWindow.tooltipPointerPosition = scenePoint;
                 barWindow.hoverPanelAt(scenePoint);
+                const indicatorSlot = barWindow.slotRegistry.indicators;
+                barWindow.indicatorActionHovered = indicatorSlot !== undefined
+                    && indicatorSlot.mod !== null
+                    && indicatorSlot.mod.actionAtScenePoint(scenePoint);
             }
 
             onHoveredChanged: {
@@ -503,6 +558,8 @@ PanelWindow {
                 } else if (Settings.autoHide) {
                     hideTimer.restart();
                 }
+                if (!hovered)
+                    barWindow.indicatorActionHovered = false;
             }
         }
     }
@@ -620,22 +677,20 @@ PanelWindow {
             col: "center"
             model: Settings.mods.center
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.horizontalCenterOffset: barWindow.animatedCenterShift
+            anchors.horizontalCenterOffset: barWindow.centerPinBias
+                + barWindow.animatedCenterShift
             anchors.verticalCenter: parent.verticalCenter
             onImplicitWidthChanged: barWindow.scheduleFit()
         }
 
-        // RIGHT — recording, then the configured modules, then power.
+        // RIGHT — configured modules, then power. Recording now lives beside
+        // the clock with the other active quick actions.
         Row {
             id: rightSection
             anchors.right: parent.right
             anchors.rightMargin: Theme.barPadding
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
-
-            RecordingChip {
-                host: barWindow
-            }
 
             Cluster {
                 id: rightCluster

@@ -6,10 +6,6 @@ import "../../Common"
 // The clock, and the date when there is room for it. Content only: the centre
 // pill around it owns the pointer and opens the notification centre.
 //
-// Do-not-disturb and idle-inhibit ride here as marks that slide out of zero
-// width. Putting them in the clock rather than giving each a module of its own
-// is what the redesign is doing: two states that change rarely, shown where
-// the eye already goes, instead of two more permanent icons in the tray.
 BarModule {
     id: root
 
@@ -29,51 +25,6 @@ BarModule {
     SystemClock {
         id: clock
         precision: Settings.modOpts.clock.seconds ? SystemClock.Seconds : SystemClock.Minutes
-    }
-
-    // A state mark that takes no space while the state is off.
-    component StateMark: Item {
-        id: mark
-
-        property string glyph
-        property bool on: false
-
-        width: on ? Theme.iconSmall + 6 : 0
-        height: Theme.iconSmall + 2
-        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-        clip: true
-        opacity: on ? 1 : 0
-
-        Behavior on width {
-            NumberAnimation {
-                duration: Theme.expandDuration
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.springCurve
-            }
-        }
-
-        Behavior on opacity {
-            NumberAnimation { duration: Theme.chipFadeDuration }
-        }
-
-        Sym {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            name: mark.glyph
-            size: Theme.iconSmall + 1
-            fill: 1
-            color: Theme.barAccent
-        }
-    }
-
-    StateMark {
-        glyph: "do_not_disturb_on"
-        on: Settings.notifDnd
-    }
-
-    StateMark {
-        glyph: "coffee"
-        on: SysInfo.idleInhibited
     }
 
     AnimatedText {

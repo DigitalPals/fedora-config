@@ -63,6 +63,15 @@ function fitBar(options) {
         center: Math.max(0, options.widths && options.widths.center || 0),
         right: Math.max(0, options.widths && options.widths.right || 0)
     };
+    var asymmetricCenter = !!options.centerExtents;
+    var center = asymmetricCenter ? {
+        left: Math.max(0, Number(options.centerExtents.left) || 0),
+        right: Math.max(0, Number(options.centerExtents.right) || 0)
+    } : {
+        left: widths.center / 2,
+        right: widths.center / 2
+    };
+    widths.center = center.left + center.right;
     var entries = Array.isArray(options.entries) ? options.entries : [];
     var compact = [];
 
@@ -70,18 +79,32 @@ function fitBar(options) {
         if (!entry || compact.indexOf(entry.id) !== -1)
             return;
         compact.push(entry.id);
-        if (entry.col in widths)
+        if (entry.col in widths) {
             widths[entry.col] = Math.max(0, widths[entry.col] - Math.max(0, entry.saving || 0));
+            if (entry.col === "center") {
+                var amount = Math.max(0, entry.saving || 0);
+                if (asymmetricCenter) {
+                    var side = entry.centerSide === "left" ? "left" : "right";
+                    center[side] = Math.max(0, center[side] - amount);
+                } else {
+                    center.left = Math.max(0, center.left - amount / 2);
+                    center.right = Math.max(0, center.right - amount / 2);
+                }
+            }
+        }
     }
 
     function geometry() {
-        var desired = (available - widths.center) / 2;
+        // Pin the semantic center (the clock slot), not the midpoint of a
+        // center cluster whose left and right contents can have different
+        // widths. Revealing quick actions then grows outward from the clock.
+        var desired = available / 2 - center.left;
         var rightX = available - widths.right;
         return {
             desired: desired,
             rightX: rightX,
             fits: widths.left + gutter <= desired
-                && desired + widths.center + gutter <= rightX
+                && desired + center.left + center.right + gutter <= rightX
         };
     }
 
@@ -107,7 +130,7 @@ function fitBar(options) {
     var shifted = false;
     if (!state.fits) {
         var minX = widths.left + gutter;
-        var maxX = state.rightX - gutter - widths.center;
+        var maxX = state.rightX - gutter - center.left - center.right;
         if (maxX >= minX) {
             centerX = clamp(state.desired, minX, maxX);
             shifted = Math.abs(centerX - state.desired) > 0.01;
@@ -118,6 +141,7 @@ function fitBar(options) {
     return {
         compact: compact,
         widths: widths,
+        centerExtents: center,
         centerX: centerX,
         centerOffset: centerX - state.desired,
         shifted: shifted,

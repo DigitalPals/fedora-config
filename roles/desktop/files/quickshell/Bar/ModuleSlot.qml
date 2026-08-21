@@ -23,6 +23,7 @@ Loader {
     // status pill or the centre pill are pure content: the pill owns the
     // click, so a second target inside it would swallow it.
     property bool interactive: true
+    property bool groupHovered: false
 
     // `as` gives qmllint a typed handle on what the Loader built, so the
     // module contract below is checked rather than duck-typed.
@@ -47,6 +48,7 @@ Loader {
             slot.mod.isle = slot.col;
             slot.mod.groupAnchor = slot.groupAnchor;
             slot.mod.interactive = slot.interactive;
+            slot.mod.groupHovered = slot.groupHovered;
             slot.mod.host = slot.host;
         }
         host.scheduleFit();
@@ -54,6 +56,10 @@ Loader {
 
     onWidthChanged: host.scheduleFit()
     onDetailSavingChanged: host.scheduleFit()
+    onGroupHoveredChanged: {
+        if (slot.mod)
+            slot.mod.groupHovered = slot.groupHovered;
+    }
 
     // The bar's fit pass needs every live slot, and the alternative — walking
     // the grouped Repeaters — hands it back an untyped QQuickItem it cannot

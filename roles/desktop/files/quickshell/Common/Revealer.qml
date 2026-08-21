@@ -12,6 +12,11 @@ Item {
 
     readonly property real naturalWidth: contentRoot.childrenRect.width
     readonly property real naturalHeight: contentRoot.childrenRect.height
+    // Lets a container avoid putting a second width animation around this
+    // one. Two nested spring curves chase different intermediate widths and
+    // make pinned content visibly rebound even though both endpoints agree.
+    readonly property bool widthAnimating: root.orientation === Qt.Horizontal
+        && horizontalWidthAnimation.running
 
     implicitWidth: orientation === Qt.Horizontal
         ? (reveal ? naturalWidth : 0) : naturalWidth
@@ -24,6 +29,7 @@ Item {
     Behavior on implicitWidth {
         enabled: root.orientation === Qt.Horizontal
         NumberAnimation {
+            id: horizontalWidthAnimation
             duration: Theme.expandDuration
             easing.type: Easing.BezierSpline
             easing.bezierCurve: Theme.springCurve

@@ -98,6 +98,7 @@ SettingsPage {
                 switch (view.moduleId) {
                 case "ws": return wsOptions;
                 case "media": return mediaOptions;
+                case "indicators": return indicatorsOptions;
                 case "clock": return clockOptions;
                 case "weather": return weatherOptions;
                 case "t3": return t3Options;
@@ -109,6 +110,27 @@ SettingsPage {
                 case "tray": return trayOptions;
                 default: return null;
                 }
+            }
+        }
+    }
+
+    Component {
+        id: indicatorsOptions
+
+        Column {
+            spacing: 8
+
+            PickerRow {
+                width: parent.width
+                label: "Visibility"
+                model: [
+                    { value: "hover", label: "Hover" },
+                    { value: "always", label: "Always show" }
+                ]
+                current: view.opts.mode
+                dirty: view.optDirty("mode")
+                onPicked: value => view.setOpt("mode", value)
+                onResetRequested: view.resetOpt("mode")
             }
         }
     }

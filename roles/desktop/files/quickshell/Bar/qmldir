@@ -12,7 +12,6 @@ Divider Divider.qml
 ModuleSlot ModuleSlot.qml
 PointerCheck PointerCheck.qml
 PopoutHost PopoutHost.qml
-RecordingChip RecordingChip.qml
 T3Chip T3Chip.qml
 UsageChips UsageChips.qml
 Workspaces Workspaces.qml

@@ -363,14 +363,14 @@ Surface {
             glyph: "nightlight"
             title: "Night light"
             on: SysInfo.nightLight
-            onToggled: SysInfo.nightLight = !SysInfo.nightLight
+            onToggled: SysInfo.toggleNightLight()
         }
 
         RoundToggle {
             glyph: "coffee"
             title: "Idle inhibit"
             on: SysInfo.idleInhibited
-            onToggled: SysInfo.idleInhibited = !SysInfo.idleInhibited
+            onToggled: SysInfo.toggleIdleInhibited()
         }
 
         RoundToggle {

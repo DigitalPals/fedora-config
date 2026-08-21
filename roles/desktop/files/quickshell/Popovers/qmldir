@@ -17,6 +17,7 @@ LinkText LinkText.qml
 MediaPopover MediaPopover.qml
 NotifCenterPopover NotifCenterPopover.qml
 NotifsPopover NotifsPopover.qml
+ReminderPopover ReminderPopover.qml
 PopoutPanel PopoutPanel.qml
 SectionLabel SectionLabel.qml
 Surface Surface.qml

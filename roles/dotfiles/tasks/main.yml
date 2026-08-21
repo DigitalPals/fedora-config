@@ -49,6 +49,7 @@
   loop:
     - screenshot
     - screen-record
+    - quickshell-reminder
     - screen-ocr
     - clipboard-copy-image
     - clipboard-image-to-file

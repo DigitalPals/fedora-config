@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 7);
+    assert.equal(H.VERSION, 8);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, true);
     assert.equal(d.barColorMode, "default");
@@ -30,6 +30,8 @@ test("defaults carry the design values", () => {
     assert.equal(d.osd, "bottom");
     assert.equal(d.pollMax, 300);
     assert.equal(d.scrollFactor, 1.0);
+    assert.equal(d.nightLight, false);
+    assert.equal(d.idleInhibited, true);
     assert.equal(d.shuffle, "Off");
     assert.equal(d.wallDir, "~/Pictures/Wallpapers");
     assert.equal(d.notifDnd, false);
@@ -43,7 +45,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.notifProgress, true);
     assert.equal(d.notifBodyLines, 2);
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
-    assert.deepEqual(d.mods.center.map(m => m.id), ["clock", "weather"]);
+    assert.deepEqual(d.mods.center.map(m => m.id), ["indicators", "clock", "weather"]);
     assert.deepEqual(d.mods.right.map(m => m.id),
         ["updates", "gh", "t3", "usage", "tray", "vol", "wifi", "bt", "batt"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
@@ -54,11 +56,12 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "clock", "weather", "t3", "usage", "gh", "updates",
+        ["ws", "media", "indicators", "clock", "weather", "t3", "usage", "gh", "updates",
          "tray", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "dots");
     assert.equal(d.modOpts.media.maxWidth, 180);
+    assert.deepEqual(d.modOpts.indicators, { mode: "hover" });
     assert.equal(d.modOpts.clock.seconds, false);
     assert.equal(d.modOpts.clock.dateFormat, "ddd d MMM");
     assert.deepEqual(d.modOpts.updates, { pollMins: 30, flatpak: true, notify: true });
@@ -171,6 +174,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     const next = H.normalizeModOpts({
         ws: { minSlots: 99, style: "triangles" },
         media: { maxWidth: 133, titleFormat: "title" },
+        indicators: { mode: "sometimes" },
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
         usage: { warnAt: 8, critAt: 60, claude: "yes" },
         gh: {
@@ -193,6 +197,9 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.ws.style, "dots");
     assert.equal(next.media.maxWidth, 140);
     assert.equal(next.media.titleFormat, "title");
+    assert.equal(next.indicators.mode, "hover");
+    assert.equal(H.normalizeModOpts({ indicators: { mode: "always" } }).indicators.mode,
+        "always");
     assert.equal(next.weather.lat, 90, "out-of-range latitude clamps like other numerics");
     assert.equal(next.weather.lon, -12.3457);
     assert.equal(next.weather.place, "Emmen Centrum");
@@ -364,13 +371,14 @@ test("schema-5 colors select wallpaper or fixed mode and remain stored", () => {
     assert.equal(dormantCustomBar.barCustomHue, 120);
 });
 
-test("schema-6 migration preserves module order and centered clock/weather", () => {
+test("schema-6 migration preserves module order and adds clock-side indicators", () => {
     const raw = H.defaultMods();
     raw.left = [raw.left[1], raw.left[0]];
     raw.right = [raw.right.at(-1), ...raw.right.slice(0, -1)];
     const migrated = H.merge({ v: 5, floating: true, mods: raw });
     assert.deepEqual(migrated.mods.left.map(entry => entry.id), ["media", "ws"]);
-    assert.deepEqual(migrated.mods.center.map(entry => entry.id), ["clock", "weather"]);
+    assert.deepEqual(migrated.mods.center.map(entry => entry.id),
+        ["indicators", "clock", "weather"]);
     assert.equal(migrated.mods.right[0].id, "batt");
 });
 
@@ -392,7 +400,7 @@ test("normalizeMods drops unknown ids and dedupes across columns", () => {
     assert.deepEqual(next.left.map(m => m.id), ["clock", "ws", "media"],
         "flux dropped, duplicate clock collapsed, absent defaults appended");
     assert.equal(next.left[0].on, true, "first occurrence of a duplicate wins");
-    assert.deepEqual(next.center.map(m => m.id), ["weather"]);
+    assert.deepEqual(next.center.map(m => m.id), ["indicators", "weather"]);
     const all = [...next.left, ...next.center, ...next.right].map(m => m.id).sort();
     assert.deepEqual(all, [...H.MODULE_IDS].sort());
 });
@@ -401,7 +409,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     const next = H.normalizeMods({ left: [{ id: "vol", on: false }], center: [], right: [] });
     assert.deepEqual(next.left.map(m => m.id), ["vol", "ws", "media"]);
     assert.equal(next.left[0].on, false);
-    assert.deepEqual(next.center.map(m => m.id), ["clock", "weather"]);
+    assert.deepEqual(next.center.map(m => m.id), ["indicators", "clock", "weather"]);
     assert.deepEqual(next.right.map(m => m.id),
         ["updates", "gh", "t3", "usage", "tray", "wifi", "bt", "batt"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === false),
@@ -514,9 +522,10 @@ test("version one layouts insert usage after t3 with its column and enabled stat
             right: [{ id: "vol", on: true }]
         }
     }).mods;
-    assert.deepEqual(enabled.center.slice(0, 3), [
+    assert.deepEqual(enabled.center.slice(0, 4), [
         { id: "t3", on: true, detail: "auto" },
         { id: "usage", on: true, detail: "auto" },
+        { id: "indicators", on: true, detail: "auto" },
         { id: "clock", on: true, detail: "auto" }
     ]);
 
@@ -548,6 +557,45 @@ test("unversioned layouts receive the same composite t3 migration", () => {
         { id: "usage", on: false, detail: "auto" },
         { id: "media", on: true, detail: "auto" }
     ]);
+});
+
+test("schema-8 inserts indicators immediately before the existing clock", () => {
+    const raw = {
+        left: [{ id: "media", on: false }],
+        center: [{ id: "weather", on: false }],
+        right: [
+            { id: "vol", on: false, detail: "compact" },
+            { id: "clock", on: true, detail: "prefer" },
+            { id: "tray", on: false }
+        ]
+    };
+    const migrated = H.merge({ v: 7, mods: raw }).mods;
+    assert.deepEqual(migrated.right.slice(0, 4), [
+        { id: "vol", on: false, detail: "compact" },
+        { id: "indicators", on: true, detail: "auto" },
+        { id: "clock", on: true, detail: "prefer" },
+        { id: "tray", on: false, detail: "auto" }
+    ]);
+    assert.deepEqual(migrated.left[0], { id: "media", on: false, detail: "auto" });
+    assert.deepEqual(migrated.center[0], { id: "weather", on: false, detail: "auto" });
+});
+
+test("schema-8 validates persisted action and system toggle state", () => {
+    const valid = H.merge({
+        v: 8, nightLight: true, idleInhibited: false,
+        modOpts: { indicators: { mode: "always" } }
+    });
+    assert.equal(valid.nightLight, true);
+    assert.equal(valid.idleInhibited, false);
+    assert.equal(valid.modOpts.indicators.mode, "always");
+
+    const invalid = H.merge({
+        v: 8, nightLight: "on", idleInhibited: 0,
+        modOpts: { indicators: { mode: "visible" } }
+    });
+    assert.equal(invalid.nightLight, false);
+    assert.equal(invalid.idleInhibited, true);
+    assert.equal(invalid.modOpts.indicators.mode, "hover");
 });
 
 test("version two normalization preserves usage independently and uniquely", () => {

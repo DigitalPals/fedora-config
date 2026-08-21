@@ -55,6 +55,8 @@ Singleton {
     property string osd: defaults.osd
     property int pollMax: defaults.pollMax
     property real scrollFactor: defaults.scrollFactor
+    property bool nightLight: defaults.nightLight
+    property bool idleInhibited: defaults.idleInhibited
     property bool notifDnd: defaults.notifDnd
     property string notifQuiet: defaults.notifQuiet
     property int notifQuietStart: defaults.notifQuietStart
@@ -111,7 +113,8 @@ Singleton {
         notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
             "notifProgress", "notifBodyLines"],
-        system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor"]
+        system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor",
+            "nightLight", "idleInhibited"]
     })
 
     // ---- Shared-popout lifecycle ----------------------------------------
@@ -411,6 +414,8 @@ Singleton {
     onWarmthChanged: scheduleSave()
     onOsdChanged: scheduleSave()
     onPollMaxChanged: scheduleSave()
+    onNightLightChanged: scheduleSave()
+    onIdleInhibitedChanged: scheduleSave()
     onScrollFactorChanged: {
         scheduleSave();
         applyScrollFactor();

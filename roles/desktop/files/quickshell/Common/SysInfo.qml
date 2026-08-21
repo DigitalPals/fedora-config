@@ -14,11 +14,11 @@ Singleton {
     property string host: "linux"
 
     // Shared idle-inhibit state (bar module + control center toggle).
-    property bool idleInhibited: true
+    readonly property bool idleInhibited: Settings.idleInhibited
 
     // Night light: hyprsunset warms the screen while enabled and restores
     // neutral gamma when the process is killed.
-    property bool nightLight: false
+    readonly property bool nightLight: Settings.nightLight
     property string nightLightLifecycle: "stopped"
     property string tempPath: ""
     property var cpuPrev: null
@@ -64,6 +64,22 @@ Singleton {
         } else {
             nightLightLifecycle = "stopped";
         }
+    }
+
+    function setNightLight(value) {
+        Settings.set("nightLight", !!value);
+    }
+
+    function toggleNightLight() {
+        setNightLight(!nightLight);
+    }
+
+    function setIdleInhibited(value) {
+        Settings.set("idleInhibited", !!value);
+    }
+
+    function toggleIdleInhibited() {
+        setIdleInhibited(!idleInhibited);
     }
 
     onNightLightChanged: syncNightLight()
@@ -291,4 +307,6 @@ Singleton {
         triggeredOnStart: true
         onTriggered: root.refreshBrightness()
     }
+
+    Component.onCompleted: syncNightLight()
 }

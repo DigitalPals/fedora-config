@@ -256,6 +256,7 @@
     - Popovers/HSlider.qml
     - Settings/SettingsSwitch.qml
     - Settings/SettingsSlider.qml
+    - Bar/RecordingChip.qml
 
 - name: Configure portal preference without patching Fedora files
   become: true

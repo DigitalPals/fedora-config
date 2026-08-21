@@ -39,6 +39,7 @@ var PANELS = [
     // The centre pill (clock, date, weather) is the notification centre's
     // trigger, and that panel carries the calendar and the forecast with it.
     { name: "notifications", island: "center", moduleId: "clock", source: "Popovers/NotifCenterPopover.qml" },
+    { name: "reminders", island: "center", moduleId: "indicators", source: "Popovers/ReminderPopover.qml" },
 
     { name: "media", island: "left", moduleId: "media", source: "Popovers/MediaPopover.qml" },
     { name: "usage", island: "right", moduleId: "usage", source: "Popovers/UsagePopover.qml" },

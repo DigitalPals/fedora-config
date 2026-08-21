@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+# Persistent minute-based reminders for the Quickshell menubar.
+
+set -euo pipefail
+
+state_dir="${QUICKSHELL_REMINDER_STATE_DIR:-$HOME/.local/state/quickshell/reminders}"
+script_path="$(readlink -f -- "$0")"
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  quickshell-reminder add MINUTES [MESSAGE]
+  quickshell-reminder list --json
+  quickshell-reminder cancel ID
+  quickshell-reminder clear
+EOF
+  exit 2
+}
+
+require_tools() {
+  command -v jq >/dev/null 2>&1 || {
+    printf 'quickshell-reminder: jq is required\n' >&2
+    exit 1
+  }
+}
+
+valid_id() {
+  [[ ${1:-} =~ ^[A-Za-z0-9_-]+$ ]]
+}
+
+record_path() {
+  valid_id "${1:-}" || return 1
+  printf '%s/%s.json\n' "$state_dir" "$1"
+}
+
+ensure_state_dir() {
+  mkdir -p -- "$state_dir"
+  chmod 0700 -- "$state_dir"
+}
+
+timer_base() {
+  printf 'quickshell-reminder-%s' "$1"
+}
+
+schedule_record() {
+  local id=$1 due=$2 base
+  base=$(timer_base "$id")
+  systemd-run --user --unit="$base" \
+    --on-calendar="@$due" \
+    --timer-property=Persistent=true \
+    --timer-property=AccuracySec=1s \
+    --collect -- "$script_path" fire "$id" >/dev/null
+}
+
+refresh_shell() {
+  command -v qs >/dev/null 2>&1 || return 0
+  qs ipc call reminders refresh >/dev/null 2>&1 || true
+}
+
+list_json() {
+  ensure_state_dir
+  local records=()
+  shopt -s nullglob
+  records=("$state_dir"/*.json)
+  shopt -u nullglob
+  if ((${#records[@]} == 0)); then
+    printf '[]\n'
+    return
+  fi
+  jq -s 'map(select(type == "object" and (.id | type == "string")
+      and (.due | type == "number"))) | sort_by(.due, .id)' "${records[@]}"
+}
+
+add_reminder() {
+  local minutes=${1:-} message=${2:-}
+  [[ $minutes =~ ^[1-9][0-9]*$ ]] || {
+    printf 'quickshell-reminder: MINUTES must be a positive integer\n' >&2
+    exit 2
+  }
+
+  ensure_state_dir
+  local now due id path temporary
+  now=$(date +%s)
+  due=$((now + minutes * 60))
+  id="${now}-$$-${RANDOM}"
+  path=$(record_path "$id")
+  temporary=$(mktemp "$state_dir/.${id}.XXXXXX")
+  if [[ -z $message ]]; then
+    message="Your $minutes minutes are up."
+  fi
+
+  jq -n --arg id "$id" --argjson minutes "$minutes" --arg message "$message" \
+    --argjson created "$now" --argjson due "$due" \
+    '{id: $id, minutes: $minutes, message: $message, created: $created, due: $due}' \
+    >"$temporary"
+  chmod 0600 -- "$temporary"
+  mv -f -- "$temporary" "$path"
+
+  if ! schedule_record "$id" "$due"; then
+    rm -f -- "$path"
+    printf 'quickshell-reminder: could not schedule reminder\n' >&2
+    exit 1
+  fi
+  printf '%s\n' "$id"
+  refresh_shell
+}
+
+cancel_reminder() {
+  local id=${1:-} path base
+  valid_id "$id" || {
+    printf 'quickshell-reminder: invalid reminder id\n' >&2
+    exit 2
+  }
+  path=$(record_path "$id")
+  base=$(timer_base "$id")
+  systemctl --user stop "$base.timer" "$base.service" >/dev/null 2>&1 || true
+  rm -f -- "$path"
+  refresh_shell
+}
+
+clear_reminders() {
+  ensure_state_dir
+  local records=() file id
+  shopt -s nullglob
+  records=("$state_dir"/*.json)
+  shopt -u nullglob
+  for file in "${records[@]}"; do
+    id=${file##*/}
+    id=${id%.json}
+    valid_id "$id" && cancel_reminder "$id"
+  done
+  refresh_shell
+}
+
+fire_reminder() {
+  local id=${1:-} path message
+  valid_id "$id" || exit 2
+  path=$(record_path "$id")
+  [[ -f $path ]] || exit 0
+  message=$(jq -er '.message | select(type == "string")' "$path") || exit 1
+
+  # notify-send returns nonzero when no notification server is available.
+  # Keep the canonical record in that case so restore can retry it later.
+  if ! notify-send --app-name="Quickshell Reminders" --icon=alarm \
+      "Reminder" "$message"; then
+    printf 'quickshell-reminder: notification delivery failed; reminder retained\n' >&2
+    exit 1
+  fi
+  rm -f -- "$path"
+  refresh_shell
+}
+
+restore_reminders() {
+  ensure_state_dir
+  local now records=() file id due base failed=0
+  now=$(date +%s)
+  shopt -s nullglob
+  records=("$state_dir"/*.json)
+  shopt -u nullglob
+  for file in "${records[@]}"; do
+    id=${file##*/}
+    id=${id%.json}
+    valid_id "$id" || continue
+    due=$(jq -er '.due | select(type == "number") | floor' "$file") || continue
+    if ((due <= now)); then
+      fire_reminder "$id" || failed=1
+      continue
+    fi
+    base=$(timer_base "$id")
+    if ! systemctl --user is-active --quiet "$base.timer"; then
+      schedule_record "$id" "$due" || failed=1
+    fi
+  done
+  refresh_shell
+  return "$failed"
+}
+
+require_tools
+command=${1:-}
+case $command in
+  add)
+    (($# >= 2)) || usage
+    minutes=$2
+    shift 2
+    add_reminder "$minutes" "$*"
+    ;;
+  list)
+    [[ $# == 2 && $2 == --json ]] || usage
+    list_json
+    ;;
+  cancel)
+    [[ $# == 2 ]] || usage
+    cancel_reminder "$2"
+    ;;
+  clear)
+    [[ $# == 1 ]] || usage
+    clear_reminders
+    ;;
+  restore)
+    [[ $# == 1 ]] || usage
+    restore_reminders
+    ;;
+  fire)
+    [[ $# == 2 ]] || usage
+    fire_reminder "$2"
+    ;;
+  *) usage ;;
+esac

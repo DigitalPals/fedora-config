@@ -15,6 +15,7 @@ Item {
     readonly property var moduleMeta: ({
         ws: { name: "Workspaces", short: "Workspaces" },
         media: { name: "Media", short: "Media", tag: "while playing", detail: true },
+        indicators: { name: "Indicators", short: "Actions", tag: "clock-side" },
         clock: { name: "Clock", short: "Clock", detail: true },
         weather: { name: "Weather", short: "Weather", detail: true },
         t3: { name: "T3 Code", short: "T3", detail: true },

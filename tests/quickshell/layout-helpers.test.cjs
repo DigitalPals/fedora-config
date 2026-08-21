@@ -81,6 +81,40 @@ test("all-auto detail follows the documented compaction order", () => {
         "fitting changes detail, not module enablement");
 });
 
+test("asymmetric center extents pin the clock while actions reveal on its left", () => {
+    const hidden = H.fitBar({
+        width: 1200, gutter: 8,
+        widths: { left: 220, center: 180, right: 260 },
+        centerExtents: { left: 40, right: 140 },
+        entries: []
+    });
+    const revealed = H.fitBar({
+        width: 1200, gutter: 8,
+        widths: { left: 220, center: 330, right: 260 },
+        centerExtents: { left: 190, right: 140 },
+        entries: []
+    });
+    assert.equal(hidden.centerX + 40, 600);
+    assert.equal(revealed.centerX + 190, 600,
+        "the semantic clock point must stay fixed as the left extent grows");
+    assert.equal(hidden.centerOffset, 0);
+    assert.equal(revealed.centerOffset, 0);
+});
+
+test("asymmetric center extents shift only when a side collision requires it", () => {
+    const result = H.fitBar({
+        width: 800, gutter: 8,
+        widths: { left: 360, center: 300, right: 120 },
+        centerExtents: { left: 210, right: 90 },
+        entries: []
+    });
+    assert.equal(result.fits, true);
+    assert.equal(result.shifted, true);
+    assert.ok(result.centerX >= result.widths.left + 8);
+    assert.ok(result.centerX + result.centerExtents.left
+        + result.centerExtents.right + 8 <= 800 - result.widths.right);
+});
+
 test("high resolution wheel deltas emit only accumulated steps", () => {
     let accumulator = 0;
     let steps = 0;

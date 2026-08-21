@@ -143,6 +143,8 @@ Item {
                     // from snapping sideways.
                     Behavior on width {
                         enabled: root.host.animationsReady
+                            && !(group.kind === "center"
+                                && root.host.indicatorDisclosureAnimating)
                         NumberAnimation {
                             duration: Theme.expandDuration
                             easing.type: Easing.BezierSpline
@@ -152,6 +154,7 @@ Item {
 
                     Row {
                         id: slotRow
+                        z: 2
                         anchors.verticalCenter: parent.verticalCenter
                         x: pill.pad
                         spacing: group.kind === "chip" ? 0
@@ -192,6 +195,11 @@ Item {
                                     index: entry.modelData.index
                                     groupAnchor: group.ownsPointer ? pill : null
                                     interactive: !group.ownsPointer
+                                    groupHovered: group.kind === "center"
+                                        ? root.host.tooltipPointerInside
+                                            && root.host.itemContainsPoint(pill,
+                                                root.host.tooltipPointerPosition)
+                                        : groupPointer.over
                                 }
                             }
                         }
@@ -206,6 +214,7 @@ Item {
 
                     MouseArea {
                         id: groupMouse
+                        z: 1
                         anchors.fill: parent
                         enabled: group.ownsPointer
                         visible: group.ownsPointer
@@ -219,7 +228,8 @@ Item {
                     BarTooltip {
                         check: groupPointer
                         text: group.kind === "status" ? root.host.statusSummary
-                            : group.kind === "center" ? "Notifications & calendar" : ""
+                            : group.kind === "center" && !root.host.indicatorActionHovered
+                                ? "Notifications & calendar" : ""
                         align: group.kind === "status" ? 1 : 0
                         y: pill.height + 8
                         x: align > 0 ? pill.width - width : (pill.width - width) / 2

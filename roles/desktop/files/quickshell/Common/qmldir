@@ -40,6 +40,8 @@ singleton Media Media.qml
 singleton Tailscale Tailscale.qml
 singleton Updates Updates.qml
 singleton Recorder Recorder.qml
+singleton Dictation Dictation.qml
+singleton Reminders Reminders.qml
 singleton Session Session.qml
 
 # Plain types (not singletons). The two controls live here rather than in

@@ -66,6 +66,16 @@ ShellRoot {
         }
     }
 
+    // Timer services call this after delivering a reminder so the indicator
+    // and an open manager update without waiting for their polling fallback.
+    IpcHandler {
+        target: "reminders"
+
+        function refresh(): void {
+            Reminders.refresh();
+        }
+    }
+
     // The two shell-wide overlays, so the compositor can bind them directly
     // rather than the shell having to own a keybind.
     IpcHandler {
@@ -198,5 +208,7 @@ ShellRoot {
         void Settings.loaded;
         void Updates.total;
         void Recorder.active;
+        void Dictation.state;
+        void Reminders.count;
     }
 }

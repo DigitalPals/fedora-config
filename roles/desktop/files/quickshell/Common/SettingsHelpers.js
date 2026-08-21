@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 7;
+var VERSION = 8;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -16,7 +16,7 @@ var PALETTE_MODES = ["wallpaper", "fixed"];
 // and `control` became the status pill itself, so a separate trigger for it
 // would open the panel the pill already owns.
 var MODULE_IDS = [
-    "ws", "media", "clock", "weather", "updates", "gh", "t3", "usage", "tray",
+    "ws", "media", "indicators", "clock", "weather", "updates", "gh", "t3", "usage", "tray",
     "vol", "wifi", "bt", "batt"
 ];
 
@@ -66,7 +66,7 @@ var BAR_COLOR_PRESETS = {
 // by hairlines; `status` modules are bare glyphs inside the pill that opens
 // the Control Center; `solo` modules bring their own pill.
 var MODULE_GROUPS = {
-    ws: "solo", media: "solo", clock: "center", weather: "center",
+    ws: "solo", media: "solo", indicators: "center", clock: "center", weather: "center",
     updates: "solo", gh: "chip", t3: "chip", usage: "chip", tray: "solo",
     vol: "status", wifi: "status", bt: "status", batt: "status"
 };
@@ -81,7 +81,7 @@ function defaultMods() {
     }
     return {
         left: [mod("ws", true), mod("media", true)],
-        center: [mod("clock", true), mod("weather", true)],
+        center: [mod("indicators", true), mod("clock", true), mod("weather", true)],
         right: [
             mod("updates", true), mod("gh", true), mod("t3", true),
             mod("usage", true), mod("tray", true), mod("vol", true),
@@ -96,6 +96,7 @@ function defaultModOpts() {
     return {
         ws: { minSlots: 5, hideEmpty: false, style: "dots" },
         media: { titleFormat: "title-artist", maxWidth: 180 },
+        indicators: { mode: "hover" },
         clock: { seconds: false, showDate: true, dateFormat: "ddd d MMM" },
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
         t3: { showLabel: true },
@@ -139,6 +140,8 @@ function defaults() {
         osd: "bottom",
         pollMax: 300,
         scrollFactor: 1.0,
+        nightLight: false,
+        idleInhibited: true,
         notifDnd: false,
         notifQuiet: "off",
         notifQuietStart: 1320,
@@ -444,6 +447,9 @@ var MOD_OPT_CHECKS = {
         },
         maxWidth: function(v, d) { return intIn(v, 120, 360, 20, d); }
     },
+    indicators: {
+        mode: function(v, d) { return enumIn(v, ["hover", "always"], d); }
+    },
     clock: {
         seconds: boolIn,
         showDate: boolIn,
@@ -514,12 +520,10 @@ function normalizeModOpts(raw) {
 // inserting the new `usage` entry directly after it. Current-schema layouts
 // continue through normal normalization, where missing ids use their defaults.
 function migrateMods(raw, sourceVersion) {
-    if ((sourceVersion !== undefined && sourceVersion !== 1)
-            || !raw || typeof raw !== "object")
+    if (!raw || typeof raw !== "object")
         return normalizeMods(raw);
 
     var migrated = { left: [], center: [], right: [] };
-    var usagePresent = false;
     ["left", "center", "right"].forEach(function(col) {
         var list = Array.isArray(raw[col]) ? raw[col] : [];
         migrated[col] = list.map(function(entry) {
@@ -527,11 +531,14 @@ function migrateMods(raw, sourceVersion) {
                 ? { id: entry.id, on: entry.on, detail: entry.detail }
                 : entry;
         });
-        if (list.some(function(entry) { return entry && entry.id === "usage"; }))
-            usagePresent = true;
     });
 
-    if (!usagePresent) {
+    // Schema 1 split model usage out of T3 Code. Keep that historical
+    // placement migration before applying newer additions.
+    var usagePresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) { return entry && entry.id === "usage"; });
+    });
+    if ((sourceVersion === undefined || sourceVersion === 1) && !usagePresent) {
         for (var i = 0; i < 3; i++) {
             var col = ["left", "center", "right"][i];
             var t3Index = migrated[col].findIndex(function(entry) {
@@ -544,6 +551,30 @@ function migrateMods(raw, sourceVersion) {
                 id: "usage",
                 on: typeof t3.on === "boolean" ? t3.on : true,
                 detail: "auto"
+            });
+            break;
+        }
+    }
+
+    // Schema 8 adds quick actions beside the clock. Older layouts retain
+    // every user-chosen column, order, visibility, and detail policy; the one
+    // new entry is inserted immediately before wherever their clock lives.
+    var indicatorsPresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) {
+            return entry && entry.id === "indicators";
+        });
+    });
+    if ((typeof sourceVersion !== "number" || sourceVersion < 8)
+            && !indicatorsPresent) {
+        for (var j = 0; j < 3; j++) {
+            var clockCol = ["left", "center", "right"][j];
+            var clockIndex = migrated[clockCol].findIndex(function(entry) {
+                return entry && entry.id === "clock";
+            });
+            if (clockIndex === -1)
+                continue;
+            migrated[clockCol].splice(clockIndex, 0, {
+                id: "indicators", on: true, detail: "auto"
             });
             break;
         }
@@ -689,6 +720,8 @@ function merge(raw) {
         osd: enumIn(parsed.osd, ["top", "bottom"], d.osd),
         pollMax: enumIn(parsed.pollMax, [60, 300, 600], d.pollMax),
         scrollFactor: realIn(parsed.scrollFactor, 0.2, 2.0, 0.1, d.scrollFactor),
+        nightLight: boolIn(parsed.nightLight, d.nightLight),
+        idleInhibited: boolIn(parsed.idleInhibited, d.idleInhibited),
         notifDnd: boolIn(parsed.notifDnd, d.notifDnd),
         notifQuiet: enumIn(parsed.notifQuiet, ["off", "nights", "custom"], d.notifQuiet),
         notifQuietStart: intIn(parsed.notifQuietStart, 0, 1425, 15, d.notifQuietStart),

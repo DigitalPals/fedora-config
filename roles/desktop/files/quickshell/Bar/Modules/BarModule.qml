@@ -32,6 +32,10 @@ Row {
     // pill and the centre pill are single buttons, so the modules inside them
     // must not put a second target on top of one.
     property bool interactive: true
+    // Hover state of the shared pill this module sits in. Indicators uses it
+    // for progressive disclosure while the other center/status modules remain
+    // pure content.
+    property bool groupHovered: false
 
     // Which module this is, as named in Settings.mods. Drives `compact`, and
     // saves every module repeating its own id at the call site.
@@ -47,6 +51,12 @@ Row {
     // Width this module would give back if its detail text were hidden. The
     // fit pass reads it to decide what to compact; 0 means nothing to give.
     property real detailSaving: 0
+
+    // Optional hit-test contract for a module that puts real buttons above a
+    // group-owned pointer target.
+    function actionAtScenePoint(position: point): bool {
+        return false;
+    }
 
     spacing: 0
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined

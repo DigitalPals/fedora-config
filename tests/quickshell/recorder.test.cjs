@@ -16,11 +16,11 @@ test("the recording PID is published last as a verified ready marker", () => {
         "consumers must not see active before the output path and start time exist");
 });
 
-test("the recording chip validates a marker against the live process", () => {
+test("the recording indicator validates a marker against the live process", () => {
     const recorder = fs.readFileSync(path.join(shellDir, "Common/Recorder.qml"), "utf8");
 
     assert.match(recorder, /path: root\.recorderPid > 0 \? "\/proc\/" \+ root\.recorderPid \+ "\/comm"/);
     assert.match(recorder, /root\.active = text\(\)\.trim\(\) === "wf-recorder"/);
     assert.match(recorder, /onLoadFailed: root\.active = false/,
-        "a process that dies after startup must clear the chip on the next poll");
+        "a process that dies after startup must clear the indicator on the next poll");
 });

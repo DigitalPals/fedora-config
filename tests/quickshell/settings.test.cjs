@@ -314,9 +314,12 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema seven adds softer typography over the layered palette", () => {
+test("schema eight adds clock-side actions over the layered palette", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 7/);
+    assert.match(helpers, /var VERSION = 8/);
+    assert.match(helpers, /"media", "indicators", "clock"/);
+    assert.match(helpers, /nightLight:\s*false/);
+    assert.match(helpers, /idleInhibited:\s*true/);
     assert.match(helpers, /"updates", "gh", "t3", "usage", "tray"/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
