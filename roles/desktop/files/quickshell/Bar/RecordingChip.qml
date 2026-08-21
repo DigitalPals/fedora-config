@@ -45,7 +45,7 @@ BarChip {
         text: Recorder.elapsedLabel
         font.family: Theme.fontMenu
         font.pixelSize: Theme.barLabelSize
-        font.weight: Theme.weightHeavy
+        font.weight: Theme.weightMedium
         font.features: Theme.tabularNumberFeatures
         color: root.ink
 

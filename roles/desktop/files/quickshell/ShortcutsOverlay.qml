@@ -126,7 +126,7 @@ PanelWindow {
                         text: "Keyboard shortcuts"
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontBody
-                        font.weight: Theme.weightHeavy
+                        font.weight: Theme.weightSemibold
                         color: Theme.textHi
                     }
 
@@ -171,7 +171,7 @@ PanelWindow {
                                 text: group.modelData.title
                                 font.family: Theme.fontMenu
                                 font.pixelSize: Theme.fontMicro
-                                font.weight: Theme.weightHeavy
+                                font.weight: Theme.weightMedium
                                 font.letterSpacing: 1.2
                                 color: Theme.accent
                             }

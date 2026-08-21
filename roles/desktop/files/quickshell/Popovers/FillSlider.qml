@@ -116,7 +116,7 @@ Rectangle {
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontTiny
-        font.weight: Theme.weightHeavy
+        font.weight: Theme.weightMedium
         color: Theme.textHi
     }
 }

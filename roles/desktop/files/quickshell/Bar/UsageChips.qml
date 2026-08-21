@@ -242,7 +242,7 @@ Item {
                             ? "--%" : chip.remaining + "%"
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.barLabelSize
-                        font.weight: Theme.weightHeavy
+                        font.weight: Theme.weightMedium
                         font.features: Theme.tabularNumberFeatures
                         color: chip.status === "crit" ? Theme.barRedText
                             : chip.status === "warn" ? Theme.barAmber

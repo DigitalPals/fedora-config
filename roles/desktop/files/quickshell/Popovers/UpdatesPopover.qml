@@ -118,7 +118,7 @@ Surface {
                     : root.mode === "failed" ? "Update failed" : "Updates"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontSecondary
-                font.weight: Theme.weightHeavy
+                font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
 
@@ -296,7 +296,7 @@ Surface {
                             text: row.modelData.name
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightHeavy
+                            font.weight: Theme.weightMedium
                             color: Theme.textHi
                             elide: Text.ElideRight
                         }
@@ -318,7 +318,7 @@ Surface {
                         text: row.modelData.count
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontSecondary
-                        font.weight: Theme.weightHeavy
+                        font.weight: Theme.weightSemibold
                         font.features: Theme.tabularNumberFeatures
                         color: Theme.accent
                     }
@@ -401,7 +401,7 @@ Surface {
                 text: "Update now"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontTiny
-                font.weight: Theme.weightHeavy
+                font.weight: Theme.weightMedium
                 color: goMouse.containsMouse ? Theme.textOnAccent : Theme.accent
             }
         }
@@ -473,7 +473,7 @@ Surface {
                 text: stepLine.label
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
-                font.weight: Theme.weightHeavy
+                font.weight: Theme.weightMedium
                 color: Theme.textHi
                 elide: Text.ElideRight
             }
@@ -597,7 +597,7 @@ Surface {
                 }
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
-                font.weight: Theme.weightHeavy
+                font.weight: Theme.weightSemibold
                 color: Theme.ok
                 elide: Text.ElideRight
             }
@@ -980,7 +980,7 @@ Surface {
                     text: "Live"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontTiny
-                    font.weight: Theme.weightHeavy
+                    font.weight: Theme.weightMedium
                     color: jumpMouse.containsMouse ? Theme.textOnAccent : Theme.accent
                 }
             }
@@ -1020,7 +1020,7 @@ Surface {
                 text: Updates.failHeadline
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontTiny
-                font.weight: Theme.weightHeavy
+                font.weight: Theme.weightSemibold
                 color: Theme.redText
                 elide: Text.ElideRight
             }
@@ -1135,7 +1135,7 @@ Surface {
                 text: "Retry update"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontTiny
-                font.weight: Theme.weightHeavy
+                font.weight: Theme.weightMedium
                 color: retryMouse.containsMouse ? Theme.textOnAccent : Theme.accent
             }
         }

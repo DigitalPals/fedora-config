@@ -97,7 +97,7 @@ Rectangle {
     property string label: ""
     property bool compact: false
     property int labelSize: Theme.barLabelSize
-    property int labelWeight: Theme.weightHeavy
+    property int labelWeight: Theme.weightMedium
     property bool active: false
     // The module's popout is expanded below it.
     property bool held: ownsPanel && host.popoutOpen(panelName)

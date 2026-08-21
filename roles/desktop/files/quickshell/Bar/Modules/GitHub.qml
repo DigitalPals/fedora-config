@@ -98,7 +98,7 @@ BarModule {
                     text: GitHub.pendingInboxCount > 99 ? "99+" : GitHub.pendingInboxCount
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightHeavy
+                    font.weight: Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
                     color: ghChip.badgeInk
                 }
@@ -113,7 +113,7 @@ BarModule {
             text: GitHub.pendingInboxCount
             font.family: Theme.fontMenu
             font.pixelSize: Theme.barLabelSize
-            font.weight: Theme.weightHeavy
+            font.weight: Theme.weightMedium
             font.features: Theme.tabularNumberFeatures
             color: ghChip.badgeTone
         }

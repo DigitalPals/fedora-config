@@ -443,7 +443,7 @@ Surface {
                             text: mode.modelData.label
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontMicro
-                            font.weight: Theme.weightHeavy
+                            font.weight: Theme.weightMedium
                             font.letterSpacing: 0.2
                             color: mode.current ? Theme.textOnAccent : Theme.textFaint
                         }
@@ -591,7 +591,7 @@ Surface {
                             : action.modelData.label
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontTiny
-                        font.weight: Theme.weightHeavy
+                        font.weight: Theme.weightMedium
                         color: action.recording ? Theme.redText
                             : actionMouse.containsMouse ? Theme.textHi : Theme.textMid
                     }

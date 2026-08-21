@@ -255,7 +255,7 @@ PanelWindow {
                     text: "Cancel"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightHeavy
+                    font.weight: Theme.weightMedium
                     font.letterSpacing: 0.4
                     color: Theme.textMid
                 }

@@ -315,7 +315,7 @@ Surface {
                 text: root.mode !== "" ? root.provider.label : ""
                 font.family: Theme.fontSans
                 font.pixelSize: Theme.fontMicro
-                font.weight: Theme.weightHeavy
+                font.weight: Theme.weightMedium
                 font.letterSpacing: 0.5
                 color: Theme.textHi
             }
@@ -439,7 +439,7 @@ Surface {
                     text: "↵"
                     font.family: Theme.fontSans
                     font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightHeavy
+                    font.weight: Theme.weightMedium
                     color: Theme.textOnAccent
                 }
             }

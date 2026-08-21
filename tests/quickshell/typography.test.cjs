@@ -177,6 +177,18 @@ test("bar and popovers use semantic sizes with an eleven-pixel text floor", () =
     }
 });
 
+test("soft shell chrome does not use the display-heavy text weight", () => {
+    // Google Sans Flex makes 750 conspicuous at compact shell sizes. Keep the
+    // token available for a deliberate future display treatment, but require
+    // current chrome to express hierarchy with medium, semibold, or bold.
+    for (const file of qmlFiles(".")) {
+        const source = fs.readFileSync(file, "utf8");
+        const label = path.relative(shellDir, file);
+        assert.doesNotMatch(source, /Theme\.weightHeavy/,
+            `${label} uses the display-heavy weight in shell chrome`);
+    }
+});
+
 test("no surface that floats over the desktop draws a drop shadow", () => {
     // The compositor blurs the whole layer, and each of these layers is bigger
     // than the shape it draws. A shadow painted into that margin is blurred

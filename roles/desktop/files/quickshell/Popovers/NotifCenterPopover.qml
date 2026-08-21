@@ -61,7 +61,7 @@ Surface {
                     text: Qt.formatDateTime(root.now, "dddd").toUpperCase()
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightHeavy
+                    font.weight: Theme.weightSemibold
                     font.letterSpacing: 1.6
                     color: Theme.accent
                 }
@@ -70,7 +70,7 @@ Surface {
                     text: root.now.getDate()
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontHero
-                    font.weight: Theme.weightHeavy
+                    font.weight: Theme.weightBold
                     font.features: Theme.tabularNumberFeatures
                     color: Theme.textHi
                 }
@@ -105,7 +105,7 @@ Surface {
                         text: modelData
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontMicro
-                        font.weight: Theme.weightHeavy
+                        font.weight: Theme.weightMedium
                         color: Theme.textFaint
                     }
                 }
@@ -139,7 +139,7 @@ Surface {
                             text: cell.day
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontMicro
-                            font.weight: cell.today ? Theme.weightHeavy : Theme.weightSemibold
+                            font.weight: cell.today ? Theme.weightSemibold : Theme.weightRegular
                             font.features: Theme.tabularNumberFeatures
                             color: cell.today ? Theme.textOnAccent : Theme.textMid
                         }
@@ -195,7 +195,7 @@ Surface {
                             text: Weather.ready ? Weather.temp + "°" : "—"
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontProminent
-                            font.weight: Theme.weightHeavy
+                            font.weight: Theme.weightBold
                             font.features: Theme.tabularNumberFeatures
                             color: Theme.textHi
                         }
@@ -274,7 +274,7 @@ Surface {
                             text: forecastDay.modelData.day.toUpperCase()
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontMicro
-                            font.weight: Theme.weightHeavy
+                            font.weight: Theme.weightMedium
                             font.letterSpacing: 0.4
                             color: Theme.textFaint
                         }
@@ -293,7 +293,7 @@ Surface {
                             text: forecastDay.modelData.hi + "°/" + forecastDay.modelData.lo + "°"
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontMicro
-                            font.weight: Theme.weightHeavy
+                            font.weight: Theme.weightMedium
                             font.features: Theme.tabularNumberFeatures
                             color: Theme.textMid
                         }

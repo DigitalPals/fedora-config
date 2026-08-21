@@ -215,7 +215,7 @@ Rectangle {
                     text: slot.wsId
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightHeavy
+                    font.weight: Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
                     color: slot.focused ? Theme.barAccentFg
                         : slot.urgent ? Theme.barRedFg
