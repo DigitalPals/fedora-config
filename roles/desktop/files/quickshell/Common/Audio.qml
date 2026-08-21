@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Pipewire
 import "Format.js" as Format
+import "AudioHelpers.js" as AudioHelpers
 
 // Default audio devices for the whole shell. Pipewire only populates a
 // node's `audio` group while something tracks it, and the bar is
@@ -31,6 +32,7 @@ Singleton {
     readonly property var sink: outputSink === tuningSink && speakerSink !== null
         ? speakerSink : outputSink
     readonly property var source: Pipewire.defaultAudioSource
+    readonly property string outputName: AudioHelpers.sinkLabel(outputSink)
 
     // A node exists before its audio group arrives, so "there is a sink"
     // and "the sink can be read" are different questions.
@@ -67,9 +69,15 @@ Singleton {
     }
 
     // Pipewire remembers this as a preference, so it survives the node
-    // disappearing and coming back.
+    // disappearing and coming back. Move application streams as well: changing
+    // only the metadata default otherwise leaves already-playing audio behind.
+    // The helper filters on application.name, keeping the XPS filter-chain's
+    // internal output pinned to the physical speakers.
     function setDefaultSink(node) {
+        if (!node || !node.name)
+            return;
         Pipewire.preferredDefaultAudioSink = node;
+        Quickshell.execDetached(["bash", Quickshell.shellDir + "/scripts/audio-route", node.name]);
     }
 
     function setSourceVolume(fraction) {

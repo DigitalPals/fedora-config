@@ -466,21 +466,69 @@ Surface {
         onMoved: v => SysInfo.setBrightness(v * 100)
     }
 
-    FillSlider {
+    Row {
         width: parent.width
-        glyph: Audio.muted || Audio.level === 0 ? "volume_off"
-            : Audio.level < 0.5 ? "volume_down" : "volume_up"
-        glyphIsButton: true
-        accessibleName: "Volume"
-        value: Audio.muted ? 0 : Audio.level
-        ready: Audio.ready
-        label: Math.round((Audio.muted ? 0 : Audio.level) * 100) + "%"
-        onMoved: v => {
-            if (Audio.muted)
-                Audio.toggleMuted();
-            Audio.setVolume(v);
+        spacing: 8
+
+        FillSlider {
+            width: parent.width - outputButton.width - parent.spacing
+            glyph: Audio.muted || Audio.level === 0 ? "volume_off"
+                : Audio.level < 0.5 ? "volume_down" : "volume_up"
+            glyphIsButton: true
+            accessibleName: "Volume"
+            value: Audio.muted ? 0 : Audio.level
+            ready: Audio.ready
+            label: Math.round((Audio.muted ? 0 : Audio.level) * 100) + "%"
+            onMoved: v => {
+                if (Audio.muted)
+                    Audio.toggleMuted();
+                Audio.setVolume(v);
+            }
+            onGlyphClicked: Audio.toggleMuted()
         }
-        onGlyphClicked: Audio.toggleMuted()
+
+        Rectangle {
+            id: outputButton
+
+            width: Theme.controlHeight
+            height: Theme.controlHeight
+            radius: height / 2
+            color: outputMouse.containsMouse || activeFocus ? Theme.chipHover : Theme.tile
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Button
+            Accessible.name: "Choose audio output"
+            Accessible.description: Audio.outputName
+            Accessible.onPressAction: Popouts.openPanel("audio", "right")
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accent
+
+            Behavior on color {
+                ColorAnimation { duration: Theme.chipFadeDuration }
+            }
+
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    Popouts.openPanel("audio", "right");
+                    event.accepted = true;
+                }
+            }
+
+            Sym {
+                anchors.centerIn: parent
+                name: "chevron_right"
+                size: Theme.iconMedium
+                color: Theme.textMid
+            }
+
+            MouseArea {
+                id: outputMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Popouts.openPanel("audio", "right")
+            }
+        }
     }
 
     // ---- Capture actions -------------------------------------------------

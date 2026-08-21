@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Services.Pipewire
 import "../Common"
+import "../Common/AudioHelpers.js" as AudioHelpers
 
 Surface {
     id: root
@@ -9,27 +10,77 @@ Surface {
     // Right-island popouts run a touch wider (design t5).
     implicitWidth: Theme.popWideWidth
 
-    // Output device list stays collapsed behind a disclosure row.
-    property bool devicesOpen: false
+    property bool networkDevicesOpen: AudioHelpers.isNetworkSink(Audio.outputSink)
 
-    // Default sink first, then local (ALSA) devices, then network sinks;
-    // capped so the popover stays compact with many cast targets around.
-    readonly property var sinks: {
+    readonly property var allSinks: {
         // While the tuning exists, offering its physical downstream sink would
         // let the user bypass processing. Headphones, Bluetooth, HDMI, and USB
         // remain ordinary choices and never enter the filter graph.
-        const all = Pipewire.nodes.values.filter(n => n.isSink && !n.isStream
+        return Pipewire.nodes.values.filter(n => n.isSink && !n.isStream
             && !(Audio.tuningPresent && n === Audio.speakerSink));
-        const rank = n => n === Audio.outputSink ? 0 : (n.name || "").startsWith("alsa") ? 1 : 2;
-        return all.sort((a, b) => rank(a) - rank(b)
-            || (a.description || a.name).localeCompare(b.description || b.name)).slice(0, 6);
     }
+    readonly property var localSinks: AudioHelpers.localSinks(allSinks, Audio.outputSink)
+    readonly property var networkSinks: AudioHelpers.networkSinks(allSinks, Audio.outputSink)
 
-    // Only the extra devices: Common/Audio.qml already tracks the two
-    // defaults for the whole shell, and this list is worth binding only
-    // while the picker is on screen.
-    PwObjectTracker {
-        objects: root.sinks
+    component SinkRow: Rectangle {
+        id: sinkRow
+
+        required property var sinkNode
+        readonly property bool isDefault: sinkNode === Audio.outputSink
+
+        width: root.width - root.padding * 2 - 4
+        x: 2
+        height: Theme.rowHeight
+        radius: Theme.rowRadius
+        color: sinkMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+        activeFocusOnTab: visible
+        Accessible.role: Accessible.Button
+        Accessible.name: "Use " + AudioHelpers.sinkLabel(sinkNode)
+        Accessible.checked: isDefault
+        Accessible.onPressAction: Audio.setDefaultSink(sinkNode)
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                Audio.setDefaultSink(sinkRow.sinkNode);
+                event.accepted = true;
+            }
+        }
+
+        Row {
+            anchors.verticalCenter: parent.verticalCenter
+            x: 10
+            spacing: 10
+
+            Sym {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 18
+                horizontalAlignment: Text.AlignHCenter
+                name: sinkRow.isDefault ? "check" : ""
+                size: Theme.fontBody
+                color: Theme.accent
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: root.width - root.padding * 2 - 70
+                text: AudioHelpers.sinkLabel(sinkRow.sinkNode)
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
+                color: sinkRow.isDefault ? Theme.textHi : Theme.textLow
+                elide: Text.ElideRight
+            }
+        }
+
+        MouseArea {
+            id: sinkMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: Audio.setDefaultSink(sinkRow.sinkNode)
+        }
     }
 
     SectionLabel {
@@ -38,6 +89,8 @@ Surface {
 
     // Output volume
     Row {
+        id: outputRow
+
         width: parent.width
         leftPadding: 10
         rightPadding: 10
@@ -46,6 +99,8 @@ Surface {
         spacing: 10
 
         Sym {
+            id: outputGlyph
+
             anchors.verticalCenter: parent.verticalCenter
             width: 18
             horizontalAlignment: Text.AlignHCenter
@@ -64,7 +119,8 @@ Surface {
 
         BlockMeter {
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - 84
+            width: outputRow.width - outputRow.leftPadding - outputRow.rightPadding
+                - outputGlyph.width - outputValue.width - outputRow.spacing * 2
             height: 10
             interactive: true
             value: Audio.level
@@ -74,6 +130,8 @@ Surface {
         }
 
         Text {
+            id: outputValue
+
             anchors.verticalCenter: parent.verticalCenter
             width: 26
             horizontalAlignment: Text.AlignRight
@@ -85,13 +143,45 @@ Surface {
         }
     }
 
-    // Device disclosure: the current output, click to reveal the list.
+    SectionLabel {
+        text: "LOCAL DEVICES"
+    }
+
+    Column {
+        width: parent.width
+
+        Repeater {
+            model: root.localSinks
+
+            delegate: SinkRow {
+                required property var modelData
+                sinkNode: modelData
+            }
+        }
+    }
+
     Rectangle {
+        visible: root.networkSinks.length > 0
         width: parent.width - 4
         x: 2
         height: Theme.rowHeight
         radius: Theme.rowRadius
-        color: discMouse.containsMouse ? Theme.hoverFill : "transparent"
+        color: networkMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
+        activeFocusOnTab: visible
+        Accessible.role: Accessible.Button
+        Accessible.name: (root.networkDevicesOpen ? "Hide" : "Show")
+            + " network and AirPlay outputs"
+        Accessible.onPressAction: root.networkDevicesOpen = !root.networkDevicesOpen
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                root.networkDevicesOpen = !root.networkDevicesOpen;
+                event.accepted = true;
+            }
+        }
 
         Row {
             anchors.verticalCenter: parent.verticalCenter
@@ -102,83 +192,39 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 18
                 horizontalAlignment: Text.AlignHCenter
-                name: root.devicesOpen ? "expand_less" : "expand_more"
+                name: root.networkDevicesOpen ? "expand_less" : "expand_more"
                 size: Theme.fontCaption
-                color: discMouse.containsMouse ? Theme.textHi : Theme.textDim
+                color: networkMouse.containsMouse ? Theme.textHi : Theme.textDim
             }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                width: root.width - 70
-                text: Audio.outputSink ? (Audio.outputSink.description || Audio.outputSink.nickname || Audio.outputSink.name) : "No output device"
+                text: "Network / AirPlay (" + root.networkSinks.length + ")"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontBody
-                color: discMouse.containsMouse ? Theme.textMid : Theme.textLow
-                elide: Text.ElideRight
+                color: networkMouse.containsMouse ? Theme.textMid : Theme.textLow
             }
         }
 
         MouseArea {
-            id: discMouse
+            id: networkMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.devicesOpen = !root.devicesOpen
+            onClicked: root.networkDevicesOpen = !root.networkDevicesOpen
         }
     }
 
-    // Output devices (collapsed until the disclosure row is opened)
     Column {
-        visible: root.devicesOpen
+        visible: root.networkDevicesOpen
         width: parent.width
 
         Repeater {
-            model: root.sinks
+            model: root.networkSinks
 
-            delegate: Rectangle {
-                id: sink
-
+            delegate: SinkRow {
                 required property var modelData
-                readonly property bool isDefault: modelData === Audio.outputSink
-
-                width: parent.width - 4
-                x: 2
-                height: Theme.rowHeight
-                radius: Theme.rowRadius
-                color: devMouse.containsMouse ? Theme.hoverFill : "transparent"
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: 10
-                    spacing: 10
-
-                    Sym {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 18
-                        horizontalAlignment: Text.AlignHCenter
-                        name: sink.isDefault ? "check" : ""
-                        size: Theme.fontBody
-                        color: Theme.accent
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: root.width - 70
-                        text: sink.modelData.description || sink.modelData.nickname || sink.modelData.name
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontBody
-                        color: sink.isDefault ? Theme.textHi : Theme.textLow
-                        elide: Text.ElideRight
-                    }
-                }
-
-                MouseArea {
-                    id: devMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Audio.setDefaultSink(sink.modelData)
-                }
+                sinkNode: modelData
             }
         }
     }
@@ -191,6 +237,8 @@ Surface {
 
     // Mic
     Row {
+        id: inputRow
+
         width: parent.width
         leftPadding: 10
         rightPadding: 10
@@ -199,6 +247,8 @@ Surface {
         spacing: 10
 
         Rectangle {
+            id: inputMute
+
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.controlHeight
             height: Theme.controlHeight
@@ -223,7 +273,8 @@ Surface {
 
         BlockMeter {
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - 84
+            width: inputRow.width - inputRow.leftPadding - inputRow.rightPadding
+                - inputMute.width - inputValue.width - inputRow.spacing * 2
             height: 10
             interactive: true
             opacity: Audio.sourceMuted ? 0.45 : 1
@@ -235,6 +286,8 @@ Surface {
         }
 
         Text {
+            id: inputValue
+
             anchors.verticalCenter: parent.verticalCenter
             width: 26
             horizontalAlignment: Text.AlignRight
