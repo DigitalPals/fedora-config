@@ -233,6 +233,8 @@ PanelWindow {
     // that no longer have tooltips of their own.
     readonly property string statusSummary: {
         const parts = [];
+        for (const device of EthernetState.connectedDevices)
+            parts.push("Ethernet " + (device.connection || device.device));
         if (WifiState.enabled && WifiState.connected)
             parts.push("Wi-Fi " + WifiState.name);
         else if (WifiState.enabled)

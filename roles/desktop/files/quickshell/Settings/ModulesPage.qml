@@ -23,7 +23,7 @@ Item {
         updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true },
         tray: { name: "System tray", short: "Tray", tag: "when populated" },
         vol: { name: "Volume", short: "Vol", tag: "status pill", detail: true },
-        wifi: { name: "Wi-Fi", short: "Wi-Fi", tag: "status pill" },
+        wifi: { name: "Network", short: "Network", tag: "status pill" },
         bt: { name: "Bluetooth", short: "BT", tag: "when connected" },
         batt: { name: "Battery", short: "Batt", tag: "on laptops", detail: true }
     })

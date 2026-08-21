@@ -26,10 +26,12 @@ Surface {
         onClaimed: {
             SysInfo.acquire();
             Tailscale.acquire();
+            EthernetState.acquire();
         }
         onReleased: {
             SysInfo.release();
             Tailscale.release();
+            EthernetState.release();
         }
     }
 
@@ -309,11 +311,15 @@ Surface {
         spacing: 10
 
         BigTile {
-            glyph: "wifi"
+            glyph: EthernetState.connected ? "lan"
+                : WifiState.enabled ? "wifi" : "wifi_off"
             title: "Internet"
-            sub: !WifiState.enabled ? "Off" : WifiState.connected ? WifiState.name : "On"
-            on: WifiState.enabled
-            onToggled: WifiState.setEnabled(!WifiState.enabled)
+            sub: EthernetState.connected && WifiState.connected ? "Ethernet + Wi-Fi"
+                : EthernetState.connected ? "Ethernet"
+                : WifiState.connected ? WifiState.name
+                : WifiState.enabled ? "No connection" : "Offline"
+            on: EthernetState.connected || WifiState.connected
+            onToggled: Popouts.openPanel("wifi", "right")
             onExpanded: Popouts.openPanel("wifi", "right")
         }
 
@@ -329,7 +335,7 @@ Surface {
                     + (root.btConnected.length > 1 ? " +" + (root.btConnected.length - 1) : "");
             }
             on: BluetoothState.enabled
-            onToggled: BluetoothState.toggle()
+            onToggled: Popouts.openPanel("bluetooth", "right")
             onExpanded: Popouts.openPanel("bluetooth", "right")
         }
     }

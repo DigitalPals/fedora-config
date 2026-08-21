@@ -1,0 +1,115 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const { shellDir } = require("./shell.cjs");
+
+function read(relative) {
+    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+}
+
+function objectBlock(source, start) {
+    let depth = 0;
+    const opening = source.indexOf("{", start);
+    for (let index = opening; index < source.length; index++) {
+        if (source[index] === "{")
+            depth++;
+        else if (source[index] === "}" && --depth === 0)
+            return source.slice(start, index + 1);
+    }
+    assert.fail("unterminated QML object block");
+}
+
+test("the Internet tile always opens Network details and never toggles Wi-Fi", () => {
+    const source = read("Popovers/ControlCenterPopover.qml");
+    const title = source.indexOf('title: "Internet"');
+    assert.ok(title >= 0);
+    const start = source.lastIndexOf("BigTile {", title);
+    const tile = objectBlock(source, start);
+
+    assert.match(tile, /onToggled:\s*Popouts\.openPanel\("wifi", "right"\)/);
+    assert.match(tile, /onExpanded:\s*Popouts\.openPanel\("wifi", "right"\)/);
+    assert.doesNotMatch(tile, /WifiState\.setEnabled/);
+    for (const label of ["Ethernet + Wi-Fi", "Ethernet", "No connection", "Offline"])
+        assert.match(tile, new RegExp(label.replace(/[+]/g, "\\+")));
+    assert.match(tile, /on:\s*EthernetState\.connected \|\| WifiState\.connected/);
+
+    const bigTile = objectBlock(source, source.indexOf("component BigTile:"));
+    assert.match(bigTile, /mouse\.button === Qt\.RightButton[\s\S]*tile\.expanded\(\)/);
+    assert.match(bigTile, /else\s*tile\.toggled\(\)/);
+});
+
+test("the Bluetooth tile always opens details and never toggles the radio", () => {
+    const source = read("Popovers/ControlCenterPopover.qml");
+    const title = source.indexOf('title: "Bluetooth"');
+    assert.ok(title >= 0);
+    const start = source.lastIndexOf("BigTile {", title);
+    const tile = objectBlock(source, start);
+
+    assert.match(tile,
+        /onToggled:\s*Popouts\.openPanel\("bluetooth", "right"\)/);
+    assert.match(tile,
+        /onExpanded:\s*Popouts\.openPanel\("bluetooth", "right"\)/);
+    assert.doesNotMatch(tile, /BluetoothState\.toggle/);
+});
+
+test("the stable wifi popout is a scrollable Ethernet and Wi-Fi Network view", () => {
+    const source = read("Popovers/WifiPopover.qml");
+    assert.match(source, /text:\s*"Network"/);
+    assert.match(source, /text:\s*"ETHERNET"/);
+    assert.match(source, /model:\s*EthernetState\.devices/);
+    assert.match(source, /model:\s*WifiState\.others/);
+    assert.match(source, /Flickable\s*\{/);
+    assert.match(source, /ScrollChrome\s*\{/);
+    assert.match(source, /checked:\s*WifiState\.enabled/);
+    assert.match(source, /onToggled:\s*value => WifiState\.setEnabled\(value\)/);
+    assert.match(source, /text:\s*"Network settings"/);
+    assert.match(source, /gnome-control-center network/);
+    assert.doesNotMatch(source, /gnome-control-center wifi/);
+});
+
+test("Ethernet loading, absence and read failures are separate UI states", () => {
+    const source = read("Popovers/WifiPopover.qml");
+    assert.match(source, /!EthernetState\.known/);
+    assert.match(source, /Checking Ethernet…/);
+    assert.match(source, /EthernetState\.error !== ""/);
+    assert.match(source, /Ethernet status unavailable/);
+    assert.match(source, /EthernetState\.devices\.length === 0/);
+    assert.match(source, /No Ethernet ports/);
+});
+
+test("the combined menubar indicator gives wired transport priority", () => {
+    const module = read("Bar/Modules/Wifi.qml");
+    const bar = read("Bar/Bar.qml");
+    assert.match(module, /moduleId:\s*"wifi"/);
+    assert.match(module, /EthernetState\.connected \? "lan"/);
+    assert.match(module, /EthernetState\.connected \|\| WifiState\.connected/);
+    assert.match(bar, /for \(const device of EthernetState\.connectedDevices\)/);
+    assert.match(bar, /"Ethernet " \+ \(device\.connection \|\| device\.device\)/);
+    assert.match(bar, /"Wi-Fi " \+ WifiState\.name/);
+});
+
+test("wired monitoring is ref-counted by each visible Network consumer", () => {
+    const singleton = read("Common/EthernetState.qml");
+    const module = read("Bar/Modules/Wifi.qml");
+    const popover = read("Popovers/WifiPopover.qml");
+    const control = read("Popovers/ControlCenterPopover.qml");
+
+    assert.match(singleton, /function acquire\(\)/);
+    assert.match(singleton, /function release\(\)/);
+    assert.match(singleton, /"nmcli", "device", "monitor"/);
+    assert.match(singleton, /property bool known:/);
+    assert.match(singleton, /property string error:/);
+    assert.match(singleton, /readonly property var connectedDevices:/);
+    for (const source of [module, popover, control]) {
+        assert.match(source, /EthernetState\.acquire\(\)/);
+        assert.match(source, /EthernetState\.release\(\)/);
+    }
+});
+
+test("the visible module label is Network while stable identifiers stay wifi", () => {
+    const modules = read("Settings/ModulesPage.qml");
+    const registry = read("Common/PanelRegistryData.js");
+    assert.match(modules, /wifi:\s*\{ name: "Network", short: "Network"/);
+    assert.match(registry, /name: "wifi"[\s\S]*source: "Popovers\/WifiPopover\.qml"/);
+});

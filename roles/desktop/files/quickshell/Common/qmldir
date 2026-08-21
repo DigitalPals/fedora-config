@@ -33,6 +33,7 @@ singleton Wallpaper Wallpaper.qml
 singleton Settings Settings.qml
 singleton Audio Audio.qml
 singleton WifiState WifiState.qml
+singleton EthernetState EthernetState.qml
 singleton BluetoothState BluetoothState.qml
 singleton Battery Battery.qml
 singleton Media Media.qml

@@ -7,29 +7,38 @@ import "../Common"
 import "../Common/ProcHelpers.js" as ProcHelpers
 import "../Common/StatusHelpers.js" as StatusHelpers
 
+// Stable panel name and filename aside, this is the combined Network view:
+// wired devices are informational and Wi-Fi keeps its radio and connection
+// actions. `wifi` remains the persisted module and IPC identifier.
 Surface {
     id: root
 
-    // Both the header link and the connected-network row open the same
-    // editor, falling back to GNOME's panel where NetworkManager's own is
-    // not installed.
+    implicitWidth: Theme.popWidth
+
     readonly property var networkSettingsCommand: ["sh", "-c",
-        "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center wifi"]
+        "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center network"]
+    readonly property real bodyLimit: Math.max(240, availableHeight - padding * 2)
 
     property string ipAddress: ""
+
+    Claim {
+        active: root.visible
+        onClaimed: EthernetState.acquire()
+        onReleased: EthernetState.release()
+    }
 
     Process {
         id: ipProc
         // NetworkDevice.address is the (randomized) MAC, not the IPv4
-        // address — checked against a live instance — so the address still
-        // comes from `ip`. Argv form: no shell, so the device name cannot be
-        // read as syntax, and no `jq` for a field JSON.parse already has.
+        // address, so Wi-Fi retains its small address lookup. Ethernet gets
+        // the same value from the shared nmcli snapshot.
         property string body: ""
         property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["ip", "-j", "-4", "addr", "show", WifiState.device ? WifiState.device.name : ""]
+        command: ["ip", "-j", "-4", "addr", "show",
+            WifiState.device ? WifiState.device.name : ""]
         running: WifiState.device !== null
 
         stdout: StdioCollector {
@@ -52,223 +61,408 @@ Surface {
             }
             const status = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
             root.ipAddress = status === 0 ? ProcHelpers.firstIpv4(body) : "";
-            // The address is a detail line, so a failure stays out of the
-            // popover — but it stops disappearing without a word.
             if (status !== 0)
-                console.warn("wifi address lookup failed:", ProcHelpers.commandError("ip", status, errText));
+                console.warn("wifi address lookup failed:",
+                    ProcHelpers.commandError("ip", status, errText));
         }
     }
-    // The scan runs only while this view is alive; WifiState owns the
-    // device, but the radio cost belongs to whoever is showing the list.
+
+    // Scanning is a live radio cost and belongs only to this visible detail
+    // view. EthernetState's Claim follows the same lifetime.
     Component.onCompleted: WifiState.setScanning(true)
     Component.onDestruction: WifiState.setScanning(false)
 
-    // Header + toggle
     Item {
+        id: viewport
+
         width: parent.width
-        height: Theme.rowHeight
+        height: Math.min(networkContent.implicitHeight, root.bodyLimit)
 
-        Text {
-            x: 10
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Wi-Fi"
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
-            font.weight: Theme.weightSemibold
-            color: Theme.textHi
-        }
+        Flickable {
+            id: networkFlick
 
-        Toggle {
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            checked: WifiState.enabled
-            accessibleName: "Wi-Fi"
-            onToggled: v => WifiState.setEnabled(v)
-        }
-    }
-
-    // Connected network
-    Rectangle {
-        visible: WifiState.connected
-        width: parent.width - 4
-        x: 2
-        height: Theme.tileHeight
-        radius: Theme.rowRadius
-        color: Theme.accentBgSoft
-
-        Row {
-            anchors.verticalCenter: parent.verticalCenter
-            x: 10
-            spacing: 10
-
-            Sym {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 18
-                horizontalAlignment: Text.AlignHCenter
-                name: "wifi"
-                size: Theme.fontBody
-                color: Theme.accent
-            }
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: networkContent.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            clip: true
+            flickDeceleration: 3000
 
             Column {
-                anchors.verticalCenter: parent.verticalCenter
-                width: root.width - 90
-                spacing: 1
+                id: networkContent
 
-                Text {
-                    text: WifiState.name
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
-                    font.weight: Theme.weightMedium
-                    color: Theme.textHi
-                    elide: Text.ElideRight
+                width: networkFlick.width - 6
+                spacing: 8
+
+                Item {
                     width: parent.width
+                    height: Theme.rowHeight
+
+                    Text {
+                        x: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Network"
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Theme.weightSemibold
+                        color: Theme.textHi
+                    }
+
+                    Sym {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: EthernetState.connected ? "lan" : "wifi"
+                        size: Theme.fontBody
+                        color: EthernetState.connected || WifiState.connected
+                            ? Theme.accent : Theme.textDim
+                    }
+                }
+
+                SectionLabel {
+                    width: parent.width
+                    text: "ETHERNET"
                 }
 
                 Text {
-                    text: {
-                        if (!WifiState.active)
-                            return "";
-                        let parts = ["Connected"];
-                        const s = WifiState.signal;
-                        if (s >= 0)
-                            parts.push(s + "%");
-                        if (root.ipAddress !== "")
-                            parts.push(root.ipAddress);
-                        return parts.join(" · ");
-                    }
+                    visible: !EthernetState.known
+                    width: parent.width
+                    topPadding: 10
+                    bottomPadding: 12
+                    text: "Checking Ethernet…"
+                    horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontSecondary
-                    color: Theme.textLow
-                    elide: Text.ElideRight
+                    color: Theme.textDim
+                }
+
+                Column {
+                    visible: EthernetState.error !== ""
                     width: parent.width
-                }
-            }
-        }
+                    spacing: 3
 
-        Sym {
-            anchors.right: parent.right
-            anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            name: "settings"
-            size: Theme.fontSecondary
-            color: gearMouse.containsMouse ? Theme.textHi : Theme.textDim
+                    Text {
+                        width: parent.width
+                        text: "Ethernet status unavailable"
+                        horizontalAlignment: Text.AlignHCenter
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontSecondary
+                        font.weight: Theme.weightMedium
+                        color: Theme.textMid
+                    }
 
-            MouseArea {
-                id: gearMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    Quickshell.execDetached(root.networkSettingsCommand);
-                    Popouts.close();
-                }
-            }
-        }
-    }
-
-    // Wi-Fi off state
-    Text {
-        visible: !WifiState.enabled
-        width: parent.width
-        topPadding: 14
-        bottomPadding: 14
-        text: "Wi-Fi is off"
-        horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontSecondary
-        color: Theme.textDim
-    }
-
-    // Other networks
-    Repeater {
-        model: WifiState.others
-
-        delegate: Rectangle {
-            id: net
-
-            required property var modelData
-
-            width: parent.width - 4
-            x: 2
-            height: Theme.rowHeight
-            radius: Theme.rowRadius
-            color: netMouse.containsMouse ? Theme.hoverFill : "transparent"
-
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                x: 10
-                spacing: 10
-
-                Sym {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 18
-                    horizontalAlignment: Text.AlignHCenter
-                    name: "wifi"
-                    size: Theme.fontBody
-                    color: Theme.textMid
-                    opacity: 0.35 + 0.65 * Math.min(1, Math.max(0, StatusHelpers.signalPercent(net.modelData.signalStrength)) / 100)
+                    Text {
+                        width: parent.width - 20
+                        x: 10
+                        text: EthernetState.error
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.Wrap
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontTiny
+                        color: Theme.textDim
+                    }
                 }
 
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: root.width - 86
-                    text: net.modelData.name
+                    visible: EthernetState.known && EthernetState.error === ""
+                        && EthernetState.devices.length === 0
+                    width: parent.width
+                    topPadding: 10
+                    bottomPadding: 12
+                    text: "No Ethernet ports"
+                    horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
-                    color: Theme.textMid
-                    elide: Text.ElideRight
+                    font.pixelSize: Theme.fontSecondary
+                    color: Theme.textDim
+                }
+
+                Repeater {
+                    model: EthernetState.devices
+
+                    delegate: Rectangle {
+                        id: ethernetRow
+
+                        required property var modelData
+
+                        width: networkContent.width - 4
+                        x: 2
+                        height: Theme.tileHeight + 4
+                        radius: Theme.rowRadius
+                        color: modelData.connected ? Theme.accentBgSoft : Theme.cardFill
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: 10
+                            spacing: 10
+
+                            Sym {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 18
+                                horizontalAlignment: Text.AlignHCenter
+                                name: "lan"
+                                size: Theme.fontBody
+                                fill: ethernetRow.modelData.connected ? 1 : 0
+                                color: ethernetRow.modelData.connected
+                                    ? Theme.accent : Theme.textDim
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: ethernetRow.width - 48
+                                spacing: 1
+
+                                Text {
+                                    width: parent.width
+                                    text: ethernetRow.modelData.connection !== ""
+                                        ? ethernetRow.modelData.connection : "No active profile"
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontBody
+                                    font.weight: ethernetRow.modelData.connected
+                                        ? Theme.weightMedium : Theme.weightRegular
+                                    color: ethernetRow.modelData.connected
+                                        ? Theme.textHi : Theme.textMid
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: ethernetRow.modelData.device + " · "
+                                        + ethernetRow.modelData.status
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontSecondary
+                                    color: Theme.textLow
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    visible: ethernetRow.modelData.ipv4 !== ""
+                                    width: parent.width
+                                    text: ethernetRow.modelData.ipv4
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: Theme.fontTiny
+                                    color: Theme.textDim
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HDivider {
+                    width: parent.width
+                }
+
+                Item {
+                    width: parent.width
+                    height: Theme.rowHeight
+
+                    Text {
+                        x: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Wi-Fi"
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Theme.weightSemibold
+                        color: Theme.textHi
+                    }
+
+                    Toggle {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        checked: WifiState.enabled
+                        accessibleName: "Wi-Fi"
+                        onToggled: value => WifiState.setEnabled(value)
+                    }
+                }
+
+                Rectangle {
+                    visible: WifiState.connected
+                    width: parent.width - 4
+                    x: 2
+                    height: Theme.tileHeight
+                    radius: Theme.rowRadius
+                    color: Theme.accentBgSoft
+
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 10
+                        spacing: 10
+
+                        Sym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 18
+                            horizontalAlignment: Text.AlignHCenter
+                            name: "wifi"
+                            size: Theme.fontBody
+                            color: Theme.accent
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: networkContent.width - 90
+                            spacing: 1
+
+                            Text {
+                                text: WifiState.name
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.fontBody
+                                font.weight: Theme.weightMedium
+                                color: Theme.textHi
+                                elide: Text.ElideRight
+                                width: parent.width
+                            }
+
+                            Text {
+                                text: {
+                                    if (!WifiState.active)
+                                        return "";
+                                    const parts = ["Connected"];
+                                    const signal = WifiState.signal;
+                                    if (signal >= 0)
+                                        parts.push(signal + "%");
+                                    if (root.ipAddress !== "")
+                                        parts.push(root.ipAddress);
+                                    return parts.join(" · ");
+                                }
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.fontSecondary
+                                color: Theme.textLow
+                                elide: Text.ElideRight
+                                width: parent.width
+                            }
+                        }
+                    }
+
+                    Sym {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "settings"
+                        size: Theme.fontSecondary
+                        color: gearMouse.containsMouse ? Theme.textHi : Theme.textDim
+
+                        MouseArea {
+                            id: gearMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Quickshell.execDetached(root.networkSettingsCommand);
+                                Popouts.close();
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    visible: !WifiState.enabled || WifiState.device === null
+                    width: parent.width
+                    topPadding: 12
+                    bottomPadding: 14
+                    text: !WifiState.enabled ? "Wi-Fi is off" : "No Wi-Fi adapter"
+                    horizontalAlignment: Text.AlignHCenter
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    color: Theme.textDim
+                }
+
+                Repeater {
+                    model: WifiState.others
+
+                    delegate: Rectangle {
+                        id: net
+
+                        required property var modelData
+
+                        width: networkContent.width - 4
+                        x: 2
+                        height: Theme.rowHeight
+                        radius: Theme.rowRadius
+                        color: netMouse.containsMouse ? Theme.hoverFill : "transparent"
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: 10
+                            spacing: 10
+
+                            Sym {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 18
+                                horizontalAlignment: Text.AlignHCenter
+                                name: "wifi"
+                                size: Theme.fontBody
+                                color: Theme.textMid
+                                opacity: 0.35 + 0.65 * Math.min(1, Math.max(0,
+                                    StatusHelpers.signalPercent(net.modelData.signalStrength)) / 100)
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: networkContent.width - 86
+                                text: net.modelData.name
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.fontBody
+                                color: Theme.textMid
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        Sym {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: net.modelData.security !== WifiSecurityType.None
+                            name: "lock"
+                            size: Theme.fontCaption
+                            color: Theme.textDim
+                        }
+
+                        MouseArea {
+                            id: netMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: net.modelData.connect()
+                        }
+                    }
+                }
+
+                HDivider {
+                    width: parent.width
+                }
+
+                Item {
+                    width: parent.width
+                    height: Theme.rowHeight
+
+                    Text {
+                        x: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: WifiState.enabled && WifiState.scanning ? "Scanning…" : ""
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontSecondary
+                        color: Theme.textDim
+                    }
+
+                    LinkText {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Network settings"
+                        onClicked: {
+                            Quickshell.execDetached(root.networkSettingsCommand);
+                            Popouts.close();
+                        }
+                    }
                 }
             }
-
-            Sym {
-                anchors.right: parent.right
-                anchors.rightMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                visible: net.modelData.security !== WifiSecurityType.None
-                name: "lock"
-                size: Theme.fontCaption
-                color: Theme.textDim
-            }
-
-            MouseArea {
-                id: netMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: net.modelData.connect()
-            }
-        }
-    }
-
-    HDivider {
-        visible: WifiState.enabled
-    }
-
-    Item {
-        visible: WifiState.enabled
-        width: parent.width
-        height: Theme.rowHeight
-
-        Text {
-            x: 10
-            anchors.verticalCenter: parent.verticalCenter
-            text: WifiState.scanning ? "Scanning…" : ""
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
-            color: Theme.textDim
         }
 
-        LinkText {
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Network settings"
-            onClicked: {
-                Quickshell.execDetached(root.networkSettingsCommand);
-                Popouts.close();
-            }
+        ScrollChrome {
+            anchors.fill: parent
+            target: networkFlick
         }
     }
 }
