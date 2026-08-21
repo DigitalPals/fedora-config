@@ -310,13 +310,29 @@ PanelWindow {
         return entries;
     }
 
-    function currentCenterExtents() {
-        const clockSlot = slotRegistry.clock;
-        let pin = centerCluster.width / 2;
-        if (clockSlot && clockSlot.active && clockSlot.col === "center") {
-            const point = clockSlot.mapToItem(centerCluster, 0, 0);
-            pin = point.x + clockSlot.width / 2;
+    function itemCenterXWithin(item, ancestor) {
+        let position = item.width / 2;
+        let current = item;
+        // Read every intermediate x explicitly. mapToItem() returns the same
+        // number, but its internal transform walk does not expose those notify
+        // dependencies to a QML binding, leaving the clock pin one layout
+        // update behind a Row whose preceding child is changing width.
+        while (current && current !== ancestor) {
+            position += current.x;
+            current = current.parent;
         }
+        return current === ancestor ? position : ancestor.width / 2;
+    }
+
+    function currentClockPin() {
+        const clockSlot = slotRegistry.clock;
+        if (clockSlot && clockSlot.active && clockSlot.col === "center")
+            return itemCenterXWithin(clockSlot, centerCluster);
+        return centerCluster.width / 2;
+    }
+
+    function currentCenterExtents() {
+        const pin = currentClockPin();
         return {
             left: Math.max(0, pin),
             right: Math.max(0, centerCluster.width - pin)
@@ -676,15 +692,13 @@ PanelWindow {
             host: barWindow
             col: "center"
             model: Settings.mods.center
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.horizontalCenterOffset: barWindow.centerPinBias
+            // Algebraically this is the former centered anchor plus pin bias,
+            // but as one binding it cannot render between the two halves of
+            // that cancellation. The clock's local center is the only moving
+            // input while indicators disclose on its left.
+            x: parent.width / 2 - barWindow.currentClockPin()
                 + barWindow.animatedCenterShift
             anchors.verticalCenter: parent.verticalCenter
-            // The cluster width changes continuously while indicators reveal.
-            // Qt's default centered-anchor rounding changes the resulting x by
-            // one logical pixel as that width crosses half-pixel boundaries,
-            // even though centerPinBias keeps the clock mathematically fixed.
-            anchors.alignWhenCentered: false
             onImplicitWidthChanged: barWindow.scheduleFit()
         }
 

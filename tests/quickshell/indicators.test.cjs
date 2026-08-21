@@ -50,8 +50,11 @@ test("inactive disclosure and persistent active actions use separate animated bl
         "the clock pin must follow reveal geometry synchronously");
     assert.doesNotMatch(bar, /centerPinBias\s*=/,
         "the deferred fit pass must not assign the clock pin a frame late");
-    assert.match(bar, /id:\s*centerCluster[\s\S]*?anchors\.alignWhenCentered:\s*false/,
-        "center anchoring must preserve subpixel pin geometry during disclosure");
+    assert.match(bar,
+        /id:\s*centerCluster[\s\S]*?x:\s*parent\.width \/ 2 - barWindow\.currentClockPin\(\)/,
+        "center placement must use the clock pin directly, without cancelling two changing widths");
+    assert.match(bar, /function itemCenterXWithin\([\s\S]*?position \+= current\.x/,
+        "clock placement must react to each intermediate Row layout position");
 });
 
 test("center pointer routing leaves action buttons above the notification target", () => {
