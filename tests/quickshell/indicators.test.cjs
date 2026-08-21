@@ -36,6 +36,9 @@ test("inactive disclosure and persistent active actions use separate animated bl
     assert.match(indicators, /root\.host\.tooltipPointerInside/,
         "disclosure stays latched while the pointer crosses the rest of the bar");
     assert.match(revealer, /readonly property bool widthAnimating:[\s\S]{0,100}?horizontalWidthAnimation\.running/);
+    assert.match(revealer,
+        /easing\.bezierCurve:\s*root\.reveal\s*\? Theme\.springCurve : Theme\.easeInCurve/,
+        "closing disclosure must not spring past zero width and rebound");
     assert.match(indicators,
         /host\.indicatorDisclosureAnimating = disclosureAnimating/);
     assert.match(cluster,
@@ -47,6 +50,8 @@ test("inactive disclosure and persistent active actions use separate animated bl
         "the clock pin must follow reveal geometry synchronously");
     assert.doesNotMatch(bar, /centerPinBias\s*=/,
         "the deferred fit pass must not assign the clock pin a frame late");
+    assert.match(bar, /id:\s*centerCluster[\s\S]*?anchors\.alignWhenCentered:\s*false/,
+        "center anchoring must preserve subpixel pin geometry during disclosure");
 });
 
 test("center pointer routing leaves action buttons above the notification target", () => {

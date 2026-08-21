@@ -32,7 +32,11 @@ Item {
             id: horizontalWidthAnimation
             duration: Theme.expandDuration
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: Theme.springCurve
+            // Keep the lively overshoot when content arrives. On exit that
+            // same curve drives width briefly below zero, which makes a Row's
+            // following content cross its pinned endpoint and rebound.
+            easing.bezierCurve: root.reveal
+                ? Theme.springCurve : Theme.easeInCurve
         }
     }
 

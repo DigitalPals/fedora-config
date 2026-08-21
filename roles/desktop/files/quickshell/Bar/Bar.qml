@@ -680,6 +680,11 @@ PanelWindow {
             anchors.horizontalCenterOffset: barWindow.centerPinBias
                 + barWindow.animatedCenterShift
             anchors.verticalCenter: parent.verticalCenter
+            // The cluster width changes continuously while indicators reveal.
+            // Qt's default centered-anchor rounding changes the resulting x by
+            // one logical pixel as that width crosses half-pixel boundaries,
+            // even though centerPinBias keeps the clock mathematically fixed.
+            anchors.alignWhenCentered: false
             onImplicitWidthChanged: barWindow.scheduleFit()
         }
 
