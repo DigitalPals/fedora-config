@@ -10,17 +10,31 @@ function read(rel) {
     return fs.readFileSync(path.join(shellDir, rel), "utf8");
 }
 
-test("occupied workspaces stay visibly distinct from empty slots", () => {
+test("workspace states use a distinct adaptive luminance ladder", () => {
     const workspaces = read("Bar/Workspaces.qml");
     const theme = read("Common/Theme.qml");
 
+    assert.match(workspaces, /color:\s*Theme\.barWsCurrent\b/,
+        "the current lozenge needs its own high-contrast neutral");
+    assert.match(workspaces, /color:\s*Theme\.barWsCurrentGlow\b/,
+        "the current lozenge glow must follow its neutral rather than the accent");
+    assert.match(workspaces, /slot\.focused\s*\?\s*Theme\.barWsCurrentFg/,
+        "numbered current workspaces need a foreground derived from the lozenge");
     assert.match(workspaces,
         /root\.numbered\s*\?\s*\(exists\s*\?\s*Theme\.barChipHover\s*:\s*Theme\.barChip\)/,
         "numbered slots need separate occupied and empty fills");
-    assert.match(workspaces, /exists\s*\?\s*Theme\.barWsOccupied\s*:\s*Theme\.barDotDim/,
+    assert.match(workspaces, /exists\s*\?\s*Theme\.barWsOccupied\s*:\s*Theme\.barWsEmpty/,
         "dot slots need a dedicated occupied tone");
-    assert.match(theme, /readonly property color barWsOccupied:/,
-        "the occupied state must be a semantic theme token");
+    for (const token of ["barWsCurrent", "barWsCurrentFg", "barWsCurrentGlow",
+                         "barWsOccupied", "barWsEmpty"])
+        assert.match(theme, new RegExp(`readonly property color ${token}:`),
+            `${token} must be a semantic theme token`);
+    assert.match(theme,
+        /barWsOccupied:[\s\S]{0,120}?barWsCurrent\.b, 0\.72\)/,
+        "occupied dots need the tested light-neutral opacity");
+    assert.match(theme,
+        /barWsEmpty:[\s\S]{0,120}?barWsCurrent\.b, 0\.24\)/,
+        "empty dots need the tested recessed opacity");
     assert.match(workspaces, /exists\s*\?\s*", occupied"\s*:\s*", empty"/,
         "assistive output must announce the same distinction shown visually");
 });

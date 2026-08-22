@@ -93,9 +93,9 @@ SettingsPage {
                             anchors.leftMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 4
-                            Rectangle { width: 12; height: 5; radius: 2.5; color: Theme.barAccent }
-                            Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barDotDim }
-                            Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barDotDim }
+                            Rectangle { width: 12; height: 5; radius: 2.5; color: Theme.barWsCurrent }
+                            Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barWsOccupied }
+                            Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barWsEmpty }
                         }
                         Text {
                             anchors.centerIn: parent

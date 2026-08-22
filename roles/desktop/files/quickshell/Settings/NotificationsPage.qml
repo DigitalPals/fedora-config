@@ -55,8 +55,8 @@ SettingsPage {
                             anchors.leftMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 3
-                            Rectangle { width: 9; height: 4; radius: 2; color: Theme.barAccent }
-                            Rectangle { width: 4; height: 4; radius: 2; color: Theme.barDotDim }
+                            Rectangle { width: 9; height: 4; radius: 2; color: Theme.barWsCurrent }
+                            Rectangle { width: 4; height: 4; radius: 2; color: Theme.barWsOccupied }
                         }
                         Row {
                             anchors.right: parent.right
@@ -65,7 +65,7 @@ SettingsPage {
                             spacing: 3
                             Repeater {
                                 model: 3
-                                delegate: Rectangle { width: 4; height: 4; radius: 2; color: Theme.barDotDim }
+                                delegate: Rectangle { width: 4; height: 4; radius: 2; color: Theme.barWsEmpty }
                             }
                         }
                     }

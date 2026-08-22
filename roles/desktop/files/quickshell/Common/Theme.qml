@@ -91,10 +91,21 @@ Singleton {
     readonly property color barTextDim: barPalette.textDim
     readonly property color barTextFaint: barPalette.textFaint
     readonly property color barIcon: barPalette.icon
+    // Workspace state is primarily a luminance ladder. Current is solid and
+    // widened, other occupied workspaces retain 72% of that light/dark
+    // neutral, and empty pips recede without disappearing into the chip.
+    readonly property color barWsCurrent:
+        SettingsHelpers.foregroundFor(barBg.toString())
+    readonly property color barWsCurrentFg:
+        SettingsHelpers.foregroundFor(barWsCurrent.toString())
+    readonly property color barWsCurrentGlow: Qt.rgba(
+        barWsCurrent.r, barWsCurrent.g, barWsCurrent.b, 0.50)
+    readonly property color barWsOccupied: Qt.rgba(
+        barWsCurrent.r, barWsCurrent.g, barWsCurrent.b, 0.72)
+    readonly property color barWsEmpty: Qt.rgba(
+        barWsCurrent.r, barWsCurrent.g, barWsCurrent.b, 0.24)
     readonly property color barDotDim: barLightForeground
         ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(0, 0, 0, 0.26)
-    readonly property color barWsOccupied: barLightForeground
-        ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(0, 0, 0, 0.62)
     readonly property color barStroke: paletteActive ? Common.Palette.outlineVariant
         : barLightForeground ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0, 0, 0, 0.14)
     readonly property color barChip: paletteActive

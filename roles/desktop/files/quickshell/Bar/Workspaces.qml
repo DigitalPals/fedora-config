@@ -6,7 +6,7 @@ import "../Common"
 import "../Common/WorkspaceMotion.js" as WorkspaceMotion
 
 // Fixed-cell workspace pager. Every resting/occupied/urgent pip is drawn in
-// its own cell, while one accent lozenge travels above them. Its leading edge
+// its own cell, while one high-contrast lozenge travels above them. Its leading edge
 // arrives first and its trailing edge follows, making direction readable
 // without changing the pager's geometry or pointer targets.
 Rectangle {
@@ -107,7 +107,7 @@ Rectangle {
             radius: activeLozenge.radius
             blur: 10
             spread: 0
-            color: Theme.barAccentGlow
+            color: Theme.barWsCurrentGlow
         }
 
         Rectangle {
@@ -125,7 +125,7 @@ Rectangle {
             width: Math.max(1, rightEdge - leftEdge)
             height: root.numbered ? 18 : 8
             radius: Theme.pillRadius
-            color: Theme.barAccent
+            color: Theme.barWsCurrent
             z: 1
 
             Behavior on leftEdge {
@@ -170,7 +170,7 @@ Rectangle {
                 readonly property color restingTone: urgent ? Theme.barRed
                     : root.numbered
                     ? (exists ? Theme.barChipHover : Theme.barChip)
-                    : exists ? Theme.barWsOccupied : Theme.barDotDim
+                    : exists ? Theme.barWsOccupied : Theme.barWsEmpty
 
                 x: index * WorkspaceMotion.CELL_WIDTH
                 width: WorkspaceMotion.CELL_WIDTH
@@ -217,7 +217,7 @@ Rectangle {
                     font.pixelSize: Theme.fontMicro
                     font.weight: Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
-                    color: slot.focused ? Theme.barAccentFg
+                    color: slot.focused ? Theme.barWsCurrentFg
                         : slot.urgent ? Theme.barRedFg
                         : slot.exists ? Theme.barTextMid : Theme.barTextFaint
                     z: 3

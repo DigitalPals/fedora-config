@@ -63,7 +63,7 @@ SettingsPage {
                         anchors.leftMargin: 7
                         anchors.verticalCenter: parent.verticalCenter
                         width: 9; height: 5; radius: 2.5
-                        color: Theme.barAccent
+                        color: Theme.barWsCurrent
                     }
                     Row {
                         anchors.right: parent.right
