@@ -2,8 +2,8 @@ import QtQuick
 import "../Common"
 import "../Common/Format.js" as Format
 
-// The design's filled slider: a pill-radius tile whose accent gradient fill
-// is the value readout. The glyph sits inside the track on the left — as a
+// The design's filled slider: a pill-radius tile whose subdued accent-container
+// gradient is the value readout. The glyph sits inside the track on the left — as a
 // plain mark, or as a button when `glyphIsButton` (the volume mute) — and
 // the percentage label on the right. Drag anywhere on the track to set the
 // value; the wheel nudges it.
@@ -50,7 +50,7 @@ Rectangle {
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0; color: Theme.accentSoft }
-            GradientStop { position: 1; color: Theme.accent }
+            GradientStop { position: 1; color: Theme.accentContainer }
         }
 
         Behavior on width {

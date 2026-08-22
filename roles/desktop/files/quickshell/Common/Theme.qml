@@ -236,6 +236,13 @@ Singleton {
     readonly property color accentFg: paletteActive
         ? SettingsHelpers.ensureContrast(Common.Palette.onPrimary.toString(),
             accent.toString(), 4.5) : "#ffffff"
+    // Full accent belongs on small state marks. Large selected controls use a
+    // calmer opaque container mixed into the panel reference, so a vivid fixed
+    // choice or wallpaper palette cannot turn broad UI areas fluorescent.
+    readonly property color accentContainer: SettingsHelpers.mixHex(
+        popBg.toString(), accent.toString(), dark ? 0.46 : 0.30)
+    readonly property color accentContainerFg: SettingsHelpers.foregroundFor(
+        accentContainer.toString())
     readonly property color accentSoft: paletteActive
         ? Qt.rgba(Common.Palette.primaryContainer.r, Common.Palette.primaryContainer.g,
             Common.Palette.primaryContainer.b, 0.72)

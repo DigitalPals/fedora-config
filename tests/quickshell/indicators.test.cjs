@@ -99,6 +99,29 @@ test("all shared toggles use one persisted write path", () => {
     assert.match(control, /onToggled:\s*SysInfo\.toggleIdleInhibited\(\)/);
 });
 
+test("large Control Center states use subdued accent containers", () => {
+    const theme = read("Common/Theme.qml");
+    const control = read("Popovers/ControlCenterPopover.qml");
+    const slider = read("Popovers/FillSlider.qml");
+    const bigTile = control.slice(
+        control.indexOf("component BigTile:"),
+        control.indexOf("component RoundToggle:"));
+
+    assert.match(theme,
+        /readonly property color accentContainer:\s*SettingsHelpers\.mixHex\([\s\S]{0,120}?dark \? 0\.46 : 0\.30\)/);
+    assert.match(theme,
+        /readonly property color accentContainerFg:\s*SettingsHelpers\.foregroundFor/);
+    assert.match(bigTile, /color:\s*Theme\.tile/);
+    assert.doesNotMatch(bigTile, /color:\s*tile\.on \? Theme\.accentSoft/);
+    assert.match(control, /tile\.on \? Theme\.accentContainer : Theme\.chipHover/);
+    assert.match(control, /toggle\.on \? Theme\.accentContainer : Theme\.tile/);
+    assert.match(control, /current \? Theme\.accentContainer/);
+    assert.doesNotMatch(control, /(?:tile|toggle)\.on \? Theme\.accent\b/);
+    assert.doesNotMatch(control, /current \? Theme\.accent\b/);
+    assert.match(slider,
+        /GradientStop \{ position: 1; color: Theme\.accentContainer \}/);
+});
+
 test("reminder manager and shell-wide refresh IPC are wired to the action", () => {
     const registry = read("Common/PanelRegistryData.js");
     const shell = read("shell.qml");

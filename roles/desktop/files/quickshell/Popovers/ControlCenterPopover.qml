@@ -55,7 +55,7 @@ Surface {
         width: (root.width - 2 * root.padding - 10) / 2
         height: Theme.tileHeight
         radius: Theme.cardRadius
-        color: tile.on ? Theme.accentSoft : Theme.tile
+        color: Theme.tile
         scale: tileMouse.pressed ? 0.97 : 1
 
         Behavior on color {
@@ -90,7 +90,7 @@ Surface {
             width: 38
             height: 38
             radius: 19
-            color: tile.on ? Theme.accent : Theme.chipHover
+            color: tile.on ? Theme.accentContainer : Theme.chipHover
 
             Behavior on color {
                 ColorAnimation { duration: Theme.surfaceDuration }
@@ -101,7 +101,7 @@ Surface {
                 name: tile.glyph
                 size: 19
                 fill: tile.on ? 1 : 0
-                color: tile.on ? Theme.textOnAccent : Theme.textMid
+                color: tile.on ? Theme.accentContainerFg : Theme.textMid
             }
         }
 
@@ -193,7 +193,7 @@ Surface {
             width: 46
             height: 46
             radius: 23
-            color: toggle.on ? Theme.accent : Theme.tile
+            color: toggle.on ? Theme.accentContainer : Theme.tile
             scale: toggleMouse.pressed ? 0.92 : 1
 
             Behavior on color {
@@ -214,7 +214,7 @@ Surface {
                 name: toggle.glyph
                 size: Theme.iconLarge
                 fill: toggle.on ? 1 : 0
-                color: toggle.on ? Theme.textOnAccent : Theme.textMid
+                color: toggle.on ? Theme.accentContainerFg : Theme.textMid
             }
 
             Image {
@@ -419,7 +419,7 @@ Surface {
                     width: (modeRow.width - modeRow.spacing * 2) / 3
                     height: modeRow.height
                     radius: height / 2
-                    color: current ? Theme.accent
+                    color: current ? Theme.accentContainer
                         : modeMouse.containsMouse ? Theme.chipHover : "transparent"
 
                     Behavior on color {
@@ -435,7 +435,7 @@ Surface {
                             name: mode.modelData.glyph
                             size: Theme.iconSmall + 2
                             fill: mode.current ? 1 : 0
-                            color: mode.current ? Theme.textOnAccent : Theme.textFaint
+                            color: mode.current ? Theme.accentContainerFg : Theme.textFaint
                         }
 
                         Text {
@@ -445,7 +445,7 @@ Surface {
                             font.pixelSize: Theme.fontMicro
                             font.weight: Theme.weightMedium
                             font.letterSpacing: 0.2
-                            color: mode.current ? Theme.textOnAccent : Theme.textFaint
+                            color: mode.current ? Theme.accentContainerFg : Theme.textFaint
                         }
                     }
 

@@ -105,6 +105,8 @@ test("settings-driven tokens default to the softer menu face", () => {
     // Derived accent fills must track the dynamic accent, not a literal.
     assert.doesNotMatch(theme, /158 \/ 255/);
     assert.match(theme, /readonly property color accentSoft:\s*paletteActive/);
+    assert.match(theme, /readonly property color accentContainer:/);
+    assert.match(theme, /readonly property color accentContainerFg:/);
 });
 
 test("shared surfaces carry the roomier density tokens", () => {
