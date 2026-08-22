@@ -52,15 +52,13 @@ Item {
     property int displayMode: 2
 
     readonly property var availableKeys: Usage.providerKeys.filter(k => {
-        // Providers the user toggled off keep their popover tab.
+        // Provider toggles only control the bar; every provider keeps its
+        // popover tab for sign-in and error details. A menubar chip is useful
+        // only when the provider returned a real usage figure, so do not
+        // render unavailable providers as a misleading "--%" icon.
         if (Settings.modOpts.usage[k] !== true)
             return false;
-        const p = Usage.provider(k);
-        if (!p)
-            return false;
-        // Providers that were never signed in stay out of the bar; their tab
-        // in the popover still shows the sign-in hint.
-        return p.status === "ok" || p.kind !== "nocreds";
+        return Usage.minRemaining(k) >= 0;
     })
     readonly property bool empty: availableKeys.length === 0
     readonly property real detailSaving: {

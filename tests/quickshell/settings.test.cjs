@@ -266,6 +266,19 @@ test("usage chip hover joins the latched menu session", () => {
         "all providers should retain the grouped UsageChips anchor");
 });
 
+test("model usage only shows providers with a real menubar value", () => {
+    const chips = read("Bar/UsageChips.qml");
+    const popover = read("Popovers/UsagePopover.qml");
+
+    assert.match(chips,
+        /availableKeys:\s*Usage\.providerKeys\.filter[\s\S]*?return Usage\.minRemaining\(k\) >= 0;\s*\}\)/,
+        "signed-out, failed, and valueless providers must not render as --% chips");
+    assert.doesNotMatch(chips, /p\.status === "ok" \|\| p\.kind !== "nocreds"/,
+        "provider errors are details for the popover, not menubar chips");
+    assert.match(popover, /model:\s*Usage\.providerKeys/,
+        "hidden menubar providers must remain reachable in the usage popover");
+});
+
 test("regression fixes keep asynchronous state identity-safe", () => {
     const palette = read("Common/Palette.qml");
     const sysInfo = read("Common/SysInfo.qml");
