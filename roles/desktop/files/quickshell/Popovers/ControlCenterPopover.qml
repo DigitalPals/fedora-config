@@ -649,7 +649,7 @@ Surface {
         spacing: 6
 
         Rectangle {
-            width: parent.width - 36 - parent.spacing
+            width: settingsLabel.x + settingsLabel.implicitWidth + 12
             height: 36
             radius: 14
             color: settingsMouse.containsMouse ? Theme.chip : "transparent"
@@ -676,23 +676,14 @@ Surface {
             }
 
             Text {
+                id: settingsLabel
                 x: 40
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Shell settings"
+                text: "Settings"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontTiny
                 font.weight: Theme.weightBold
                 color: settingsMouse.containsMouse ? Theme.textHi : Theme.textLow
-            }
-
-            Sym {
-                anchors.right: parent.right
-                anchors.rightMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                name: "chevron_right"
-                size: Theme.fontBody
-                symWeight: 600
-                color: Theme.textFaint
             }
 
             MouseArea {

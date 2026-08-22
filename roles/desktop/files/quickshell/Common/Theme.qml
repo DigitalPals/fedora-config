@@ -37,10 +37,10 @@ Singleton {
     // panel, menu, and group surface too.
     readonly property color copyReferenceBg: paletteActive
         ? Common.Palette.surfaceContainerHigh : popBg
-    // The bar's opaque reference is independent of the surrounding shell
-    // theme for fixed/custom presets. It is also the exact solid-mode fill.
-    readonly property color barBg: paletteActive ? Common.Palette.surface
-        : Settings.effectiveBarColor
+    // The bar background is always the user's explicit bar-color choice.
+    // Wallpaper mode still supplies accent/status colors, but never replaces
+    // this surface. This is also the exact solid-mode fill.
+    readonly property color barBg: Settings.effectiveBarColor
 
     // ---- glass ------------------------------------------------------------
     // The bar is the lighter glass; panels sit a step denser so copy stays
@@ -79,10 +79,7 @@ Singleton {
     // light/dark mode. Derive its own foreground ladder so a white bar in a
     // dark shell (or the reverse) remains readable. The helper floors every
     // copy-bearing step at 4.5:1 against barBg.
-    readonly property var barPalette: paletteActive
-        ? SettingsHelpers.semanticPalette(barBg.toString(),
-            Common.Palette.onSurface.toString(), Common.Palette.onSurfaceVariant.toString())
-        : SettingsHelpers.barPalette(Settings.effectiveBarColor)
+    readonly property var barPalette: SettingsHelpers.barPalette(barBg.toString())
     readonly property bool barLightForeground:
         SettingsHelpers.relativeLuminance(barPalette.foreground) > 0.5
     readonly property color barTextHi: barPalette.textHi
@@ -106,16 +103,12 @@ Singleton {
         barWsCurrent.r, barWsCurrent.g, barWsCurrent.b, 0.24)
     readonly property color barDotDim: barLightForeground
         ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(0, 0, 0, 0.26)
-    readonly property color barStroke: paletteActive ? Common.Palette.outlineVariant
-        : barLightForeground ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0, 0, 0, 0.14)
-    readonly property color barChip: paletteActive
-        ? Qt.rgba(Common.Palette.surfaceContainer.r, Common.Palette.surfaceContainer.g,
-            Common.Palette.surfaceContainer.b, 0.52)
-        : barLightForeground ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.07)
-    readonly property color barChipHover: paletteActive
-        ? Qt.rgba(Common.Palette.surfaceContainerHigh.r, Common.Palette.surfaceContainerHigh.g,
-            Common.Palette.surfaceContainerHigh.b, 0.72)
-        : barLightForeground ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.13)
+    readonly property color barStroke: barLightForeground
+        ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0, 0, 0, 0.14)
+    readonly property color barChip: barLightForeground
+        ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.07)
+    readonly property color barChipHover: barLightForeground
+        ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.13)
 
     readonly property color barAccent: SettingsHelpers.ensureContrast(
         paletteActive ? Common.Palette.primary.toString() : Settings.effectiveAccent,

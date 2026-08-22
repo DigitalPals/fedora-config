@@ -283,10 +283,11 @@ glass and detached panels. What that added, and what it needs:
   runs Matugen's tonal-spot scheme for the selected wallpaper, whitelists the
   semantic roles in `PaletteHelpers.js`, and atomically caches both light and
   dark variants at `~/.local/state/quickshell/wallpaper-palette.json`. Theme
-  changes select the cached variant. Missing or malformed Matugen output leaves
-  the user's mode unchanged and renders the stored fixed colors as fallback.
-  Copy-bearing tones are still forced to a 4.5:1 floor against their opaque
-  reference surface.
+  changes select the cached variant. The menubar background remains the user's
+  independent bar-color choice while its accents follow this palette. Missing
+  or malformed Matugen output leaves the user's mode unchanged and renders the
+  stored fixed colors as fallback. Copy-bearing tones are still forced to a
+  4.5:1 floor against their opaque reference surface.
 - **Bar style is explicit.** `hug` is the default edge-attached slab with local
   `QtQuick.Shapes` concave corners; `floating` alone uses the stored gap and
   radius; `attached` is full-width and square. Hug/attached reserve exactly the

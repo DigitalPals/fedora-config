@@ -48,6 +48,17 @@ test("settings uses the shared center popout rather than a modal window", () => 
         /Popouts\.openPanel\(PanelRegistry\.SETTINGS,[\s\S]{0,80}?Qt\.rect\(0,\s*0,\s*0,\s*0\)\)/);
 });
 
+test("the control dashboard uses a compact Settings action without a chevron", () => {
+    const control = read("Popovers/ControlCenterPopover.qml");
+    const footer = control.slice(control.indexOf("// ---- Footer"));
+
+    assert.match(footer, /id:\s*settingsLabel[\s\S]{0,160}?text:\s*"Settings"/);
+    assert.match(footer,
+        /width:\s*settingsLabel\.x \+ settingsLabel\.implicitWidth \+ 12/,
+        "the Settings hit target should hug its visible content");
+    assert.doesNotMatch(footer, /Shell settings|chevron_right/);
+});
+
 test("the panel card grows out of its trigger and never out of thin air", () => {
     const host = read("Bar/PopoutHost.qml");
 
@@ -499,14 +510,32 @@ test("progressive disclosure hides inactive controls without discarding latent v
     const picker = read("Settings/PickerRow.qml");
 
     const fixedAt = appearance.indexOf("id: fixedColorReveal");
+    const paletteAt = appearance.indexOf("id: paletteContent");
+    const barAt = appearance.indexOf('SectionHeader { label: "BAR BACKGROUND" }');
     const typeAt = appearance.indexOf('title: "Typography"');
-    assert.ok(fixedAt > 0 && typeAt > fixedAt);
-    const fixed = appearance.slice(fixedAt, typeAt);
+    assert.ok(fixedAt > 0 && paletteAt > fixedAt && barAt > paletteAt && typeAt > barAt,
+        "Fixed must reveal its accent controls immediately below the mode picker");
+    const fixed = appearance.slice(fixedAt, paletteAt);
+    const barColors = appearance.slice(barAt, typeAt);
     assert.match(fixed, /reveal:\s*page\.fixedPalette/);
+    assert.match(fixed, /\baccent\b/, "the manual accent choice belongs to fixed mode");
+    assert.match(appearance,
+        /onPicked:\s*value => \{[\s\S]{0,120}?page\.revealFixedColors\(\)/,
+        "selecting Fixed must bring the newly revealed accent controls into view");
+    assert.match(appearance,
+        /id:\s*fixedColorScrollTimer[\s\S]{0,120}?page\.revealFixedColorsNow\(\)/,
+        "the scroll must wait for the fixed-color reveal before measuring it");
+    assert.match(appearance,
+        /firstBarSwatch\s*=\s*barColorRepeater\.itemAt\(0\)[\s\S]{0,160}?page\.revealFocus\(firstBarSwatch/,
+        "Fixed must reveal both the accent controls and the independent bar background");
+    assert.match(appearance,
+        /Component\.onCompleted:[\s\S]{0,100}?fixedPalette[\s\S]{0,100}?revealFixedColors\(\)/,
+        "reopening an already-Fixed page must also reveal its color controls");
     for (const key of ["barColorMode", "barCustomHue", "barCustomSaturation",
-        "barCustomLightness", "accent"])
-        assert.match(fixed, new RegExp(key), `${key} must live inside the fixed-color reveal`);
-    assert.match(fixed,
+        "barCustomLightness"])
+        assert.match(barColors, new RegExp(key),
+            `${key} must remain available independently of the accent source`);
+    assert.match(barColors,
         /id:\s*customColorReveal[\s\S]*?reveal:\s*Settings\.barColorMode === "custom"/);
 
     const floatingAt = bar.indexOf("id: floatingReveal");

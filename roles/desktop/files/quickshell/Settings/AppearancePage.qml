@@ -16,7 +16,7 @@ SettingsPage {
     readonly property int accentHue: SettingsHelpers.hexHue(Settings.accent, 204)
     readonly property bool fixedPalette: Settings.paletteMode === "fixed"
     readonly property var paletteSwatches: [
-        { label: "Surface", color: Theme.barBg },
+        { label: "Surface", color: Common.Palette.surface },
         { label: "Panel", color: Theme.popBg },
         { label: "Group", color: Common.Palette.surfaceContainerHigh },
         { label: "Primary", color: Theme.accent },
@@ -34,6 +34,27 @@ SettingsPage {
 
     function pickAccent(value) {
         Settings.set("accent", value);
+    }
+
+    function revealFixedColors() {
+        fixedColorScrollTimer.restart();
+    }
+
+    function revealFixedColorsNow() {
+        const firstBarSwatch = barColorRepeater.itemAt(0);
+        const lastSwatch = swatchRepeater.itemAt(swatchRepeater.count - 1);
+        page.revealFocus(firstBarSwatch || lastSwatch || fixedColorReveal);
+    }
+
+    Component.onCompleted: {
+        if (fixedPalette)
+            revealFixedColors();
+    }
+
+    Timer {
+        id: fixedColorScrollTimer
+        interval: Theme.expandDuration
+        onTriggered: page.revealFixedColorsNow()
     }
 
     SystemClock {
@@ -178,59 +199,24 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Colors"
+                label: "Accent source"
                 settingKey: "paletteMode"
                 caption: Settings.paletteMode === "wallpaper"
-                    ? "Material tonal spot" : "stored choices"
+                    ? "current wallpaper" : "manual choices"
                 captionMono: false
+                // The group-level reset owns this compound choice and its
+                // latent fixed values; a second row reset reads as clutter.
+                dirty: false
+                resetKeys: []
                 model: [
                     { value: "wallpaper", label: "Wallpaper" },
                     { value: "fixed", label: "Fixed" }
                 ]
-            }
-
-            Rectangle {
-                width: parent.width
-                height: paletteContent.implicitHeight + 18
-                radius: Theme.rowRadius
-                color: Theme.hoverFill
-                Column {
-                    id: paletteContent
-                    x: 10
-                    y: 9
-                    width: parent.width - 20
-                    spacing: 7
-                    Row {
-                        spacing: 9
-                        Repeater {
-                            model: page.paletteSwatches
-                            delegate: Rectangle {
-                                required property var modelData
-                                width: 22; height: 22; radius: 11
-                                color: modelData.color
-                                border.width: 1
-                                border.color: Theme.stroke
-                                Accessible.role: Accessible.StaticText
-                                Accessible.name: modelData.label + " palette color"
-                            }
-                        }
-                    }
-                    Text {
-                        width: parent.width
-                        text: Settings.paletteMode !== "wallpaper"
-                            ? "Fixed accent and menubar colors are active"
-                            : Common.Palette.busy ? "Generating colors from the current wallpaper…"
-                            : Common.Palette.ready ? "Wallpaper palette ready · light and dark cached"
-                            : Common.Palette.error !== "" ? Common.Palette.error + " · using fixed colors"
-                            : "Waiting for the wallpaper palette"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
-                        color: Settings.paletteMode === "wallpaper" && Common.Palette.error !== ""
-                            ? Theme.redText : Theme.textDim
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 2
-                        elide: Text.ElideRight
-                    }
+                onPicked: value => {
+                    if (value === "fixed")
+                        page.revealFixedColors();
+                    else
+                        fixedColorScrollTimer.stop();
                 }
             }
 
@@ -242,150 +228,6 @@ SettingsPage {
                 Column {
                     width: fixedColorReveal.width
                     spacing: 6
-                    SectionHeader { label: "BAR COLOR" }
-
-                    Flow {
-                        width: parent.width
-                        spacing: 9
-                        Repeater {
-                            id: barColorRepeater
-                            model: Settings.barColorChoices
-                            delegate: Item {
-                                id: colorChoice
-                                required property var modelData
-                                required property int index
-                                readonly property bool selected: Settings.barColorMode === modelData.id
-                                readonly property string previewHex: Settings.previewBarColor(modelData.id)
-                                width: 34; height: 34
-                                activeFocusOnTab: selected || (index === 0 && Settings.barColorMode === "")
-                                Accessible.role: Accessible.RadioButton
-                                Accessible.name: modelData.label + " menubar color"
-                                Accessible.description: previewHex.toUpperCase()
-                                Accessible.checked: selected
-                                Accessible.onPressAction: Settings.set("barColorMode", modelData.id)
-                                Controls.ToolTip.visible: colorMouse.containsMouse
-                                Controls.ToolTip.text: modelData.label + " · " + previewHex.toUpperCase()
-                                Keys.onPressed: event => {
-                                    let next = -1;
-                                    if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
-                                        next = Math.max(0, index - 1);
-                                    else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
-                                        next = Math.min(Settings.barColorChoices.length - 1, index + 1);
-                                    else if (event.key === Qt.Key_Home)
-                                        next = 0;
-                                    else if (event.key === Qt.Key_End)
-                                        next = Settings.barColorChoices.length - 1;
-                                    else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                                            || event.key === Qt.Key_Space) {
-                                        Settings.set("barColorMode", modelData.id);
-                                        event.accepted = true; return;
-                                    }
-                                    if (next >= 0) {
-                                        Settings.set("barColorMode", Settings.barColorChoices[next].id);
-                                        barColorRepeater.itemAt(next).forceActiveFocus();
-                                        event.accepted = true;
-                                    }
-                                }
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: width / 2
-                                    color: "transparent"
-                                    border.width: colorChoice.selected ? 2 : colorChoice.activeFocus ? 1 : 0
-                                    border.color: colorChoice.selected ? Theme.accent : Theme.textHi
-                                }
-                                Rectangle {
-                                    anchors.centerIn: parent
-                                    width: 22; height: 22; radius: 11
-                                    color: colorChoice.previewHex
-                                    border.width: 1
-                                    border.color: Theme.stroke
-                                }
-                                MouseArea {
-                                    id: colorMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        colorChoice.forceActiveFocus();
-                                        Settings.set("barColorMode", colorChoice.modelData.id);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Item {
-                        width: parent.width
-                        height: 24
-                        Text {
-                            anchors.left: parent.left
-                            anchors.right: colorValue.left
-                            anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: page.barColorLabel
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightSemibold
-                            color: Theme.textMid
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            id: colorValue
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, parent.width * 0.55)
-                            horizontalAlignment: Text.AlignRight
-                            text: (Settings.barColorMode === "default"
-                                    || Settings.barColorMode === "macos" ? "adapts to theme · " : "")
-                                + Settings.effectiveBarColor.toUpperCase()
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontCaption
-                            color: Theme.textFaint
-                            elide: Text.ElideLeft
-                        }
-                    }
-
-                    Revealer {
-                        id: customColorReveal
-                        width: parent.width
-                        reveal: Settings.barColorMode === "custom"
-                        Column {
-                            width: customColorReveal.width
-                            spacing: 4
-                            SliderRow {
-                                width: parent.width
-                                label: "Hue"
-                                settingKey: "barCustomHue"
-                                min: 0; max: 359; step: 1; unit: "°"
-                                hueTrack: true
-                            }
-                            SliderRow {
-                                width: parent.width
-                                label: "Saturation"
-                                settingKey: "barCustomSaturation"
-                                min: 0; max: 100; step: 1; unit: "%"
-                                colorTrack: true
-                                trackStart: SettingsHelpers.hslToHex(Settings.barCustomHue, 0,
-                                    Settings.barCustomLightness)
-                                trackMiddle: SettingsHelpers.hslToHex(Settings.barCustomHue, 50,
-                                    Settings.barCustomLightness)
-                                trackEnd: SettingsHelpers.hslToHex(Settings.barCustomHue, 100,
-                                    Settings.barCustomLightness)
-                            }
-                            SliderRow {
-                                width: parent.width
-                                label: "Lightness"
-                                settingKey: "barCustomLightness"
-                                min: 0; max: 100; step: 1; unit: "%"
-                                colorTrack: true
-                                trackStart: "#000000"
-                                trackMiddle: SettingsHelpers.hslToHex(Settings.barCustomHue,
-                                    Settings.barCustomSaturation, 50)
-                                trackEnd: "#ffffff"
-                            }
-                        }
-                    }
-
                     SectionHeader { label: "ACCENT" }
                     SliderRow {
                         width: parent.width
@@ -462,6 +304,227 @@ SettingsPage {
                     }
                 }
             }
+
+            Revealer {
+                id: wallpaperPaletteReveal
+                width: parent.width
+                reveal: !page.fixedPalette
+
+                Column {
+                    width: wallpaperPaletteReveal.width
+                    spacing: 6
+                    SectionHeader { label: "WALLPAPER PALETTE PREVIEW" }
+
+                    Rectangle {
+                        width: parent.width
+                        height: paletteContent.implicitHeight + 18
+                        radius: Theme.rowRadius
+                        color: Theme.hoverFill
+                        Column {
+                            id: paletteContent
+                            x: 10
+                            y: 9
+                            width: parent.width - 20
+                            spacing: 7
+                            Flow {
+                                width: parent.width
+                                spacing: 12
+                                Repeater {
+                                    model: page.paletteSwatches
+                                    delegate: Row {
+                                        required property var modelData
+                                        spacing: 5
+                                        Accessible.role: Accessible.StaticText
+                                        Accessible.name: modelData.label + " palette color"
+
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 14; height: 14; radius: 4
+                                            color: parent.modelData.color
+                                            border.width: 1
+                                            border.color: Theme.stroke
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: parent.modelData.label
+                                            font.family: Theme.fontMenu
+                                            font.pixelSize: Theme.fontCaption
+                                            color: Theme.textDim
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: Common.Palette.busy
+                                    ? "Generating colors from the current wallpaper…"
+                                    : Common.Palette.ready
+                                    ? "Wallpaper palette ready · light and dark cached"
+                                    : Common.Palette.error !== ""
+                                    ? Common.Palette.error + " · using fixed colors"
+                                    : "Waiting for the wallpaper palette"
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.fontCaption
+                                color: Common.Palette.error !== ""
+                                    ? Theme.redText : Theme.textDim
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+            }
+
+            Column {
+                id: barColorControls
+                width: parent.width
+                spacing: 6
+                SectionHeader { label: "BAR BACKGROUND" }
+
+                Flow {
+                    width: parent.width
+                    spacing: 9
+                    Repeater {
+                        id: barColorRepeater
+                        model: Settings.barColorChoices
+                        delegate: Item {
+                            id: colorChoice
+                            required property var modelData
+                            required property int index
+                            readonly property bool selected: Settings.barColorMode === modelData.id
+                            readonly property string previewHex: Settings.previewBarColor(modelData.id)
+                            width: 34; height: 34
+                            activeFocusOnTab: selected || (index === 0 && Settings.barColorMode === "")
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.name: modelData.label + " menubar color"
+                            Accessible.description: previewHex.toUpperCase()
+                            Accessible.checked: selected
+                            Accessible.onPressAction: Settings.set("barColorMode", modelData.id)
+                            Controls.ToolTip.visible: colorMouse.containsMouse
+                            Controls.ToolTip.text: modelData.label + " · " + previewHex.toUpperCase()
+                            Keys.onPressed: event => {
+                                let next = -1;
+                                if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
+                                    next = Math.max(0, index - 1);
+                                else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
+                                    next = Math.min(Settings.barColorChoices.length - 1, index + 1);
+                                else if (event.key === Qt.Key_Home)
+                                    next = 0;
+                                else if (event.key === Qt.Key_End)
+                                    next = Settings.barColorChoices.length - 1;
+                                else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                        || event.key === Qt.Key_Space) {
+                                    Settings.set("barColorMode", modelData.id);
+                                    event.accepted = true; return;
+                                }
+                                if (next >= 0) {
+                                    Settings.set("barColorMode", Settings.barColorChoices[next].id);
+                                    barColorRepeater.itemAt(next).forceActiveFocus();
+                                    event.accepted = true;
+                                }
+                            }
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: "transparent"
+                                border.width: colorChoice.selected ? 2 : colorChoice.activeFocus ? 1 : 0
+                                border.color: colorChoice.selected ? Theme.accent : Theme.textHi
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 22; height: 22; radius: 11
+                                color: colorChoice.previewHex
+                                border.width: 1
+                                border.color: Theme.stroke
+                            }
+                            MouseArea {
+                                id: colorMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    colorChoice.forceActiveFocus();
+                                    Settings.set("barColorMode", colorChoice.modelData.id);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    width: parent.width
+                    height: 24
+                    Text {
+                        anchors.left: parent.left
+                        anchors.right: colorValue.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.barColorLabel
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
+                        color: Theme.textMid
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        id: colorValue
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, parent.width * 0.55)
+                        horizontalAlignment: Text.AlignRight
+                        text: (Settings.barColorMode === "default"
+                                || Settings.barColorMode === "macos" ? "adapts to theme · " : "")
+                            + Settings.effectiveBarColor.toUpperCase()
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.fontCaption
+                        color: Theme.textFaint
+                        elide: Text.ElideLeft
+                    }
+                }
+
+                Revealer {
+                    id: customColorReveal
+                    width: parent.width
+                    reveal: Settings.barColorMode === "custom"
+                    Column {
+                        width: customColorReveal.width
+                        spacing: 4
+                        SliderRow {
+                            width: parent.width
+                            label: "Hue"
+                            settingKey: "barCustomHue"
+                            min: 0; max: 359; step: 1; unit: "°"
+                            hueTrack: true
+                        }
+                        SliderRow {
+                            width: parent.width
+                            label: "Saturation"
+                            settingKey: "barCustomSaturation"
+                            min: 0; max: 100; step: 1; unit: "%"
+                            colorTrack: true
+                            trackStart: SettingsHelpers.hslToHex(Settings.barCustomHue, 0,
+                                Settings.barCustomLightness)
+                            trackMiddle: SettingsHelpers.hslToHex(Settings.barCustomHue, 50,
+                                Settings.barCustomLightness)
+                            trackEnd: SettingsHelpers.hslToHex(Settings.barCustomHue, 100,
+                                Settings.barCustomLightness)
+                        }
+                        SliderRow {
+                            width: parent.width
+                            label: "Lightness"
+                            settingKey: "barCustomLightness"
+                            min: 0; max: 100; step: 1; unit: "%"
+                            colorTrack: true
+                            trackStart: "#000000"
+                            trackMiddle: SettingsHelpers.hslToHex(Settings.barCustomHue,
+                                Settings.barCustomSaturation, 50)
+                            trackEnd: "#ffffff"
+                        }
+                    }
+                }
+            }
+
         }
 
         SettingsGroup {

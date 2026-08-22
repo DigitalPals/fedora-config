@@ -23,7 +23,7 @@ function qmlFiles(directory) {
     return out;
 }
 
-test("Appearance exposes live glass, palette, and stored fixed color controls", () => {
+test("Appearance exposes live glass, wallpaper accents, and independent bar colors", () => {
     const appearance = read("Settings/AppearancePage.qml");
     const settings = read("Common/Settings.qml");
     const slider = read("Common/HSlider.qml");
@@ -44,10 +44,10 @@ test("Appearance exposes live glass, palette, and stored fixed color controls", 
         /label:\s*"Glass effect"[\s\S]{0,100}?settingKey:\s*"glassEnabled"/);
     assert.match(appearance, /title:\s*"Colors"/);
     assert.match(appearance,
-        /label:\s*"Colors"[\s\S]{0,100}?settingKey:\s*"paletteMode"/);
+        /label:\s*"Accent source"[\s\S]{0,100}?settingKey:\s*"paletteMode"/);
     assert.match(appearance, /Common\.Palette\.busy/);
     assert.match(appearance, /Common\.Palette\.error/);
-    assert.match(appearance, /SectionHeader \{ label:\s*"BAR COLOR" \}/);
+    assert.match(appearance, /SectionHeader \{ label:\s*"BAR BACKGROUND" \}/);
     assert.match(appearance, /model:\s*Settings\.barColorChoices/);
     assert.match(appearance, /Accessible\.role:\s*Accessible\.RadioButton/);
     assert.match(appearance, /Accessible\.checked:\s*selected/);
@@ -56,8 +56,15 @@ test("Appearance exposes live glass, palette, and stored fixed color controls", 
         assert.match(appearance, new RegExp(`settingKey: "${key}"`));
     assert.match(appearance, /hueTrack:\s*true/);
     assert.match(appearance, /colorTrack:\s*true/);
+    const barAt = appearance.indexOf('SectionHeader { label: "BAR BACKGROUND" }');
+    const fixedAt = appearance.indexOf("id: fixedColorReveal");
+    assert.ok(fixedAt > 0 && barAt > fixedAt,
+        "fixed accent controls must appear before the independent bar colors");
     assert.match(appearance, /id:\s*fixedColorReveal[\s\S]{0,100}?reveal:\s*page\.fixedPalette/,
-        "wallpaper mode must collapse all fixed choices");
+        "wallpaper mode must collapse only the manual accent choices");
+    assert.match(appearance,
+        /id:\s*wallpaperPaletteReveal[\s\S]{0,100}?reveal:\s*!page\.fixedPalette/,
+        "the non-interactive palette preview must not look disabled in Fixed mode");
     assert.match(appearance,
         /id:\s*customColorReveal[\s\S]{0,100}?reveal:\s*Settings\.barColorMode === "custom"/,
         "custom HSL controls must be progressively disclosed");
@@ -121,7 +128,10 @@ test("menubar content uses its colour-derived palette", () => {
 
     const theme = read("Common/Theme.qml");
     assert.match(theme,
-        /readonly property var barPalette:\s*paletteActive[\s\S]{0,180}?SettingsHelpers\.barPalette/);
+        /readonly property color barBg:\s*Settings\.effectiveBarColor/,
+        "wallpaper accents must not replace the selected menubar background");
+    assert.match(theme,
+        /readonly property var barPalette:\s*SettingsHelpers\.barPalette\(barBg\.toString\(\)\)/);
     assert.match(theme, /readonly property color barAccent:\s*SettingsHelpers\.ensureContrast/);
     assert.match(read("Common/Weather.qml"), /function barGlyphColor/);
     assert.match(read("Bar/Modules/Weather.qml"), /Weather\.barGlyphColor/);

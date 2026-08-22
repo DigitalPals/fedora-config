@@ -77,19 +77,21 @@ is manual.
 - [ ] Wallpaper palette shows surface/primary/error swatches and generation
       status. Switching Dark / Light selects the cached variant without a new
       Matugen process; changing wallpaper regenerates once after the debounce.
+      Accent colors follow the wallpaper while the selected menubar background
+      remains unchanged.
 - [ ] Change wallpapers rapidly: no stale palette flashes. Temporarily hide
       `matugen` or feed malformed output: the selector remains Wallpaper,
       the fallback error appears, and the stored fixed palette renders.
-- [ ] Fixed menubar color offers Shell Default, macOS, Black, Graphite, Slate,
-      White, and Custom. The entire Bar Color and Accent area is absent in
-      Wallpaper mode, leaves Tab/Orca traversal immediately, and returns with
-      its values unchanged after switching back to Fixed.
+- [ ] Bar Background offers Shell Default, macOS, Black, Graphite, Slate, White,
+      and Custom in both Wallpaper and Fixed modes. Only the Accent area is
+      absent in Wallpaper mode, leaves Tab/Orca traversal immediately, and
+      returns with its values unchanged after switching back to Fixed.
 - [ ] A Black menubar changes its text/icons to light tones; White changes
       them to dark tones. Accent, warning, error, workspace, weather, and T3
       marks remain legible, with no change to popover colors.
 - [ ] Custom reveals Hue, Saturation, and Lightness sliders. Their tracks and
       the real bar update live, the chosen HSL survives a preset round-trip,
-      and the MENUBAR COLOR reset restores the adaptive Shell Default.
+      and the Bar Background reset restores the adaptive Shell Default.
 - [ ] Font rows render their own family; picking one reflows the bar and
       popovers instantly. Test every menu font: names and samples stay in
       separate bounded lanes with no overlap.
