@@ -19,7 +19,7 @@ BarModule {
         // Indirection keeps the `glyph:` line to one validated ligature; the
         // icon-name test reads every string on that line as one.
         readonly property string stateGlyph: Updates.runState === "done"
-            ? "check_circle" : "deployed_code_update"
+            ? "check" : "deployed_code_update"
 
         host: root.host
         panelName: "updates"
@@ -28,14 +28,14 @@ BarModule {
         glyph: chip.stateGlyph
         glyphSize: Theme.barIconSize - 1
         glyphWeight: 600
-        glyphFill: Updates.runState === "done" || chip.alert ? 1 : 0
+        glyphFill: chip.alert ? 1 : 0
         // Pinned: the glyph, the ✓ and the progress ring trade places here,
         // and the right cluster is right-anchored, so a wobbling column would
         // slide every module beside it.
         glyphWidth: Theme.barIconSize
         progress: Updates.runActive
             ? Math.max(0.04, Updates.runPercent / 100) : -1
-        idleColor: Updates.runState === "done" ? Theme.barGreen : Theme.barTextMid
+        idleColor: Theme.barTextMid
         label: Updates.runActive
             ? (Updates.runPercent >= 0 ? Updates.runPercent + "%" : "…")
             : Updates.runState === "done" ? ""

@@ -185,9 +185,13 @@ test("the tray and the updates chip use the reorderable module pipeline", () => 
     assert.match(bar, /updates:\s*"Modules\/Updates\.qml"/);
     assert.match(bar, /tray:\s*"Modules\/Tray\.qml"/);
     assert.match(read("Bar/Modules/Updates.qml"), /panelName:\s*"updates"/);
-    // Both hide when empty, but a failed/retrying update check must remain
-    // reachable so its error and manual retry cannot disappear with the chip.
+    // A routine check is not itself a reason to show the module. Errors and
+    // install outcomes remain reachable even after the pending count clears.
     assert.match(bar, /case "updates": return Updates\.total > 0 \|\| Updates\.error !== ""/);
+    assert.doesNotMatch(bar, /Updates\.ran && Updates\.busy/);
+    const updates = read("Bar/Modules/Updates.qml");
+    assert.match(updates, /Updates\.runState === "done"\s*\? "check"/);
+    assert.doesNotMatch(updates, /Theme\.barGreen|"check_circle"/);
     assert.match(bar, /case "tray": return SystemTray\.items\.values\.length > 0;/);
 });
 
