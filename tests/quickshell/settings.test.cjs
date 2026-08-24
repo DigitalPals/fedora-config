@@ -44,6 +44,13 @@ test("every connected output keeps a bar while popouts stay single-hosted", () =
         "pointer opens must identify the clicked bar's output");
     assert.match(window, /readonly property bool live:\s*bar\.visible && bar\.popoutHost/,
         "only the originating output may map the shared popout");
+    const anchorSync = bar.slice(
+        bar.indexOf("// IPC opens and transitions initiated inside a popout"),
+        bar.indexOf("// Input region for the bar strip itself."));
+    assert.equal((anchorSync.match(/if \(!barWindow\.popoutActive\)/g) ?? []).length, 2,
+        "only the owning bar may reconcile the shared popout anchor, including after callLater");
+    assert.doesNotMatch(anchorSync, /!barWindow\.visible/,
+        "all connected bars are visible, so visibility cannot select the popout owner");
     const popoutHost = read("Bar/PopoutHost.qml");
     assert.match(popoutHost,
         /id:\s*closeTimer[\s\S]{0,500}?if \(host\.live && Popouts\.open\)\s*return;/,

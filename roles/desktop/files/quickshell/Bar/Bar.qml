@@ -504,17 +504,17 @@ PanelWindow {
     }
 
     // IPC opens and transitions initiated inside a popout do not carry a new
-    // module rectangle. The visible bar resolves every named module again so
-    // the panel always travels with its trigger, even when an old anchor is
-    // still present from the previous view.
+    // module rectangle. Only the popout's owning bar may resolve that module:
+    // every output is visible now, and letting all of them publish their local
+    // rectangle makes different-sized outputs bounce the shared anchor forever.
     Connections {
         target: Popouts
 
         function onChanged() {
-            if (!barWindow.visible || !Popouts.open)
+            if (!barWindow.popoutActive)
                 return;
             Qt.callLater(() => {
-                if (!barWindow.visible || !Popouts.open)
+                if (!barWindow.popoutActive)
                     return;
                 if (PanelRegistry.centerAnchored(Popouts.currentName)) {
                     if (Popouts.island !== "center" || Popouts.anchorRect.width !== 0) {
