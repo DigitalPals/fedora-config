@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+FEDORA_MONITORS_CONFIG=roles/desktop/files/monitors.lua luajit <<'LUA'
+local config = assert(os.getenv("FEDORA_MONITORS_CONFIG"))
+local monitors = {}
+local rules = {}
+local listeners = {}
+
+hl = {}
+function hl.monitor(_) end
+function hl.env(_, _) end
+function hl.get_monitors() return monitors end
+function hl.workspace_rule(spec)
+  local rule = { spec = spec, enabled = spec.enabled ~= false }
+  function rule:set_enabled(enabled) self.enabled = enabled end
+  table.insert(rules, rule)
+  return rule
+end
+function hl.on(event, callback)
+  local subscription = { active = true }
+  function subscription:remove() self.active = false end
+  listeners[event] = listeners[event] or {}
+  table.insert(listeners[event], {
+    subscription = subscription,
+    callback = callback,
+  })
+  return subscription
+end
+
+local function output(name, id, mirror)
+  return { name = name, id = id, is_mirror = mirror or false }
+end
+
+local function emit(event)
+  for _, listener in ipairs(listeners[event] or {}) do
+    if listener.subscription.active then listener.callback() end
+  end
+end
+
+local function enabled_rules()
+  local result = {}
+  for _, rule in ipairs(rules) do
+    if rule.enabled then
+      assert(result[rule.spec.workspace] == nil,
+        "duplicate active rule for workspace " .. rule.spec.workspace)
+      result[rule.spec.workspace] = rule.spec
+    end
+  end
+  return result
+end
+
+local function count(values)
+  local total = 0
+  for _ in pairs(values) do total = total + 1 end
+  return total
+end
+
+local function assert_single_output(expected)
+  local active = enabled_rules()
+  assert(count(active) == 1, "single-output mode must bind only workspace 1")
+  assert(active["1"].monitor == expected, "workspace 1 bound to wrong output")
+  assert(active["1"].default == true, "workspace 1 must be the default")
+end
+
+monitors = { output("eDP-1", 0) }
+dofile(config)
+assert_single_output("eDP-1")
+
+monitors = { output("eDP-1", 0), output("DP-1", 1) }
+emit("monitor.layout_changed")
+local active = enabled_rules()
+assert(count(active) == 10, "dual-output mode must bind workspaces 1 through 10")
+assert(active["1"].monitor == "eDP-1", "workspace 1 must stay internal")
+assert(active["1"].default == true, "workspace 1 must default on the internal panel")
+for workspace = 2, 10 do
+  local rule = assert(active[tostring(workspace)])
+  assert(rule.monitor == "DP-1", "external workspace routed to wrong output")
+  assert(rule.default == (workspace == 2), "only workspace 2 should default externally")
+end
+
+local rule_count = #rules
+emit("monitor.layout_changed")
+assert(#rules == rule_count, "unchanged monitor layout rebuilt workspace rules")
+
+monitors = { output("eDP-1", 0) }
+emit("monitor.layout_changed")
+assert_single_output("eDP-1")
+
+monitors = { output("DP-1", 1) }
+emit("monitor.layout_changed")
+assert_single_output("DP-1")
+
+monitors = { output("eDP-1", 0), output("DP-MIRROR", 1, true) }
+emit("monitor.layout_changed")
+assert_single_output("eDP-1")
+
+monitors = {
+  output("eDP-1", 0),
+  output("DP-5", 5),
+  output("DP-2", 2),
+}
+emit("monitor.layout_changed")
+active = enabled_rules()
+assert(active["2"].monitor == "DP-2", "lowest-id external must be deterministic")
+
+-- A config reload must retire its old callback and rules before installing a
+-- fresh policy in the persistent Hyprland Lua state.
+dofile(config)
+active = enabled_rules()
+assert(count(active) == 10, "reload left stale workspace rules enabled")
+local active_listeners = 0
+for _, listener in ipairs(listeners["monitor.layout_changed"]) do
+  if listener.subscription.active then active_listeners = active_listeners + 1 end
+end
+assert(active_listeners == 1, "reload left stale monitor callbacks active")
+
+print("Hyprland workspace hotplug policy fixtures passed")
+LUA
