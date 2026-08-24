@@ -182,7 +182,7 @@ Item {
                                 spacing: 0
 
                                 Divider {
-                                    kind: group.kind === "center" ? "dot" : "rule"
+                                    kind: group.kind === "center" ? "space" : "rule"
                                     visible: group.kind !== "solo"
                                         && group.shownBefore(entry.modelData.at)
                                 }

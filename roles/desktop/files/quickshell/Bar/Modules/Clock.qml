@@ -13,8 +13,8 @@ BarModule {
     spacing: 0
     detailSaving: showDate ? clockDate.implicitWidth + dateSeparator.width : 0
 
-    // Named once: the date and the dot before it are one decision, and binding
-    // the dot to the date's `visible` would make it depend on effective
+    // Named once: the date and the space before it are one decision, and binding
+    // the spacer to the date's `visible` would make it depend on effective
     // visibility rather than on the thing that actually decides.
     readonly property bool showDate: Settings.modOpts.clock.showDate && !compact
 
@@ -43,7 +43,7 @@ BarModule {
 
     Divider {
         id: dateSeparator
-        kind: "dot"
+        kind: "space"
         visible: root.showDate
     }
 

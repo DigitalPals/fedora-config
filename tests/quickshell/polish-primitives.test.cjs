@@ -32,6 +32,20 @@ test("expressive text and reveal motion use the shared timing language", () => {
         "a seconds clock should not run a transition every second");
 });
 
+test("the center cluster separates content with space instead of dots", () => {
+    const divider = read("Bar/Divider.qml");
+    const cluster = read("Bar/Cluster.qml");
+    const clock = read("Bar/Modules/Clock.qml");
+
+    assert.match(divider, /width:\s*kind === "space" \? 9 : 11/,
+        "the old center-divider width must remain as breathing room");
+    assert.match(divider, /visible:\s*root\.kind === "rule"/,
+        "only non-center hairline dividers should draw a mark");
+    assert.match(cluster, /group\.kind === "center" \? "space" : "rule"/);
+    assert.match(clock, /id:\s*dateSeparator[\s\S]{0,60}?kind:\s*"space"/);
+    assert.doesNotMatch(divider + cluster + clock, /kind:\s*"dot"/);
+});
+
 test("scroll chrome discloses overflow without becoming an input surface", () => {
     const chrome = read("Common/ScrollChrome.qml");
     assert.match(chrome, /required property Flickable target/);

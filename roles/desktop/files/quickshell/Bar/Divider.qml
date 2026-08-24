@@ -1,24 +1,24 @@
 import QtQuick
 import "../Common"
 
-// The mark between two modules sharing one pill. A hairline inside a chip or
-// status group, a dot inside the centre pill — the design uses the dot only
-// where the two sides are one continuous sentence (time · date · weather).
+// The separation between two modules sharing one pill. Chip and status groups
+// draw a hairline; the centre group keeps the same breathing room without a
+// visible mark.
 Item {
     id: root
 
-    // "rule" | "dot"
+    // "rule" | "space"
     property string kind: "rule"
 
-    width: kind === "dot" ? 9 : 11
+    width: kind === "space" ? 9 : 11
     height: Theme.chipHeight
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     Rectangle {
+        visible: root.kind === "rule"
         anchors.centerIn: parent
-        width: root.kind === "dot" ? 3 : 1
-        height: root.kind === "dot" ? 3 : 13
-        radius: root.kind === "dot" ? 1.5 : 0
-        color: root.kind === "dot" ? Theme.barDotDim : Theme.barStroke
+        width: 1
+        height: 13
+        color: Theme.barStroke
     }
 }

@@ -86,6 +86,20 @@ test("recording and dictation expose their complete live state", () => {
     assert.equal(fs.existsSync(path.join(shellDir, "Bar/RecordingChip.qml")), false);
 });
 
+test("active clock-side actions light only their glyph", () => {
+    const action = indicators.slice(
+        indicators.indexOf("component IndicatorAction:"),
+        indicators.indexOf("Revealer {"));
+
+    assert.match(action, /activeState \? Theme\.barAccent\b/);
+    assert.doesNotMatch(action, /activeState \? Theme\.barAccentFg\b/);
+    assert.match(action,
+        /color:\s*recording \? Theme\.barRed\s*:\s*hovered \? Theme\.barChipHover : "transparent"/,
+        "an active toggle must not paint an accent pill behind its glyph");
+    assert.doesNotMatch(action,
+        /\n\s*color:\s*[\s\S]{0,100}?activeState/);
+});
+
 test("all shared toggles use one persisted write path", () => {
     const sys = read("Common/SysInfo.qml");
     const control = read("Popovers/ControlCenterPopover.qml");

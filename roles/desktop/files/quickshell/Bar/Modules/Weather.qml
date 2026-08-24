@@ -8,7 +8,7 @@ import "../../Common"
 // An enabled weather module stays on the bar while it is offline: a segment
 // that vanishes cannot say why. Only the gap before the first forecast lands
 // is blank, and that gate is the bar's auto-rule rather than this file's, so
-// the dot before the segment agrees with it.
+// the space before the segment agrees with it.
 BarModule {
     id: root
 

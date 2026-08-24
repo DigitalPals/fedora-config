@@ -222,7 +222,7 @@ BarModule {
         readonly property bool transcribing: actionId === "dictation" && Dictation.transcribing
         readonly property string actionLabel: recording ? Recorder.elapsedLabel : ""
         readonly property color ink: recording ? Theme.barRedFg
-            : activeState ? Theme.barAccentFg
+            : activeState ? Theme.barAccent
             : hovered ? Theme.barTextHi : Theme.barTextDim
         readonly property bool hovered: pointer.over
 
@@ -230,7 +230,6 @@ BarModule {
         width: contents.implicitWidth + (actionLabel === "" ? 12 : 16)
         radius: Theme.pillRadius
         color: recording ? Theme.barRed
-            : activeState ? Theme.barAccent
             : hovered ? Theme.barChipHover : "transparent"
         scale: actionMouse.pressed ? 0.92 : 1
         Accessible.role: Accessible.Button
