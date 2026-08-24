@@ -132,9 +132,9 @@ SettingsPage {
                 label: "Height presets"
                 settingKey: "barHeight"
                 model: [
-                    { value: 38, label: "Compact 38" },
-                    { value: 46, label: "Default 46" },
-                    { value: 54, label: "Roomy 54" }
+                    { value: 30, label: "Compact 30" },
+                    { value: 34, label: "Classic 34" },
+                    { value: 42, label: "Roomy 42" }
                 ]
             }
 

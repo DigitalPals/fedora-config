@@ -228,7 +228,7 @@ BarModule {
 
         height: Theme.chipInnerHeight
         width: contents.implicitWidth + (actionLabel === "" ? 12 : 16)
-        radius: Theme.pillRadius
+        radius: Theme.chipRadius
         color: recording ? Theme.barRed
             : hovered ? Theme.barChipHover : "transparent"
         scale: actionMouse.pressed ? 0.92 : 1

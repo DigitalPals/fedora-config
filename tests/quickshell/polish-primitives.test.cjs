@@ -32,16 +32,18 @@ test("expressive text and reveal motion use the shared timing language", () => {
         "a seconds clock should not run a transition every second");
 });
 
-test("the center cluster separates content with space instead of dots", () => {
+test("the center cluster keeps clock spacing and restores the weather hairline", () => {
     const divider = read("Bar/Divider.qml");
     const cluster = read("Bar/Cluster.qml");
     const clock = read("Bar/Modules/Clock.qml");
 
-    assert.match(divider, /width:\s*kind === "space" \? 9 : 11/,
-        "the old center-divider width must remain as breathing room");
+    assert.match(divider, /width:\s*kind === "space" \? 8 : 9/,
+        "classic spacing and hairlines must remain compact");
     assert.match(divider, /visible:\s*root\.kind === "rule"/,
-        "only non-center hairline dividers should draw a mark");
-    assert.match(cluster, /group\.kind === "center" \? "space" : "rule"/);
+        "space separators must not draw a mark");
+    assert.match(cluster, /function previousShownId\(at\)/);
+    assert.match(cluster, /entry\.modelData\.entry\.id === "clock"/);
+    assert.match(cluster, /=== "indicators"\)[\s\S]{0,80}?\? "space" : "rule"/);
     assert.match(clock, /id:\s*dateSeparator[\s\S]{0,60}?kind:\s*"space"/);
     assert.doesNotMatch(divider + cluster + clock, /kind:\s*"dot"/);
 });

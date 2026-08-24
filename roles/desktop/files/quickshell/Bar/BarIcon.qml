@@ -4,8 +4,8 @@ import "../Common"
 import "../Common/Format.js" as Format
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 
-// A glyph button in the bar: one Material Symbols mark, an optional value
-// beside it, and the pill that lights under the pointer.
+// A compact glyph button in the bar: one Material Symbols mark, an optional
+// value beside it, and the quiet chip that lights under the pointer.
 //
 // Four shapes, because the design uses four; see `shape` below. What they
 // have in common is the fill ladder — rest, hover, held, active — and the
@@ -105,14 +105,14 @@ Rectangle {
     property color idleColor: Theme.barIcon
     property color hoverColor: Theme.barTextHi
     property color labelColor: fg
-    property real hPadding: label === "" || compact ? 8 : 11
-    property real contentSpacing: 5
+    property real hPadding: label === "" || compact ? 6 : 7
+    property real contentSpacing: 4
     property string tooltip: ""
     property int tooltipAlign: 0
-    // What the pill rests on. Solo chips rest on the visible chip fill; a
-    // glyph inside a group pill rests on nothing so the group reads as one
-    // shape.
-    property color restFill: bare || inner ? "transparent" : Theme.barChip
+    // Classic layout: solo/status glyphs rest directly on the slab. Only a
+    // chip-group member carries the screenshot's very light resting fill.
+    property color restFill: bare ? "transparent"
+        : inner ? Theme.barChip : "transparent"
 
     signal clicked(real mouseX)
     signal middleClicked
@@ -142,7 +142,7 @@ Rectangle {
 
     implicitHeight: pillHeight
     implicitWidth: round ? Theme.roundButton : content.implicitWidth + hPadding * 2
-    radius: Theme.pillRadius
+    radius: round ? pillHeight / 2 : Theme.chipRadius
     color: active ? Theme.barAccent
         : alert ? Theme.barRedBg
         : held ? Theme.barChipHover

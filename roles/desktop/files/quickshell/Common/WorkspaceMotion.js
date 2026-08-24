@@ -23,7 +23,9 @@ function indicatorBounds(ids, focusedId) {
     var index = Array.isArray(ids) ? ids.indexOf(focusedId) : -1;
     if (index < 0)
         return null;
-    return { left: index * CELL_WIDTH + 2, right: index * CELL_WIDTH + 20 };
+    // The classic current-workspace chip is wider than its fixed pointer cell.
+    // The pager's 5px side padding absorbs the two-pixel overhang at either end.
+    return { left: index * CELL_WIDTH - 2, right: index * CELL_WIDTH + 24 };
 }
 
 function edgeDurations(previousId, nextId, animate) {

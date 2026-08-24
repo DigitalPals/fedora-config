@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 9;
+var VERSION = 10;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -53,7 +53,10 @@ var BAR_COLOR_CHOICES = [
 var BAR_COLOR_IDS = BAR_COLOR_CHOICES.map(function(choice) { return choice.id; });
 
 var BAR_COLOR_PRESETS = {
-    "default": { dark: "#161424", light: "#ffffff" },
+    // The original August menubar used this near-black neutral. Keep the
+    // adaptive light half, while returning dark mode to the screenshot's
+    // quieter surface instead of the later purple-black redesign.
+    "default": { dark: "#131419", light: "#ffffff" },
     "macos": { dark: "#1d1d1f", light: "#f5f5f7" },
     "black": { dark: "#000000", light: "#000000" },
     "graphite": { dark: "#2c2c2e", light: "#2c2c2e" },
@@ -94,10 +97,10 @@ function defaultMods() {
 // here (wifi, bt, idle, control) have no options and get no settings cog.
 function defaultModOpts() {
     return {
-        ws: { minSlots: 5, hideEmpty: false, style: "dots" },
+        ws: { minSlots: 5, hideEmpty: false, style: "numbers" },
         media: { titleFormat: "title-artist", maxWidth: 180 },
         indicators: { mode: "hover" },
-        clock: { seconds: false, showDate: true, dateFormat: "ddd d MMM" },
+        clock: { seconds: false, showDate: true, dateFormat: "ddd dd" },
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
         t3: { showLabel: true },
         usage: { claude: true, codex: true, kimi: true, warnAt: 25, critAt: 10 },
@@ -118,19 +121,19 @@ function defaults() {
         wallDir: "~/Pictures/Wallpapers",
         shuffle: "Off",
         themeMode: "dark",
-        glassEnabled: true,
+        glassEnabled: false,
         barColorMode: "default",
-        barCustomHue: 247,
-        barCustomSaturation: 29,
-        barCustomLightness: 11,
-        barHeight: 46,
-        barRadius: 23,
+        barCustomHue: 230,
+        barCustomSaturation: 14,
+        barCustomLightness: 9,
+        barHeight: 34,
+        barRadius: 11,
         font: "google",
-        accent: "#5e9bff",
+        accent: "#9ecbeb",
         paletteMode: "wallpaper",
         position: "top",
         barStyle: "hug",
-        gap: 10,
+        gap: 8,
         autoHide: false,
         exclusive: true,
         clock24: true,
@@ -635,6 +638,62 @@ function adoptSofterTypography(parsed) {
     return next;
 }
 
+// Schema 10 restores the compact August menubar shown in the repository's
+// desktop screenshot, without reviving its fixed layout. As with the earlier
+// redesign migration, only values still equal to schema 9's defaults move to
+// the new visual baseline; customized geometry, glass, colors and workspace
+// presentation remain the user's choices.
+var V9_CLASSIC_DEFAULTS = {
+    glassEnabled: true,
+    barHeight: 46,
+    barRadius: 23,
+    gap: 10,
+    accent: "#5e9bff"
+};
+
+var V9_CLASSIC_MOD_OPT_DEFAULTS = {
+    ws: { style: "dots" },
+    clock: { dateFormat: "ddd d MMM" }
+};
+
+function adoptClassicMenubar(parsed) {
+    if (!parsed || typeof parsed !== "object"
+            || (typeof parsed.v === "number" && parsed.v >= 10))
+        return parsed;
+    // Schema 3 and unversioned files first pass through adoptRedesign(),
+    // which already removes their untouched defaults. Do not then mistake a
+    // deliberate old-style value for schema 9's default on the second hop.
+    if (typeof parsed.v !== "number" || parsed.v < 4)
+        return parsed;
+    var next = clone(parsed);
+    var untouchedCustomColor = (next.barColorMode === undefined
+            || next.barColorMode === "default")
+        && next.barCustomHue === 247
+        && next.barCustomSaturation === 29
+        && next.barCustomLightness === 11;
+    if (untouchedCustomColor) {
+        delete next.barCustomHue;
+        delete next.barCustomSaturation;
+        delete next.barCustomLightness;
+    }
+    Object.keys(V9_CLASSIC_DEFAULTS).forEach(function(key) {
+        if (next[key] === V9_CLASSIC_DEFAULTS[key])
+            delete next[key];
+    });
+    if (next.modOpts && typeof next.modOpts === "object") {
+        Object.keys(V9_CLASSIC_MOD_OPT_DEFAULTS).forEach(function(id) {
+            var entry = next.modOpts[id];
+            if (!entry || typeof entry !== "object")
+                return;
+            Object.keys(V9_CLASSIC_MOD_OPT_DEFAULTS[id]).forEach(function(key) {
+                if (entry[key] === V9_CLASSIC_MOD_OPT_DEFAULTS[id][key])
+                    delete entry[key];
+            });
+        });
+    }
+    return next;
+}
+
 // Schema 6 replaces two booleans with explicit visual modes. A v5 floating
 // bar whose geometry was never changed becomes the new edge-hugging default;
 // customized floating geometry remains floating, and the old edge-to-edge
@@ -689,7 +748,8 @@ function merge(raw) {
     var d = defaults();
     if (!raw || typeof raw !== "object")
         return d;
-    var parsed = adoptSofterTypography(adoptRedesign(raw));
+    var parsed = adoptClassicMenubar(
+        adoptSofterTypography(adoptRedesign(raw)));
     return {
         wall: nameIn(parsed.wall, d.wall),
         wallDir: pathIn(parsed.wallDir, d.wallDir),

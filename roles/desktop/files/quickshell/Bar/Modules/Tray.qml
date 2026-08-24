@@ -26,7 +26,7 @@ BarModule {
 
         implicitWidth: layout.implicitWidth + 8
         implicitHeight: Theme.chipHeight
-        radius: Theme.pillRadius
+        radius: Theme.chipRadius
         color: Theme.barChip
         anchors.verticalCenter: parent.verticalCenter
 
@@ -125,7 +125,7 @@ BarModule {
 
                             width: 26
                             height: 26
-                            radius: Theme.pillRadius
+                            radius: Theme.chipRadius
                             color: itemPointer.over ? Theme.barChipHover : "transparent"
                             scale: itemMouse.pressed ? 0.88 : 1
 

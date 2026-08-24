@@ -1,14 +1,12 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Effects
 import Quickshell.Hyprland
 import "../Common"
 import "../Common/WorkspaceMotion.js" as WorkspaceMotion
 
-// Fixed-cell workspace pager. Every resting/occupied/urgent pip is drawn in
-// its own cell, while one high-contrast lozenge travels above them. Its leading edge
-// arrives first and its trailing edge follows, making direction readable
-// without changing the pager's geometry or pointer targets.
+// The screenshot's hybrid workspace strip: occupied workspaces are numbers,
+// empty slots are dots, and the current workspace is a wider accent chip. Dot
+// mode remains available, and the current chip keeps its directional motion.
 Rectangle {
     id: root
 
@@ -30,10 +28,10 @@ Rectangle {
     property bool indicatorReady: false
     property bool snapRequested: true
 
-    implicitWidth: pips.width + 24
-    implicitHeight: 30
-    radius: Theme.pillRadius
-    color: Theme.barChip
+    implicitWidth: pips.width + 10
+    implicitHeight: Theme.chipHeight
+    radius: Theme.chipRadius
+    color: "transparent"
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     Behavior on color {
@@ -96,25 +94,13 @@ Rectangle {
         id: pips
         anchors.centerIn: parent
         width: root.visibleIds.length * WorkspaceMotion.CELL_WIDTH
-        height: 30
-
-        RectangularShadow {
-            visible: root.indicatorReady
-            x: activeLozenge.x
-            y: activeLozenge.y
-            width: activeLozenge.width
-            height: activeLozenge.height
-            radius: activeLozenge.radius
-            blur: 10
-            spread: 0
-            color: Theme.barWsCurrentGlow
-        }
+        height: Theme.chipHeight
 
         Rectangle {
             id: activeLozenge
 
-            property real leftEdge: 2
-            property real rightEdge: 20
+            property real leftEdge: -2
+            property real rightEdge: 24
             property int leftDuration: 0
             property int rightDuration: 0
             property bool animateEdges: false
@@ -123,8 +109,8 @@ Rectangle {
             x: leftEdge
             y: (parent.height - height) / 2
             width: Math.max(1, rightEdge - leftEdge)
-            height: root.numbered ? 18 : 8
-            radius: Theme.pillRadius
+            height: root.numbered ? Theme.chipInnerHeight : 8
+            radius: Theme.chipRadius
             color: Theme.barWsCurrent
             z: 1
 
@@ -167,14 +153,20 @@ Rectangle {
                 readonly property bool exists: ws !== null
                 readonly property bool focused: root.focusedId === wsId
                 readonly property bool urgent: exists && ws.urgent
-                readonly property color restingTone: urgent ? Theme.barRed
-                    : root.numbered
-                    ? (exists ? Theme.barChipHover : Theme.barChip)
-                    : exists ? Theme.barWsOccupied : Theme.barWsEmpty
+                readonly property bool showNumber: root.numbered && exists
+                readonly property color restingTone: urgent
+                    ? (showNumber ? Theme.barRedBg : Theme.barRed)
+                    : showNumber
+                        ? (wsPointer.over ? Theme.barChip : "transparent")
+                        : exists ? Theme.barWsOccupied : Theme.barWsEmpty
 
                 x: index * WorkspaceMotion.CELL_WIDTH
                 width: WorkspaceMotion.CELL_WIDTH
-                height: 30
+                height: Theme.chipHeight
+                // The travelling accent is a sibling of these delegates. Keep
+                // each label/dot above it so the focused number is never
+                // painted under the chip it identifies.
+                z: 2
 
                 Accessible.role: Accessible.Button
                 Accessible.name: "Workspace " + wsId
@@ -187,9 +179,10 @@ Rectangle {
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: root.numbered ? 18 : 6
-                    height: root.numbered ? 18 : 6
-                    radius: Theme.pillRadius
+                    width: slot.showNumber ? Theme.chipInnerHeight
+                        : root.numbered ? 4 : 6
+                    height: slot.showNumber ? Theme.chipInnerHeight : width
+                    radius: slot.showNumber ? Theme.chipRadius : width / 2
                     color: slot.restingTone
 
                     Behavior on color {
@@ -201,7 +194,7 @@ Rectangle {
                     id: workspaceState
                     anchors.fill: parent
                     anchors.margins: 1
-                    radius: Theme.pillRadius
+                    radius: Theme.chipRadius
                     hovered: wsPointer.over
                     pressed: wsMouse.pressed
                     tint: Theme.barTextHi
@@ -210,16 +203,17 @@ Rectangle {
                 }
 
                 Text {
-                    visible: root.numbered
+                    visible: slot.showNumber
                     anchors.centerIn: parent
                     text: slot.wsId
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightMedium
+                    font.pixelSize: Theme.barLabelSize
+                    font.weight: slot.focused || slot.urgent
+                        ? Theme.weightSemibold : Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
                     color: slot.focused ? Theme.barWsCurrentFg
                         : slot.urgent ? Theme.barRedFg
-                        : slot.exists ? Theme.barTextMid : Theme.barTextFaint
+                        : Theme.barTextLow
                     z: 3
 
                     Behavior on color {
@@ -248,7 +242,7 @@ Rectangle {
                     text: "Workspace " + slot.wsId
                         + (slot.focused ? " · current" : slot.urgent ? " · urgent"
                             : slot.exists ? " · occupied" : " · empty")
-                    y: root.height + 12
+                    y: root.height + 8
                     x: (slot.width - width) / 2
                 }
             }

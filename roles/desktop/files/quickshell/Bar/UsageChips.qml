@@ -98,7 +98,7 @@ Item {
     Row {
         id: row
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 0
+        spacing: 3
 
         // Offline / loading state
         Rectangle {
@@ -109,9 +109,9 @@ Item {
             visible: root.empty
             height: Theme.chipInnerHeight
             width: emptyRow.implicitWidth + 14
-            radius: Theme.pillRadius
-            color: root.held ? Theme.barChipHover
-                : emptyPointer.over ? Theme.barChipHover : "transparent"
+            radius: Theme.chipRadius
+            color: root.held || emptyPointer.over
+                ? Theme.barChipHover : Theme.barChip
             anchors.verticalCenter: parent.verticalCenter
 
             Behavior on color {
@@ -189,14 +189,14 @@ Item {
 
                 height: Theme.chipInnerHeight
                 width: chipRow.implicitWidth + 14
-                radius: Theme.pillRadius
+                radius: Theme.chipRadius
                 // A quota in trouble colours its own chip; everything else
-                // rests transparent inside the group and lights on hover.
+                // keeps the screenshot's faint resting tile.
                 color: status === "crit" ? Theme.barRedBg
                     : status === "warn" ? Theme.barAmberBg
                     : current ? Theme.barChipHover
                     : chipPointer.over ? Theme.barChipHover
-                    : "transparent"
+                    : Theme.barChip
                 anchors.verticalCenter: parent.verticalCenter
                 scale: chipMouse.pressed ? 0.95 : 1
 

@@ -79,7 +79,7 @@ test("menu typography keeps the bar's own compact metrics", () => {
         intToken("tooltipHeight"),
         intToken("barTextSize"),
         intToken("barIconSize"),
-    ], [32, 26, 28, 13, 16]);
+    ], [26, 22, 28, 13, 15]);
     assert.match(theme, /readonly property var tabularNumberFeatures:\s*\(\{\s*"tnum":\s*1\s*\}\)/);
 });
 
@@ -89,11 +89,11 @@ test("settings-driven tokens default to the softer menu face", () => {
     // and Theme must actually bind to Settings rather than re-hardcode.
     const H = load("SettingsHelpers.js");
     const d = H.defaults();
-    assert.equal(d.barHeight, 46);
-    assert.equal(d.barRadius, 23);
-    assert.equal(d.gap, 10);
+    assert.equal(d.barHeight, 34);
+    assert.equal(d.barRadius, 11);
+    assert.equal(d.gap, 8);
     assert.equal(d.barStyle, "hug");
-    assert.equal(d.accent, "#5e9bff");
+    assert.equal(d.accent, "#9ecbeb");
     const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
     assert.equal(menuChoice.family, "Google Sans Flex");
 
@@ -191,15 +191,15 @@ test("soft shell chrome does not use the display-heavy text weight", () => {
     }
 });
 
-test("no surface that floats over the desktop draws a drop shadow", () => {
+test("only the classic floating bar and internal glows draw shadows", () => {
     // The compositor blurs the whole layer, and each of these layers is bigger
     // than the shape it draws. A shadow painted into that margin is blurred
     // with it and reads as a haze band the height of the surface, not as a
     // shadow. Glows *inside* a surface composite over the glass and are fine —
     // hence the allow-list rather than a blanket ban.
     const insideASurface = [
+        "Bar/Bar.qml",               // the screenshot's floating slab shadow
         "Bar/T3Chip.qml",            // the running dot's bloom, inside the bar
-        "Bar/Workspaces.qml",        // the focused pip's bloom, inside the bar
         "Settings/ModulesPage.qml"   // the drag proxy, over an opaque page
     ];
     const offenders = [];

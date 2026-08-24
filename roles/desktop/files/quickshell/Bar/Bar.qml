@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Wayland
@@ -603,6 +604,16 @@ PanelWindow {
             y: barWindow.hideShift
         }
 
+        RectangularShadow {
+            visible: Theme.barFloating && !Settings.glassEnabled
+            anchors.fill: barSlab
+            radius: Theme.clusterRadius
+            blur: 16
+            spread: 0
+            offset.y: 4
+            color: Qt.rgba(0, 0, 0, 0.35)
+        }
+
         Rectangle {
             id: barSlab
             anchors.fill: parent
@@ -670,17 +681,18 @@ PanelWindow {
             anchors.left: parent.left
             anchors.leftMargin: Theme.barPadding
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
+            spacing: Theme.barSpacing
 
             BarIcon {
                 host: barWindow
-                shape: "round"
+                shape: "pill"
                 glyph: "apps"
-                glyphSize: Theme.iconMedium + 1
+                glyphSize: Theme.barIconSize
                 glyphWeight: 500
                 idleColor: Theme.barTextMid
                 restFill: Launcher.open && Launcher.screen === barWindow.screen
-                    ? Theme.barChipHover : Theme.barChip
+                    ? Theme.barChipHover : "transparent"
+                hPadding: 5
                 tooltip: "Apps  ·  Super Space"
                 tooltipAlign: -1
                 onClicked: Launcher.toggle(barWindow.screen)
@@ -718,7 +730,7 @@ PanelWindow {
             anchors.right: parent.right
             anchors.rightMargin: Theme.barPadding
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
+            spacing: Theme.barSpacing
 
             Cluster {
                 id: rightCluster
@@ -730,10 +742,11 @@ PanelWindow {
 
             BarIcon {
                 host: barWindow
-                shape: "round"
+                shape: "pill"
                 glyph: "power_settings_new"
-                glyphSize: Theme.iconMedium
+                glyphSize: Theme.barIconSize
                 glyphWeight: 600
+                hPadding: 5
                 idleColor: Theme.barTextMid
                 hoverColor: Theme.barRedText
                 tooltip: "Power"

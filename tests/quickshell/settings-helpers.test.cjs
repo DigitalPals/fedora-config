@@ -6,21 +6,21 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 9);
+    assert.equal(H.VERSION, 10);
     assert.equal(d.themeMode, "dark");
-    assert.equal(d.glassEnabled, true);
+    assert.equal(d.glassEnabled, false);
     assert.equal(d.barColorMode, "default");
     assert.deepEqual(
         [d.barCustomHue, d.barCustomSaturation, d.barCustomLightness],
-        [247, 29, 11]);
-    assert.equal(d.barHeight, 46);
-    assert.equal(d.barRadius, 23);
+        [230, 14, 9]);
+    assert.equal(d.barHeight, 34);
+    assert.equal(d.barRadius, 11);
     assert.equal(d.font, "google");
-    assert.equal(d.accent, "#5e9bff");
+    assert.equal(d.accent, "#9ecbeb");
     assert.equal(d.paletteMode, "wallpaper");
     assert.equal(d.position, "top");
     assert.equal(d.barStyle, "hug");
-    assert.equal(d.gap, 10);
+    assert.equal(d.gap, 8);
     assert.equal(d.autoHide, false);
     assert.equal(d.exclusive, true);
     assert.equal(d.clock24, true);
@@ -58,11 +58,11 @@ test("defaults carry the design values", () => {
         ["ws", "media", "indicators", "clock", "weather", "t3", "usage", "gh", "updates",
          "tray", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
-    assert.equal(d.modOpts.ws.style, "dots");
+    assert.equal(d.modOpts.ws.style, "numbers");
     assert.equal(d.modOpts.media.maxWidth, 180);
     assert.deepEqual(d.modOpts.indicators, { mode: "hover" });
     assert.equal(d.modOpts.clock.seconds, false);
-    assert.equal(d.modOpts.clock.dateFormat, "ddd d MMM");
+    assert.equal(d.modOpts.clock.dateFormat, "ddd dd");
     assert.deepEqual(d.modOpts.updates, { pollMins: 30, flatpak: true, notify: true });
     assert.deepEqual(d.modOpts.tray, { expanded: false });
     assert.deepEqual(d.modOpts.weather,
@@ -92,8 +92,8 @@ test("menubar presets are a small intentional neutral palette", () => {
     ]);
 
     const resolve = (mode, theme = "dark") =>
-        H.resolveBarColor(mode, theme, 247, 29, 11);
-    assert.equal(resolve("default"), "#161424");
+        H.resolveBarColor(mode, theme, 230, 14, 9);
+    assert.equal(resolve("default"), "#131419");
     assert.equal(resolve("default", "light"), "#ffffff");
     assert.equal(resolve("macos"), "#1d1d1f");
     assert.equal(resolve("macos", "light"), "#f5f5f7");
@@ -101,8 +101,8 @@ test("menubar presets are a small intentional neutral palette", () => {
     assert.equal(resolve("graphite"), "#2c2c2e");
     assert.equal(resolve("slate"), "#344054");
     assert.equal(resolve("white"), "#ffffff");
-    assert.equal(resolve("custom"), "#161424",
-        "the default custom sliders begin at the shell's dark colour");
+    assert.equal(resolve("custom"), "#14151a",
+        "integer HSL sliders begin within one RGB step of the shell's dark colour");
 });
 
 test("custom menubar HSL is deterministic and persisted input is bounded", () => {
@@ -129,9 +129,9 @@ test("custom menubar HSL is deterministic and persisted input is bounded", () =>
     const invalid = H.merge({
         glassEnabled: "no", barColorMode: "neon", barCustomHue: "blue"
     });
-    assert.equal(invalid.glassEnabled, true);
+    assert.equal(invalid.glassEnabled, false);
     assert.equal(invalid.barColorMode, "default");
-    assert.equal(invalid.barCustomHue, 247);
+    assert.equal(invalid.barCustomHue, 230);
 });
 
 test("the automatic menubar palette keeps copy at AA contrast", () => {
@@ -193,7 +193,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(H.normalizeModOpts({ gh: { ciActivity: false } }).gh.ciActivity, false,
         "an explicit CI opt-out survives normalization");
     assert.equal(next.ws.minSlots, 10);
-    assert.equal(next.ws.style, "dots");
+    assert.equal(next.ws.style, "numbers");
     assert.equal(next.media.maxWidth, 140);
     assert.equal(next.media.titleFormat, "title");
     assert.equal(next.indicators.mode, "hover");
@@ -257,8 +257,8 @@ test("merge over a partial object fills the rest from defaults", () => {
     const merged = H.merge({ v: H.VERSION, barHeight: 36, unit: "f" });
     assert.equal(merged.barHeight, 36);
     assert.equal(merged.unit, "f");
-    assert.equal(merged.barRadius, 23);
-    assert.equal(merged.accent, "#5e9bff");
+    assert.equal(merged.barRadius, 11);
+    assert.equal(merged.accent, "#9ecbeb");
     assert.ok(!("v" in merged));
     assert.ok(!("bogus" in H.merge({ bogus: 1 })));
 });
@@ -298,7 +298,7 @@ test("merge clamps and snaps numeric ranges", () => {
     assert.equal(H.merge({ barHeight: 99 }).barHeight, 60);
     assert.equal(H.merge({ barHeight: 10 }).barHeight, 28);
     assert.equal(H.merge({ barHeight: 45.6 }).barHeight, 46);
-    assert.equal(H.merge({ barHeight: "30" }).barHeight, 46);
+    assert.equal(H.merge({ barHeight: "30" }).barHeight, 34);
     assert.equal(H.merge({ gap: 1 }).gap, 4);
     assert.equal(H.merge({ barRadius: -3 }).barRadius, 0);
     assert.equal(H.merge({ warmth: 3333 }).warmth, 3350);
@@ -320,7 +320,7 @@ test("merge falls back on invalid enums, colors and names", () => {
     assert.equal(H.merge({ v: H.VERSION, barStyle: "island" }).barStyle, "hug");
     assert.equal(H.merge({ position: "left" }).position, "top");
     assert.equal(H.merge({ pollMax: 120 }).pollMax, 300);
-    assert.equal(H.merge({ accent: "red" }).accent, "#5e9bff");
+    assert.equal(H.merge({ accent: "red" }).accent, "#9ecbeb");
     assert.equal(H.merge({ accent: "#a992e0" }).accent, "#a992e0");
     assert.equal(H.merge({ wall: "../../etc/passwd" }).wall, H.defaults().wall);
     assert.equal(H.merge({ wall: "" }).wall, H.defaults().wall);
@@ -430,13 +430,13 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
         font: "oppo", osd: "top",
         modOpts: { ws: { style: "numbers" }, media: { maxWidth: 220 } }
     });
-    assert.equal(untouched.barHeight, 46);
-    assert.equal(untouched.barRadius, 23);
-    assert.equal(untouched.gap, 10);
-    assert.equal(untouched.accent, "#5e9bff");
+    assert.equal(untouched.barHeight, 34);
+    assert.equal(untouched.barRadius, 11);
+    assert.equal(untouched.gap, 8);
+    assert.equal(untouched.accent, "#9ecbeb");
     assert.equal(untouched.font, "google");
     assert.equal(untouched.osd, "bottom");
-    assert.equal(untouched.modOpts.ws.style, "dots");
+    assert.equal(untouched.modOpts.ws.style, "numbers");
     assert.equal(untouched.modOpts.media.maxWidth, 180);
 
     const chosen = H.merge({
@@ -446,6 +446,7 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
     assert.equal(chosen.barHeight, 36);
     assert.equal(chosen.accent, "#a992e0");
     assert.equal(chosen.font, "mono");
+    assert.equal(chosen.modOpts.ws.style, "dots");
     assert.equal(chosen.modOpts.media.maxWidth, 300);
 
     // A current-schema file is never rewritten, even where it matches an old
@@ -476,13 +477,73 @@ test("schema-4 appearance choices survive later schema upgrades", () => {
     assert.equal(previous.accent, "#9ecbeb");
     assert.equal(previous.font, "oppo");
     assert.equal(previous.osd, "top");
-    assert.equal(previous.glassEnabled, true);
+    assert.equal(previous.glassEnabled, false);
     assert.equal(previous.barColorMode, "default");
     assert.equal(previous.barStyle, "floating");
     assert.equal(previous.paletteMode, "fixed");
     assert.equal(H.resolveBarColor(previous.barColorMode, previous.themeMode,
         previous.barCustomHue, previous.barCustomSaturation,
         previous.barCustomLightness), "#ffffff");
+});
+
+test("schema-9 adopts the classic bar only from untouched design values", () => {
+    const untouched = H.merge({
+        v: 9,
+        glassEnabled: true,
+        barHeight: 46,
+        barRadius: 23,
+        gap: 10,
+        accent: "#5e9bff",
+        barColorMode: "default",
+        barCustomHue: 247,
+        barCustomSaturation: 29,
+        barCustomLightness: 11,
+        modOpts: {
+            ws: { style: "dots" },
+            clock: { dateFormat: "ddd d MMM" }
+        }
+    });
+    assert.equal(untouched.glassEnabled, false);
+    assert.equal(untouched.barHeight, 34);
+    assert.equal(untouched.barRadius, 11);
+    assert.equal(untouched.gap, 8);
+    assert.equal(untouched.accent, "#9ecbeb");
+    assert.deepEqual([
+        untouched.barCustomHue,
+        untouched.barCustomSaturation,
+        untouched.barCustomLightness
+    ], [230, 14, 9]);
+    assert.equal(untouched.modOpts.ws.style, "numbers");
+    assert.equal(untouched.modOpts.clock.dateFormat, "ddd dd");
+
+    const chosen = H.merge({
+        v: 9,
+        glassEnabled: false,
+        barHeight: 40,
+        barRadius: 17,
+        gap: 12,
+        accent: "#a992e0",
+        barColorMode: "custom",
+        barCustomHue: 247,
+        barCustomSaturation: 29,
+        barCustomLightness: 11,
+        modOpts: {
+            ws: { style: "numbers" },
+            clock: { dateFormat: "dd-MM" }
+        }
+    });
+    assert.equal(chosen.glassEnabled, false);
+    assert.equal(chosen.barHeight, 40);
+    assert.equal(chosen.barRadius, 17);
+    assert.equal(chosen.gap, 12);
+    assert.equal(chosen.accent, "#a992e0");
+    assert.deepEqual([
+        chosen.barCustomHue,
+        chosen.barCustomSaturation,
+        chosen.barCustomLightness
+    ], [247, 29, 11], "an explicitly selected custom color remains exact");
+    assert.equal(chosen.modOpts.ws.style, "numbers");
+    assert.equal(chosen.modOpts.clock.dateFormat, "dd-MM");
 });
 
 test("the tray and the updates chip persist in any module column", () => {

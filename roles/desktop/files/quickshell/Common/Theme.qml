@@ -88,27 +88,22 @@ Singleton {
     readonly property color barTextDim: barPalette.textDim
     readonly property color barTextFaint: barPalette.textFaint
     readonly property color barIcon: barPalette.icon
-    // Workspace state is primarily a luminance ladder. Current is solid and
-    // widened, other occupied workspaces retain 72% of that light/dark
-    // neutral, and empty pips recede without disappearing into the chip.
-    readonly property color barWsCurrent:
-        SettingsHelpers.foregroundFor(barBg.toString())
-    readonly property color barWsCurrentFg:
-        SettingsHelpers.foregroundFor(barWsCurrent.toString())
-    readonly property color barWsCurrentGlow: Qt.rgba(
-        barWsCurrent.r, barWsCurrent.g, barWsCurrent.b, 0.50)
-    readonly property color barWsOccupied: Qt.rgba(
-        barWsCurrent.r, barWsCurrent.g, barWsCurrent.b, 0.72)
-    readonly property color barWsEmpty: Qt.rgba(
-        barWsCurrent.r, barWsCurrent.g, barWsCurrent.b, 0.24)
+    // The screenshot's workspace strip is the bar's clearest accent: a pale
+    // blue current chip, quiet occupied labels, then tiny empty dots. Keep
+    // those roles adaptive while restoring that hierarchy.
+    readonly property color barWsCurrent: barAccent
+    readonly property color barWsCurrentFg: barAccentFg
+    readonly property color barWsCurrentGlow: barAccentGlow
+    readonly property color barWsOccupied: barTextLow
+    readonly property color barWsEmpty: barDotDim
     readonly property color barDotDim: barLightForeground
         ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(0, 0, 0, 0.26)
     readonly property color barStroke: barLightForeground
         ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0, 0, 0, 0.14)
     readonly property color barChip: barLightForeground
-        ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.07)
+        ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.05)
     readonly property color barChipHover: barLightForeground
-        ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.13)
+        ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.09)
 
     readonly property color barAccent: SettingsHelpers.ensureContrast(
         paletteActive ? Common.Palette.primary.toString() : Settings.effectiveAccent,
@@ -390,18 +385,19 @@ Singleton {
     // Menubar typography. The bar sets its own optical size independently of
     // the roomier panel scale.
     readonly property int barTextSize: 13
-    readonly property int barLabelSize: fontTiny
-    readonly property int barIconSize: 16
+    readonly property int barLabelSize: fontMicro
+    readonly property int barIconSize: 15
     readonly property var tabularNumberFeatures: ({ "tnum": 1 })
 
     // ---- metrics -----------------------------------------------------------
     // Bar geometry is settings-driven. Hug and attached styles meet the
-    // screen edge; floating alone consumes the user's gap and outer radius.
+    // screen edge; floating restores the screenshot's slightly wider side
+    // inset while continuing to use the configurable gap and radius.
     readonly property int barHeight: Settings.barHeight
     readonly property bool barFloating: Settings.barStyle === "floating"
     readonly property bool barHug: Settings.barStyle === "hug"
     readonly property int barTopMargin: barFloating ? Settings.gap : 0
-    readonly property int barSideMargin: barFloating ? Settings.gap : 0
+    readonly property int barSideMargin: barFloating ? Settings.gap + 4 : 0
     readonly property int clusterRadius: barFloating ? Settings.barRadius : 0
     // One corner system for compositor windows and every non-pill shell
     // surface. Semantic aliases below keep call sites descriptive while the
@@ -410,16 +406,16 @@ Singleton {
     readonly property int hugCornerSize: surfaceRadius
     // Inner gutter either side of the bar's content, and the gap between the
     // three sections.
-    readonly property int barPadding: 10
-    readonly property int barSpacing: 10
+    readonly property int barPadding: 6
+    readonly property int barSpacing: 4
 
-    // Pills. Everything in the bar is a full-radius pill; `chipRadius` stays
-    // for the few square-cornered badges.
-    readonly property int chipHeight: 32
-    readonly property int chipInnerHeight: 26
-    readonly property int chipRadius: 6
+    // Compact controls reproduce the original 22–26px rhythm while the
+    // outer slab remains independently height-adjustable.
+    readonly property int chipHeight: 26
+    readonly property int chipInnerHeight: 22
+    readonly property int chipRadius: 7
     readonly property int pillRadius: 999
-    readonly property int roundButton: 32
+    readonly property int roundButton: 26
     readonly property int tooltipHeight: 28
 
     readonly property int popWidth: 408

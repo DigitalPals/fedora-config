@@ -376,9 +376,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema nine adds clock-side actions over the layered palette", () => {
+test("schema ten keeps clock-side actions over the classic menubar", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 9/);
+    assert.match(helpers, /var VERSION = 10/);
     assert.match(helpers, /"media", "indicators", "clock"/);
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibited:\s*true/);
@@ -386,9 +386,9 @@ test("schema nine adds clock-side actions over the layered palette", () => {
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
     assert.match(helpers, /themeMode:\s*"dark"/);
-    assert.match(helpers, /barHeight:\s*46/);
-    assert.match(helpers, /barRadius:\s*23/);
-    assert.match(helpers, /glassEnabled:\s*true/);
+    assert.match(helpers, /barHeight:\s*34/);
+    assert.match(helpers, /barRadius:\s*11/);
+    assert.match(helpers, /glassEnabled:\s*false/);
     assert.match(helpers, /barColorMode:\s*"default"/);
     assert.match(helpers, /paletteMode:\s*"wallpaper"/);
     assert.match(helpers, /barStyle:\s*"hug"/);
@@ -403,6 +403,8 @@ test("schema nine adds clock-side actions over the layered palette", () => {
     // wherever the user never chose otherwise, or the redesign never appears.
     assert.match(helpers, /function adoptRedesign\(parsed\)/);
     assert.match(helpers, /V3_DEFAULTS = \{[\s\S]*?barHeight: 30/);
+    assert.match(helpers, /function adoptClassicMenubar\(parsed\)/);
+    assert.match(helpers, /V9_CLASSIC_DEFAULTS = \{[\s\S]*?barHeight: 46/);
 });
 
 test("Layered Hug is one undoable preset and preserves layout dimensions", () => {

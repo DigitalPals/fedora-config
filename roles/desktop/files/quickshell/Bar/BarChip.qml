@@ -1,10 +1,8 @@
 import QtQuick
 import "../Common"
 
-// A content chip in the bar: the same pill BarIcon draws for glyph modules,
-// wrapping arbitrary content instead of glyph + label. The two are
-// deliberately the same shape — same height, radius, fill ladder and fade —
-// so a chip and an icon sitting next to each other agree.
+// A content chip in the bar: the same compact shape BarIcon draws for glyph
+// modules, wrapping arbitrary content instead of glyph + label.
 //
 // Like BarIcon, this knows nothing about the bar: it reports pointer events as
 // signals and takes `held` as a property, so the module wires it to
@@ -52,19 +50,17 @@ Rectangle {
             host.unregisterPanel(panelName, anchorItem);
     }
 
-    // "pill" for a chip that draws its own background, "inner" for one sitting
-    // inside a group's background — a step shorter, and transparent at rest so
-    // the group reads as one shape with a lit segment rather than as a strip
-    // of chips.
+    // "pill" rests directly on the menubar slab; "inner" is a step shorter
+    // and carries the screenshot's quiet per-module chip fill.
     property string shape: "pill"
     readonly property bool inner: shape === "inner"
     property real pillHeight: inner ? Theme.chipInnerHeight : Theme.chipHeight
 
-    property real hPadding: 12
-    property real spacing: 8
+    property real hPadding: 7
+    property real spacing: 5
     property real leftPadding: hPadding
     property real rightPadding: hPadding
-    property color restFill: inner ? "transparent" : Theme.barChip
+    property color restFill: inner ? Theme.barChip : "transparent"
     property color hoverFill: Theme.barChipHover
     // The module's popout is expanded below it.
     property bool held: ownsPanel && host.popoutOpen(panelName)
@@ -91,7 +87,7 @@ Rectangle {
 
     implicitHeight: pillHeight
     implicitWidth: content.implicitWidth + leftPadding + rightPadding
-    radius: Theme.pillRadius
+    radius: Theme.chipRadius
     color: held ? Theme.barChipHover : restFill
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
     scale: pressFeedback && mouse.pressed ? 0.96 : 1

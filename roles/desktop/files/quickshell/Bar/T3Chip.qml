@@ -44,7 +44,7 @@ BarChip {
     spacing: 6
     // Attention is the one state that colours the chip itself: a session
     // waiting on the user is the only thing here worth interrupting for.
-    restFill: stressed ? Theme.barAmberBg : "transparent"
+    restFill: stressed ? Theme.barAmberBg : Theme.barChip
     tooltipAlign: 1
     tooltip: {
         if (T3Code.cloudLoginRunning)

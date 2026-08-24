@@ -6,12 +6,10 @@ import "../Common/SettingsHelpers.js" as SettingsHelpers
 
 // One section of the menubar, and the thing that decides where its pills are.
 //
-// The design does not draw a chip per module: it draws a small number of
-// rounded groups, and a run of modules that belong together shares one. The
-// T3, usage and GitHub chips sit inside a single background; volume, Wi-Fi,
-// Bluetooth and battery are bare glyphs inside the pill that opens the
-// Control Center; the clock, date and weather are one sentence inside the
-// pill that opens the notification centre. Everything else brings its own.
+// Grouping remains behavioral rather than decorative. T3, usage and GitHub
+// retain their shared ordering/anchor contract but draw as individual quiet
+// chips, while status and centre runs rest directly on the single bar slab.
+// The latter still own one pointer target for their combined popovers.
 //
 // Grouping follows adjacency in the user's own module order, so dragging a
 // module out of a run in the settings window splits the pill exactly there.
@@ -21,7 +19,7 @@ Item {
     required property Bar host
     required property string col
     property var model: []
-    property int spacing: 8
+    property int spacing: Theme.barSpacing
 
     readonly property var groups: LayoutHelpers.groupModules(model,
         id => SettingsHelpers.moduleGroup(id))
@@ -80,6 +78,14 @@ Item {
                     return false;
                 }
 
+                function previousShownId(at) {
+                    for (let i = Math.min(at, items.length) - 1; i >= 0; i--) {
+                        if (root.host.moduleShown(items[i].entry))
+                            return items[i].entry.id;
+                    }
+                    return "";
+                }
+
                 visible: populated
                 width: populated ? pill.width : 0
                 height: Theme.barHeight
@@ -98,31 +104,27 @@ Item {
                         root.host.unregisterPanel(panelName, pill);
                 }
 
-                // The shared background. A "chip" group is a quiet tray for
-                // the chips inside it and never lights up on its own; the
-                // interactive ones take the full hover/held ladder.
+                // Group furniture is transparent at rest, as in the August
+                // bar. Centre/status runs light only as one interactive target;
+                // chip-group members paint their own subtle rectangles.
                 Rectangle {
                     id: pill
 
                     readonly property string isle: root.col
-                    readonly property real pad: group.kind === "chip" ? 3
-                        : group.kind === "status" ? 13
-                        : group.kind === "center" ? 14 : 0
+                    readonly property real pad: group.kind === "chip" ? 0
+                        : group.kind === "status" ? 6
+                        : group.kind === "center" ? 7 : 0
 
                     width: slotRow.implicitWidth + pad * 2
                     height: Theme.chipHeight
-                    radius: Theme.pillRadius
+                    radius: Theme.chipRadius
                     anchors.verticalCenter: parent.verticalCenter
                     color: {
-                        if (group.kind === "chip")
-                            return Theme.barChip;
                         if (!group.ownsPointer)
                             return "transparent";
                         if (group.held || groupPointer.over)
                             return Theme.barChipHover;
-                        // The centre pill is bare at rest so the clock reads
-                        // as part of the bar rather than as another button.
-                        return group.kind === "center" ? "transparent" : Theme.barChip;
+                        return "transparent";
                     }
                     scale: group.ownsPointer && groupMouse.pressed ? 0.96 : 1
 
@@ -157,8 +159,8 @@ Item {
                         z: 2
                         anchors.verticalCenter: parent.verticalCenter
                         x: pill.pad
-                        spacing: group.kind === "chip" ? 0
-                            : group.kind === "status" ? 9
+                        spacing: group.kind === "chip" ? 2
+                            : group.kind === "status" ? 7
                             : group.kind === "center" ? 0 : root.spacing
 
                         Repeater {
@@ -182,7 +184,14 @@ Item {
                                 spacing: 0
 
                                 Divider {
-                                    kind: group.kind === "center" ? "space" : "rule"
+                                    // Quick actions sit quietly against the
+                                    // clock. The clock/weather boundary gets
+                                    // the fine rule visible in the screenshot.
+                                    kind: group.kind === "center"
+                                            && (entry.modelData.entry.id === "clock"
+                                                || group.previousShownId(
+                                                    entry.modelData.at) === "indicators")
+                                        ? "space" : "rule"
                                     visible: group.kind !== "solo"
                                         && group.shownBefore(entry.modelData.at)
                                 }
