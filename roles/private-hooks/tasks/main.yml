@@ -55,7 +55,7 @@
   ansible.builtin.get_url:
     url: https://dl.dafont.com/dl/?f=conthrax
     dest: /var/cache/xps-upstream/conthrax.zip
-    checksum: sha256:586c09a14079f4a59f36c6836d05ba87a324b9dc6c28b602cf85df040636fb8e
+    checksum: sha256:73363dc8e4b816bad704f4c9b7b96103751203fdf191c574d96da21517af7f13
     owner: root
     group: root
     mode: "0644"
@@ -69,8 +69,8 @@
 - name: Install Conthrax font and its desktop EULA # noqa command-instead-of-module
   ansible.builtin.command: >-
     unzip -o /var/cache/xps-upstream/conthrax.zip
-    Conthrax-SemiBold.otf 'Typodermic Desktop EULA 2023.pdf'
+    Conthrax-SemiBold.otf 'Typodermic Desktop EULA 2026.pdf'
     -d /usr/local/share/fonts/conthrax
   args:
-    creates: /usr/local/share/fonts/conthrax/Conthrax-SemiBold.otf
+    creates: /usr/local/share/fonts/conthrax/Typodermic Desktop EULA 2026.pdf
   notify: Refresh fonts

@@ -108,5 +108,5 @@ hl.window_rule({ match = { class = [[org\.gnome\.NautilusPreviewer]] }, float = 
 hl.window_rule({ match = { class = [[localsend_app]] }, float = true, center = true, size = { 875, 600 } })
 hl.window_rule({ match = { class = [[org\.gnome\.Calculator]] }, float = true })
 hl.window_rule({ match = { class = [[(imv|mpv)]] }, float = true, center = true })
-hl.window_rule({ match = { class = [[google-chrome]], title = [[^Notification.*]] }, float = true, no_initial_focus = true, pin = true })
+hl.window_rule({ match = { class = [[brave-browser]], title = [[^Notification.*]] }, float = true, no_initial_focus = true, pin = true })
 hl.window_rule({ match = { class = [[(vlc|mpv|imv|zoom)]] }, opacity = "1 1" })

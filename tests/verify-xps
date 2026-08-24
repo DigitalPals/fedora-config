@@ -196,8 +196,8 @@ if $xps_2026; then
     fi
     check 'WirePlumber suppresses only the duplicate IPU7 paths' bash -c \
       'grep -q "monitor.libcamera.*disabled" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf && grep -q "pci-0000:00:05.0" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf'
-    check 'Chrome enables PipeWire camera capture' bash -c \
-      'grep -q "PipeWireCamera" "$HOME/.config/hypr/bindings.lua" && grep -q "PipeWireCamera" "$HOME/.local/share/applications/google-chrome.desktop"'
+    check 'Brave enables PipeWire camera capture' bash -c \
+      'grep -q "PipeWireCamera" "$HOME/.config/hypr/bindings.lua" && grep -q "PipeWireCamera" "$HOME/.local/share/applications/brave-browser.desktop"'
 
     if mokutil --sb-state 2>/dev/null | grep -qi enabled; then
       check 'camera module signing key is enrolled for Secure Boot' \
@@ -229,6 +229,9 @@ else
   skip 'precise Dell XPS 2026 SKU gate not matched; new hardware-role checks'
 fi
 
+check 'Cybex Plymouth theme is selected' test "$(plymouth-set-default-theme 2>/dev/null)" = cybex
+check 'Cybex theme is embedded in the running-kernel initramfs' bash -c \
+  'sudo -n lsinitrd "/boot/initramfs-$(uname -r).img" | grep -q "usr/share/plymouth/themes/cybex/cybex.script"'
 check 'GDM retains GNOME session' bash -c 'compgen -G "/usr/share/wayland-sessions/*gnome*.desktop" >/dev/null'
 check 'Hyprland Quickshell GDM session exists' test -r /usr/share/wayland-sessions/hyprland-quickshell.desktop
 check 'Hyprland session launcher uses start-hyprland' grep -q '^start-hyprland --' /usr/local/bin/hyprland-quickshell
@@ -251,7 +254,7 @@ check 'Hyprland Lua entry point is a regular file' bash -c '[[ -f $HOME/.config/
 for command in Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
   wayfreeze awww voxtype localsend lazygit lazydocker mdview bun balena t3code-update \
   git gh gcc g++ cmake rustup mold sccache node npm python3 distrobox docker podman \
-  kitty nvim fish zoxide fzf eza jq rg fd dust bat btop glow fastfetch duf ffmpeg mpv yt-dlp imv; do
+  kitty nvim fish zoxide fzf eza jq rg fd dust bat btop glow fastfetch duf ffmpeg mpv yt-dlp imv brave-browser; do
   command_exists "$command" && pass "command: $command" || fail "missing command: $command"
 done
 check 'Walker command is absent' bash -c '! command -v walker'
@@ -272,13 +275,15 @@ check 'nightly Rust toolchain with rustfmt/rust-analyzer' bash -c 'rustup toolch
 check 'Android sdkmanager' test -x "$HOME/Android/Sdk/cmdline-tools/latest/bin/sdkmanager"
 check 'Android platform-tools' test -x "$HOME/Android/Sdk/platform-tools/adb"
 
-check 'Chrome restore, Dutch spellcheck, and 1Password policy' \
+check 'Brave restore, Dutch spellcheck, and 1Password policy' \
   jq -e '.RestoreOnStartup == 1 and .SpellcheckLanguage == ["nl"] and (.ExtensionInstallForcelist | length == 1)' \
-  /etc/opt/chrome/policies/managed/xps.json
-check 'Chrome launchers automatically restore after an unclean exit' bash -c \
-  'grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.config/hypr/bindings.lua" && grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/applications/google-chrome.desktop"'
+  /etc/brave/policies/managed/xps.json
+check 'Brave launchers automatically restore after an unclean exit' bash -c \
+  'grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.config/hypr/bindings.lua" && grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/applications/brave-browser.desktop"'
 check 'Firefox 1Password policy' jq -e '.policies.ExtensionSettings["{d634138d-c276-4fc8-924b-40a0ea21d284}"].installation_mode == "force_installed"' /usr/lib64/firefox/distribution/policies.json
-check 'Chrome is default HTTPS handler' grep -q '^x-scheme-handler/https=google-chrome.desktop' "$HOME/.local/share/applications/mimeapps.list"
+check 'Brave is the effective default HTTPS handler' bash -c \
+  '[[ $(xdg-mime query default x-scheme-handler/https) == brave-browser.desktop ]]'
+check 'retired Google Chrome package is absent' bash -c '! rpm -q google-chrome-stable >/dev/null 2>&1'
 check 'T3 Code OAuth callback dependencies are installed' rpm -q xdg-utils fuse-libs
 check 'T3 Code Nightly desktop file advertises its OAuth callback' \
   grep -qx 'MimeType=x-scheme-handler/t3code;' \

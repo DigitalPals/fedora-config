@@ -33,16 +33,26 @@
     group: root
     mode: "0644"
   loop:
-    - google-chrome
+    - brave-browser
     - 1password
     - tailscale
   register: apps_vendor_repos
+  tags: [browser]
+
+- name: Remove retired Google Chrome repository definition
+  ansible.builtin.file:
+    path: /etc/yum.repos.d/google-chrome.repo
+    state: absent
+  register: apps_retired_vendor_repos
+  tags: [browser]
 
 - name: Refresh DNF metadata after repository changes
   ansible.builtin.command: dnf -q makecache
   changed_when: true
   when:
     - not ansible_check_mode
-    - apps_rpmfusion_free is changed
-      or apps_rpmfusion_nonfree is changed
-      or apps_vendor_repos is changed
+    - (apps_rpmfusion_free is defined and apps_rpmfusion_free is changed)
+      or (apps_rpmfusion_nonfree is defined and apps_rpmfusion_nonfree is changed)
+      or (apps_vendor_repos is defined and apps_vendor_repos is changed)
+      or (apps_retired_vendor_repos is defined and apps_retired_vendor_repos is changed)
+  tags: [browser]

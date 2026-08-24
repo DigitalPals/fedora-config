@@ -35,12 +35,20 @@
 - name: Install signed vendor applications
   ansible.builtin.dnf:
     name:
-      - google-chrome-stable
+      - brave-browser
       - 1password
       - 1password-cli
       - tailscale
     state: present
   when: not ansible_check_mode
+  tags: [browser]
+
+- name: Remove retired Google Chrome package
+  ansible.builtin.dnf:
+    name: google-chrome-stable
+    state: absent
+  when: not ansible_check_mode
+  tags: [browser]
 
 - name: Enable Tailscale without authorizing the node
   ansible.builtin.systemd_service:

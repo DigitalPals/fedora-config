@@ -163,6 +163,7 @@
     - "{{ primary_home }}/.config/systemd/user"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
     - "{{ primary_home }}/.local/state/hyprland"
+  tags: [browser]
 
 - name: Install Hyprland Lua configuration
   become: true
@@ -178,6 +179,7 @@
     - looknfeel.lua
     - bindings.lua
     - autostart.lua
+  tags: [browser]
 
 - name: Install rendered Hyprland helper configuration
   become: true

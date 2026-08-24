@@ -88,7 +88,7 @@ HAL, redistributable IPU75XA libraries, and `icamerasrc` are built into the
 local `xps-ipu7-camera-stack` RPM. `v4l2-relayd` publishes their processed NV12
 stream as `/dev/video50`; WirePlumber hides raw Bayer ISYS nodes and the
 duplicate generic libcamera endpoint, then exposes only **Hardware ISP
-Camera** to PipeWire. Chrome is launched with `PipeWireCamera` enabled.
+Camera** to PipeWire. Brave is launched with `PipeWireCamera` enabled.
 
 The source inputs are immutable archives with SHA-256 checksums in
 [`roles/xps-2026/defaults/main.yml`](../roles/xps-2026/defaults/main.yml):

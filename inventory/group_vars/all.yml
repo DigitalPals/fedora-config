@@ -5,6 +5,9 @@ machine_hostname: xps
 machine_timezone: Europe/Amsterdam
 machine_locale: en_US.UTF-8
 regional_locale: nl_NL.UTF-8
+# Cybex dynamically recenters its prompt when early KMS replaces the firmware
+# framebuffer with the internal panel and the tiled Apple display.
+plymouth_theme: cybex
 primary_user: john
 primary_group: john
 primary_home: /home/john

@@ -21,9 +21,12 @@ global.animation_frame = 0;
 global.fake_progress_start_time = 0;  # Track when fake progress started
 global.password_shown = 0;  # Track if password dialog has been shown
 global.max_progress = 0.0;  # Track the maximum progress reached to prevent backwards movement
+global.layout_width = 0;
+global.layout_height = 0;
 
 fun refresh_callback ()
   {
+    update_layout();
     global.animation_frame++;
     
     # Animate fake progress to limit over time with easing
@@ -48,9 +51,6 @@ fun refresh_callback ()
         update_progress_bar(global.fake_progress);
       }
   }
-
-
-Plymouth.SetRefreshFunction (refresh_callback);
 
 #----------------------------------------- Helper Functions --------------------------------
 
@@ -126,6 +126,7 @@ bullet.sprites = [];
 
 fun display_normal_callback ()
   {
+    update_layout();
     hide_password_dialog();
     
     # Get current mode
@@ -141,6 +142,7 @@ fun display_normal_callback ()
 
 fun display_password_callback (prompt, bullets)
   {
+    update_layout();
     global.password_shown = 1;  # Mark that password dialog has been shown
     
     # Reset progress when password dialog appears
@@ -176,9 +178,6 @@ fun display_password_callback (prompt, bullets)
       }
   }
 
-Plymouth.SetDisplayNormalFunction(display_normal_callback);
-Plymouth.SetDisplayPasswordFunction(display_password_callback);
-
 #----------------------------------------- Progress Bar --------------------------------
 
 progress_box.image = Image("progress_box.png");
@@ -198,6 +197,49 @@ progress_bar.y = progress_box.y + (progress_box.image.GetHeight() - progress_bar
 progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 1);
 progress_bar.sprite.SetOpacity(0);
 
+# Plymouth starts on the firmware framebuffer before xe exposes the internal
+# panel and the Apple display's two tiles. The script plugin then changes its
+# global canvas and centers every display inside it. Recenter the sprites when
+# that geometry changes so the LUKS prompt cannot remain outside a display.
+fun update_layout ()
+  {
+    new_width = Window.GetWidth();
+    new_height = Window.GetHeight();
+
+    if (new_width <= 0 || new_height <= 0)
+      return;
+
+    if (new_width == global.layout_width && new_height == global.layout_height)
+      return;
+
+    global.layout_width = new_width;
+    global.layout_height = new_height;
+
+    logo.x = new_width / 2 - logo.image.GetWidth() / 2;
+    logo.y = new_height / 2 - logo.image.GetHeight() / 2;
+    logo.sprite.SetX(logo.x);
+    logo.sprite.SetY(logo.y);
+
+    entry.x = new_width / 2 - entry.image.GetWidth() / 2;
+    entry.y = logo.y + logo.image.GetHeight() + 40;
+    entry.sprite.SetPosition(entry.x, entry.y, 10001);
+
+    for (index = 0; bullet.sprites[index]; index++)
+      {
+        bullet.x = entry.x + 20 + index * (7 + 5);
+        bullet.y = entry.y + entry.image.GetHeight() / 2 - 3.5;
+        bullet.sprites[index].SetPosition(bullet.x, bullet.y, 10002);
+      }
+
+    progress_box.x = new_width / 2 - progress_box.image.GetWidth() / 2;
+    progress_box.y = entry.y + entry.image.GetHeight() / 2 - progress_box.image.GetHeight() / 2;
+    progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 0);
+
+    progress_bar.x = new_width / 2 - progress_bar.original_image.GetWidth() / 2;
+    progress_bar.y = progress_box.y + (progress_box.image.GetHeight() - progress_bar.original_image.GetHeight()) / 2;
+    progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 1);
+  }
+
 fun progress_callback (duration, progress)
   {
     global.real_progress = progress;
@@ -210,16 +252,12 @@ fun progress_callback (duration, progress)
       }
   }
 
-Plymouth.SetBootProgressFunction(progress_callback);
-
 #----------------------------------------- Quit --------------------------------
 
 fun quit_callback ()
 {
   logo.sprite.SetOpacity (1);
 }
-
-Plymouth.SetQuitFunction(quit_callback);
 
 #----------------------------------------- Message --------------------------------
 
@@ -237,5 +275,11 @@ fun hide_message_callback (text)
   message_sprite.SetOpacity(0);
 }
 
+update_layout();
+Plymouth.SetRefreshFunction(refresh_callback);
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+Plymouth.SetBootProgressFunction(progress_callback);
+Plymouth.SetQuitFunction(quit_callback);
 Plymouth.SetDisplayMessageFunction (display_message_callback);
 Plymouth.SetHideMessageFunction (hide_message_callback);

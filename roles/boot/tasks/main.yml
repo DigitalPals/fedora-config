@@ -1,8 +1,14 @@
 ---
-- name: Install Plymouth script theme support
+- name: Install Fedora BGRT Plymouth theme support
+  ansible.builtin.dnf:
+    name: plymouth-plugin-two-step
+    state: present
+
+- name: Install optional Cybex Plymouth script theme support
   ansible.builtin.dnf:
     name: plymouth-plugin-script
     state: present
+  when: plymouth_theme == 'cybex'
 
 - name: Checkout pinned Cybex Plymouth artwork
   ansible.builtin.git:
@@ -11,14 +17,14 @@
     version: e76c323ed69baf0efae12b2e7afb42635920607a
     force: false
   register: boot_cybex_source
-  when: not ansible_check_mode
+  when: plymouth_theme == 'cybex' and not ansible_check_mode
 
 - name: Verify pinned Cybex source revision # noqa command-instead-of-module
   ansible.builtin.command: git -C /var/cache/xps-upstream/omarchy-cybex rev-parse HEAD
   register: boot_cybex_revision
   changed_when: false
   failed_when: boot_cybex_revision.stdout != 'e76c323ed69baf0efae12b2e7afb42635920607a'
-  when: not ansible_check_mode
+  when: plymouth_theme == 'cybex' and not ansible_check_mode
 
 - name: Install Cybex Plymouth theme files
   ansible.builtin.copy:
@@ -31,7 +37,7 @@
     force: false # several files are replaced with our own below; remove the theme dir to re-seed from upstream
   register: boot_cybex_install
   notify: Rebuild Fedora initramfs
-  when: not ansible_check_mode
+  when: plymouth_theme == 'cybex' and not ansible_check_mode
 
 - name: Install custom Cybex theme files
   ansible.builtin.copy:
@@ -49,6 +55,7 @@
     - cybex.script # no lock icon, near-black background
     - cybex.plymouth # matching console-log background color
   notify: Rebuild Fedora initramfs
+  when: plymouth_theme == 'cybex'
 
 - name: Read active Plymouth theme
   ansible.builtin.command: plymouth-set-default-theme
@@ -56,8 +63,11 @@
   changed_when: false
   check_mode: false
 
-- name: Select Cybex Plymouth theme without touching GRUB or EFI
-  ansible.builtin.command: plymouth-set-default-theme cybex
+- name: Select the configured Plymouth theme without touching GRUB or EFI
+  ansible.builtin.command:
+    argv:
+      - plymouth-set-default-theme
+      - "{{ plymouth_theme }}"
   changed_when: true
-  when: boot_plymouth_theme.stdout | trim != 'cybex' and not ansible_check_mode
+  when: boot_plymouth_theme.stdout | trim != plymouth_theme and not ansible_check_mode
   notify: Rebuild Fedora initramfs

@@ -22,6 +22,7 @@
     - "{{ primary_home }}/.config/voxtype"
     - "{{ primary_home }}/.config/distrobox"
     - "{{ primary_home }}/.ssh"
+  tags: [browser]
 
 - name: Copy wallpapers
   become: true
@@ -72,6 +73,7 @@
     - spotify
     - app-backup
     - fastfetch-link-speed
+  tags: [browser]
 
 - name: Install Distrobox container initialization hook
   become: true
@@ -164,6 +166,7 @@
     src: environment.conf.j2
     dest: "{{ primary_home }}/.config/environment.d/10-xps.conf"
     mode: "0644"
+  tags: [browser]
 
 - name: Configure Git identity
   become: true
@@ -232,11 +235,20 @@
     - dev-fedora.desktop
     - dev-arch.desktop
     - dev-debian.desktop
-    - google-chrome.desktop
+    - brave-browser.desktop
     - 1password.desktop
     - localsend-share-clipboard.desktop
     - localsend-share-file.desktop
     - localsend-share-folder.desktop
+  tags: [browser]
+
+- name: Remove retired Google Chrome desktop launcher
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/share/applications/google-chrome.desktop"
+    state: absent
+  tags: [browser]
 
 - name: Refresh the per-user desktop application database
   become: true
@@ -246,6 +258,7 @@
       - update-desktop-database
       - "{{ primary_home }}/.local/share/applications"
   changed_when: false
+  tags: [browser]
 
 - name: Configure npm user prefix
   become: true
@@ -255,17 +268,18 @@
     mode: "0644"
     content: "prefix=${HOME}/.npm-global\n"
 
-- name: Create Chrome enterprise policy directory
+- name: Create Brave enterprise policy directory
   ansible.builtin.file:
-    path: /etc/opt/chrome/policies/managed
+    path: /etc/brave/policies/managed
     state: directory
     owner: root
     group: root
     mode: "0755"
+  tags: [browser]
 
-- name: Configure Chrome managed policies
+- name: Configure Brave managed policies
   ansible.builtin.copy:
-    dest: /etc/opt/chrome/policies/managed/xps.json
+    dest: /etc/brave/policies/managed/xps.json
     owner: root
     group: root
     mode: "0644"
@@ -277,6 +291,13 @@
           "aeblfdkhhhdcdjpifhhbdiojplfjncoa;https://clients2.google.com/service/update2/crx"
         ]
       }
+  tags: [browser]
+
+- name: Remove retired Google Chrome managed policy
+  ansible.builtin.file:
+    path: /etc/opt/chrome/policies/managed/xps.json
+    state: absent
+  tags: [browser]
 
 - name: Create Firefox enterprise policy directory
   ansible.builtin.file:

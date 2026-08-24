@@ -259,6 +259,77 @@ PY
   fi
 }
 
+# ── Plymouth early-KMS/multi-display layout ────────────────────────────────
+stage_plymouth_layout() {
+  local out rc=0 t0 elapsed
+  t0=$(now_ms)
+
+  out=$(python3 - <<'PY' 2>&1
+from pathlib import Path
+import re
+
+theme = Path("roles/boot/files/cybex.script").read_text()
+
+assert "fun update_layout ()" in theme
+assert "new_width = Window.GetWidth();" in theme
+assert "new_height = Window.GetHeight();" in theme
+assert re.search(
+    r"fun refresh_callback \(\)\s*\{\s*update_layout\(\);",
+    theme,
+), "refresh callback does not follow late display geometry"
+
+# The firmware framebuffer is 2880x1800. Once xe takes over, Plymouth centers
+# the 1440x900 internal panel and both Apple-display heads in a 2560x2880
+# canvas. Coordinates calculated only against the firmware framebuffer leave
+# the logo above the internal panel and clip the password entry at its top.
+firmware = (2880, 1800)
+heads = ((1440, 900), (2560, 1440), (2560, 2880))
+canvas = (max(width for width, _ in heads), max(height for _, height in heads))
+origins = tuple(
+    ((canvas[0] - width) / 2, (canvas[1] - height) / 2)
+    for width, height in heads
+)
+
+def centered(canvas_size, item_size):
+    return (
+        (canvas_size[0] - item_size[0]) / 2,
+        (canvas_size[1] - item_size[1]) / 2,
+    )
+
+def contained(position, size, origin, viewport):
+    return (
+        position[0] >= origin[0]
+        and position[1] >= origin[1]
+        and position[0] + size[0] <= origin[0] + viewport[0]
+        and position[1] + size[1] <= origin[1] + viewport[1]
+    )
+
+logo_size = (250, 59)
+entry_size = (286, 48)
+old_logo = centered(firmware, logo_size)
+old_entry = (centered(firmware, entry_size)[0], old_logo[1] + logo_size[1] + 40)
+assert not contained(old_logo, logo_size, origins[0], heads[0])
+assert not contained(old_entry, entry_size, origins[0], heads[0])
+
+new_logo = centered(canvas, logo_size)
+new_entry = (centered(canvas, entry_size)[0], new_logo[1] + logo_size[1] + 40)
+for origin, viewport in zip(origins, heads):
+    assert contained(new_logo, logo_size, origin, viewport)
+    assert contained(new_entry, entry_size, origin, viewport)
+
+print("Cybex recenters the LUKS prompt after the early-KMS display handoff")
+PY
+) || rc=1
+
+  elapsed=$(( $(now_ms) - t0 ))
+  if ((rc == 0)); then
+    pass 'Plymouth' "late multi-display relayout $(took "$elapsed")"
+  else
+    fail 'Plymouth' 'early-KMS/multi-display layout check failed'
+    excerpt "${out:-unknown failure}"
+  fi
+}
+
 # ── Screenshot save/copy/edit workflow ────────────────────────────────
 stage_screenshot_workflow() {
   local out rc=0 t0 elapsed
@@ -278,12 +349,13 @@ stage_unit_tests
 stage_qml_lint
 stage_quickshell_integration
 stage_xps_hardware
+stage_plymouth_layout
 stage_screenshot_workflow
 
 # Keep the verdict on the last line: `update` tails this output into its own
 # failure report, so the actionable summary has to survive the truncation.
 if ((${#failed_stages[@]} > 0)); then
-  printf '\n%d of 5 repo check stages failed: %s\n' \
+  printf '\n%d of 6 repo check stages failed: %s\n' \
     "${#failed_stages[@]}" "$(IFS=, ; printf '%s' "${failed_stages[*]}")"
   exit 1
 fi
