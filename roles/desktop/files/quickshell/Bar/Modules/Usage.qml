@@ -23,8 +23,7 @@ BarModule {
                 Popouts.close();
             } else {
                 Usage.selected = key;
-                Popouts.openPanel("usage", root.isle,
-                    root.host.anchorOf(usageChips.anchorItem));
+                root.host.openPopout("usage", root.isle, usageChips.anchorItem);
             }
         }
         // Usage joins the bar-wide latched menu session while retaining its

@@ -58,6 +58,10 @@ test("Control Center exposes audio detail and the picker has no arbitrary sink c
     assert.match(picker, /AudioHelpers\.localSinks/);
     assert.match(picker, /Network \/ AirPlay/);
     assert.match(audio, /scripts\/audio-route/);
+    assert.match(audio, /readonly property var sinkAudio:\s*sink && sink\.audio/);
+    assert.match(audio, /readonly property var sourceAudio:\s*source && source\.audio/);
+    assert.doesNotMatch(audio, /ready \?[^\n]*sink\.audio/,
+        "a stale ready binding must not dereference a disappearing PipeWire group");
 });
 
 test("the routing helper moves named application streams, not filter internals", () => {

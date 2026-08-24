@@ -3,7 +3,6 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Wayland
 import "../Common"
-import "../Common/PanelRegistryData.js" as PanelRegistry
 
 // Panels use their own layer surface. Their content and native height may
 // change while switching modules, but the menubar's surface remains stable.
@@ -12,9 +11,9 @@ PanelWindow {
 
     required property Bar bar
 
-    // Every output has a popout window, but only the one under the mapped
-    // bar may show a panel or take the focus grab.
-    readonly property bool live: bar.visible
+    // Every output has a popout window, but only the bar that originated the
+    // shell-wide popout may show it or take the focus grab.
+    readonly property bool live: bar.visible && bar.popoutHost
 
     // Map immediately on open intent so the first Loader can incubate. Once
     // Popouts.open drops, `presented` keeps the surface alive through the
@@ -44,9 +43,9 @@ PanelWindow {
         active: root.live && Popouts.open
         windows: [root.bar, root]
         onCleared: {
-            // Deactivating the old monitor host during a handoff is not an
-            // outside click. The newly live host takes over the grab.
-            if (root.live || !PanelRegistry.persistsAcrossHosts(Popouts.currentName))
+            // Deactivating the old output during an intentional handoff is
+            // not an outside click. The newly live host takes over the grab.
+            if (root.live)
                 Popouts.close();
         }
     }

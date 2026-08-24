@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 8);
+    assert.equal(H.VERSION, 9);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, true);
     assert.equal(d.barColorMode, "default");
@@ -23,7 +23,6 @@ test("defaults carry the design values", () => {
     assert.equal(d.gap, 10);
     assert.equal(d.autoHide, false);
     assert.equal(d.exclusive, true);
-    assert.equal(d.monitor, "All");
     assert.equal(d.clock24, true);
     assert.equal(d.unit, "c");
     assert.equal(d.warmth, 3400);
@@ -325,7 +324,8 @@ test("merge falls back on invalid enums, colors and names", () => {
     assert.equal(H.merge({ accent: "#a992e0" }).accent, "#a992e0");
     assert.equal(H.merge({ wall: "../../etc/passwd" }).wall, H.defaults().wall);
     assert.equal(H.merge({ wall: "" }).wall, H.defaults().wall);
-    assert.equal(H.merge({ monitor: "eDP-1" }).monitor, "eDP-1");
+    assert.ok(!("monitor" in H.merge({ monitor: "eDP-1" })),
+        "the retired single-monitor setting must be ignored");
 });
 
 test("schema-5 bar modes migrate without losing customized geometry", () => {

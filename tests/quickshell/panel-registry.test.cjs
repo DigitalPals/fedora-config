@@ -123,7 +123,7 @@ test("panels no module owns are exactly the ones the bar sweep must skip", () =>
 test("only settings carries the behaviour flags", () => {
     // Each flag replaced a hardcoded `=== "settings"`. If a second panel ever
     // needs one, the consumers already handle it — but say so deliberately.
-    for (const flag of ["centerAnchored", "fillsBody", "persistsAcrossHosts"]) {
+    for (const flag of ["centerAnchored", "fillsBody"]) {
         const carrying = R.PANELS.filter(p => p[flag]).map(p => p.name);
         assert.deepEqual(carrying, [R.SETTINGS], `unexpected panels carry ${flag}`);
     }
@@ -153,7 +153,6 @@ test("lookups answer for unknown panels instead of throwing", () => {
     assert.equal(R.panelForModule(""), "");
     assert.equal(R.centerAnchored("nope"), false);
     assert.equal(R.fillsBody("nope"), false);
-    assert.equal(R.persistsAcrossHosts("nope"), false);
     assert.equal(R.ownerless("nope"), true);
 });
 
@@ -229,7 +228,7 @@ test("menu hover switching is latched behind an open popout", () => {
         /function hoverPopout\([^)]*\) \{\s*if \(!Popouts\.open\)\s*return false;/,
         "closed-bar hover must not start a menu session");
     assert.match(host,
-        /if \(Popouts\.currentName !== name\)\s*Popouts\.openPanel\(name, isle, anchorOf\(item\)\)/,
+        /if \(!popoutOpen\(name\)\)\s*openPopout\(name, isle, item\)/,
         "an open menu session must switch to the hovered panel");
 
     for (const [file, src] of [["BarIcon.qml", icon], ["BarChip.qml", chip]]) {

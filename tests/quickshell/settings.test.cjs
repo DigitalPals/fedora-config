@@ -25,6 +25,33 @@ test("the settings IPC target is declared exactly once shell-wide", () => {
         ["shell.qml"]);
 });
 
+test("every connected output keeps a bar while popouts stay single-hosted", () => {
+    const shell = read("shell.qml");
+    const bar = read("Bar/Bar.qml");
+    const window = read("Bar/BarPopoutWindow.qml");
+    const popouts = read("Common/Popouts.qml");
+    const barPage = read("Settings/BarLayoutPage.qml");
+
+    assert.match(shell, /Variants\s*\{[\s\S]*?model:\s*Quickshell\.screens[\s\S]*?Bar\s*\{/,
+        "bars must still be created from the live screen model");
+    assert.match(shell, /visible:\s*barScope\.modelData !== null/,
+        "each connected output's bar must remain mapped independently of focus");
+    assert.doesNotMatch(shell, /onFocusedScreen|barEnabled|Settings\.monitor/,
+        "focus and the retired monitor picker must not gate a bar window");
+
+    assert.match(popouts, /property string hostScreenName/);
+    assert.match(bar, /Popouts\.toggle\(name, isle, anchorOf\(item\), outputName\)/,
+        "pointer opens must identify the clicked bar's output");
+    assert.match(window, /readonly property bool live:\s*bar\.visible && bar\.popoutHost/,
+        "only the originating output may map the shared popout");
+    const popoutHost = read("Bar/PopoutHost.qml");
+    assert.match(popoutHost,
+        /id:\s*closeTimer[\s\S]{0,500}?if \(host\.live && Popouts\.open\)\s*return;/,
+        "an inactive host must release its stale surface during a handoff");
+    assert.doesNotMatch(barPage, /settingKey:\s*"monitor"|Follow focus/,
+        "settings must not advertise the removed single-monitor behavior");
+});
+
 test("settings uses the shared center popout rather than a modal window", () => {
     const shell = read("shell.qml");
     const settings = read("Common/Settings.qml");
@@ -45,7 +72,7 @@ test("settings uses the shared center popout rather than a modal window", () => 
 
     // Opened through the popout host with no module anchor to inherit.
     assert.match(settings,
-        /Popouts\.openPanel\(PanelRegistry\.SETTINGS,[\s\S]{0,80}?Qt\.rect\(0,\s*0,\s*0,\s*0\)\)/);
+        /Popouts\.openPanel\(PanelRegistry\.SETTINGS,[\s\S]{0,120}?Qt\.rect\(0,\s*0,\s*0,\s*0\),\s*targetScreenName\)/);
 });
 
 test("the control dashboard uses a compact Settings action without a chevron", () => {
@@ -273,7 +300,7 @@ test("usage chip hover joins the latched menu session", () => {
             < fallback.indexOf("Object.keys(panelAnchors)"),
         "provider selection must happen before generic Usage hit testing");
     assert.match(usage,
-        /Popouts\.openPanel\("usage", root\.isle,[\s\S]*?anchorOf\(usageChips\.anchorItem\)\)/,
+        /root\.host\.openPopout\("usage", root\.isle, usageChips\.anchorItem\)/,
         "all providers should retain the grouped UsageChips anchor");
 });
 
@@ -342,9 +369,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema eight adds clock-side actions over the layered palette", () => {
+test("schema nine adds clock-side actions over the layered palette", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 8/);
+    assert.match(helpers, /var VERSION = 9/);
     assert.match(helpers, /"media", "indicators", "clock"/);
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibited:\s*true/);

@@ -120,8 +120,10 @@ is manual.
       window is open; clicks pass through the vacated strip.
 - [ ] Reserve space off lets tiled windows extend under the bar
       (exclusive zone released; Hyprland re-tiles once per toggle).
-- [ ] Monitors: pinning to a named output keeps the bar there regardless of
-      focus; unplugging that output falls back to follow-focus.
+- [ ] Every connected output keeps its own bar while focus moves between
+      monitors; hotplug creates/removes only that output's bar.
+- [ ] Opening a module or Shell settings from either bar shows exactly one
+      panel, attached to the bar that was clicked.
 
 ## Modules page
 

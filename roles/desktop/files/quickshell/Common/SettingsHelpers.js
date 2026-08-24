@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 8;
+var VERSION = 9;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -133,7 +133,6 @@ function defaults() {
         gap: 10,
         autoHide: false,
         exclusive: true,
-        monitor: "All",
         clock24: true,
         unit: "c",
         warmth: 3400,
@@ -713,7 +712,6 @@ function merge(raw) {
         gap: intIn(parsed.gap, 4, 24, 1, d.gap),
         autoHide: boolIn(parsed.autoHide, d.autoHide),
         exclusive: boolIn(parsed.exclusive, d.exclusive),
-        monitor: nameIn(parsed.monitor, d.monitor),
         clock24: boolIn(parsed.clock24, d.clock24),
         unit: enumIn(parsed.unit, ["c", "f"], d.unit),
         warmth: intIn(parsed.warmth, 1900, 4500, 50, d.warmth),

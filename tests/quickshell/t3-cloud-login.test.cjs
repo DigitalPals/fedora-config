@@ -82,7 +82,7 @@ test("the signed-out T3 panel presents T3 Connect login instead of pairing", () 
     assert.match(connection, /t3-cloud\.mjs", "ticket"/);
     assert.match(connection, /Quickshell\.env\("XDG_STATE_HOME"\)\s*\|\|/,
         "an unset XDG_STATE_HOME must fall back instead of producing an empty watcher path");
-    assert.match(shell, /function open\(name: string\): void \{\s*Popouts\.openPanel\(name\)/);
+    assert.match(shell, /function open\(name: string\): void \{\s*Popouts\.openPanel\(name,/);
     assert.match(helper, /qs", \["ipc", "call", "popouts", "open", "t3code"\]/);
     assert.match(helper, /tokens\/t3-relay/);
     assert.match(helper, /Continue with Google/);

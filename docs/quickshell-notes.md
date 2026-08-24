@@ -69,10 +69,9 @@ Do not commit while the live config dir holds an unsynced throwaway copy.
   elsewhere can land short. With `grim -c` this makes cursor shape and hover
   state observable.
 - **Multi-monitor without hardware**: `hyprctl output create headless`, then
-  read the name back (`HEADLESS-1`). Focus may refuse to move to an empty
-  output, so to exercise a bar's `visible` binding pin `barEnabled` to that
-  output in the deployed `shell.qml`. `hyprctl layers -j` shows which output
-  each `qs-*` surface is on.
+  read the name back (`HEADLESS-1`). The shell keeps a bar mapped on every
+  output, so `hyprctl layers -j` can directly verify one `qs-bar` surface per
+  output and only one `qs-bar-popout` on the output whose bar was clicked.
 - **This Hyprland speaks a Lua dispatch dialect** —
   `hyprctl dispatch 'hl.dsp.focus({ monitor = "<name>" })'`. Plain
   `focusmonitor` / `movecursor` do not exist.

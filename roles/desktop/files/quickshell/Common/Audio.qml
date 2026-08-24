@@ -35,37 +35,42 @@ Singleton {
     readonly property string outputName: AudioHelpers.sinkLabel(outputSink)
 
     // A node exists before its audio group arrives, so "there is a sink"
-    // and "the sink can be read" are different questions.
-    readonly property bool ready: sink !== null && sink.audio !== null
-    readonly property bool sourceReady: source !== null && source.audio !== null
+    // and "the sink can be read" are different questions. Snapshot the
+    // nullable groups first: on startup QML can reevaluate a dependent value
+    // while the older `ready` binding still says true for the previous node.
+    readonly property var sinkAudio: sink && sink.audio ? sink.audio : null
+    readonly property var sourceAudio: source && source.audio ? source.audio : null
+    readonly property bool ready: sinkAudio !== null
+    readonly property bool sourceReady: sourceAudio !== null
 
     // Percent for labels and glyph thresholds; `level` is the same reading on
     // Pipewire's own 0..1 scale, for sliders that would otherwise snap to
     // whole percents on read-back.
-    readonly property int volume: ready ? Math.round(sink.audio.volume * 100) : 0
-    readonly property real level: ready ? sink.audio.volume : 0
-    readonly property bool muted: ready && sink.audio.muted
+    readonly property int volume: sinkAudio ? Math.round(sinkAudio.volume * 100) : 0
+    readonly property real level: sinkAudio ? sinkAudio.volume : 0
+    readonly property bool muted: sinkAudio ? sinkAudio.muted : false
 
-    readonly property int sourceVolume: sourceReady ? Math.round(source.audio.volume * 100) : 0
-    readonly property real sourceLevel: sourceReady ? source.audio.volume : 0
-    readonly property bool sourceMuted: sourceReady && source.audio.muted
+    readonly property int sourceVolume: sourceAudio
+        ? Math.round(sourceAudio.volume * 100) : 0
+    readonly property real sourceLevel: sourceAudio ? sourceAudio.volume : 0
+    readonly property bool sourceMuted: sourceAudio ? sourceAudio.muted : false
 
     // Setters take the 0..1 scale and clamp — the wheel handlers all stepped
     // and clamped this identically.
     function setVolume(fraction) {
         if (!ready)
             return;
-        sink.audio.volume = Format.clamp01(fraction);
+        sinkAudio.volume = Format.clamp01(fraction);
     }
 
     function stepVolume(delta) {
         if (ready)
-            setVolume(sink.audio.volume + delta);
+            setVolume(sinkAudio.volume + delta);
     }
 
     function toggleMuted() {
         if (ready)
-            sink.audio.muted = !sink.audio.muted;
+            sinkAudio.muted = !sinkAudio.muted;
     }
 
     // Pipewire remembers this as a preference, so it survives the node
@@ -83,12 +88,12 @@ Singleton {
     function setSourceVolume(fraction) {
         if (!sourceReady)
             return;
-        source.audio.volume = Format.clamp01(fraction);
+        sourceAudio.volume = Format.clamp01(fraction);
     }
 
     function toggleSourceMuted() {
         if (sourceReady)
-            source.audio.muted = !source.audio.muted;
+            sourceAudio.muted = !sourceAudio.muted;
     }
 
     PwObjectTracker {

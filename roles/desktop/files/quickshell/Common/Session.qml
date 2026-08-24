@@ -13,6 +13,7 @@ Singleton {
 
     property bool powerOpen: false
     property bool keysOpen: false
+    property var screen: null
 
     readonly property bool anyOpen: powerOpen || keysOpen
 
@@ -20,10 +21,11 @@ Singleton {
         "hyprlock --config " + Quickshell.env("HOME")
         + "/.config/hypr/hyprlock.conf --immediate-render --no-fade-in"
 
-    function openMenu() {
+    function openMenu(targetScreen) {
         keysOpen = false;
         Popouts.close();
         Launcher.close();
+        screen = targetScreen ?? Screens.focused;
         powerOpen = true;
     }
 
@@ -31,15 +33,17 @@ Singleton {
         powerOpen = false;
     }
 
-    function toggleMenu() {
+    function toggleMenu(targetScreen) {
         if (powerOpen)
             closeMenu();
         else
-            openMenu();
+            openMenu(targetScreen);
     }
 
-    function openKeys() {
+    function openKeys(targetScreen) {
+        const popoutScreen = Screens.byName(Popouts.hostScreenName);
         powerOpen = false;
+        screen = targetScreen ?? popoutScreen ?? Screens.focused;
         Popouts.close();
         Launcher.close();
         keysOpen = true;
@@ -49,11 +53,11 @@ Singleton {
         keysOpen = false;
     }
 
-    function toggleKeys() {
+    function toggleKeys(targetScreen) {
         if (keysOpen)
             closeKeys();
         else
-            openKeys();
+            openKeys(targetScreen);
     }
 
     function closeAll() {

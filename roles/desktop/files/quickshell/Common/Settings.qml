@@ -48,7 +48,6 @@ Singleton {
     property int gap: defaults.gap
     property bool autoHide: defaults.autoHide
     property bool exclusive: defaults.exclusive
-    property string monitor: defaults.monitor
     property bool clock24: defaults.clock24
     property string unit: defaults.unit
     property int warmth: defaults.warmth
@@ -108,7 +107,7 @@ Singleton {
         appearance: ["themeMode", "glassEnabled", "barColorMode", "barCustomHue",
             "barCustomSaturation", "barCustomLightness", "font", "accent", "paletteMode"],
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
-            "exclusive", "monitor"],
+            "exclusive"],
         modules: ["mods", "modOpts"],
         notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
@@ -118,21 +117,24 @@ Singleton {
     })
 
     // ---- Shared-popout lifecycle ----------------------------------------
-    function showPanel(targetPage) {
+    function showPanel(targetPage, targetScreenName) {
         if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;
         // Never inherit Control Center's right-side module anchor; this
         // panel is centerAnchored, so it owns no module's position.
         Popouts.openPanel(PanelRegistry.SETTINGS,
-            PanelRegistry.island(PanelRegistry.SETTINGS), Qt.rect(0, 0, 0, 0));
+            PanelRegistry.island(PanelRegistry.SETTINGS), Qt.rect(0, 0, 0, 0),
+            targetScreenName);
         panelOpen = true;
     }
 
-    function togglePanel(targetPage) {
-        if (panelOpen && Popouts.open && Popouts.currentName === PanelRegistry.SETTINGS)
+    function togglePanel(targetPage, targetScreenName) {
+        if (panelOpen && Popouts.open
+                && Popouts.currentName === PanelRegistry.SETTINGS
+                && (!targetScreenName || Popouts.hostScreenName === targetScreenName))
             closePanel();
         else
-            showPanel(targetPage);
+            showPanel(targetPage, targetScreenName);
     }
 
     function closePanel() {
@@ -408,7 +410,6 @@ Singleton {
     onGapChanged: scheduleSave()
     onAutoHideChanged: scheduleSave()
     onExclusiveChanged: scheduleSave()
-    onMonitorChanged: scheduleSave()
     onClock24Changed: scheduleSave()
     onUnitChanged: scheduleSave()
     onWarmthChanged: scheduleSave()

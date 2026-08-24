@@ -5,7 +5,6 @@ import Quickshell.Io
 import Quickshell.Wayland
 import "Bar"
 import "Common"
-import "Common/PanelRegistryData.js" as PanelRegistry
 
 ShellRoot {
     id: shell
@@ -26,11 +25,13 @@ ShellRoot {
         target: "popouts"
 
         function toggle(name: string): void {
-            Popouts.toggle(name);
+            Popouts.toggle(name, undefined, undefined,
+                Screens.focused ? Screens.focused.name : "");
         }
 
         function open(name: string): void {
-            Popouts.openPanel(name);
+            Popouts.openPanel(name, undefined, undefined,
+                Screens.focused ? Screens.focused.name : "");
         }
 
         function close(): void {
@@ -38,17 +39,20 @@ ShellRoot {
         }
     }
 
-    // Shell-wide because the shared settings popout can move between
-    // monitor-specific bar hosts. The external IPC contract stays intact.
+    // Shell-wide because every output has a bar and an IpcHandler target may
+    // only be registered once. IPC opens on the focused output; pointer opens
+    // pass their own output through the bar instead.
     IpcHandler {
         target: "settings"
 
         function toggle(): void {
-            Settings.togglePanel();
+            Settings.togglePanel(undefined,
+                Screens.focused ? Screens.focused.name : "");
         }
 
         function open(page: string): void {
-            Settings.showPanel(page);
+            Settings.showPanel(page,
+                Screens.focused ? Screens.focused.name : "");
         }
 
         function close(): void {
@@ -98,19 +102,6 @@ ShellRoot {
         }
     }
 
-    // A popout belongs to the bar that spawned it; when focus moves to
-    // another output that bar goes away, so dismiss the panel with it.
-    Connections {
-        target: Screens
-
-        function onFocusedChanged() {
-            // Panels that can hand themselves to the newly live bar stay;
-            // everything else belonged to the bar that just went away.
-            if (!PanelRegistry.persistsAcrossHosts(Popouts.currentName))
-                Popouts.close();
-        }
-    }
-
     // Wallpaper on the background layer, one per output. Instantiated
     // through Variants so outputs appearing/disappearing (dock, lid)
     // create and destroy the windows instead of stranding them on Qt's
@@ -152,13 +143,9 @@ ShellRoot {
         }
     }
 
-    // The bar shows on one output at a time, but it is built per output
-    // and only shown on the focused one. The bar used to be a single
-    // window whose `screen` was reassigned on focus change, and it could
-    // end up unmapped after a hotplug or after external-monitor-toggle
-    // disabled eDP-1. Binding each window to one output for its lifetime
-    // removes the migration entirely: outputs coming and going create and
-    // destroy windows, exactly as the wallpaper above already does.
+    // One permanently mapped bar per output. Binding each window to one
+    // output for its lifetime avoids layer-surface migration during focus
+    // changes and lets hotplug create or destroy just that output's bar.
     Variants {
         model: Quickshell.screens
 
@@ -166,21 +153,18 @@ ShellRoot {
             id: barScope
 
             required property ShellScreen modelData
-            readonly property bool onFocusedScreen: modelData !== null && modelData === Screens.focused
-            // "All" keeps today's follow-focus behavior; a pinned monitor
-            // holds the bar there. A pinned name that is not currently
-            // connected falls back to follow-focus so the bar never vanishes.
-            readonly property bool barEnabled: {
-                if (Settings.monitor === "All"
-                    || !Quickshell.screens.some(s => s.name === Settings.monitor))
-                    return onFocusedScreen;
-                return modelData !== null && modelData.name === Settings.monitor;
+            property string outputName: ""
+
+            Component.onCompleted: outputName = modelData ? modelData.name : ""
+            Component.onDestruction: {
+                if (Popouts.open && Popouts.hostScreenName === outputName)
+                    Popouts.close();
             }
 
             Bar {
                 id: bar
                 screen: barScope.modelData
-                visible: barScope.barEnabled
+                visible: barScope.modelData !== null
             }
 
             BarPopoutWindow {

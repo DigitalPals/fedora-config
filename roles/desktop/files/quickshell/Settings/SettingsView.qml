@@ -33,7 +33,7 @@ PopoutPanel {
         { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "image",
             title: "Wallpaper", description: "Desktop image and automatic rotation" },
         { id: "bar", group: "SHELL", label: "Bar", glyph: "space_dashboard",
-            title: "Bar", description: "Placement, shape, behavior, and monitors" },
+            title: "Bar", description: "Placement, shape, and behavior" },
         { id: "modules", group: "SHELL", label: "Modules", glyph: "widgets",
             title: "Modules", description: "Choose and arrange the bar’s contents" },
         { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",

@@ -15,7 +15,7 @@ PanelWindow {
     id: root
 
     visible: Session.keysOpen || scrim.opacity > 0.01
-    screen: Screens.focused
+    screen: Session.screen ?? Screens.focused
     anchors { top: true; left: true; right: true; bottom: true }
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"

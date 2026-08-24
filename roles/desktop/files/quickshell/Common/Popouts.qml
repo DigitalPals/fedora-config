@@ -5,13 +5,15 @@ import "PanelRegistryData.js" as PanelRegistry
 
 // Shared state for the bar's detached popouts. Every view hangs from its
 // triggering module, the host morphs one card between modules, and only one
-// popout is open shell-wide. Esc or clicking the desktop closes it.
+// popout is open shell-wide. hostScreenName selects which output's detached
+// host presents it, so always-visible bars do not duplicate the panel.
 Singleton {
     id: root
 
     property bool open: false
     property string currentName: ""
     property string island: ""
+    property string hostScreenName: ""
 
     // Window-coordinate rect of the module the popout hangs under, so the
     // surface can sit at the module instead of at the edge of the section
@@ -30,7 +32,15 @@ Singleton {
     // Derived, not hand-maintained: see Common/PanelRegistryData.js.
     readonly property var defaultIsland: PanelRegistry.islandMap()
 
-    function openPanel(name, isle, anchor) {
+    function resolvedHostName(requestedName, preserveCurrent) {
+        if (requestedName && Screens.byName(requestedName))
+            return requestedName;
+        if (preserveCurrent && Screens.byName(hostScreenName))
+            return hostScreenName;
+        return Screens.focused ? Screens.focused.name : "";
+    }
+
+    function openPanel(name, isle, anchor, targetScreenName) {
         // IPC accepts an arbitrary string. Mapping a one-pixel focus-grabbing
         // layer for an unknown name leaves an invisible ghost surface because
         // the host has no component to present.
@@ -38,6 +48,7 @@ Singleton {
             console.warn("Ignoring unknown popout:", name);
             return;
         }
+        const nextHost = resolvedHostName(targetScreenName, open);
         island = isle ?? defaultIsland[name] ?? "right";
         // Callers with no module to point at — the IPC handler, or one
         // popover morphing into another — keep the surface where it is
@@ -48,14 +59,18 @@ Singleton {
             anchorRect = Qt.rect(0, 0, 0, 0);
         currentName = name;
         open = true;
+        // Set this last during a handoff: the newly live host then observes a
+        // fully settled name/island/anchor tuple on its first sync.
+        hostScreenName = nextHost;
         changed();
     }
 
-    function toggle(name, isle, anchor) {
-        if (open && currentName === name)
+    function toggle(name, isle, anchor, targetScreenName) {
+        const nextHost = resolvedHostName(targetScreenName, open);
+        if (open && currentName === name && hostScreenName === nextHost)
             close();
         else
-            openPanel(name, isle, anchor);
+            openPanel(name, isle, anchor, targetScreenName);
     }
 
     function close() {

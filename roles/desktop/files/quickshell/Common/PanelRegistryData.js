@@ -20,14 +20,11 @@
 //              open. An owner-less panel must be left alone by the bar's
 //              module sweep — that is the Tailscale bug above.
 //
-// Flags, all defaulting false, each replacing a hardcoded `=== "settings"`:
+// Flags, both defaulting false, each replacing a hardcoded `=== "settings"`:
 //   centerAnchored       ignores its opener's anchor and stays centred on the
 //                        bar, re-centring when the bar's geometry changes
 //   fillsBody            its view owns the whole popout body rather than
 //                        being laid out inside the standard padding
-//   persistsAcrossHosts  survives the focused output changing, because it can
-//                        hand itself over to the newly live bar instead of
-//                        being dismissed with the old one
 
 var PANELS = [
     // The status pill — the volume/Wi-Fi/Bluetooth/battery glyphs sharing one
@@ -69,8 +66,7 @@ var PANELS = [
         moduleId: "",
         source: "Settings/SettingsView.qml",
         centerAnchored: true,
-        fillsBody: true,
-        persistsAcrossHosts: true
+        fillsBody: true
     }
 ];
 
@@ -130,11 +126,6 @@ function fillsBody(name) {
     return !!(panel && panel.fillsBody);
 }
 
-function persistsAcrossHosts(name) {
-    var panel = byName(name);
-    return !!(panel && panel.persistsAcrossHosts);
-}
-
 // { name: island } and { name: source }, for the QML properties that want a
 // plain map to index rather than a call per lookup.
 function islandMap() {
@@ -162,7 +153,6 @@ var exported = {
     ownerless: ownerless,
     centerAnchored: centerAnchored,
     fillsBody: fillsBody,
-    persistsAcrossHosts: persistsAcrossHosts,
     islandMap: islandMap,
     sourceMap: sourceMap
 };

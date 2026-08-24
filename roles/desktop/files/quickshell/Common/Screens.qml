@@ -3,9 +3,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 
-// Maps Hyprland's focused output to the corresponding Quickshell screen.
-// Keeping this in one place makes the bar, launcher, and notification toasts
-// agree during focus changes and monitor hotplug.
+// Maps Hyprland output names to Quickshell screens. Every connected screen has
+// a bar; focused is still used for keyboard/IPC overlays with no pointer-owned
+// output of their own.
 Singleton {
     id: root
 
@@ -20,17 +20,14 @@ Singleton {
         return screens.length > 0 ? screens[0] : null;
     }
 
-    readonly property var barScreen: {
-        const screens = Quickshell.screens;
-        if (Settings.monitor !== "All") {
-            const pinned = screens.find(screen => screen.name === Settings.monitor);
-            if (pinned !== undefined)
-                return pinned;
-        }
-        return focused;
+    function byName(name) {
+        if (!name)
+            return null;
+        return Quickshell.screens.find(screen => screen.name === name) ?? null;
     }
 
     function hasBar(screen) {
-        return screen !== null && screen === barScreen;
+        return screen !== null
+            && Quickshell.screens.some(candidate => candidate === screen);
     }
 }

@@ -17,13 +17,13 @@ Singleton {
 
     readonly property string usageFile: Quickshell.statePath("launcher-usage.json")
 
-    function toggle() {
+    function toggle(targetScreen) {
         if (open) {
             close();
             return;
         }
         Popouts.close();
-        screen = Screens.focused;
+        screen = targetScreen ?? Screens.focused;
         open = true;
     }
 

@@ -53,6 +53,10 @@ PanelWindow {
     property point tooltipPointerPosition: Qt.point(-1, -1)
     readonly property int safetyGutter: 8
     readonly property int closedHeight: Theme.barTopMargin + Theme.barHeight + 34
+    readonly property string outputName: screen ? screen.name : ""
+    readonly property bool popoutHost: outputName !== ""
+        && Popouts.hostScreenName === outputName
+    readonly property bool popoutActive: popoutHost && Popouts.open
     implicitHeight: closedHeight
     // The bar edge's y inside this window: hugging the anchored screen edge
     // with the configured gap on either position.
@@ -93,7 +97,7 @@ PanelWindow {
     // mask shrinks to a thin reveal strip at the screen edge, so clicks
     // pass through the vacated area.
     property bool revealed: true
-    readonly property bool hidden: Settings.autoHide && !revealed && !Popouts.open
+    readonly property bool hidden: Settings.autoHide && !revealed && !popoutActive
     property real hideShift: hidden ? BarGeometry.hideShift({
         style: Settings.barStyle,
         gap: Settings.gap,
@@ -159,16 +163,17 @@ PanelWindow {
 
     // ---- shared service state ----------------------------------------
 
-    // One bar exists per output; only the mapped one can carry a Wayland
-    // inhibitor. SysInfo's systemd-inhibit is what actually holds the
-    // session awake, so nothing is lost while this one is idle.
+    // One bar exists per output, but only the focused bar carries the Wayland
+    // inhibitor. SysInfo's systemd-inhibit is what actually holds the session
+    // awake, so duplicating this per output would add no protection.
     IdleInhibitor {
         window: barWindow
         enabled: SysInfo.idleInhibited && barWindow.visible
+            && barWindow.screen === Screens.focused
     }
 
     function popoutOpen(name) {
-        return Popouts.open && Popouts.currentName === name;
+        return popoutActive && Popouts.currentName === name;
     }
 
     // Published in window coordinates for the independent popout layer.
@@ -403,12 +408,11 @@ PanelWindow {
 
         function onModsChanged() {
             fitTimer.restart();
-            // Every output runs this handler, but only the mapped bar holds
-            // the modules the open popout hangs under; the others would see
-            // an empty panelAnchors and close someone else's panel.
+            // Every output runs this handler, but only the popout's host owns
+            // the module whose detached panel is open.
             // A panel no module owns (settings, control, tailscale) can never
             // fail this sweep honestly: moduleForPanel() is always null for it.
-            if (!barWindow.visible || !Popouts.open
+            if (!barWindow.popoutActive
                 || PanelRegistry.ownerless(Popouts.currentName))
                 return;
             Qt.callLater(() => {
@@ -440,7 +444,11 @@ PanelWindow {
     }
 
     function togglePopout(name, isle, item) {
-        Popouts.toggle(name, isle, anchorOf(item));
+        Popouts.toggle(name, isle, anchorOf(item), outputName);
+    }
+
+    function openPopout(name, isle, item) {
+        Popouts.openPanel(name, isle, anchorOf(item), outputName);
     }
 
     // Desktop-menu semantics: a click latches the menu session open, then
@@ -450,8 +458,8 @@ PanelWindow {
     function hoverPopout(name, isle, item) {
         if (!Popouts.open)
             return false;
-        if (Popouts.currentName !== name)
-            Popouts.openPanel(name, isle, anchorOf(item));
+        if (!popoutOpen(name))
+            openPopout(name, isle, item);
         return true;
     }
 
@@ -639,7 +647,7 @@ PanelWindow {
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.RightButton
-            onClicked: Settings.togglePanel()
+            onClicked: Settings.togglePanel(undefined, barWindow.outputName)
         }
     }
 
@@ -671,10 +679,11 @@ PanelWindow {
                 glyphSize: Theme.iconMedium + 1
                 glyphWeight: 500
                 idleColor: Theme.barTextMid
-                restFill: Launcher.open ? Theme.barChipHover : Theme.barChip
+                restFill: Launcher.open && Launcher.screen === barWindow.screen
+                    ? Theme.barChipHover : Theme.barChip
                 tooltip: "Apps  ·  Super Space"
                 tooltipAlign: -1
-                onClicked: Launcher.toggle()
+                onClicked: Launcher.toggle(barWindow.screen)
             }
 
             Cluster {
@@ -729,7 +738,7 @@ PanelWindow {
                 hoverColor: Theme.barRedText
                 tooltip: "Power"
                 tooltipAlign: 1
-                onClicked: Session.openMenu()
+                onClicked: Session.openMenu(barWindow.screen)
             }
         }
     }

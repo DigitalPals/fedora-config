@@ -483,7 +483,11 @@ Item {
         id: closeTimer
         interval: Theme.popoutCloseDuration + 60
         onTriggered: {
-            if (Popouts.open)
+            // A host handoff closes the old output while the shell-wide
+            // popout remains open on the new one. That inactive host must
+            // still release its presented surface; otherwise it remaps as a
+            // blank qs-bar-popout if it becomes the host again later.
+            if (host.live && Popouts.open)
                 return;
             host.presented = false;
             host.surfaceH = 0;

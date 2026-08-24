@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import "../Common"
 
 // The persisted page id remains `bar`; only the visible name and grouping
@@ -184,20 +183,5 @@ SettingsPage {
             }
         }
 
-        SettingsGroup {
-            width: parent.width
-            title: "Monitors"
-            dirty: Settings.monitor !== Settings.defaults.monitor
-            onResetRequested: Settings.resetKeys(["monitor"], "Bar monitor")
-
-            PickerRow {
-                width: parent.width
-                label: "Monitor"
-                settingKey: "monitor"
-                mono: true
-                model: [{ value: "All", label: "Follow focus" }].concat(
-                    Quickshell.screens.map(s => ({ value: s.name, label: s.name })))
-            }
-        }
     }
 }
