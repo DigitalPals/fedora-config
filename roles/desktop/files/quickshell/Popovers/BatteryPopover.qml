@@ -25,12 +25,21 @@ Surface {
         bottomPadding: 6
         spacing: 12
 
-        Row {
+        // Not a Row. A Row takes its height from the children it lays out, and
+        // the reading was baseline-anchored to the small "%" beside it, which
+        // gives the big text a negative y: the Row measured the 14px unit, the
+        // 28px numerals overhung it by an ascender, and the reading sat above
+        // its own top padding. Size to the numerals and hang the unit off
+        // *their* baseline, so the ink stays inside the box.
+        Item {
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
+            width: reading.implicitWidth + 1 + percent.implicitWidth
+            height: reading.implicitHeight
 
             Text {
-                anchors.baseline: percent.baseline
+                id: reading
+                anchors.left: parent.left
+                anchors.top: parent.top
                 text: Math.round(Battery.percent)
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontDisplay
@@ -40,6 +49,9 @@ Surface {
 
             Text {
                 id: percent
+                anchors.left: reading.right
+                anchors.leftMargin: 1
+                anchors.baseline: reading.baseline
                 text: "%"
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontBody
