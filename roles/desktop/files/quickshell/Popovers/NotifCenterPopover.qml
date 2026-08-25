@@ -175,11 +175,17 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 3
 
-                    Row {
-                        spacing: 6
+                    // Sized to the temperature, with the condition hung off its
+                    // baseline. A Row would take its height from the small
+                    // condition and let the reading overhang it by an ascender.
+                    Item {
+                        width: tempText.implicitWidth + 6 + conditionText.implicitWidth
+                        height: tempText.implicitHeight
 
                         Text {
-                            anchors.baseline: conditionText.baseline
+                            id: tempText
+                            anchors.left: parent.left
+                            anchors.top: parent.top
                             text: Weather.ready ? Weather.temp + "°" : "—"
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontProminent
@@ -190,6 +196,9 @@ Surface {
 
                         Text {
                             id: conditionText
+                            anchors.left: tempText.right
+                            anchors.leftMargin: 6
+                            anchors.baseline: tempText.baseline
                             text: Weather.ready ? Weather.condition : "unavailable"
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontTiny

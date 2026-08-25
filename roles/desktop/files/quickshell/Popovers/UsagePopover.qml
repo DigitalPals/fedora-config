@@ -334,11 +334,17 @@ Surface {
                         }
                     }
 
-                    Row {
-                        spacing: 3
+                    // Sized to the reading, with the suffix hung off its
+                    // baseline. A Row would take its height from the small
+                    // suffix and let the reading overhang it by an ascender.
+                    Item {
+                        width: remainingValue.implicitWidth + 3 + remainingSuffix.implicitWidth
+                        height: remainingValue.implicitHeight
 
                         Text {
-                            anchors.baseline: remainingSuffix.baseline
+                            id: remainingValue
+                            anchors.left: parent.left
+                            anchors.top: parent.top
                             text: card.remaining
                             font.family: Theme.fontMono
                             font.pixelSize: Theme.fontProminent
@@ -348,6 +354,9 @@ Surface {
 
                         Text {
                             id: remainingSuffix
+                            anchors.left: remainingValue.right
+                            anchors.leftMargin: 3
+                            anchors.baseline: remainingValue.baseline
                             text: "% left"
                             font.family: Theme.fontMono
                             font.pixelSize: Theme.fontCaption
@@ -427,11 +436,14 @@ Surface {
                     }
                 }
 
-                Row {
-                    spacing: 5
+                Item {
+                    width: creditsValue.implicitWidth + 5 + creditsSuffix.implicitWidth
+                    height: creditsValue.implicitHeight
 
                     Text {
-                        anchors.baseline: creditsSuffix.baseline
+                        id: creditsValue
+                        anchors.left: parent.left
+                        anchors.top: parent.top
                         text: creditsCard.displayValue
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.fontHeading
@@ -441,6 +453,9 @@ Surface {
 
                     Text {
                         id: creditsSuffix
+                        anchors.left: creditsValue.right
+                        anchors.leftMargin: 5
+                        anchors.baseline: creditsValue.baseline
                         text: creditsCard.displaySuffix
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.fontSecondary
