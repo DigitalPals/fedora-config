@@ -7,7 +7,7 @@ import "LauncherProviders.js" as ProviderHelpers
 
 // All command-palette data and side effects live here. LauncherView only
 // renders normalized rows, so adding a provider no longer expands the view's
-// input, result, activation and footer branches independently.
+// input, result and activation branches independently.
 Singleton {
     id: root
 
@@ -42,9 +42,6 @@ Singleton {
     property string emojiError: ""
     property var userActions: []
     property string actionsError: ""
-
-    readonly property int appTotal:
-        DesktopEntries.applications.values.filter(app => !app.noDisplay).length
 
     readonly property var appRows: {
         if (root.activeProviderId !== "apps")
@@ -159,31 +156,6 @@ Singleton {
         : activeProviderId === "clipboard" ? clipboardError
         : activeProviderId === "emoji" ? emojiError
         : activeProviderId === "actions" ? actionsError : ""
-
-    readonly property string footerLeft: {
-        switch (root.activeProviderId) {
-        case "files":
-            return root.fileLoading ? "fd · searching"
-                : "fd · " + root.rows.length + " results";
-        case "command": return "runs with sh -c";
-        case "calculator": return "libqalculate";
-        case "web": return "duckduckgo.com";
-        case "windows":
-            return root.rows.length + (root.rows.length === 1 ? " window" : " windows");
-        case "clipboard":
-            return root.clipboardLoading ? "cliphist · loading"
-                : "cliphist · " + root.clipboardEntries.length + " stored";
-        case "emoji":
-            return root.emojiLoading ? "Unicode emoji · loading"
-                : root.rows.length + " of " + root.emojiEntries.length + " emoji";
-        case "actions":
-            return root.rows.length + " of " + root.actions.length + " actions";
-        default:
-            if (root.term === "")
-                return ProviderHelpers.PREFIX_HELP;
-            return root.rows.length + " of " + root.appTotal + " apps";
-        }
-    }
 
     readonly property string emptyText: {
         if (root.activeProviderId === "files" && root.term.length < 2)

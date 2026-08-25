@@ -55,16 +55,16 @@ PanelWindow {
         anchors.fill: parent
         focus: Launcher.open
 
-        Keys.onEscapePressed: Launcher.close()
         Keys.onPressed: event => {
             if (Launcher.open && !launcherView.inputActiveFocus)
                 event.accepted = launcherView.handleEarlyKey(event);
         }
 
         // The card's top edge stays put while the result list grows and
-        // shrinks; it sits where a fully populated launcher would centre
-        // (tabs, search tile, eight rows, footer — about 570 logical pixels).
-        readonly property real anchorY: Math.max(24, Math.round((root.height - 570) / 2))
+        // shrinks; it sits where the fully populated compact launcher would
+        // centre (tabs, search tile and eight single-line rows).
+        readonly property real anchorY: Math.max(24,
+            Math.round((root.height - launcherView.fullHeight) / 2))
 
         ClippingRectangle {
             id: panel

@@ -2,22 +2,24 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "Common"
+import "Common/LauncherNavigation.js" as Navigation
 import "Popovers"
 
-// Eight-result tabbed command palette. LauncherProviders owns routing,
-// asynchronous work and activation; this permanently warm view renders
-// normalized rows.
-//
-// Visual shape from the "QuickShell Menubar" design: a recessed search tile,
-// 48px result rows with a 32px icon, the selected row lifted on the accent,
-// and a hairline footer carrying the count and the key hints.
+// Compact eight-result tabbed command palette. LauncherProviders owns
+// routing, asynchronous work and activation; this permanently warm view
+// renders each normalized row on one line.
 Surface {
     id: root
 
-    implicitWidth: 560
+    implicitWidth: 460
 
     readonly property int maxResults: LauncherProviders.maxResults
-    readonly property int rowHeight: 48
+    readonly property int tabHeight: 34
+    readonly property int searchHeight: 44
+    readonly property int rowHeight: 42
+    readonly property int resultIconSize: 28
+    readonly property int fullHeight: padding * 2 + tabHeight + searchHeight
+        + maxResults * rowHeight + spacing * 2
     property int selected: 0
     readonly property string query: search.text
     readonly property bool inputActiveFocus: search.activeFocus
@@ -66,7 +68,7 @@ Surface {
         }
     }
 
-    onRowsChanged: selected = Math.min(selected, Math.max(0, rows.length - 1))
+    onRowsChanged: selected = Navigation.clampSelection(selected, rows.length)
     onQueryChanged: {
         selected = 0;
         LauncherProviders.query = query;
@@ -97,12 +99,25 @@ Surface {
         root.selectTab(root.tabs[next].id);
     }
 
+    function wrapSelection(offset): void {
+        selected = Navigation.wrapSelection(selected, rows.length, offset);
+    }
+
+    function pageSelection(offset): void {
+        selected = Navigation.pageSelection(selected, rows.length, offset);
+    }
+
     // Shared by the TextInput and by LauncherWindow's one-frame focus-race
     // fallback. Enter is intentionally handled regardless of modifiers, so
     // it can launch the selected first row even if Super has not yet lifted.
     function handleCommandKey(event): bool {
         if (event.key === Qt.Key_Escape) {
-            Launcher.close();
+            if (query !== "") {
+                search.text = "";
+                selected = 0;
+            } else {
+                Launcher.close();
+            }
         } else if (event.modifiers & Qt.ControlModifier
                 && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) {
             cycleTab((event.key === Qt.Key_Backtab
@@ -120,9 +135,13 @@ Surface {
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             activate(rows[selected]);
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
-            selected = Math.min(Math.max(0, rows.length - 1), selected + 1);
+            wrapSelection(1);
         } else if (event.key === Qt.Key_Up) {
-            selected = Math.max(0, selected - 1);
+            wrapSelection(-1);
+        } else if (event.key === Qt.Key_PageDown) {
+            pageSelection(6);
+        } else if (event.key === Qt.Key_PageUp) {
+            pageSelection(-6);
         } else if (event.key === Qt.Key_Home) {
             selected = 0;
         } else if (event.key === Qt.Key_End) {
@@ -171,7 +190,7 @@ Surface {
     // ---- Provider tabs ---------------------------------------------------
     Rectangle {
         width: parent.width
-        height: 38
+        height: root.tabHeight
         radius: 15
         color: Theme.tile
 
@@ -256,8 +275,8 @@ Surface {
     // ---- Search tile -----------------------------------------------------
     Rectangle {
         width: parent.width
-        height: 48
-        radius: 22
+        height: root.searchHeight
+        radius: 20
         color: Theme.tile
 
         Behavior on color {
@@ -344,21 +363,16 @@ Surface {
             required property var modelData
             required property int index
             readonly property bool isSelected: index === root.selected
-            readonly property string subtitle: modelData.subtitle || ""
             width: resultList.width
             height: root.rowHeight
             radius: Theme.rowRadius
             color: isSelected ? Theme.accent : "transparent"
 
-            Behavior on color {
-                ColorAnimation { duration: Theme.chipFadeDuration }
-            }
-
             Item {
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: 32
-                height: 32
+                width: root.resultIconSize
+                height: root.resultIconSize
 
                 Image {
                     anchors.fill: parent
@@ -373,7 +387,7 @@ Surface {
                 Rectangle {
                     visible: !resultRow.modelData.icon
                     anchors.fill: parent
-                    radius: 10
+                    radius: 9
                     color: Theme.chip
 
                     Sym {
@@ -381,6 +395,7 @@ Surface {
                         visible: !resultRow.modelData.iconText
                         name: resultRow.modelData.glyph || root.provider.glyph
                         size: Theme.iconMedium
+                        animateColor: false
                         color: resultRow.isSelected ? Theme.textOnAccent : Theme.textMid
                     }
 
@@ -394,54 +409,17 @@ Surface {
                 }
             }
 
-            Column {
-                x: 54
+            Text {
+                x: 48
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - x - 46
-                spacing: 1
-
-                Text {
-                    width: parent.width
-                    textFormat: Text.StyledText
-                    text: root.titleFor(resultRow.modelData, resultRow.isSelected)
-                    font.family: Theme.fontSans
-                    font.pixelSize: Theme.fontSecondary
-                    font.weight: Theme.weightBold
-                    color: resultRow.isSelected ? Theme.textOnAccent : Theme.textHi
-                    elide: Text.ElideRight
-                }
-
-                Text {
-                    visible: resultRow.subtitle !== ""
-                    width: parent.width
-                    text: resultRow.subtitle
-                    font.family: Theme.fontSans
-                    font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightSemibold
-                    color: resultRow.isSelected ? Qt.rgba(1, 1, 1, 0.78) : Theme.textDim
-                    elide: Text.ElideMiddle
-                }
-            }
-
-            Rectangle {
-                visible: resultRow.isSelected
-                anchors.right: parent.right
-                anchors.rightMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                width: enterGlyph.implicitWidth + 12
-                height: 18
-                radius: 6
-                color: Qt.rgba(1, 1, 1, 0.22)
-
-                Text {
-                    id: enterGlyph
-                    anchors.centerIn: parent
-                    text: "↵"
-                    font.family: Theme.fontSans
-                    font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightMedium
-                    color: Theme.textOnAccent
-                }
+                width: parent.width - x - 12
+                textFormat: Text.StyledText
+                text: root.titleFor(resultRow.modelData, resultRow.isSelected)
+                font.family: Theme.fontSans
+                font.pixelSize: Theme.fontSecondary
+                font.weight: Theme.weightBold
+                color: resultRow.isSelected ? Theme.textOnAccent : Theme.textHi
+                elide: Text.ElideRight
             }
 
             MouseArea {
@@ -489,52 +467,4 @@ Surface {
         }
     }
 
-    HDivider {}
-
-    // ---- Footer ----------------------------------------------------------
-    Item {
-        width: parent.width
-        height: 20
-
-        Text {
-            x: 8
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - hints.width - 32
-            text: LauncherProviders.footerLeft
-            font.family: Theme.fontSans
-            font.pixelSize: Theme.fontMicro
-            font.weight: Theme.weightBold
-            color: Theme.textDim
-            elide: Text.ElideRight
-        }
-
-        Row {
-            id: hints
-            anchors.right: parent.right
-            anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 12
-
-            Repeater {
-                model: [
-                    "←→ tab",
-                    "↑↓ select",
-                    "↵ " + root.provider.enter
-                ].concat(root.provider.id === "clipboard" ? [
-                    "⇧⌫ remove"
-                ] : []).concat([
-                    "esc close"
-                ])
-
-                delegate: Text {
-                    required property string modelData
-                    text: modelData
-                    font.family: Theme.fontSans
-                    font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightBold
-                    color: Theme.textDim
-                }
-            }
-        }
-    }
 }

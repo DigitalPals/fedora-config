@@ -69,12 +69,47 @@ test("the view is provider-driven and owns no search subprocesses", () => {
     assert.match(view, /LauncherProviders\.query = query/);
     assert.match(view, /LauncherProviders\.activate\(row\)/);
     assert.match(view, /LauncherProviders\.emptyText/);
-    assert.match(view, /LauncherProviders\.footerLeft/);
+    assert.doesNotMatch(view, /LauncherProviders\.footerLeft/);
+    assert.doesNotMatch(providers, /\bfooterLeft\b|\bappTotal\b/,
+        "the removed footer must not leave provider summary work behind");
     assert.doesNotMatch(view, /\bProcess\s*\{|\bTimer\s*\{|switch \(row\.kind\)/,
         "providers, not the presentation, own asynchronous work and activation");
 
     for (const process of ["fileProc", "calcProc", "clipboardListProc"])
         assert.match(providers, new RegExp(`id:\\s*${process}`));
+});
+
+test("the launcher uses the compact single-line geometry", () => {
+    const view = read("LauncherView.qml");
+    const window = read("LauncherWindow.qml");
+    const providers = read("Common/LauncherProviders.qml");
+    const resultSection = view.slice(view.indexOf("// ---- Results"),
+        view.indexOf("// ---- Empty state"));
+
+    assert.match(view, /implicitWidth:\s*460\b/);
+    for (const [name, value] of Object.entries({
+        tabHeight: 34,
+        searchHeight: 44,
+        rowHeight: 42,
+        resultIconSize: 28
+    }))
+        assert.match(view, new RegExp(`property int ${name}: ${value}\\b`));
+    assert.match(providers, /property int maxResults:\s*8\b/);
+    assert.match(view,
+        /fullHeight:\s*padding \* 2 \+ tabHeight \+ searchHeight\s*\+ maxResults \* rowHeight \+ spacing \* 2/);
+    assert.match(window,
+        /\(root\.height - launcherView\.fullHeight\) \/ 2/);
+
+    assert.match(resultSection, /height:\s*root\.rowHeight/);
+    assert.match(resultSection,
+        /width:\s*root\.resultIconSize\s*\n\s*height:\s*root\.resultIconSize/);
+    assert.doesNotMatch(resultSection,
+        /\bColumn\s*\{|modelData\.subtitle|enterGlyph|Behavior on color|ColorAnimation/,
+        "result delegates must be single-line and move the highlight immediately");
+    assert.match(resultSection, /animateColor:\s*false/,
+        "launcher result glyphs must change color with the highlight, without lag");
+    assert.doesNotMatch(view, /\bHDivider\s*\{|\bfooterLeft\b|id:\s*hints\b|esc close/,
+        "the compact view has no divider, footer, counts, or shortcut hints");
 });
 
 test("the launcher defaults to Apps and exposes the discoverable provider tabs", () => {
@@ -97,8 +132,22 @@ test("the launcher defaults to Apps and exposes the discoverable provider tabs",
     assert.doesNotMatch(view,
         /Qt\.NoModifier[\s\S]{0,80}Qt\.Key_(?:Left|Right)/,
         "arrow tab navigation must tolerate compositor keyboard flags");
-    assert.match(view, /"←→ tab"/);
     assert.match(view, /Accessible\.role:\s*Accessible\.PageTab/);
+});
+
+test("result navigation wraps, pages by six, and Escape clears before closing", () => {
+    const view = read("LauncherView.qml");
+    const window = read("LauncherWindow.qml");
+
+    assert.match(view,
+        /Qt\.Key_Down \|\| event\.key === Qt\.Key_Tab\) \{\s*wrapSelection\(1\);/s);
+    assert.match(view, /Qt\.Key_Up\) \{\s*wrapSelection\(-1\);/s);
+    assert.match(view, /Qt\.Key_PageDown\) \{\s*pageSelection\(6\);/s);
+    assert.match(view, /Qt\.Key_PageUp\) \{\s*pageSelection\(-6\);/s);
+    assert.match(view,
+        /Qt\.Key_Escape\) \{\s*if \(query !== ""\) \{\s*search\.text = "";\s*selected = 0;\s*\} else \{\s*Launcher\.close\(\);/s);
+    assert.doesNotMatch(window, /Keys\.onEscapePressed:\s*Launcher\.close\(\)/,
+        "the early-focus path must preserve two-stage Escape behavior");
 });
 
 test("clipboard, emoji, and action providers have installed data sources", () => {

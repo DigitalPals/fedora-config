@@ -24,6 +24,7 @@ Text {
     // Emphasis correction for dark backgrounds, -25..200.
     property real grade: 0
     property bool animateFill: true
+    property bool animateColor: true
 
     font.family: Theme.fontIcon
     font.pixelSize: size
@@ -56,6 +57,7 @@ Text {
     }
 
     Behavior on color {
+        enabled: root.animateColor
         ColorAnimation { duration: Theme.chipFadeDuration }
     }
 }

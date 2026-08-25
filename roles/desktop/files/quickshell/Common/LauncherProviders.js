@@ -57,9 +57,6 @@ var BUILTIN_ACTIONS = [
     }
 ];
 
-var PREFIX_HELP = "/ files · > command · = calculate · @ web · $ windows"
-    + " · ; clipboard · : emoji · ! actions";
-
 var GLYPHS = PROVIDERS.map(function(provider) { return provider.glyph; })
     .concat(BUILTIN_ACTIONS.map(function(action) { return action.glyph; }))
     .concat(["image"])
@@ -277,6 +274,7 @@ function actionRows(actions, query, limit) {
     var max = Math.max(0, Number(limit) || 0);
     return (Array.isArray(actions) ? actions : []).map(function(action, index) {
         var searchable = String(action.name || "") + " "
+            + String(action.subtitle || "") + " "
             + (Array.isArray(action.keywords) ? action.keywords.join(" ") : "");
         var score = textScore(searchable, query);
         if (score < 0)
@@ -300,7 +298,6 @@ var exported = {
     PROVIDERS: PROVIDERS,
     TAB_IDS: TAB_IDS,
     BUILTIN_ACTIONS: BUILTIN_ACTIONS,
-    PREFIX_HELP: PREFIX_HELP,
     GLYPHS: GLYPHS,
     providerFor: providerFor,
     prefixedProviderFor: prefixedProviderFor,

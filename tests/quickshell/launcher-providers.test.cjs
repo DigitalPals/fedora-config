@@ -22,6 +22,14 @@ test("provider registry preserves every launcher mode and adds palette providers
         P.PROVIDERS.length, "prefixes must be unique, including the default");
 });
 
+test("clearing a prefix restores the selected tab provider", () => {
+    const selectedTab = "clipboard";
+
+    assert.equal(P.prefixedProviderFor(":rocket").id, "emoji");
+    assert.equal(P.prefixedProviderFor(""), null);
+    assert.equal(P.providerById(selectedTab).id, "clipboard");
+});
+
 test("app scoring keeps an empty directory alphabetical and adds usage later", () => {
     const app = {
         id: "org.mozilla.firefox.desktop",
@@ -90,6 +98,9 @@ test("user actions require a name and argv command and cannot inject glyphs", ()
     assert.equal(parsed.actions[0].glyph, "bolt");
     assert.deepEqual(P.actionRows(parsed.actions, "work", 8)
         .map(row => row.title), ["Open project"]);
+    assert.deepEqual(P.actionRows(parsed.actions, "editor", 8)
+        .map(row => row.title), ["Open project"],
+        "subtitles remain searchable even though the view does not draw them");
     assert.notEqual(P.parseActions("{").error, "");
     assert.notEqual(P.parseActions("{}").error, "");
 });

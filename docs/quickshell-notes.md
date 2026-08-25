@@ -206,9 +206,18 @@ than as a dozen properties.
 `Common/LauncherProviders.qml` owns command-palette routing, results and side
 effects; `LauncherView.qml` only renders its normalized rows. Every open resets
 to the Apps tab; Emoji, History (clipboard), and Actions are discoverable tabs
-beside it. `Left`/`Right` cycle tabs while `Up`/`Down` select results;
-`Ctrl+Tab` and `Ctrl+Shift+Tab` remain alternate tab shortcuts. Switching tabs
-clears the search field so results never carry across provider boundaries.
+beside it in a compact 460px card. The strip is 34px tall, the search field is
+44px, and up to eight 42px rows use 28px icons. Rows show one line only; action
+subtitles and keywords remain searchable metadata but do not add visual bulk.
+
+`Left`/`Right` cycle tabs, as do `Ctrl+Tab` and `Ctrl+Shift+Tab`. `Up`, `Down`,
+and result-navigation `Tab` wrap at the list ends; `PageUp`/`PageDown` jump six
+rows and clamp to the first or last result. `Home`, `End`, `Alt+1…8`, immediate
+`Enter`, and clipboard `Shift+Delete` remain available. Escape clears a
+non-empty query and returns to the active tab's full results; a second Escape
+closes the launcher. The result highlight and its glyph color change
+immediately without a transition. Switching tabs clears the search field so
+results never carry across provider boundaries.
 
 Typed prefixes temporarily override the selected tab: `/` files, `>` command,
 `=` calculator, `@` web, `$` windows, `;` clipboard, `:` emoji, and `!` actions.
