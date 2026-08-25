@@ -47,12 +47,23 @@ BarModule {
                 height: 24
                 anchors.verticalCenter: parent.verticalCenter
 
+                BarHover {
+                    id: chevronHover
+                    anchors.fill: parent
+                    host: root.host
+                    target: chevron
+                    radius: Theme.chipRadius
+                    pressed: chevronMouse.pressed
+                    tint: Theme.barTextHi
+                    pressPoint: Qt.point(chevronMouse.mouseX, chevronMouse.mouseY)
+                }
+
                 Sym {
                     anchors.centerIn: parent
                     name: "chevron_left"
                     size: Theme.iconMedium
                     symWeight: 600
-                    color: chevronPointer.over || root.expanded
+                    color: chevronHover.over || root.expanded
                         ? Theme.barTextHi : Theme.barIcon
                     rotation: root.expanded ? 180 : 0
 
@@ -65,13 +76,6 @@ BarModule {
                     }
                 }
 
-                PointerCheck {
-                    id: chevronPointer
-                    host: root.host
-                    target: chevron
-                    hovered: chevronMouse.containsMouse
-                }
-
                 MouseArea {
                     id: chevronMouse
                     anchors.fill: parent
@@ -81,7 +85,7 @@ BarModule {
                 }
 
                 BarTooltip {
-                    check: chevronPointer
+                    check: chevronHover.check
                     text: root.expanded ? "Hide tray"
                         : SystemTray.items.values.length
                             + (SystemTray.items.values.length === 1
@@ -127,11 +131,18 @@ BarModule {
                             width: 26
                             height: 26
                             radius: Theme.chipRadius
-                            color: itemPointer.over ? Theme.barChipHover : "transparent"
+                            color: "transparent"
                             scale: itemMouse.pressed ? 0.88 : 1
 
-                            Behavior on color {
-                                ColorAnimation { duration: Theme.chipFadeDuration }
+                            BarHover {
+                                id: itemHover
+                                anchors.fill: parent
+                                host: root.host
+                                target: trayItem
+                                radius: trayItem.radius
+                                pressed: itemMouse.pressed
+                                tint: Theme.barTextHi
+                                pressPoint: Qt.point(itemMouse.mouseX, itemMouse.mouseY)
                             }
 
                             Behavior on scale {
@@ -157,13 +168,6 @@ BarModule {
                                 menu: trayItem.modelData.menu
                                 anchor.item: trayItem
                                 anchor.rect.y: trayItem.height + 8
-                            }
-
-                            PointerCheck {
-                                id: itemPointer
-                                host: root.host
-                                target: trayItem
-                                hovered: itemMouse.containsMouse
                             }
 
                             MouseArea {
@@ -198,7 +202,7 @@ BarModule {
                             }
 
                             BarTooltip {
-                                check: itemPointer
+                                check: itemHover.check
                                 text: trayItem.modelData.tooltipTitle !== ""
                                     ? trayItem.modelData.tooltipTitle
                                     : trayItem.modelData.title

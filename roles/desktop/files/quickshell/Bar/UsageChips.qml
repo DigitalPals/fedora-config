@@ -110,12 +110,22 @@ Item {
             height: Theme.chipInnerHeight
             width: emptyRow.implicitWidth + 14
             radius: Theme.chipRadius
-            color: root.held || emptyPointer.over
-                ? Theme.barChipHover : "transparent"
+            color: root.held ? Theme.barChipHover : "transparent"
             anchors.verticalCenter: parent.verticalCenter
 
             Behavior on color {
                 ColorAnimation { duration: Theme.chipFadeDuration }
+            }
+
+            BarHover {
+                id: emptyHover
+                anchors.fill: parent
+                host: root.host
+                target: emptyChip
+                radius: emptyChip.radius
+                pressed: emptyMouse.pressed
+                tint: Theme.barTextHi
+                pressPoint: Qt.point(emptyMouse.mouseX, emptyMouse.mouseY)
             }
 
             Row {
@@ -153,13 +163,6 @@ Item {
                 }
             }
 
-            PointerCheck {
-                id: emptyPointer
-                host: root.host
-                target: emptyChip
-                hovered: emptyMouse.containsMouse
-            }
-
             MouseArea {
                 id: emptyMouse
                 anchors.fill: parent
@@ -195,7 +198,6 @@ Item {
                 color: status === "crit" ? Theme.barRedBg
                     : status === "warn" ? Theme.barAmberBg
                     : current ? Theme.barChipHover
-                    : chipPointer.over ? Theme.barChipHover
                     : "transparent"
                 anchors.verticalCenter: parent.verticalCenter
                 scale: chipMouse.pressed ? 0.95 : 1
@@ -210,6 +212,17 @@ Item {
                         easing.type: Easing.BezierSpline
                         easing.bezierCurve: Theme.springCurve
                     }
+                }
+
+                BarHover {
+                    id: chipHover
+                    anchors.fill: parent
+                    host: root.host
+                    target: chip
+                    radius: chip.radius
+                    pressed: chipMouse.pressed
+                    tint: Theme.barTextHi
+                    pressPoint: Qt.point(chipMouse.mouseX, chipMouse.mouseY)
                 }
 
                 Row {
@@ -249,13 +262,6 @@ Item {
                     }
                 }
 
-                PointerCheck {
-                    id: chipPointer
-                    host: root.host
-                    target: chip
-                    hovered: chipMouse.containsMouse
-                }
-
                 MouseArea {
                     id: chipMouse
                     anchors.fill: parent
@@ -267,7 +273,7 @@ Item {
                 }
 
                 BarTooltip {
-                    check: chipPointer
+                    check: chipHover.check
                     text: Usage.meta[chip.modelData].title + " usage · "
                         + (chip.status === "error" || chip.remaining < 0
                             ? "unavailable" : chip.remaining + "% remaining")

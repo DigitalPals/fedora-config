@@ -124,17 +124,10 @@ Rectangle {
     readonly property real detailSaving: label === "" ? 0
         : labelText.implicitWidth + contentSpacing
 
-    // Validated rather than the MouseArea's own state: the raw value survives
-    // a missed exit event, which leaves the pill lit with no event left to
-    // clear it. The tooltip below reads the same check, so the two agree.
-    readonly property bool hovered: pointer.over
-
-    PointerCheck {
-        id: pointer
-        host: root.host
-        target: root
-        hovered: mouse.containsMouse
-    }
+    // The shared bar-wide hit test drives the background, foreground and
+    // tooltip together. It remains correct when a child MouseArea misses an
+    // enter or exit while a detached layer surface is being mapped.
+    readonly property bool hovered: hover.over
 
     readonly property color fg: active ? Theme.barAccentFg
         : alert ? Theme.barRedText
@@ -175,10 +168,13 @@ Rectangle {
         }
     }
 
-    StateLayer {
+    BarHover {
+        id: hover
         anchors.fill: parent
+        host: root.host
+        target: root
         radius: parent.radius
-        hovered: root.hovered && !root.bare
+        visualEnabled: !root.bare
         pressed: mouse.pressed
         tint: root.fg
         pressPoint: Qt.point(mouse.mouseX, mouse.mouseY)
@@ -319,7 +315,7 @@ Rectangle {
     }
 
     BarTooltip {
-        check: pointer
+        check: hover.check
         text: root.tooltip
         align: root.tooltipAlign
         y: root.height + 8

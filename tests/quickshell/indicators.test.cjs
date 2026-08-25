@@ -93,9 +93,11 @@ test("active clock-side actions light only their glyph", () => {
 
     assert.match(action, /activeState \? Theme\.barAccent\b/);
     assert.doesNotMatch(action, /activeState \? Theme\.barAccentFg\b/);
-    assert.match(action,
-        /color:\s*recording \? Theme\.barRed\s*:\s*hovered \? Theme\.barChipHover : "transparent"/,
+    assert.match(action, /color:\s*recording \? Theme\.barRed : "transparent"/,
         "an active toggle must not paint an accent pill behind its glyph");
+    assert.match(action,
+        /BarHover\s*\{[\s\S]{0,120}?target:\s*button/,
+        "clock-side actions must use the same hover surface as other modules");
     assert.doesNotMatch(action,
         /\n\s*color:\s*[\s\S]{0,100}?activeState/);
 });

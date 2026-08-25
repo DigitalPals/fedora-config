@@ -224,13 +224,12 @@ BarModule {
         readonly property color ink: recording ? Theme.barRedFg
             : activeState ? Theme.barAccent
             : hovered ? Theme.barTextHi : Theme.barTextDim
-        readonly property bool hovered: pointer.over
+        readonly property bool hovered: actionHover.over
 
         height: Theme.chipInnerHeight
         width: contents.implicitWidth + (actionLabel === "" ? 12 : 16)
         radius: Theme.chipRadius
-        color: recording ? Theme.barRed
-            : hovered ? Theme.barChipHover : "transparent"
+        color: recording ? Theme.barRed : "transparent"
         scale: actionMouse.pressed ? 0.92 : 1
         Accessible.role: Accessible.Button
         Accessible.name: root.tooltipFor(actionId)
@@ -252,11 +251,15 @@ BarModule {
             }
         }
 
-        PointerCheck {
-            id: pointer
+        BarHover {
+            id: actionHover
+            anchors.fill: parent
             host: root.host
             target: button
-            hovered: actionMouse.containsMouse
+            radius: button.radius
+            pressed: actionMouse.pressed
+            tint: button.recording ? Theme.barRedFg : Theme.barTextHi
+            pressPoint: Qt.point(actionMouse.mouseX, actionMouse.mouseY)
         }
 
         Row {
@@ -319,7 +322,7 @@ BarModule {
         }
 
         BarTooltip {
-            check: pointer
+            check: actionHover.check
             text: root.tooltipFor(button.actionId)
             align: -1
             y: button.height + 8

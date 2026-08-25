@@ -69,18 +69,10 @@ Rectangle {
     property string tooltip: ""
     property int tooltipAlign: 0
 
-    // Validated rather than `mouse.containsMouse` directly: the raw state
-    // survives a missed exit event, which leaves the pill lit with no event
-    // left to clear it. Module content binds its colours off this, and the
-    // tooltip below reads the same check, so all three always agree.
-    readonly property bool hovered: pointer.over
-
-    PointerCheck {
-        id: pointer
-        host: root.host
-        target: root
-        hovered: mouse.containsMouse
-    }
+    // The shared bar-wide hit test drives the background, module colours and
+    // tooltip together. It remains correct when a child MouseArea misses an
+    // enter or exit while a detached layer surface is being mapped.
+    readonly property bool hovered: hover.over
 
     signal clicked()
     signal entered()
@@ -89,7 +81,7 @@ Rectangle {
     implicitHeight: pillHeight
     implicitWidth: content.implicitWidth + leftPadding + rightPadding
     radius: Theme.chipRadius
-    color: held ? Theme.barChipHover : restFill
+    color: held ? hoverFill : restFill
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
     scale: pressFeedback && mouse.pressed ? 0.96 : 1
 
@@ -116,10 +108,12 @@ Rectangle {
         }
     }
 
-    StateLayer {
+    BarHover {
+        id: hover
         anchors.fill: parent
+        host: root.host
+        target: root
         radius: root.radius
-        hovered: root.hovered
         pressed: mouse.pressed
         tint: Theme.barTextHi
         pressPoint: Qt.point(mouse.mouseX, mouse.mouseY)
@@ -157,7 +151,7 @@ Rectangle {
     }
 
     BarTooltip {
-        check: pointer
+        check: hover.check
         text: root.tooltip
         align: root.tooltipAlign
         y: root.height + 8

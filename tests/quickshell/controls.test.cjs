@@ -122,13 +122,19 @@ test("shared state layers use Material interaction strengths", () => {
     assert.match(theme, /statePressedOpacity:\s*0\.12/);
     assert.match(layer,
         /opacity:\s*root\.pressed \|\| root\.focused \? Theme\.statePressedOpacity\s*:\s*root\.hovered \? Theme\.stateHoverOpacity : 0/);
+    assert.match(read("Bar/BarHover.qml"), /StateLayer\s*\{/,
+        "bar targets must adapt the shared state overlay in one place");
     for (const rel of [
-        "Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/Workspaces.qml",
         "Common/Toggle.qml", "Popovers/ActionButton.qml", "Popovers/IconButton.qml",
         "Settings/PillRow.qml", "Settings/SettingsAction.qml"
     ])
         assert.match(read(rel), /StateLayer\s*\{/,
             `${rel} does not use the shared state overlay`);
+    for (const rel of [
+        "Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/Workspaces.qml"
+    ])
+        assert.match(read(rel), /BarHover\s*\{/,
+            `${rel} does not use the shared bar state overlay`);
     assert.match(read("Bar/BarIcon.qml"), /scale:\s*mouse\.pressed/,
         "the state layer must not replace bar press-scale feedback");
 });

@@ -26,7 +26,9 @@ QtObject {
     // The item the pointer is claimed to be over. The hover region is this
     // item's rectangle, so it is whatever the MouseArea fills.
     required property Item target
-    // What the caller's own MouseArea believes.
+    // The caller's first opinion. Legacy non-visual checks pass their local
+    // MouseArea state; BarHover passes true so the bar-wide scene hit test is
+    // authoritative for every visual hover surface.
     required property bool hovered
 
     readonly property bool over: {

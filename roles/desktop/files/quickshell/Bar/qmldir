@@ -4,6 +4,7 @@
 # Bar/*.qml type must be listed. qmldir.test.cjs enforces that.
 Bar Bar.qml
 BarChip BarChip.qml
+BarHover BarHover.qml
 BarIcon BarIcon.qml
 BarPopoutWindow BarPopoutWindow.qml
 BarTooltip BarTooltip.qml

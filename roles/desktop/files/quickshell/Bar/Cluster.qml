@@ -104,8 +104,10 @@ Item {
                         root.host.unregisterPanel(panelName, pill);
                 }
 
-                // Group furniture is transparent at rest. Interactive groups
-                // still light as one target while hovered or held.
+                // Group furniture is transparent at rest. Status and centre
+                // groups are one click target, so their shared hover surface
+                // follows that same target instead of suggesting that each
+                // piece of status content has a separate action.
                 Rectangle {
                     id: pill
 
@@ -121,7 +123,7 @@ Item {
                     color: {
                         if (!group.ownsPointer)
                             return "transparent";
-                        if (group.held || groupPointer.over)
+                        if (group.held)
                             return Theme.barChipHover;
                         return "transparent";
                     }
@@ -137,6 +139,20 @@ Item {
                             easing.type: Easing.BezierSpline
                             easing.bezierCurve: Theme.springCurve
                         }
+                    }
+
+                    BarHover {
+                        id: groupHover
+                        anchors.fill: parent
+                        visible: group.ownsPointer
+                        host: root.host
+                        target: pill
+                        visualEnabled: group.kind !== "center"
+                            || !root.host.indicatorActionHovered
+                        radius: pill.radius
+                        pressed: groupMouse.pressed
+                        tint: Theme.barTextHi
+                        pressPoint: Qt.point(groupMouse.mouseX, groupMouse.mouseY)
                     }
 
                     // A module appearing or dropping its detail resizes the
@@ -203,21 +219,10 @@ Item {
                                     index: entry.modelData.index
                                     groupAnchor: group.ownsPointer ? pill : null
                                     interactive: !group.ownsPointer
-                                    groupHovered: group.kind === "center"
-                                        ? root.host.tooltipPointerInside
-                                            && root.host.itemContainsPoint(pill,
-                                                root.host.tooltipPointerPosition)
-                                        : groupPointer.over
+                                    groupHovered: groupHover.over
                                 }
                             }
                         }
-                    }
-
-                    PointerCheck {
-                        id: groupPointer
-                        host: root.host
-                        target: pill
-                        hovered: groupMouse.containsMouse
                     }
 
                     MouseArea {
@@ -234,7 +239,7 @@ Item {
                     }
 
                     BarTooltip {
-                        check: groupPointer
+                        check: groupHover.check
                         text: group.kind === "status" ? root.host.statusSummary
                             : group.kind === "center" && !root.host.indicatorActionHovered
                                 ? "Notifications & calendar" : ""

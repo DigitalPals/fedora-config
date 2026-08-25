@@ -61,14 +61,64 @@ test("menubar modules rest directly on one shared slab", () => {
     assert.match(icon, /property color restFill:\s*"transparent"/);
     assert.match(t3, /restFill:\s*"transparent"/);
     assert.match(usage,
-        /root\.held \|\| emptyPointer\.over[\s\S]{0,80}?Theme\.barChipHover : "transparent"/);
+        /color:\s*root\.held \? Theme\.barChipHover : "transparent"/);
     assert.match(usage,
-        /chipPointer\.over \? Theme\.barChipHover[\s\S]{0,60}?: "transparent"/);
+        /current \? Theme\.barChipHover[\s\S]{0,40}?: "transparent"/);
     assert.match(tray, /id:\s*pill[\s\S]{0,180}?color:\s*"transparent"/);
     assert.doesNotMatch(media, /color:\s*Theme\.barChipHover/,
         "the media glyph must not retain a private resting disc");
     assert.match(workspaces, /id:\s*activeLozenge[\s\S]{0,700}?color:\s*Theme\.barWsCurrent/,
         "the current workspace remains the deliberate background exception");
+});
+
+test("every module family uses the shared bar hover surface", () => {
+    const hover = read("Bar/BarHover.qml");
+    const chip = read("Bar/BarChip.qml");
+    const icon = read("Bar/BarIcon.qml");
+    const bar = read("Bar/Bar.qml");
+    const cluster = read("Bar/Cluster.qml");
+    const tray = read("Bar/Modules/Tray.qml");
+    const usage = read("Bar/UsageChips.qml");
+    const indicators = read("Bar/Modules/Indicators.qml");
+    const workspaces = read("Bar/Workspaces.qml");
+
+    assert.match(hover, /^import[\s\S]*StateLayer\s*\{/,
+        "the bar hover primitive must retain the shared Material state layer");
+    assert.match(hover, /required property Bar host/);
+    assert.match(hover, /required property Item target/);
+    assert.match(hover, /hovered:\s*visualEnabled && over/);
+    assert.match(hover,
+        /PointerCheck\s*\{[\s\S]{0,180}?target:\s*root\.target[\s\S]{0,220}?hovered:\s*true/,
+        "hover visuals must use the bar-wide scene point, not a child MouseArea");
+    assert.match(hover, /readonly property PointerCheck check:\s*pointer/,
+        "the visual background and tooltip must share one pointer answer");
+
+    for (const [name, source] of [["content chip", chip], ["icon", icon]]) {
+        assert.match(source,
+            /BarHover\s*\{[\s\S]{0,140}?host:\s*root\.host[\s\S]{0,80}?target:\s*root/,
+            `${name} does not use the shared bar hover primitive`);
+        assert.match(source, /readonly property bool hovered:\s*hover\.over/);
+        assert.match(source, /BarTooltip\s*\{[\s\S]{0,80}?check:\s*hover\.check/);
+    }
+
+    assert.match(bar, /HoverHandler\s*\{[\s\S]{0,180}?blocking:\s*false/,
+        "the bar-wide pointer observer must not take a module click");
+    assert.match(cluster,
+        /BarHover\s*\{[\s\S]{0,180}?visible:\s*group\.ownsPointer[\s\S]{0,100}?target:\s*pill/,
+        "a combined status/centre click target needs one matching hover surface");
+    assert.match(cluster,
+        /visualEnabled:\s*group\.kind !== "center"[\s\S]{0,80}?indicatorActionHovered/,
+        "an indicator button must replace, not stack with, the centre hover surface");
+    assert.match(cluster, /groupHovered:\s*groupHover\.over/);
+    assert.doesNotMatch(cluster, /sharedHoverLayer|slotLoader\.mod,[\s\S]{0,80}?tooltipPointerPosition/,
+        "group content must not grow independent affordances beneath one click target");
+
+    for (const [name, source] of [
+        ["tray", tray], ["usage", usage], ["indicators", indicators],
+        ["workspaces", workspaces]
+    ])
+        assert.match(source, /BarHover\s*\{/,
+            `${name} bypasses the shared hover surface`);
 });
 
 test("resting menubar icons share one tone while weather keeps its palette", () => {

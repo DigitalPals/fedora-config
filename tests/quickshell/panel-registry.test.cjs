@@ -293,6 +293,7 @@ function barQmlFiles() {
 const REQUIRED_WIRING = {
     BarIcon: ["host"],
     BarChip: ["host"],
+    BarHover: ["host", "target"],
     BarTooltip: ["check"],
     PointerCheck: ["host", "target", "hovered"],
 };

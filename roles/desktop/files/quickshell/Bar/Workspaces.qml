@@ -157,7 +157,7 @@ Rectangle {
                 readonly property color restingTone: urgent
                     ? (showNumber ? Theme.barRedBg : Theme.barRed)
                     : showNumber
-                        ? (wsPointer.over ? Theme.barChip : "transparent")
+                        ? (workspaceState.over ? Theme.barChip : "transparent")
                         : exists ? Theme.barWsOccupied : Theme.barWsEmpty
 
                 x: index * WorkspaceMotion.CELL_WIDTH
@@ -190,12 +190,13 @@ Rectangle {
                     }
                 }
 
-                StateLayer {
+                BarHover {
                     id: workspaceState
                     anchors.fill: parent
                     anchors.margins: 1
+                    host: root.host
+                    target: slot
                     radius: Theme.chipRadius
-                    hovered: wsPointer.over
                     pressed: wsMouse.pressed
                     tint: Theme.barTextHi
                     pressPoint: Qt.point(wsMouse.mouseX - 1, wsMouse.mouseY - 1)
@@ -221,13 +222,6 @@ Rectangle {
                     }
                 }
 
-                PointerCheck {
-                    id: wsPointer
-                    host: root.host
-                    target: slot
-                    hovered: wsMouse.containsMouse
-                }
-
                 MouseArea {
                     id: wsMouse
                     anchors.fill: parent
@@ -238,7 +232,7 @@ Rectangle {
                 }
 
                 BarTooltip {
-                    check: wsPointer
+                    check: workspaceState.check
                     text: "Workspace " + slot.wsId
                         + (slot.focused ? " · current" : slot.urgent ? " · urgent"
                             : slot.exists ? " · occupied" : " · empty")
