@@ -19,4 +19,40 @@ Singleton {
     readonly property bool hasTrack: player !== null && player.trackTitle !== ""
 
     readonly property string glyph: StatusHelpers.playerGlyph(player)
+    readonly property string iconSource: resolvePlayerIcon(player)
+
+    function resolvedIcon(value) {
+        if (!value)
+            return "";
+        if (value.startsWith("/"))
+            return "file://" + value;
+        if (value.startsWith("file://") || value.startsWith("data:")
+                || value.startsWith("qrc:") || value.startsWith("image://"))
+            return value;
+        return Quickshell.iconPath(value, true);
+    }
+
+    function resolvePlayerIcon(target) {
+        if (!target)
+            return "";
+
+        // The YouTube shortcut is a Brave --app window, so it has no desktop
+        // entry of its own. Its MPRIS URL is classified in the pure helper.
+        if (StatusHelpers.playerBrand(target) === "youtube")
+            return Quickshell.shellDir + "/assets/youtube.svg";
+
+        const candidates = StatusHelpers.playerIconCandidates(target);
+        for (const candidate of candidates) {
+            const entry = DesktopEntries.heuristicLookup(candidate);
+            if (entry && entry.icon) {
+                const source = resolvedIcon(entry.icon);
+                if (source !== "")
+                    return source;
+            }
+            const source = resolvedIcon(candidate);
+            if (source !== "")
+                return source;
+        }
+        return "";
+    }
 }

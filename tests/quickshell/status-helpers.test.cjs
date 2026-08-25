@@ -100,6 +100,33 @@ test("a browser playing a YouTube tab keeps its browser mark", () => {
         H.PLAYER_GLYPH.firefox);
 });
 
+test("media brands recognize YouTube webapps from their MPRIS URL", () => {
+    assert.equal(H.playerBrand(player("Brave", "", {
+        dbusName: "org.mpris.MediaPlayer2.brave.instance42",
+        metadata: { "xesam:url": "https://www.youtube.com/watch?v=abc" },
+    })), "youtube");
+    assert.equal(H.playerBrand(player("Brave", "brave-browser", {
+        metadata: { "xesam:url": "https://music.youtube.com/watch?v=abc" },
+    })), "youtube");
+    assert.equal(H.playerBrand(player("YouTube Music", "chrome-youtube-music")),
+        "youtube");
+    assert.equal(H.playerBrand(player("Brave", "brave-browser", {
+        metadata: { "xesam:url": "https://example.com/youtube.com/watch" },
+    })), "");
+});
+
+test("player icon candidates bridge MPRIS names to installed desktop entries", () => {
+    assert.deepEqual(H.playerIconCandidates(player("Spotify", "spotify")),
+        ["spotify", "com.spotify.Client"]);
+    assert.deepEqual(H.playerIconCandidates(player("Brave", "")),
+        ["brave-browser", "Brave"]);
+    assert.deepEqual(H.playerIconCandidates(player("Firefox", "org.mozilla.firefox")),
+        ["org.mozilla.firefox", "Firefox"]);
+    assert.deepEqual(H.playerIconCandidates(player("Rhythmbox", "rhythmbox")),
+        ["rhythmbox"]);
+    assert.deepEqual(H.playerIconCandidates(null), []);
+});
+
 test("the active player is playing, else paused, else the first known", () => {
     const stopped = player("Rhythmbox");
     const paused = player("Firefox", "firefox", {

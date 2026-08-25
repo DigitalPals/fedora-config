@@ -3,7 +3,7 @@ import Quickshell.Services.Mpris
 import ".."
 import "../../Common"
 
-// Now-playing chip: the player's mark, the track, and a transport that
+// Now-playing chip: the player's app icon, the track, and a transport that
 // unfolds under the pointer.
 //
 // The controls are not a second chip beside the title — they grow out of the
@@ -94,14 +94,29 @@ BarModule {
             : "Media"
         tooltipAlign: -1
 
-        // The player's mark rests directly on the shared menubar slab.
+        // The player's app icon rests directly on the shared menubar slab.
+        // A symbol remains underneath while the image loads and for players
+        // that do not expose a usable desktop entry.
         Item {
             anchors.verticalCenter: parent.verticalCenter
             width: 24
             height: 24
 
+            Image {
+                id: playerIcon
+                anchors.centerIn: parent
+                width: 18
+                height: 18
+                source: Media.iconSource
+                sourceSize: Qt.size(36, 36)
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                visible: status === Image.Ready
+            }
+
             Sym {
                 anchors.centerIn: parent
+                visible: playerIcon.status !== Image.Ready
                 name: root.playing ? "graphic_eq" : "music_note"
                 size: Theme.iconSmall + 1
                 fill: 1

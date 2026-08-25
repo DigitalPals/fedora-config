@@ -94,13 +94,74 @@ var PLAYER_GLYPH = {
     generic: "music_note"
 };
 
+function textValue(value) {
+    return value === undefined || value === null ? "" : String(value);
+}
+
+function playerIdentity(player) {
+    if (!player)
+        return "";
+    return (textValue(player.identity) + " "
+        + textValue(player.desktopEntry) + " "
+        + textValue(player.dbusName)).toLowerCase();
+}
+
+// Browser MPRIS players identify as the browser even for an --app window.
+// xesam:url is the one reliable distinction for the YouTube webapp used here.
+function playerBrand(player) {
+    if (!player)
+        return "";
+    if (playerIdentity(player).includes("youtube"))
+        return "youtube";
+    var metadata = player.metadata || {};
+    var url = textValue(metadata["xesam:url"]).toLowerCase();
+    if (/(?:^|:\/\/)(?:[^./]+\.)?(?:youtube\.com|youtu\.be)(?:[\/:?#]|$)/.test(url))
+        return "youtube";
+    return "";
+}
+
+// Names to try against Quickshell's desktop-entry index. The MPRIS hint wins,
+// then known package ids bridge players whose hint is only a short name (the
+// Spotify Flatpak says `spotify`, for example), and the display identity is a
+// final heuristic for everything else.
+function playerIconCandidates(player) {
+    if (!player)
+        return [];
+
+    var candidates = [];
+    function add(value) {
+        value = textValue(value).trim();
+        if (value !== "" && !candidates.some(function (candidate) {
+            return candidate.toLowerCase() === value.toLowerCase();
+        }))
+            candidates.push(value);
+    }
+
+    add(player.desktopEntry);
+    var id = playerIdentity(player);
+    if (id.includes("spotify"))
+        add("com.spotify.Client");
+    if (id.includes("brave"))
+        add("brave-browser");
+    if (id.includes("firefox"))
+        add("org.mozilla.firefox");
+    if (id.includes("chromium"))
+        add("chromium");
+    if (id.includes("chrome"))
+        add("google-chrome");
+    if (id.includes("edge") || id.includes("msedge"))
+        add("microsoft-edge");
+    add(player.identity);
+    return candidates;
+}
+
 // Which mark a player gets in the bar chip and in the popover's source
 // switcher. Order matters: a browser playing a YouTube tab keeps its browser
 // mark, and only players naming YouTube themselves take the YouTube one.
 function playerGlyph(player) {
     if (!player)
         return PLAYER_GLYPH.generic;
-    var id = (player.identity + " " + player.desktopEntry).toLowerCase();
+    var id = playerIdentity(player);
     if (id.includes("spotify"))
         return PLAYER_GLYPH.spotify;
     if (id.includes("firefox") || id.includes("zen"))
@@ -142,6 +203,8 @@ var exported = {
     isPluggedIn: isPluggedIn,
     PLAYBACK_STATE: PLAYBACK_STATE,
     PLAYER_GLYPH: PLAYER_GLYPH,
+    playerBrand: playerBrand,
+    playerIconCandidates: playerIconCandidates,
     playerGlyph: playerGlyph,
     activePlayer: activePlayer
 };
