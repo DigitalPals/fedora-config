@@ -73,9 +73,10 @@ function qmlFiles() {
 }
 
 // Where an icon name can come from, and nowhere else: a `name:` inside a Sym
-// block, a `glyph:` on a BarIcon or a Control Center tile, and the two helpers
-// that pick one by hand. Deliberately narrow — a broad "any lowercase string"
-// sweep collects enum values and format strings and stops meaning anything.
+// block, a `glyph:` on a BarIcon or a Control Center tile, a `symbol:` on an
+// IconButton, and the two helpers that pick one by hand. Deliberately narrow —
+// a broad "any lowercase string" sweep collects enum values and format strings
+// and stops meaning anything.
 const LIGATURE = /"([a-z][a-z0-9_]*)"/g;
 
 function blockAt(source, index) {
@@ -126,9 +127,10 @@ function collectNames() {
         }
 
         source.split("\n").forEach((line, index) => {
-            if (/^\s*\/\//.test(line) || !/\bglyph:/.test(line))
+            const named = /^\s*\/\//.test(line) ? null : line.match(/\b(?:glyph|symbol):/);
+            if (!named)
                 return;
-            addNames(found, line.slice(line.indexOf("glyph:")),
+            addNames(found, line.slice(named.index),
                 `${relative}:${index + 1}`);
         });
     }

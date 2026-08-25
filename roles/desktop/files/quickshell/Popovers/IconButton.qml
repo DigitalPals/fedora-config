@@ -7,15 +7,22 @@ import "../Common"
 Rectangle {
     id: iconButton
     property string symbol: ""
+    // 0 outline, 1 solid. Sym animates the axis, so a toggle here lights the
+    // same glyph rather than cutting to a second one — see Common/Sym.qml.
+    property real symbolFill: 0
     property color tint: T3Theme.textMuted
     property int controlSize: T3Theme.iconButtonSize
     // A glyph is not a label. Every call site names itself, because a
     // focus ring on an unnamed arrow is worse than no focus ring.
     property string accessibleName: ""
+    // What the glyph stands for right now, when the name alone ("Run
+    // settings") does not say what is currently selected.
+    property string accessibleDescription: ""
     signal triggered()
 
     Accessible.role: Accessible.Button
     Accessible.name: iconButton.accessibleName
+    Accessible.description: iconButton.accessibleDescription
     Accessible.onPressAction: {
         iconState.pulseCenter();
         iconButton.triggered();
@@ -55,6 +62,7 @@ Rectangle {
     Sym {
         anchors.centerIn: parent
         name: iconButton.symbol
+        fill: iconButton.symbolFill
         size: Theme.iconMedium
         symWeight: 450
         color: iconButton.tint

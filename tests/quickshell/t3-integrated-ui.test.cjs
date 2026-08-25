@@ -116,9 +116,27 @@ test("the T3 composer exposes an attached settings drawer and round send action"
     assert.match(send[1], /width:\s*Theme\.inlineActionHeight/);
     assert.match(send[1], /height:\s*Theme\.inlineActionHeight/);
     assert.match(send[1], /radius:\s*width \/ 2/);
-    assert.match(composer, /name:\s*root\.sending \? "more_horiz" : "arrow_upward"/);
+    assert.match(composer,
+        /name:\s*root\.sending \? "more_horiz" : "arrow_upward"/,
+        "the one round action carries send and in-flight");
+    assert.match(composer,
+        /Rectangle\s*\{\s*visible:\s*root\.stopMode[\s\S]*?color:\s*T3Theme\.dangerForeground/,
+        "and stop, as a drawn square the icon font cannot render cleanly");
     assert.doesNotMatch(composer, /Enter to send · Ctrl\+Enter/,
         "keyboard help must not be permanent visual chrome");
+});
+
+// A parked "progress_activity" is a half ring, which reads as a broken glyph
+// rather than as work in flight. Every place the transcript shows it, it turns.
+test("the thread's activity arcs spin while their work runs", () => {
+    const thread = read("Popovers/T3ThreadPage.qml");
+
+    assert.match(thread,
+        /name:\s*"progress_activity"[\s\S]{0,400}?RotationAnimation on rotation\s*\{\s*running:\s*root\.working\b/,
+        "the working row's arc must turn for as long as the turn runs");
+    assert.match(thread,
+        /id:\s*backgroundGlyph[\s\S]*?RotationAnimation on rotation\s*\{\s*running:\s*backgroundBanner\.visible && !root\.monitoring/,
+        "the background banner turns its arc but not the watching eye");
 });
 
 test("thread transcript follows T3 message rhythm and attaches response UI", () => {
@@ -169,12 +187,15 @@ test("composer-attached questions keep numbered options keyboard actionable", ()
     assert.match(request, /event\.key >= Qt\.Key_1 && event\.key <= Qt\.Key_9/);
 });
 
-test("inbox uses full active cards, compact parked rows, search, and inline state", () => {
+test("inbox uses one flat row form, search, and inline state", () => {
     const inbox = read("Popovers/T3InboxPage.qml");
 
     assert.match(inbox, /id:\s*searchBox/);
-    assert.match(inbox, /entry\.compact \? T3Theme\.quietRowHeight : T3Theme\.activeRowHeight/);
-    assert.match(inbox, /entry\.compact \? "transparent" : T3Theme\.surface/);
+    assert.match(inbox, /height:\s*T3Theme\.quietRowHeight/);
+    // A parked thread is still quieter than working one — in type, not in
+    // chrome. Nothing but attention and error paints a fill.
+    assert.match(inbox, /entry\.subdued \? T3Theme\.textSecondary : T3Theme\.textPrimary/);
+    assert.match(inbox, /T3Theme\.amberSoft\) : "transparent"/);
     assert.match(inbox, /name:\s*entry\.statusSymbol/);
     assert.doesNotMatch(inbox, /id:\s*rail\b/);
     assert.doesNotMatch(inbox, /Animation\.Infinite/,

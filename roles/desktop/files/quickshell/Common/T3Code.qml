@@ -118,6 +118,12 @@ Singleton {
         T3Rpc.unpin(threadId);
     }
 
+    // Ends the running turn but leaves the session up, so the thread stays
+    // ready for the next prompt. stopSession() below is the heavier one.
+    function interrupt(threadId) {
+        T3Rpc.interrupt(threadId);
+    }
+
     function stopSession(threadId) {
         T3Rpc.stopSession(threadId);
     }
@@ -374,6 +380,38 @@ Singleton {
         return T3Drafts.providerConfiguration(instanceId);
     }
 
+    function providerIcon(instanceId) {
+        return T3Drafts.providerIcon(instanceId);
+    }
+
+    function modelConfiguration(instanceId, model) {
+        return T3Drafts.modelConfiguration(instanceId, model);
+    }
+
+    // ---- model picker ----------------------------------------------------
+
+    function providerRail() {
+        return T3Drafts.providerRail();
+    }
+
+    function threadPickerRows(threadId, railId, query, legacyExpanded) {
+        return T3Drafts.threadPickerRows(threadId, railId, query, legacyExpanded);
+    }
+
+    function newPickerRows(railId, query, legacyExpanded) {
+        return T3Drafts.newPickerRows(railId, query, legacyExpanded);
+    }
+
+    function isFavoriteModel(instanceId, model) {
+        return T3Favorites.isFavorite(instanceId, model);
+    }
+
+    function toggleFavoriteModel(instanceId, model) {
+        T3Favorites.toggle(instanceId, model);
+    }
+
+    readonly property var favoriteModels: T3Favorites.favorites
+
     function providerShowsInteraction(instanceId) {
         return T3Drafts.providerShowsInteraction(instanceId);
     }
@@ -412,6 +450,21 @@ Singleton {
 
     function setNewRuntime(runtimeMode) {
         return T3Drafts.setNewRuntime(runtimeMode);
+    }
+
+    // Provider and model travel as one choice — see T3Drafts.selectionId().
+    readonly property string selectionSeparator: T3Drafts.selectionSeparator
+
+    function setNewSelection(instanceId, model) {
+        return T3Drafts.setNewSelection(instanceId, model);
+    }
+
+    function setThreadSelection(threadId, instanceId, model) {
+        return T3Drafts.setThreadSelection(threadId, instanceId, model);
+    }
+
+    function selectionId(instanceId, model) {
+        return T3Drafts.selectionId(instanceId, model);
     }
 
     function setThreadInteraction(threadId, interactionMode) {

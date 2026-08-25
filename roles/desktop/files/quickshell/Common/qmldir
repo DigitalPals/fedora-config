@@ -22,6 +22,7 @@ singleton T3Connection T3Connection.qml
 singleton T3Rpc T3Rpc.qml
 singleton T3Detail T3Detail.qml
 singleton T3Drafts T3Drafts.qml
+singleton T3Favorites T3Favorites.qml
 singleton T3Git T3Git.qml
 singleton T3Threads T3Threads.qml
 singleton GitHub GitHub.qml

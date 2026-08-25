@@ -38,6 +38,14 @@ Column {
                 .some(value => String(value ?? "").toLowerCase().includes(query)));
     }
 
+    // The row's hover actions. Icons rather than word pills, matching the
+    // reference client: four words do not fit beside a title and a project on
+    // a one-line row, and the row is 42px, so the shared 32px control height
+    // would leave no margin.
+    component RowAction: IconButton {
+        controlSize: 28
+    }
+
     // The page's own T3 defaults over the shell's shared action primitive.
     component Action: ActionButton {
         fontFamily: T3Theme.fontSans
@@ -117,7 +125,10 @@ Column {
         readonly property bool pinned: thread.pinned === true
         readonly property bool quiet: settled || snoozed
             || thread.cls === "done" || thread.cls === "idle"
-        readonly property bool compact: quiet && !pinned
+        // Not a row height any more — every row is one line. What is left is
+        // the de-emphasised type a parked thread gets, the sense
+        // DrawerHeader.subdued already carries below.
+        readonly property bool subdued: quiet && !pinned
         readonly property bool flagged: thread.cls === "error" || thread.cls === "attention"
         readonly property bool revealed: rowHover.hovered || row.activeFocus
             || actionsScope.activeFocus
@@ -168,12 +179,15 @@ Column {
         Rectangle {
             id: row
             width: parent.width
-            height: entry.compact ? T3Theme.quietRowHeight : T3Theme.activeRowHeight
+            height: T3Theme.quietRowHeight
             radius: T3Theme.rowRadius
+            // Only a thread that wants something paints a fill. The neutral
+            // card the working rows used to carry split the list in two down
+            // the middle and crowded a 460px popover; amber and red stay,
+            // because those are a signal rather than chrome.
             color: entry.flagged ? (entry.thread.cls === "error"
-                    ? T3Theme.redSoft : T3Theme.amberSoft)
-                : entry.compact ? "transparent" : T3Theme.surface
-            border.width: activeFocus || entry.flagged || !entry.compact ? 1 : 0
+                    ? T3Theme.redSoft : T3Theme.amberSoft) : "transparent"
+            border.width: activeFocus || entry.flagged ? 1 : 0
             border.color: activeFocus ? T3Theme.focus
                 : entry.thread.cls === "error" ? T3Theme.redBorder
                 : entry.thread.cls === "attention" ? T3Theme.amberBorder : T3Theme.border
@@ -212,7 +226,7 @@ Column {
                 id: glyphSlot
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: entry.compact ? 14 : 18
+                width: 16
                 height: width
 
                 Image {
@@ -222,16 +236,16 @@ Column {
                     fillMode: Image.PreserveAspectFit
                     source: entry.glyph !== ""
                         ? Quickshell.shellDir + "/assets/" + entry.glyph + ".svg" : ""
-                    opacity: entry.compact ? 0.58 : 0.92
+                    opacity: entry.subdued ? 0.58 : 0.92
                 }
 
                 Sym {
                     visible: entry.glyph === ""
                     anchors.centerIn: parent
                     name: "terminal"
-                    size: entry.compact ? Theme.iconTiny : Theme.iconSmall
+                    size: entry.subdued ? Theme.iconTiny : Theme.iconSmall
                     symWeight: 450
-                    color: entry.compact ? T3Theme.textFaint : T3Theme.textMuted
+                    color: entry.subdued ? T3Theme.textFaint : T3Theme.textMuted
                 }
 
                 Rectangle {
@@ -243,7 +257,7 @@ Column {
                     width: 9
                     height: 9
                     radius: 5
-                    color: entry.compact ? T3Theme.canvas : row.color
+                    color: entry.flagged ? row.color : T3Theme.canvas
 
                     Rectangle {
                         anchors.centerIn: parent
@@ -255,80 +269,54 @@ Column {
                 }
             }
 
-            Column {
+            Item {
+                id: line
                 anchors.left: glyphSlot.right
                 anchors.leftMargin: 10
                 anchors.right: parent.right
                 anchors.rightMargin: 9
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
-
-                Item {
-                    width: parent.width
-                    height: Math.max(threadTitle.implicitHeight, statusText.implicitHeight,
-                        actionsScope.implicitHeight)
-
-                    Text {
-                        id: threadTitle
-                        anchors.left: parent.left
-                        anchors.right: side.left
-                        anchors.rightMargin: 8
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: entry.thread.title
-                        elide: Text.ElideRight
-                        font.family: T3Theme.fontSans
-                        font.pixelSize: Theme.fontBody
-                        font.weight: entry.compact ? Theme.weightMedium : Theme.weightSemibold
-                        color: entry.compact ? T3Theme.textSecondary : T3Theme.textPrimary
-                    }
-
-                    Item {
-                        id: side
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: entry.revealed ? actionsScope.implicitWidth
-                            : statusRow.implicitWidth
-                        height: parent.height
-
-                        Row {
-                            id: statusRow
-                            visible: !entry.revealed
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
-
-                            Sym {
-                                anchors.verticalCenter: parent.verticalCenter
-                                name: entry.statusSymbol
-                                size: Theme.iconTiny
-                                symWeight: 500
-                                color: entry.statusColor
-                            }
-
-                            Text {
-                                id: statusText
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: entry.statusWord
-                                font.family: T3Theme.fontSans
-                                font.pixelSize: Theme.fontCaption
-                                font.weight: Theme.weightMedium
-                                font.features: T3Theme.tabularNumberFeatures
-                                color: entry.statusColor
-                            }
-                        }
-                    }
-                }
+                height: parent.height
 
                 Text {
-                    visible: !entry.compact
-                    width: parent.width
+                    id: threadTitle
+                    anchors.left: parent.left
+                    anchors.right: meta.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: entry.thread.title
+                    elide: Text.ElideRight
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontBody
+                    font.weight: entry.subdued ? Theme.weightMedium : Theme.weightSemibold
+                    color: entry.subdued ? T3Theme.textSecondary : T3Theme.textPrimary
+                }
+
+                // The project, and why a thread is parked, used to be a
+                // second line only the full-height rows drew. On one line
+                // it trails the title and carries its own lead-in gap,
+                // capped so a long project elides instead of squeezing the
+                // title out of the row.
+                Text {
+                    id: meta
+                    anchors.right: side.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    leftPadding: text === "" ? 0 : 8
+                    width: text === "" ? 0
+                        : Math.min(implicitWidth, parent.width * 0.38)
                     text: {
                         const parts = [];
                         if (entry.thread.project !== "")
                             parts.push(entry.thread.project);
                         if (entry.thread.cls === "error")
                             parts.push("session error");
-                        else if (entry.settled)
+                        // Why a thread settled is worth a phrase only where
+                        // the row is not already subdued — on a quiet row the
+                        // archive mark and its time have said it, and the
+                        // phrase only eats the project's room. That was the old
+                        // second line's rule too: it drew for the full-height
+                        // rows and never for the parked ones.
+                        else if (entry.settled && !entry.subdued)
                             parts.push(entry.thread.settledOverride === "settled"
                                 ? "settled by you" : "settled by inactivity");
                         else if (entry.thread.cls === "attention"
@@ -340,7 +328,44 @@ Column {
                     elide: Text.ElideRight
                     font.family: T3Theme.fontSans
                     font.pixelSize: Theme.fontSecondary
-                    color: entry.thread.cls === "error" ? T3Theme.red : T3Theme.textFaint
+                    color: entry.thread.cls === "error" ? T3Theme.red
+                        : T3Theme.textFaint
+                }
+
+                Item {
+                    id: side
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: entry.revealed ? actionsScope.implicitWidth
+                        : statusRow.implicitWidth
+                    height: parent.height
+
+                    Row {
+                        id: statusRow
+                        visible: !entry.revealed
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+
+                        Sym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: entry.statusSymbol
+                            size: Theme.iconTiny
+                            symWeight: 500
+                            color: entry.statusColor
+                        }
+
+                        Text {
+                            id: statusText
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: entry.statusWord
+                            font.family: T3Theme.fontSans
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightMedium
+                            font.features: T3Theme.tabularNumberFeatures
+                            color: entry.statusColor
+                        }
+                    }
                 }
             }
 
@@ -355,71 +380,58 @@ Column {
 
                 Row {
                     id: actions
-                    spacing: 4
+                    spacing: 2
 
-                    Action {
-                        visible: T3Code.supportsPinning
-                        revealed: entry.revealed
-                        hPadding: 12
+                    RowAction {
                         readonly property string kind: entry.thread.pinned
                             ? "unpin" : "pin"
-                        label: T3Code.actionPending(kind, entry.thread.id, "")
-                            ? "…" : (entry.thread.pinned ? "Unpin" : "Pin")
-                        enabled: T3Code.canDispatch
-                            && !T3Code.actionPending(kind, entry.thread.id, "")
+                        readonly property bool pending:
+                            T3Code.actionPending(kind, entry.thread.id, "")
+
+                        visible: T3Code.supportsPinning
+                        symbol: pending ? "more_horiz" : "keep"
+                        symbolFill: entry.thread.pinned ? 1 : 0
+                        accessibleName: entry.thread.pinned ? "Unpin" : "Pin"
+                        enabled: T3Code.canDispatch && !pending
                         onTriggered: entry.thread.pinned
                             ? T3Code.unpin(entry.thread.id) : T3Code.pin(entry.thread.id)
                     }
 
-                    Action {
+                    RowAction {
+                        readonly property bool pending:
+                            T3Code.actionPending("settle", entry.thread.id, "")
+
                         visible: entry.active && T3Code.supportsSettlement
-                        revealed: entry.revealed
-                        hPadding: 12
-                        label: T3Code.actionPending("settle", entry.thread.id, "")
-                            ? "…" : "Settle"
-                        enabled: T3Code.canDispatch && entry.thread.canLifecycle
-                            && !T3Code.actionPending("settle", entry.thread.id, "")
+                        symbol: pending ? "more_horiz" : "check"
+                        accessibleName: "Settle"
                         tint: T3Theme.accent
-                        fill: T3Theme.accentSoft
+                        enabled: T3Code.canDispatch && entry.thread.canLifecycle
+                            && !pending
                         onTriggered: T3Code.settle(entry.thread.id)
                     }
 
-                    Action {
+                    RowAction {
+                        readonly property bool pending:
+                            T3Code.actionPending("unsettle", entry.thread.id, "")
+
                         visible: entry.settled && T3Code.supportsSettlement
-                        revealed: entry.revealed
-                        hPadding: 12
-                        label: T3Code.actionPending("unsettle", entry.thread.id, "")
-                            ? "…" : "Unsettle"
-                        enabled: T3Code.canDispatch
-                            && !T3Code.actionPending("unsettle", entry.thread.id, "")
+                        symbol: pending ? "more_horiz" : "close"
+                        accessibleName: "Unsettle"
                         tint: T3Theme.accent
-                        fill: T3Theme.accentSoft
+                        enabled: T3Code.canDispatch && !pending
                         onTriggered: T3Code.unsettle(entry.thread.id)
                     }
 
-                    Action {
-                        visible: entry.snoozed && T3Code.supportsSnooze
-                        revealed: entry.revealed
-                        hPadding: 12
-                        label: T3Code.actionPending("unsnooze", entry.thread.id, "")
-                            ? "…" : "Wake"
-                        enabled: T3Code.canDispatch
-                            && !T3Code.actionPending("unsnooze", entry.thread.id, "")
-                        tint: T3Theme.accent
-                        fill: T3Theme.accentSoft
-                        onTriggered: T3Code.unsnooze(entry.thread.id)
-                    }
+                    RowAction {
+                        readonly property bool pending:
+                            T3Code.actionPending("unsnooze", entry.thread.id, "")
 
-                    Action {
-                        revealed: entry.revealed
-                        hPadding: 12
-                        label: "Open"
+                        visible: entry.snoozed && T3Code.supportsSnooze
+                        symbol: pending ? "more_horiz" : "alarm"
+                        accessibleName: "Wake"
                         tint: T3Theme.accent
-                        onTriggered: {
-                            Quickshell.execDetached(["xdg-open",
-                                T3Code.threadUrl(entry.thread.id)]);
-                            Popouts.close();
-                        }
+                        enabled: T3Code.canDispatch && !pending
+                        onTriggered: T3Code.unsnooze(entry.thread.id)
                     }
                 }
             }

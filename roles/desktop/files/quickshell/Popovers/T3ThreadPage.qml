@@ -735,120 +735,6 @@ Column {
         onTriggered: root.gitSuccessVisible = false
     }
 
-    Rectangle {
-        id: taskProgressCard
-        visible: root.showTaskProgress
-        width: parent.width
-        height: visible ? 50 : 0
-        radius: T3Theme.panelRadius
-        color: T3Theme.surfaceRaised
-        border.width: 1
-        border.color: T3Theme.border
-        Accessible.name: root.taskProgress
-            ? "Tasks, " + root.taskProgress.activeStep + ", "
-                + root.taskProgress.completedCount + " of " + root.taskProgress.total
-                + " completed" : ""
-
-        Sym {
-            id: taskProgressGlyph
-            anchors.left: parent.left
-            anchors.leftMargin: 10
-            anchors.top: parent.top
-            anchors.topMargin: 8
-            name: "checklist"
-            size: Theme.iconSmall
-            symWeight: 500
-            color: T3Theme.textMuted
-        }
-
-        Text {
-            id: taskProgressLabel
-            anchors.left: taskProgressGlyph.right
-            anchors.leftMargin: 6
-            anchors.verticalCenter: taskProgressGlyph.verticalCenter
-            text: "Tasks"
-            font.family: T3Theme.fontSans
-            font.pixelSize: Theme.fontCaption
-            font.weight: Theme.weightSemibold
-            color: T3Theme.textMuted
-        }
-
-        Text {
-            id: taskProgressTitle
-            anchors.left: taskProgressLabel.right
-            anchors.leftMargin: 9
-            anchors.right: taskProgressCount.left
-            anchors.rightMargin: 9
-            anchors.verticalCenter: taskProgressGlyph.verticalCenter
-            text: root.taskProgress ? root.taskProgress.activeStep : ""
-            elide: Text.ElideRight
-            font.family: T3Theme.fontSans
-            font.pixelSize: Theme.fontBody
-            font.weight: Theme.weightMedium
-            color: T3Theme.textPrimary
-        }
-
-        Text {
-            id: taskProgressCount
-            anchors.right: dismissTaskProgress.left
-            anchors.rightMargin: 7
-            anchors.verticalCenter: taskProgressGlyph.verticalCenter
-            text: root.taskProgress ? root.taskProgress.completedCount + "/"
-                + root.taskProgress.total : ""
-            font.family: T3Theme.fontSans
-            font.pixelSize: Theme.fontCaption
-            font.weight: Theme.weightMedium
-            font.features: T3Theme.tabularNumberFeatures
-            color: T3Theme.textFaint
-        }
-
-        IconButton {
-            id: dismissTaskProgress
-            anchors.right: parent.right
-            anchors.rightMargin: 4
-            anchors.top: parent.top
-            anchors.topMargin: 4
-            controlSize: 24
-            symbol: "close"
-            accessibleName: "Dismiss task progress"
-            tint: T3Theme.textFaint
-            onTriggered: {
-                if (root.taskProgress)
-                    root.dismissedTaskProgressKey = root.taskProgress.key;
-            }
-        }
-
-        Row {
-            id: taskProgressSegments
-            anchors.left: parent.left
-            anchors.leftMargin: 10
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 8
-            height: 4
-            spacing: 3
-
-            Repeater {
-                id: taskProgressRepeater
-                model: root.taskProgress ? root.taskProgress.items : []
-
-                delegate: Rectangle {
-                    required property var modelData
-                    width: Math.max(3, (taskProgressSegments.width
-                        - Math.max(0, taskProgressRepeater.count - 1)
-                            * taskProgressSegments.spacing)
-                        / Math.max(1, taskProgressRepeater.count))
-                    height: taskProgressSegments.height
-                    radius: height / 2
-                    color: modelData.status === "completed" ? T3Theme.success
-                        : modelData.status === "inProgress" ? T3Theme.accent
-                        : T3Theme.borderStrong
-                }
-            }
-        }
-    }
-
     Item {
         id: gitFeedback
         visible: root.gitFeedbackText !== ""
@@ -966,6 +852,16 @@ Column {
                             size: Theme.iconSmall
                             symWeight: 500
                             color: T3Theme.accent
+
+                            // The arc only reads as activity while it turns;
+                            // parked, it is an ambiguous half-ring.
+                            RotationAnimation on rotation {
+                                running: root.working
+                                from: 0
+                                to: 360
+                                duration: 1100
+                                loops: Animation.Infinite
+                            }
                         }
 
                         Text {
@@ -1207,6 +1103,7 @@ Column {
         border.color: T3Theme.border
 
         Sym {
+            id: backgroundGlyph
             anchors.left: parent.left
             anchors.leftMargin: 10
             anchors.verticalCenter: parent.verticalCenter
@@ -1214,6 +1111,19 @@ Column {
             size: Theme.iconSmall
             symWeight: 500
             color: T3Theme.accent
+
+            // Only the activity arc turns; the watching eye is a state, not
+            // a process, and spinning it would say the wrong thing.
+            RotationAnimation on rotation {
+                running: backgroundBanner.visible && !root.monitoring
+                from: 0
+                to: 360
+                duration: 1100
+                loops: Animation.Infinite
+                // Stopping a value source leaves the property where it
+                // landed, which would tilt the eye it hands over to.
+                onRunningChanged: if (!running) backgroundGlyph.rotation = 0
+            }
         }
 
         Action {
@@ -1420,14 +1330,158 @@ Column {
         }
     }
 
-    T3Composer {
-        id: composer
+    // The plan docks to the composer rather than floating above the
+    // transcript: a strip narrower than the glass shell below it, sliding in
+    // behind its top edge so the two read as one object. They share this
+    // wrapper because the page Column's spacing would otherwise open a gap
+    // between them, and clipping is what squares off the strip's bottom
+    // corners — it really is taller than its box, and the part you cannot see
+    // is the part the composer covers.
+    Item {
+        id: composerDock
         width: parent.width
-        threadId: root.threadId
-        newThread: false
-        editable: root.composerIdle && T3Code.canDispatch
-        sendEnabled: root.canCompose && T3Code.canDispatch
-        onSendRequested: T3Code.submitExisting(root.threadId, undefined, undefined, null, true)
+        implicitHeight: taskProgressCard.height + composer.implicitHeight
+
+        Item {
+            id: taskProgressCard
+            visible: root.showTaskProgress
+            width: parent.width
+            height: visible ? 32 : 0
+            clip: true
+            Accessible.name: root.taskProgress
+                ? "Tasks, " + root.taskProgress.activeStep + ", "
+                    + root.taskProgress.completedCount + " of " + root.taskProgress.total
+                    + " completed" : ""
+
+            Rectangle {
+                id: taskProgressStrip
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                width: Math.max(0, parent.width - 36)
+                height: parent.height + T3Theme.panelRadius
+                radius: T3Theme.panelRadius
+                color: T3Theme.surfaceRaised
+                border.width: 1
+                border.color: T3Theme.border
+
+                Sym {
+                    id: taskProgressGlyph
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.top: parent.top
+                    anchors.topMargin: (taskProgressCard.height - height) / 2
+                    name: "checklist"
+                    size: Theme.iconSmall
+                    symWeight: 500
+                    color: T3Theme.textMuted
+                }
+
+                Text {
+                    id: taskProgressLabel
+                    anchors.left: taskProgressGlyph.right
+                    anchors.leftMargin: 6
+                    anchors.verticalCenter: taskProgressGlyph.verticalCenter
+                    text: "Tasks"
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
+                    color: T3Theme.textMuted
+                }
+
+                Text {
+                    id: taskProgressTitle
+                    anchors.left: taskProgressLabel.right
+                    anchors.leftMargin: 9
+                    anchors.right: taskProgressCount.left
+                    anchors.rightMargin: 9
+                    anchors.verticalCenter: taskProgressGlyph.verticalCenter
+                    text: root.taskProgress ? root.taskProgress.activeStep : ""
+                    elide: Text.ElideRight
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightMedium
+                    color: T3Theme.textPrimary
+                }
+
+                Text {
+                    id: taskProgressCount
+                    anchors.right: taskProgressSegments.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: taskProgressGlyph.verticalCenter
+                    text: root.taskProgress ? root.taskProgress.completedCount + "/"
+                        + root.taskProgress.total : ""
+                    font.family: T3Theme.fontSans
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightMedium
+                    font.features: T3Theme.tabularNumberFeatures
+                    color: T3Theme.textFaint
+                }
+
+                // One tick per step, in order, on the same line as the count it
+                // spells out. A bar spanning the whole strip would claim the plan
+                // is the subject here; it is the composer's footnote.
+                Row {
+                    id: taskProgressSegments
+                    anchors.right: dismissTaskProgress.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: taskProgressGlyph.verticalCenter
+                    height: 4
+                    spacing: 3
+
+                    Repeater {
+                        id: taskProgressRepeater
+                        model: root.taskProgress ? root.taskProgress.items : []
+
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: Math.max(4, Math.min(20, (72
+                                - Math.max(0, taskProgressRepeater.count - 1)
+                                    * taskProgressSegments.spacing)
+                                / Math.max(1, taskProgressRepeater.count)))
+                            height: taskProgressSegments.height
+                            radius: height / 2
+                            color: modelData.status === "completed" ? T3Theme.success
+                                : modelData.status === "inProgress" ? T3Theme.accent
+                                : T3Theme.borderStrong
+                        }
+                    }
+                }
+
+                IconButton {
+                    id: dismissTaskProgress
+                    anchors.right: parent.right
+                    anchors.rightMargin: 4
+                    anchors.top: parent.top
+                    anchors.topMargin: (taskProgressCard.height - height) / 2
+                    controlSize: 24
+                    symbol: "close"
+                    accessibleName: "Dismiss task progress"
+                    tint: T3Theme.textFaint
+                    onTriggered: {
+                        if (root.taskProgress)
+                            root.dismissedTaskProgressKey = root.taskProgress.key;
+                    }
+                }
+            }
+        }
+
+        T3Composer {
+            id: composer
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: taskProgressCard.bottom
+            threadId: root.threadId
+            newThread: false
+            editable: root.composerIdle && T3Code.canDispatch
+            sendEnabled: root.canCompose && T3Code.canDispatch
+            // Background work already carries its own Stop in the banner
+            // above, so only the foreground turn borrows the composer's
+            // action slot.
+            stoppable: root.working
+            onSendRequested: T3Code.submitExisting(root.threadId, undefined, undefined,
+                null, true)
+            onStopRequested: T3Code.interrupt(root.threadId)
+        }
     }
 
     Text {

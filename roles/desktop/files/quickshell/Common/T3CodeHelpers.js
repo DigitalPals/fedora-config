@@ -590,6 +590,7 @@ function sanitizeModel(raw) {
         name: typeof raw.name === "string" && raw.name.trim() !== ""
             ? raw.name.trim() : raw.slug.trim(),
         shortName: typeof raw.shortName === "string" ? raw.shortName.trim() : "",
+        subProvider: typeof raw.subProvider === "string" ? raw.subProvider.trim() : "",
         isCustom: raw.isCustom === true,
         isDefault: raw.isDefault === true,
         isLegacy: raw.isLegacy === true,
@@ -1064,6 +1065,248 @@ function modelChangeAllowed(thread, nextSelection, providers, detailMessageCount
     var next = findProvider(providers, nextSelection.instanceId);
     return !(current && current.requiresNewThreadForModelChange
         || next && next.requiresNewThreadForModelChange);
+}
+
+// ---- model picker ------------------------------------------------------
+//
+// The reference client's picker is a provider rail beside one list: pick a
+// provider on the left, see its models on the right, with the retired ones
+// folded into a "Legacy models" section you open when you want them. Typing
+// abandons the rail entirely and ranks every ready provider's models at once,
+// because a search you have to scope first is not a search.
+//
+// All of it is arithmetic over the config snapshot, so it lives here where it
+// can be tested without a running shell.
+
+var FAVORITES_RAIL_ID = "favorites";
+
+function modelFavoriteKey(instanceId, slug) {
+    return String(instanceId || "") + ":" + String(slug || "");
+}
+
+function favoriteKeySet(favorites) {
+    var keys = {};
+    var list = Array.isArray(favorites) ? favorites : [];
+    for (var i = 0; i < list.length; i++) {
+        var entry = list[i];
+        if (entry && typeof entry.instanceId === "string" && typeof entry.model === "string")
+            keys[modelFavoriteKey(entry.instanceId, entry.model)] = true;
+    }
+    return keys;
+}
+
+// Rail entries are every *configured* instance, not only the working ones:
+// a provider that needs a login should be visible and say so, not vanish.
+function providerRailEntries(providers) {
+    var list = Array.isArray(providers) ? providers : [];
+    var entries = [];
+    for (var i = 0; i < list.length; i++) {
+        var provider = list[i];
+        if (!provider || provider.enabled !== true)
+            continue;
+        entries.push({
+            instanceId: provider.instanceId,
+            driver: provider.driver,
+            displayName: provider.displayName,
+            icon: providerIconName(provider.driver),
+            ready: provider.ready === true,
+            message: typeof provider.message === "string" ? provider.message : "",
+            tooltip: providerRailTooltip(provider)
+        });
+    }
+    return entries;
+}
+
+function providerRailTooltip(provider) {
+    var label = provider.displayName;
+    if (provider.ready === true)
+        return label;
+    var kind = provider.status === "error" ? "Unavailable"
+        : provider.available === false ? "Not installed"
+        : provider.status === "warning" ? "Limited" : "Not ready";
+    var message = typeof provider.message === "string" ? provider.message.trim() : "";
+    return message !== "" ? label + " — " + kind + ". " + message : label + " — " + kind + ".";
+}
+
+// Dots survive normalization because model names are versions: splitting
+// "5.4" into "5" and "4" makes it match "Opus 4.5" as well as "GPT-5.4",
+// which is the one comparison this search exists to get right.
+function normalizeSearchText(value) {
+    return String(value === undefined || value === null ? "" : value)
+        .toLowerCase().replace(/[^a-z0-9.]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// The shell's established tiering — exact, prefix, word-prefix, substring —
+// applied per token so "codex sol" and "sol codex" both land. A token that
+// matches nothing disqualifies the row, which is what makes multi-word
+// queries narrow instead of widen.
+function modelSearchScore(model, query) {
+    var tokens = normalizeSearchText(query).split(" ").filter(function(token) {
+        return token !== "";
+    });
+    if (tokens.length === 0)
+        return 0;
+    var fields = [
+        normalizeSearchText(model.label),
+        normalizeSearchText(model.slug),
+        normalizeSearchText(model.subProvider),
+        normalizeSearchText(model.providerLabel),
+        normalizeSearchText(model.driver)
+    ].filter(function(field) { return field !== ""; });
+    var total = 0;
+    for (var i = 0; i < tokens.length; i++) {
+        var best = -1;
+        for (var f = 0; f < fields.length; f++) {
+            var score = fieldTokenScore(fields[f], tokens[i], f);
+            if (score > best)
+                best = score;
+        }
+        if (best < 0)
+            return -1;
+        total += best;
+    }
+    return total;
+}
+
+function fieldTokenScore(field, token, fieldIndex) {
+    // Later fields are weaker evidence: a hit on the model's own name should
+    // outrank the same hit on its provider's.
+    var penalty = fieldIndex * 200;
+    if (field === token)
+        return 10000 - penalty;
+    if (field.indexOf(token) === 0)
+        return 8000 - penalty;
+    var parts = field.split(" ");
+    for (var i = 0; i < parts.length; i++) {
+        if (parts[i].indexOf(token) === 0)
+            return 6000 - penalty;
+    }
+    if (field.indexOf(token) !== -1)
+        return 4000 - penalty;
+    return -1;
+}
+
+function pickerModelRow(provider, model, favorites) {
+    return {
+        kind: "model",
+        id: modelFavoriteKey(provider.instanceId, model.slug),
+        instanceId: provider.instanceId,
+        slug: model.slug,
+        driver: provider.driver,
+        label: model.shortName !== "" ? model.shortName : model.name,
+        providerLabel: model.subProvider !== ""
+            ? provider.displayName + " · " + model.subProvider : provider.displayName,
+        subProvider: model.subProvider,
+        icon: providerIconName(provider.driver),
+        isLegacy: model.isLegacy === true,
+        favorite: favorites[modelFavoriteKey(provider.instanceId, model.slug)] === true
+    };
+}
+
+// Every model the picker could offer, already flattened and enriched. The
+// `allow` predicate is where a thread's model-change guard enters: a model it
+// rejects still appears, but carries the reason it cannot be chosen, because
+// a silently missing option looks like a bug in the server.
+function pickerModelRows(providers, favorites, allow) {
+    var list = Array.isArray(providers) ? providers : [];
+    var keys = favoriteKeySet(favorites);
+    var rows = [];
+    for (var i = 0; i < list.length; i++) {
+        var provider = list[i];
+        if (!provider || provider.ready !== true)
+            continue;
+        for (var m = 0; m < provider.models.length; m++) {
+            var row = pickerModelRow(provider, provider.models[m], keys);
+            row.disabledReason = typeof allow === "function"
+                ? String(allow(provider.instanceId, provider.models[m].slug) || "") : "";
+            rows.push(row);
+        }
+    }
+    return rows;
+}
+
+function compareByFavoriteThenOrder(a, b) {
+    if (a.favorite !== b.favorite)
+        return a.favorite ? -1 : 1;
+    return a.order - b.order;
+}
+
+/**
+ * The rows the panel draws, in order.
+ *
+ * `railId` is a provider instanceId or "favorites". A non-empty `query`
+ * overrides it: search is global by design, so the caller hides the rail
+ * while one is typed. Legacy models are split into their own collapsed
+ * section per provider, never while searching — a query the user typed is a
+ * more specific request than the section's default.
+ */
+function modelPickerRows(options) {
+    var settings = options || {};
+    var rows = pickerModelRows(settings.providers, settings.favorites, settings.allow);
+    var query = typeof settings.query === "string" ? settings.query.trim() : "";
+    var i;
+    for (i = 0; i < rows.length; i++)
+        rows[i].order = i;
+
+    if (query !== "") {
+        var ranked = [];
+        for (i = 0; i < rows.length; i++) {
+            var score = modelSearchScore(rows[i], query);
+            if (score >= 0) {
+                rows[i].score = score;
+                ranked.push(rows[i]);
+            }
+        }
+        ranked.sort(function(a, b) {
+            if (a.score !== b.score)
+                return b.score - a.score;
+            return compareByFavoriteThenOrder(a, b);
+        });
+        return ranked;
+    }
+
+    var railId = typeof settings.railId === "string" ? settings.railId : "";
+    var scoped = [];
+    for (i = 0; i < rows.length; i++) {
+        if (railId === FAVORITES_RAIL_ID ? rows[i].favorite : rows[i].instanceId === railId)
+            scoped.push(rows[i]);
+    }
+    // The favorites view is a cross-provider shortlist with nothing retired
+    // hidden inside it, so it keeps its own flat order.
+    if (railId === FAVORITES_RAIL_ID)
+        return scoped;
+
+    var current = [];
+    var legacy = [];
+    for (i = 0; i < scoped.length; i++)
+        (scoped[i].isLegacy ? legacy : current).push(scoped[i]);
+    current.sort(compareByFavoriteThenOrder);
+    if (legacy.length === 0)
+        return current;
+
+    var expanded = settings.legacyExpanded === true;
+    var section = {
+        kind: "legacy",
+        id: "legacy:" + railId,
+        instanceId: railId,
+        count: legacy.length,
+        expanded: expanded
+    };
+    return expanded ? current.concat([section], legacy) : current.concat([section]);
+}
+
+// A row's keyboard shortcut is its position among the rows that can actually
+// be chosen, so a disabled model does not consume a digit.
+function assignPickerShortcuts(rows) {
+    var next = 1;
+    var list = Array.isArray(rows) ? rows : [];
+    for (var i = 0; i < list.length; i++) {
+        var usable = list[i].kind === "model" && !list[i].disabledReason;
+        list[i].shortcut = usable && next <= 9 ? String(next) : "";
+        if (usable && next <= 9)
+            next += 1;
+    }
+    return list;
 }
 
 function sameSelection(left, right) {
@@ -1583,6 +1826,11 @@ var exported = {
     selectionForThread: selectionForThread,
     selectableProvidersForThread: selectableProvidersForThread,
     modelChangeAllowed: modelChangeAllowed,
+    modelFavoriteKey: modelFavoriteKey,
+    providerRailEntries: providerRailEntries,
+    modelSearchScore: modelSearchScore,
+    modelPickerRows: modelPickerRows,
+    assignPickerShortcuts: assignPickerShortcuts,
     sameSelection: sameSelection,
     normalizedTitle: normalizedTitle,
     styleMarkdownLinks: styleMarkdownLinks,

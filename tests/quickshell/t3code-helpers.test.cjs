@@ -885,3 +885,108 @@ test("ticket request failures name the hop that broke", () => {
     assert.equal(H.ticketErrorText(401), "Pairing token rejected");
     assert.equal(H.ticketErrorText(404), "Ticket request failed (HTTP 404)");
 });
+
+// The reference client's picker is a provider rail beside one list, with
+// retired models folded away and search that ignores the rail. All four of
+// those are decisions about ordering, so they are decided here.
+const PICKER_PROVIDERS = [
+    {
+        instanceId: "codex", driver: "codex", displayName: "Codex",
+        enabled: true, ready: true, status: "ready", available: true,
+        models: [
+            { slug: "gpt-5.6-sol", name: "GPT-5.6-Sol", shortName: "GPT-5.6-Sol",
+              subProvider: "", isLegacy: false },
+            { slug: "gpt-5.6-terra", name: "GPT-5.6-Terra", shortName: "",
+              subProvider: "", isLegacy: false },
+            { slug: "gpt-5.2", name: "GPT-5.2", shortName: "", subProvider: "", isLegacy: true },
+            { slug: "gpt-5.1", name: "GPT-5.1", shortName: "", subProvider: "", isLegacy: true }
+        ]
+    },
+    {
+        instanceId: "claude", driver: "claudeAgent", displayName: "Claude",
+        enabled: true, ready: true, status: "ready", available: true,
+        models: [{ slug: "opus-4-7", name: "Claude Opus 4.7", shortName: "Opus 4.7",
+            subProvider: "", isLegacy: false }]
+    },
+    {
+        instanceId: "kimi", driver: "kimi", displayName: "Kimi",
+        enabled: true, ready: false, status: "error", available: true,
+        message: "Sign in required", models: []
+    },
+    {
+        instanceId: "hidden", driver: "codex", displayName: "Disabled",
+        enabled: false, ready: false, status: "disabled", available: true, models: []
+    }
+];
+
+test("the provider rail shows every configured instance and says why one is off", () => {
+    const rail = H.providerRailEntries(PICKER_PROVIDERS);
+
+    assert.deepEqual(rail.map(entry => entry.instanceId), ["codex", "claude", "kimi"],
+        "a disabled instance is not configured for use; an unready one still is");
+    assert.deepEqual(rail.map(entry => entry.icon), ["openai", "claude", "kimi"]);
+    assert.equal(rail[0].tooltip, "Codex");
+    assert.equal(rail[2].tooltip, "Kimi — Unavailable. Sign in required",
+        "a provider that needs a login should say so rather than vanish");
+});
+
+test("legacy models fold into their own section instead of padding the list", () => {
+    const collapsed = H.modelPickerRows({ providers: PICKER_PROVIDERS, railId: "codex" });
+    assert.deepEqual(collapsed.map(row => row.slug ?? row.kind),
+        ["gpt-5.6-sol", "gpt-5.6-terra", "legacy"]);
+    assert.equal(collapsed[2].count, 2);
+
+    const expanded = H.modelPickerRows({
+        providers: PICKER_PROVIDERS, railId: "codex", legacyExpanded: true });
+    assert.deepEqual(expanded.map(row => row.slug ?? row.kind),
+        ["gpt-5.6-sol", "gpt-5.6-terra", "legacy", "gpt-5.2", "gpt-5.1"],
+        "opening the section reveals the retired models under their own header");
+});
+
+test("a search abandons the rail and ranks every ready provider at once", () => {
+    const rows = H.modelPickerRows({ providers: PICKER_PROVIDERS, railId: "codex", query: "opus" });
+    assert.deepEqual(rows.map(row => row.id), ["claude:opus-4-7"],
+        "scoping a search to the selected rail would hide the answer");
+
+    assert.deepEqual(
+        H.modelPickerRows({ providers: PICKER_PROVIDERS, query: "codex 5.2" })
+            .map(row => row.id),
+        ["codex:gpt-5.2"],
+        "every token must match something, which is what narrows a two-word query");
+    assert.equal(H.modelPickerRows({ providers: PICKER_PROVIDERS, query: "zzz" }).length, 0);
+    // Model names are versions. Tokenizing "5.2" into "5" and "2" would let
+    // it match "Opus 4.7" as readily as the model actually asked for.
+    assert.deepEqual(
+        H.modelPickerRows({ providers: PICKER_PROVIDERS, query: "5.2" }).map(row => row.id),
+        ["codex:gpt-5.2"]);
+    assert.ok(H.modelPickerRows({ providers: PICKER_PROVIDERS, query: "sol" })
+        .every(row => row.kind === "model"),
+        "a legacy header inside search results would be a section that filters itself");
+});
+
+test("favourites are their own rail entry and float to the top of a provider's list", () => {
+    const favorites = [{ instanceId: "codex", model: "gpt-5.6-terra" },
+        { instanceId: "claude", model: "opus-4-7" }];
+
+    assert.deepEqual(
+        H.modelPickerRows({ providers: PICKER_PROVIDERS, favorites, railId: "favorites" })
+            .map(row => row.id),
+        ["codex:gpt-5.6-terra", "claude:opus-4-7"]);
+    assert.deepEqual(
+        H.modelPickerRows({ providers: PICKER_PROVIDERS, favorites, railId: "codex" })
+            .map(row => row.slug ?? row.kind),
+        ["gpt-5.6-terra", "gpt-5.6-sol", "legacy"]);
+});
+
+test("a model the thread cannot switch to keeps its place and states the reason", () => {
+    const rows = H.assignPickerShortcuts(H.modelPickerRows({
+        providers: PICKER_PROVIDERS,
+        railId: "codex",
+        allow: (instanceId, slug) => slug === "gpt-5.6-sol" ? "Start a new thread" : ""
+    }));
+
+    assert.equal(rows[0].disabledReason, "Start a new thread",
+        "an option that silently disappears reads as a server bug, not as a rule");
+    assert.deepEqual(rows.map(row => row.shortcut), ["", "1", ""],
+        "a disabled model must not consume a shortcut, and a header never has one");
+});

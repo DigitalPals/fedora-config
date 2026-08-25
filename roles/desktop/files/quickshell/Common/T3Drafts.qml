@@ -281,6 +281,88 @@ Singleton {
             T3Detail.detailThreadId === threadId ? T3Detail.detailMessages.length : 0));
     }
 
+    // The composer picks a provider and a model with one gesture, so the two
+    // travel as a single choice. Keeping the pair joined also sidesteps a real
+    // trap: stepping through a provider's *default* model can trip a
+    // per-thread guard that the model the user actually asked for would pass.
+    readonly property string selectionSeparator: "::"
+
+    function selectionId(instanceId, model) {
+        return String(instanceId ?? "") + selectionSeparator + String(model ?? "");
+    }
+
+    function setThreadSelection(threadId, instanceId, model) {
+        const thread = T3Threads.threadMap[threadId];
+        const detailCount = T3Detail.detailThreadId === threadId
+            ? T3Detail.detailMessages.length : 0;
+        const provider = Helpers.findProvider(
+            Helpers.selectableProvidersForThread(thread, providerConfigurations, detailCount),
+            instanceId);
+        if (!provider || !Helpers.findModel(provider, model))
+            return;
+        if (!Helpers.modelChangeAllowed(thread, { instanceId: instanceId, model: model },
+                providerConfigurations, detailCount)) {
+            updateThreadDraft(threadId, {
+                traitError: "This provider requires a new thread to change models"
+            });
+            return;
+        }
+        updateThreadDraft(threadId, {
+            instanceId: provider.instanceId,
+            model: model,
+            options: normalizedOptions(provider.instanceId, model, null),
+            traitError: ""
+        });
+    }
+
+    function setNewSelection(instanceId, model) {
+        const provider = Helpers.findProvider(providerConfigurations, instanceId);
+        if (!provider || provider.ready !== true || !Helpers.findModel(provider, model))
+            return;
+        updateNewThreadDraft({ instanceId: provider.instanceId, model: model,
+            options: normalizedOptions(provider.instanceId, model, null), traitError: "" });
+    }
+
+    // ---- model picker ----------------------------------------------------
+
+    function providerRail() {
+        return Helpers.providerRailEntries(providerConfigurations);
+    }
+
+    // A model the thread's guard rejects is listed with its reason rather
+    // than dropped: an option that silently disappears reads as a bug in the
+    // server, not as a rule.
+    function threadModelChangeReason(threadId, instanceId, model) {
+        const thread = T3Threads.threadMap[threadId];
+        const detailCount = T3Detail.detailThreadId === threadId
+            ? T3Detail.detailMessages.length : 0;
+        return Helpers.modelChangeAllowed(thread, { instanceId: instanceId, model: model },
+            providerConfigurations, detailCount)
+            ? "" : "Start a new thread to use this model";
+    }
+
+    function threadPickerRows(threadId, railId, query, legacyExpanded) {
+        return Helpers.assignPickerShortcuts(Helpers.modelPickerRows({
+            providers: providerConfigurations,
+            favorites: T3Favorites.favorites,
+            railId: railId,
+            query: query,
+            legacyExpanded: legacyExpanded,
+            allow: (instanceId, model) =>
+                threadModelChangeReason(threadId, instanceId, model)
+        }));
+    }
+
+    function newPickerRows(railId, query, legacyExpanded) {
+        return Helpers.assignPickerShortcuts(Helpers.modelPickerRows({
+            providers: providerConfigurations,
+            favorites: T3Favorites.favorites,
+            railId: railId,
+            query: query,
+            legacyExpanded: legacyExpanded
+        }));
+    }
+
     function draftTraitDescriptors(draft) {
         const model = draft ? modelConfiguration(draft.instanceId, draft.model) : null;
         return Helpers.traitsForPrompt(model ? model.optionDescriptors : [],

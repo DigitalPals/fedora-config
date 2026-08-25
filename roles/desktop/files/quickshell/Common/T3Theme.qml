@@ -52,6 +52,16 @@ Singleton {
     readonly property color amberSoft: Theme.amberBgSoft
     readonly property color amberBorder: Theme.amberBorder
     readonly property color red: Theme.redText
+    // `red` is a copy colour, and the palette's error role behind it is tuned
+    // to be read *on* a dark surface — at circle size that pale tint reads as
+    // pink, not as stop. A filled destructive control needs a mid-tone fill
+    // instead, so this pair is seeded fixed the way `ok` and `amber` are, and
+    // its foreground is checked rather than assumed.
+    readonly property color danger: dark ? "#d83a3f" : "#c62828"
+    readonly property color dangerHover: dark
+        ? Qt.lighter(danger, 1.12) : Qt.darker(danger, 1.10)
+    readonly property color dangerForeground: SettingsHelpers.ensureContrast(
+        "#ffffff", danger.toString(), 4.5)
     readonly property color redSoft: Theme.redBgSoft
     readonly property color redBorder: Theme.redBorder
     readonly property color success: Theme.ok

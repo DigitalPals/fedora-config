@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import Quickshell
 import "../Common"
 
 // T3's composer is one recognisable glass surface: prompt above, contextual
@@ -13,14 +14,20 @@ Column {
     property bool editable: true
     property bool sendEnabled: true
     property string sendLabel: "Send"
+    // While the thread is working the prompt is locked, so the round action
+    // has nothing to send. That is exactly when the user wants to stop the
+    // turn, and the slot they are already reaching for is this one.
+    property bool stoppable: false
     signal sendRequested()
+    signal stopRequested()
 
     readonly property var draft: newThread ? T3Code.newThreadDraft : T3Code.threadDraft(threadId)
-    readonly property var providers: newThread ? T3Code.newProviderChoices()
-        : T3Code.threadProviderChoices(threadId)
-    readonly property var models: newThread ? T3Code.newModelChoices()
-        : T3Code.threadModelChoices(threadId)
     readonly property var traits: T3Code.draftTraitDescriptors(draft)
+    // Provider and model are one control on the bar, so the picker compares
+    // against one joined value: "<instanceId>::<slug>".
+    readonly property string selectionValue: T3Code.selectionId(draft.instanceId ?? "",
+        draft.model ?? "")
+    readonly property string providerGlyph: T3Code.providerIcon(draft.instanceId ?? "")
     readonly property bool showInteraction: draft.modeFixed !== true
         && T3Code.providerShowsInteraction(draft.instanceId)
     readonly property bool overLimit: promptEdit.text.length > T3Code.maxPromptChars
@@ -28,6 +35,17 @@ Column {
     readonly property string actionKind: newThread ? "new" : "prompt"
     readonly property string actionThreadId: newThread ? "" : threadId
     readonly property bool sending: T3Code.actionPending(actionKind, actionThreadId, "")
+    readonly property bool stopping: T3Code.actionPending("interrupt", actionThreadId, "")
+    readonly property bool stopMode: stoppable && !newThread
+
+    // One primary action, two meanings. Both the pointer and the keyboard
+    // path route through here so they cannot drift apart.
+    function activatePrimary() {
+        if (stopMode)
+            root.stopRequested();
+        else
+            root.sendRequested();
+    }
 
     spacing: 4
     z: settingsPresentation.activePicker !== null || settingsPresentation.expanded ? 100 : 0
@@ -50,6 +68,32 @@ Column {
             { id: "plan", label: "Plan" }
         ]
 
+        // Reasoning earns a place on the bar; every other trait the model
+        // declares stays in the drawer, which now exists only for what the
+        // bar cannot hold.
+        readonly property var reasoningDescriptor:
+            (Array.isArray(root.traits) ? root.traits : [])
+                .find(candidate => root.traitLabel(candidate) === "Reasoning") ?? null
+        readonly property var extraTraits: (Array.isArray(root.traits) ? root.traits : [])
+            .filter(candidate => root.traitLabel(candidate) !== "Reasoning")
+        readonly property bool hasDrawer: root.showInteraction || extraTraits.length > 0
+        readonly property var reasoningOptions: {
+            if (!reasoningDescriptor)
+                return [];
+            if (reasoningDescriptor.type === "boolean")
+                return [{ id: "true", label: "On" }, { id: "false", label: "Off" }];
+            return (Array.isArray(reasoningDescriptor.options)
+                ? reasoningDescriptor.options : [])
+                .map(option => ({ id: settingId(option), label: settingLabel(option) }));
+        }
+        readonly property string reasoningValue: {
+            if (!reasoningDescriptor)
+                return "";
+            return reasoningDescriptor.type === "boolean"
+                ? (reasoningDescriptor.currentValue === true ? "true" : "false")
+                : String(reasoningDescriptor.currentValue ?? "");
+        }
+
         function trackPicker(picker, group) {
             if (picker.expanded) {
                 if (activePicker !== null && activePicker !== picker)
@@ -65,6 +109,13 @@ Column {
         onExpandedChanged: {
             if (!expanded && activePicker !== null)
                 activePicker.expanded = false;
+        }
+
+        // Its trigger disappears with its contents, so the sheet must not be
+        // left open behind a button that is no longer there.
+        onHasDrawerChanged: {
+            if (!hasDrawer)
+                expanded = false;
         }
 
         function settingId(option) {
@@ -95,14 +146,13 @@ Column {
         }
 
         function reasoningSummary() {
-            const descriptor = (Array.isArray(root.traits) ? root.traits : [])
-                .find(candidate => root.traitLabel(candidate) === "Reasoning");
-            if (!descriptor)
+            if (!reasoningDescriptor)
                 return "";
-            if (descriptor.type === "boolean")
-                return descriptor.currentValue === true ? "Reasoning on" : "Reasoning off";
-            return selectedSettingLabel(descriptor.options,
-                String(descriptor.currentValue ?? ""), "");
+            if (reasoningDescriptor.type === "boolean")
+                return reasoningDescriptor.currentValue === true
+                    ? "Reasoning on" : "Reasoning off";
+            return selectedSettingLabel(reasoningDescriptor.options,
+                String(reasoningDescriptor.currentValue ?? ""), "");
         }
 
         function accessSummary() {
@@ -110,16 +160,28 @@ Column {
                 String(root.draft?.runtimeMode ?? "full-access"), "Unavailable");
         }
 
+        // An open padlock is the whole point of "Full access": the one mode
+        // that is not gated should not be wearing a closed lock.
+        function accessSymbol() {
+            return String(root.draft?.runtimeMode ?? "full-access") === "full-access"
+                ? "lock_open" : "lock";
+        }
+
+        // The bar shows the model and lets the provider travel as its brand
+        // mark. These are the words-only forms, and the accessible summary
+        // that puts the provider back into the sentence.
+        function modelSummary() {
+            const model = T3Code.modelConfiguration(root.draft?.instanceId ?? "",
+                root.draft?.model ?? "");
+            if (!model)
+                return displaySettingValue(root.draft?.model, "Unavailable");
+            return model.shortName !== "" ? model.shortName : model.name;
+        }
+
         function providerModelSummary() {
-            const provider = selectedSettingLabel(root.providers,
-                String(root.draft?.instanceId ?? ""), "Provider unavailable");
-            const slug = String(root.draft?.model ?? "");
-            const found = (Array.isArray(root.models) ? root.models : [])
-                .find(option => settingId(option) === slug);
-            const model = found
-                ? String(found.shortName || found.name || settingLabel(found))
-                : displaySettingValue(slug, "");
-            return model !== "" ? provider + " · " + model : provider;
+            const provider = T3Code.providerConfiguration(root.draft?.instanceId ?? "");
+            const model = modelSummary();
+            return provider ? provider.displayName + " · " + model : model;
         }
 
         function modeSummary() {
@@ -140,6 +202,20 @@ Column {
         }
     }
 
+    // The hairline between bar controls. The gap lives in the wrapper so the
+    // Row's own spacing stays small and the rule sits centred inside it.
+    component BarDivider: Item {
+        width: 11
+        height: 26
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: 1
+            height: 14
+            color: T3Theme.border
+        }
+    }
+
     function focusPrompt() {
         promptEdit.forceActiveFocus();
         promptEdit.cursorPosition = promptEdit.text.length;
@@ -152,18 +228,22 @@ Column {
             T3Code.setThreadPrompt(threadId, value);
     }
 
-    function chooseProvider(value) {
+    // Provider and model land in one draft update: routing through the
+    // provider's *default* model on the way can trip a per-thread guard the
+    // requested model would have passed.
+    function chooseSelection(instanceId, model) {
         if (newThread)
-            T3Code.setNewProvider(value);
+            T3Code.setNewSelection(instanceId, model);
         else
-            T3Code.setThreadProvider(threadId, value);
+            T3Code.setThreadSelection(threadId, instanceId, model);
     }
 
-    function chooseModel(value) {
-        if (newThread)
-            T3Code.setNewModel(value);
-        else
-            T3Code.setThreadModel(threadId, value);
+    function chooseReasoning(value) {
+        const descriptor = settingsPresentation.reasoningDescriptor;
+        if (!descriptor)
+            return;
+        chooseTrait(descriptor.id,
+            descriptor.type === "boolean" ? value === "true" : value);
     }
 
     function chooseRuntime(value) {
@@ -271,65 +351,15 @@ Column {
             }
 
             Flow {
-                id: providerModelFields
-                width: parent.width
-                spacing: 5
-                z: settingsPresentation.activePickerGroup === "provider-model" ? 100 : 0
-
-                T3Picker {
-                    id: providerPicker
-                    width: settingsPresentation.narrow ? parent.width : (parent.width - 5) / 2
-                    label: "Provider"
-                    value: root.draft.instanceId ?? ""
-                    options: root.providers
-                    openUpward: !root.newThread
-                    enabled: root.editable && !root.sending && options.length > 0
-                    onSelected: value => root.chooseProvider(value)
-                    onExpandedChanged: settingsPresentation.trackPicker(
-                        providerPicker, "provider-model")
-                }
-
-                T3Picker {
-                    id: modelPicker
-                    width: settingsPresentation.narrow ? parent.width : (parent.width - 5) / 2
-                    label: "Model"
-                    value: root.draft.model ?? ""
-                    options: root.models
-                    openUpward: !root.newThread
-                    menuRows: 8
-                    enabled: root.editable && !root.sending && options.length > 0
-                    onSelected: value => root.chooseModel(value)
-                    onExpandedChanged: settingsPresentation.trackPicker(
-                        modelPicker, "provider-model")
-                }
-            }
-
-            Flow {
                 id: runtimeFields
                 width: parent.width
                 spacing: 5
                 z: settingsPresentation.activePickerGroup === "runtime" ? 100 : 0
 
                 T3Picker {
-                    id: accessPicker
-                    width: settingsPresentation.narrow || !root.showInteraction
-                        ? parent.width : (parent.width - 5) / 2
-                    label: "Access"
-                    value: root.draft.runtimeMode ?? "full-access"
-                    valueColor: root.draft?.runtimeMode === "full-access"
-                        ? T3Theme.amber : T3Theme.textSecondary
-                    options: settingsPresentation.accessOptions
-                    openUpward: !root.newThread
-                    enabled: root.editable && !root.sending
-                    onSelected: value => root.chooseRuntime(value)
-                    onExpandedChanged: settingsPresentation.trackPicker(
-                        accessPicker, "runtime")
-                }
-
-                T3Picker {
                     id: interactionPicker
                     visible: root.showInteraction
-                    width: settingsPresentation.narrow ? parent.width : (parent.width - 5) / 2
+                    width: parent.width
                     label: "Mode"
                     value: root.draft.interactionMode ?? "default"
                     options: settingsPresentation.interactionOptions
@@ -343,13 +373,13 @@ Column {
 
             Flow {
                 id: traitFields
-                visible: root.traits.length > 0
+                visible: settingsPresentation.extraTraits.length > 0
                 width: parent.width
                 spacing: 5
                 z: settingsPresentation.activePickerGroup === "traits" ? 100 : 0
 
                 Repeater {
-                    model: root.traits
+                    model: settingsPresentation.extraTraits
 
                     delegate: Item {
                         id: traitRow
@@ -554,123 +584,131 @@ Column {
                 }
             }
 
-            Rectangle {
-                width: parent.width
-                height: 1
-                color: T3Theme.border
-            }
-
+            // The reference client's bar: the run's identity on the left as
+            // plain words with marks, the turn's control on the right. No rule
+            // separates it from the prompt — the shell is one field, not a
+            // text box stacked on a toolbar.
             Item {
+                id: actionRow
                 width: parent.width
                 height: Theme.inlineActionHeight
+                z: settingsPresentation.activePicker !== null ? 50 : 0
 
-                Rectangle {
-                    id: settingsButton
+                // What the labels may occupy before they start eliding. The
+                // send action never yields; the model name is the first to.
+                readonly property real inlineRoom: width - sendButton.width - 8
+                    - (workingIndicator.visible ? workingIndicator.width + 8 : 0)
+                    - (settingsButton.visible ? settingsButton.width + 2 : 0)
+
+                Row {
+                    id: inlineSettings
+                    // The trigger carries its own 6px of padding, so pulling
+                    // the row back by that much lines the provider mark up
+                    // with the prompt's first character.
                     anchors.left: parent.left
-                    anchors.right: accessChip.visible ? accessChip.left : sendButton.left
-                    anchors.rightMargin: 6
+                    anchors.leftMargin: -6
                     anchors.verticalCenter: parent.verticalCenter
-                    height: Theme.inlineActionHeight
-                    radius: T3Theme.controlRadius
-                    color: settingsMouse.containsMouse || settingsPresentation.expanded
-                        ? T3Theme.hoverStrong : "transparent"
-                    activeFocusOnTab: true
-                    Accessible.role: Accessible.Button
-                    Accessible.name: "Run settings"
-                    Accessible.description: settingsPresentation.accessibleSummary()
-                    Accessible.onPressAction:
-                        settingsPresentation.expanded = !settingsPresentation.expanded
-                    border.width: activeFocus ? 1 : 0
-                    border.color: T3Theme.focus
+                    spacing: 3
 
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                                || event.key === Qt.Key_Space) {
-                            settingsPresentation.expanded = !settingsPresentation.expanded;
-                            event.accepted = true;
-                        }
+                    T3ModelPicker {
+                        id: modelSelect
+                        threadId: root.threadId
+                        newThread: root.newThread
+                        iconSource: root.providerGlyph !== ""
+                            ? Quickshell.shellDir + "/assets/" + root.providerGlyph + ".svg" : ""
+                        label: settingsPresentation.modelSummary()
+                        value: root.selectionValue
+                        openUpward: !root.newThread
+                        maxWidth: Math.max(72, actionRow.inlineRoom
+                            - (effortSelect.visible
+                                ? effortSelect.implicitWidth + effortDivider.width
+                                    + inlineSettings.spacing * 2 : 0)
+                            - accessSelect.implicitWidth - accessDivider.width
+                            - inlineSettings.spacing * 2)
+                        enabled: root.editable && !root.sending
+                        onSelected: (instanceId, model) =>
+                            root.chooseSelection(instanceId, model)
+                        onExpandedChanged: settingsPresentation.trackPicker(
+                            modelSelect, "bar")
                     }
 
-                    Sym {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 7
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "tune"
-                        size: Theme.iconSmall
-                        symWeight: 450
-                        color: settingsPresentation.expanded
-                            ? T3Theme.accent : T3Theme.textFaint
+                    BarDivider {
+                        id: effortDivider
+                        visible: effortSelect.visible
                     }
 
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 28
-                        anchors.right: parent.right
-                        anchors.rightMargin: 7
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: settingsPresentation.compactSummary()
-                        elide: Text.ElideRight
-                        font.family: T3Theme.fontSans
-                        font.pixelSize: Theme.fontCaption
-                        color: T3Theme.textMuted
+                    T3InlineSelect {
+                        id: effortSelect
+                        visible: settingsPresentation.reasoningOptions.length > 0
+                        text: root.traitLabel(settingsPresentation.reasoningDescriptor)
+                        value: settingsPresentation.reasoningValue
+                        options: settingsPresentation.reasoningOptions
+                        openUpward: !root.newThread
+                        menuWidth: 168
+                        enabled: root.editable && !root.sending
+                        onSelected: value => root.chooseReasoning(value)
+                        onExpandedChanged: settingsPresentation.trackPicker(
+                            effortSelect, "bar")
                     }
 
-                    MouseArea {
-                        id: settingsMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            settingsButton.forceActiveFocus();
-                            settingsPresentation.expanded = !settingsPresentation.expanded;
-                        }
+                    BarDivider { id: accessDivider }
+
+                    T3InlineSelect {
+                        id: accessSelect
+                        symbol: settingsPresentation.accessSymbol()
+                        text: settingsPresentation.accessSummary()
+                        value: root.draft.runtimeMode ?? "full-access"
+                        options: settingsPresentation.accessOptions
+                        openUpward: !root.newThread
+                        menuWidth: 190
+                        // Full access is the one mode with nothing standing
+                        // between the agent and the machine. It says so.
+                        tint: root.draft?.runtimeMode === "full-access"
+                            ? T3Theme.amber : T3Theme.textSecondary
+                        iconTint: root.draft?.runtimeMode === "full-access"
+                            ? T3Theme.amber : T3Theme.textFaint
+                        enabled: root.editable && !root.sending
+                        onSelected: value => root.chooseRuntime(value)
+                        onExpandedChanged: settingsPresentation.trackPicker(
+                            accessSelect, "bar")
                     }
                 }
 
-                Rectangle {
-                    id: accessChip
-                    visible: root.width >= 405
-                    anchors.right: sendButton.left
-                    anchors.rightMargin: 6
+                // Only what the bar could not hold: the interaction mode and
+                // any traits beyond reasoning. With neither, it is not there.
+                IconButton {
+                    id: settingsButton
+                    visible: settingsPresentation.hasDrawer
+                    anchors.right: workingIndicator.visible
+                        ? workingIndicator.left : sendButton.left
+                    anchors.rightMargin: 4
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(104, accessText.implicitWidth + 18)
-                    height: Theme.chipInnerHeight
-                    radius: height / 2
-                    color: root.draft?.runtimeMode === "full-access"
-                        ? T3Theme.amberSoft : T3Theme.hover
-                    activeFocusOnTab: visible
-                    Accessible.role: Accessible.Button
-                    Accessible.name: "Access: " + settingsPresentation.accessSummary()
-                    Accessible.onPressAction: settingsPresentation.expanded = true
-                    border.width: activeFocus ? 1 : 0
-                    border.color: T3Theme.focus
+                    controlSize: 28
+                    symbol: "tune"
+                    accessibleName: "Run settings"
+                    accessibleDescription: settingsPresentation.accessibleSummary()
+                    tint: settingsPresentation.expanded
+                        ? T3Theme.accent : T3Theme.textFaint
+                    onTriggered: settingsPresentation.expanded = !settingsPresentation.expanded
+                }
 
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                                || event.key === Qt.Key_Space) {
-                            settingsPresentation.expanded = true;
-                            event.accepted = true;
-                        }
-                    }
+                Sym {
+                    id: workingIndicator
+                    visible: root.stopMode || root.sending
+                    anchors.right: sendButton.left
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "progress_activity"
+                    size: Theme.iconLarge
+                    symWeight: 400
+                    color: T3Theme.textFaint
 
-                    Text {
-                        id: accessText
-                        anchors.centerIn: parent
-                        width: Math.min(90, implicitWidth)
-                        text: settingsPresentation.accessSummary()
-                        elide: Text.ElideRight
-                        font.family: T3Theme.fontSans
-                        font.pixelSize: Theme.fontCaption
-                        font.weight: Theme.weightMedium
-                        color: root.draft?.runtimeMode === "full-access"
-                            ? T3Theme.amber : T3Theme.textFaint
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: settingsPresentation.expanded = true
+                    RotationAnimation on rotation {
+                        running: workingIndicator.visible
+                        from: 0
+                        to: 360
+                        duration: 1100
+                        loops: Animation.Infinite
                     }
                 }
 
@@ -681,27 +719,38 @@ Column {
                     width: Theme.inlineActionHeight
                     height: Theme.inlineActionHeight
                     radius: width / 2
-                    color: sendMouse.containsMouse && sendMouse.enabled
-                        ? T3Theme.accentHover : T3Theme.accent
+                    // Stopping is not the same act as sending, and a red
+                    // circle is how the reference client says so.
+                    color: root.stopMode
+                        ? (sendMouse.containsMouse && sendMouse.enabled
+                            ? T3Theme.dangerHover : T3Theme.danger)
+                        : (sendMouse.containsMouse && sendMouse.enabled
+                            ? T3Theme.accentHover : T3Theme.accent)
                     opacity: sendMouse.enabled ? 1 : 0.32
                     activeFocusOnTab: sendMouse.enabled
                     Accessible.role: Accessible.Button
-                    Accessible.name: root.sendLabel
-                    Accessible.onPressAction: root.sendRequested()
+                    Accessible.name: root.stopMode ? "Stop" : root.sendLabel
+                    Accessible.onPressAction: root.activatePrimary()
                     border.width: activeFocus ? 2 : 0
-                    border.color: T3Theme.accentForeground
+                    border.color: root.stopMode
+                        ? T3Theme.dangerForeground : T3Theme.accentForeground
+
+                    Behavior on color {
+                        ColorAnimation { duration: T3Theme.fastDuration }
+                    }
 
                     Keys.onPressed: event => {
                         if (!sendMouse.enabled)
                             return;
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                                 || event.key === Qt.Key_Space) {
-                            root.sendRequested();
+                            root.activatePrimary();
                             event.accepted = true;
                         }
                     }
 
                     Sym {
+                        visible: !root.stopMode
                         anchors.centerIn: parent
                         name: root.sending ? "more_horiz" : "arrow_upward"
                         size: Theme.iconMedium
@@ -709,14 +758,33 @@ Column {
                         color: T3Theme.accentForeground
                     }
 
+                    // Drawn rather than set in the icon font. Material Symbols
+                    // makes its filled square by collapsing the outlined one's
+                    // counter onto itself, and at this size FreeType rounds the
+                    // seam back open — a notch through the middle of the mark.
+                    // The shape is a rounded square either way; this one is
+                    // exact.
+                    Rectangle {
+                        visible: root.stopMode
+                        anchors.centerIn: parent
+                        width: 8
+                        height: 8
+                        radius: 2
+                        color: T3Theme.dangerForeground
+                    }
+
                     MouseArea {
                         id: sendMouse
                         anchors.fill: parent
-                        enabled: root.sendEnabled && !root.sending && !root.overLimit
-                            && promptEdit.text.trim() !== ""
+                        // A stop has no prompt to validate: it is available on
+                        // the strength of the running turn alone.
+                        enabled: root.stopMode
+                            ? T3Code.canDispatch && !root.stopping
+                            : root.sendEnabled && !root.sending && !root.overLimit
+                                && promptEdit.text.trim() !== ""
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.sendRequested()
+                        onClicked: root.activatePrimary()
                     }
                 }
             }
