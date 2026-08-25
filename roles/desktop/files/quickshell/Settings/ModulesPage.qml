@@ -4,30 +4,20 @@ import QtQuick.Effects
 import QtQuick.Controls as Controls
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
+import "../Common/WidgetCatalog.js" as WidgetCatalog
 
-// Modules page (design v2): live mini-bar preview and three drag-and-drop
+// Widgets page (design v2): live mini-bar preview and three drag-and-drop
 // columns. Rows never shift during a drag — an overlay caret marks the
 // insertion gap, a floating proxy follows the pointer, and the commit uses
 // the prototype's exact splice semantics.
+//
+// The same edit can now be made on the bar itself by dragging a widget along
+// it. Both paths commit through LayoutHelpers.moveWidget, so a drop means the
+// same thing whichever surface it was made on.
 Item {
     id: page
 
-    readonly property var moduleMeta: ({
-        ws: { name: "Workspaces", short: "Workspaces" },
-        media: { name: "Media", short: "Media", tag: "while playing", detail: true },
-        indicators: { name: "Indicators", short: "Actions", tag: "clock-side" },
-        clock: { name: "Clock", short: "Clock", detail: true },
-        weather: { name: "Weather", short: "Weather", detail: true },
-        t3: { name: "T3 Code", short: "T3", detail: true },
-        usage: { name: "Model usage", short: "Usage", detail: true },
-        gh: { name: "GitHub", short: "GH", detail: true },
-        updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true },
-        tray: { name: "System tray", short: "Tray", tag: "when populated" },
-        vol: { name: "Volume", short: "Vol", tag: "status pill", detail: true },
-        wifi: { name: "Network", short: "Network", tag: "status pill" },
-        bt: { name: "Bluetooth", short: "BT", tag: "when connected" },
-        batt: { name: "Battery", short: "Batt", tag: "on laptops", detail: true }
-    })
+    readonly property var widgetMeta: WidgetCatalog.WIDGETS
 
     // ---- drag state -------------------------------------------------------
     property var dragMod: null     // { id, name, fromCol }
@@ -36,7 +26,7 @@ Item {
     property string announcement: ""
     readonly property bool dragActive: dragMod !== null
 
-    // ---- per-module settings sub-page -------------------------------------
+    // ---- per-widget settings sub-page -------------------------------------
     property string subPage: ""
     readonly property bool subPageActive: subPage !== ""
 
@@ -44,19 +34,19 @@ Item {
         if (dragActive)
             return;
         subPage = id;
-        announcement = moduleMeta[id].name + " settings.";
+        announcement = widgetMeta[id].name + " settings.";
     }
 
     function closeSubPage() {
         const id = subPage;
         subPage = "";
-        announcement = "Module list.";
+        announcement = "Widget list.";
         Qt.callLater(() => focusModule(id));
     }
 
     readonly property int pitch: 31          // 28px row + 3px gap
     readonly property int rowsStartY: 20     // column header + gap
-    // Three useful columns need enough room for full module names, switches,
+    // Three useful columns need enough room for full widget names, switches,
     // and settings buttons. Below this threshold retain the stacked workflow.
     readonly property bool stacked: width < 640
     readonly property var columnOrder: ["left", "center", "right"]
@@ -149,27 +139,19 @@ Item {
             cancelDrag();
             return;
         }
-        const mods = {
-            left: Settings.mods.left.map(m => ({ id: m.id, on: m.on, detail: m.detail })),
-            center: Settings.mods.center.map(m => ({ id: m.id, on: m.on, detail: m.detail })),
-            right: Settings.mods.right.map(m => ({ id: m.id, on: m.on, detail: m.detail }))
-        };
-        const srcList = mods[dragMod.fromCol];
-        const srcIdx = srcList.findIndex(m => m.id === dragMod.id);
-        if (srcIdx < 0) {
+        // Shared with the bar's own drag, so a drop lands in the same place
+        // whichever surface it was made on.
+        const result = LayoutHelpers.moveWidget(Settings.mods, dragMod.fromCol,
+            dragMod.id, dropAt.col, dropAt.idx);
+        if (!result) {
             cancelDrag();
             return;
         }
-        const item = srcList[srcIdx];
-        let idx = dropAt.idx;
-        srcList.splice(srcIdx, 1);
-        if (dropAt.col === dragMod.fromCol && srcIdx < idx)
-            idx--;
-        mods[dropAt.col].splice(idx, 0, item);
-        const focusId = item.id;
-        announcement = (moduleMeta[item.id] ? moduleMeta[item.id].name : item.id)
-            + " dropped in " + dropAt.col + " position " + (idx + 1) + ".";
-        Settings.setModuleOrder(mods.left, mods.center, mods.right);
+        const focusId = dragMod.id;
+        announcement = WidgetCatalog.widgetName(focusId)
+            + " dropped in " + result.col + " position " + (result.idx + 1) + ".";
+        Settings.setModuleOrder(result.mods.left, result.mods.center,
+            result.mods.right);
         dragMod = null;
         dropAt = null;
         edgeScroll.stop();
@@ -251,7 +233,7 @@ Item {
             anchors.centerIn: parent
             width: parent.width - 10
             horizontalAlignment: Text.AlignHCenter
-            text: page.moduleMeta[parent.modelData.id].short
+            text: page.widgetMeta[parent.modelData.id].short
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightMedium
@@ -267,7 +249,7 @@ Item {
         required property int index
         required property string colId
 
-        readonly property var meta: page.moduleMeta[modelData.id]
+        readonly property var meta: page.widgetMeta[modelData.id]
         readonly property bool dragged: page.dragMod !== null && page.dragMod.id === modelData.id
 
         width: parent.width
@@ -400,9 +382,9 @@ Item {
             Accessible.name: row.meta.name + " settings"
             Accessible.onPressAction: page.openSubPage(row.modelData.id)
             Controls.ToolTip.visible: cogMouse.containsMouse
-            Controls.ToolTip.text: "Module settings"
+            Controls.ToolTip.text: "Widget settings"
 
-            // Dirty when the detail policy or any module option left default.
+            // Dirty when the detail policy or any widget option left default.
             readonly property bool optsDirty: row.modelData.detail !== "auto"
                 || JSON.stringify(Settings.modOpts[row.modelData.id])
                     !== JSON.stringify(Settings.defaults.modOpts[row.modelData.id])
@@ -524,7 +506,7 @@ Item {
         visible: !detailLoader.item
         label: "LIVE PREVIEW"
         dirty: Settings.modsModified
-        onResetRequested: Settings.resetKeys(["mods"], "Modules")
+        onResetRequested: Settings.resetKeys(["mods"], "Widgets")
     }
 
     Rectangle {
@@ -683,7 +665,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        text: "Drag, or Space to pick up; arrows move; Space drops; Escape cancels. The cog opens a module's settings."
+        text: "Drag here or on the bar itself; or Space to pick up, arrows move, Space drops, Escape cancels. The cog opens a widget's settings."
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
         color: Theme.textFaint
@@ -728,7 +710,7 @@ Item {
         }
     }
 
-    // Per-module settings sub-page: replaces the list content while open;
+    // Per-widget settings sub-page: replaces the list content while open;
     // the list keeps its instance (and scroll position) underneath. Built
     // asynchronously so the cog click is not spent constructing it, which is
     // why the list hides on `detailLoader.item` rather than on subPageActive
@@ -747,8 +729,8 @@ Item {
         }
         sourceComponent: ModuleDetailView {
             moduleId: page.subPage
-            moduleName: (page.moduleMeta[page.subPage] ?? ({ name: "" })).name
-            hasDetail: (page.moduleMeta[page.subPage] ?? ({})).detail === true
+            moduleName: (page.widgetMeta[page.subPage] ?? ({ name: "" })).name
+            hasDetail: (page.widgetMeta[page.subPage] ?? ({})).detail === true
             onBackRequested: page.closeSubPage()
         }
     }

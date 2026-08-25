@@ -143,7 +143,7 @@ Column {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: connectionState.off ? "Module off"
+                text: connectionState.off ? "Widget off"
                     : connectionState.failed ? "Unavailable"
                     : GitHub.ready ? "Connected" : "Checking…"
                 font.family: Theme.fontMenu
@@ -175,7 +175,7 @@ Column {
                 width: parent.width
                 text: {
                     if (!GitHub.pollEnabled)
-                        return "Switch the module on to read your repositories";
+                        return "Switch the widget on to read your repositories";
                     if (GitHub.error !== "")
                         return GitHub.error;
                     if (!GitHub.ready)

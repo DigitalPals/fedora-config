@@ -2,7 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
-// Per-module settings sub-page, opened by the cog on a Modules-page row.
+// Per-widget settings sub-page, opened by the cog on a Widgets-page row.
 // The detail policy control lives here (storage stays in Settings.mods);
 // everything else reads and writes Settings.modOpts through setModuleOption.
 SettingsPage {
@@ -57,9 +57,9 @@ SettingsPage {
 
             SettingsAction {
                 id: backAction
-                text: "All modules"
+                text: "All widgets"
                 glyph: "arrow_back"
-                Accessible.name: "Back to all modules"
+                Accessible.name: "Back to all widgets"
                 onTriggered: view.backRequested()
             }
 

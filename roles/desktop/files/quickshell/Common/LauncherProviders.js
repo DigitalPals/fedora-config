@@ -23,7 +23,7 @@ var BUILTIN_ACTIONS = [
     {
         id: "settings",
         name: "Open shell settings",
-        subtitle: "Appearance, bar, modules and system",
+        subtitle: "Appearance, bar, widgets and system",
         keywords: ["preferences", "configuration"],
         glyph: "settings"
     },

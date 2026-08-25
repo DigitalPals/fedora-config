@@ -8,6 +8,7 @@ import "../Common"
 import "../Common/BarGeometry.js" as BarGeometry
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 import "../Common/PanelRegistryData.js" as PanelRegistry
+import "../Common/WidgetCatalog.js" as WidgetCatalog
 
 PanelWindow {
     id: barWindow
@@ -294,6 +295,159 @@ PanelWindow {
         fitTimer.restart();
     }
 
+    // ---- rearranging widgets in place -----------------------------------
+    // Dragging a widget along the bar is the same edit as dragging its row in
+    // Shell settings, and both commit through LayoutHelpers.moveWidget. Only
+    // the measurement differs: the settings list has one fixed row pitch to
+    // divide by, while the bar has to ask its live slots where they actually
+    // came to rest — every widget is a different width, and a group pill puts
+    // padding around whatever it holds.
+    //
+    // Nothing moves during the drag. The widget under the pointer only dims,
+    // a caret marks the gap it would land in, and the layout is left alone
+    // until the drop — the same contract the settings list keeps, and the
+    // only one where the bar does not slide out from under the pointer.
+    property var dragWidget: null      // { id, fromCol }
+    property var dragDrop: null        // { col, idx }, idx measured pre-removal
+    property point dragPos: Qt.point(0, 0)
+    readonly property bool rearranging: dragWidget !== null
+
+    function clusterFor(col) {
+        return col === "left" ? leftCluster
+            : col === "center" ? centerCluster : rightCluster;
+    }
+
+    // A drawn widget's center, in contentFrame coordinates, or undefined when
+    // it is not on screen to have one.
+    function widgetCenterX(id) {
+        void slotRegistryRevision;
+        const slot = slotRegistry[id];
+        if (!slot || !slot.active || slot.width <= 0)
+            return undefined;
+        return slot.mapToItem(contentFrame, slot.width / 2, 0).x;
+    }
+
+    function widgetCenters(col) {
+        const centers = {};
+        for (const entry of Settings.mods[col]) {
+            const x = widgetCenterX(entry.id);
+            if (x !== undefined)
+                centers[entry.id] = x;
+        }
+        return centers;
+    }
+
+    // The widget a press at `pos` means. Inside a widget wins outright; past
+    // its edge the nearest one within half a chip still counts, so the padding
+    // a group pill puts around its contents — and the fine rule between two
+    // widgets sharing one — picks up the widget the pointer is plainly on
+    // rather than nothing at all.
+    function widgetAtPoint(pos) {
+        void slotRegistryRevision;
+        let best = null;
+        const tolerance = Theme.chipHeight / 2;
+        let bestDistance = Infinity;
+        for (const col of ["left", "center", "right"]) {
+            // Stay within the cluster. The launcher and power buttons share a
+            // Row with the left and right clusters but are the bar's own
+            // furniture, not widgets — dragging off one must not pick up
+            // whichever widget happens to sit next to it.
+            const cluster = clusterFor(col);
+            if (!cluster || cluster.width <= 0)
+                continue;
+            const origin = cluster.mapToItem(contentFrame, 0, 0).x;
+            if (pos.x < origin - tolerance
+                    || pos.x > origin + cluster.width + tolerance)
+                continue;
+            for (const entry of Settings.mods[col]) {
+                const slot = slotRegistry[entry.id];
+                if (!slot || !slot.active || slot.width <= 0)
+                    continue;
+                const left = slot.mapToItem(contentFrame, 0, 0).x;
+                const distance = pos.x < left ? left - pos.x
+                    : pos.x > left + slot.width ? pos.x - left - slot.width : 0;
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = { id: entry.id, fromCol: col };
+                }
+            }
+        }
+        return bestDistance <= tolerance ? best : null;
+    }
+
+    function beginWidgetDrag(pos) {
+        const found = widgetAtPoint(pos);
+        if (!found)
+            return;
+        // A popout left open would hang off an anchor that is about to move,
+        // and it covers the very gap the drop is aiming for.
+        if (Popouts.open)
+            Popouts.close();
+        dragWidget = found;
+        dragPos = Qt.point(pos.x, pos.y);
+        updateWidgetDrop(dragPos);
+    }
+
+    function updateWidgetDrop(pos) {
+        // Leaving the bar band cancels rather than drops. The gesture has left
+        // the strip it edits, and a widget thrown at the desktop has no second
+        // meaning worth inventing — releasing there puts it back.
+        const slack = Theme.barHeight;
+        if (pos.y < -slack || pos.y > contentFrame.height + slack) {
+            dragDrop = null;
+            return;
+        }
+        const col = LayoutHelpers.barDropColumn(pos.x, {
+            leftEnd: leftSection.x + leftSection.width,
+            centerStart: centerCluster.x,
+            centerEnd: centerCluster.x + centerCluster.width,
+            rightStart: rightSection.x
+        });
+        const idx = LayoutHelpers.barDropIndex(Settings.mods[col],
+            widgetCenters(col), pos.x);
+        if (!dragDrop || dragDrop.col !== col || dragDrop.idx !== idx)
+            dragDrop = { col: col, idx: idx };
+    }
+
+    // Where to draw the caret for the current drop: the gap before the first
+    // drawn widget at or after the index, else after the last drawn one before
+    // it, else the empty cluster's own origin.
+    function dropCaretX() {
+        void slotRegistryRevision;
+        if (!dragDrop)
+            return 0;
+        const list = Settings.mods[dragDrop.col];
+        const gap = Theme.barSpacing / 2;
+        for (let i = dragDrop.idx; i < list.length; i++) {
+            const slot = slotRegistry[list[i].id];
+            if (slot && slot.active && slot.width > 0)
+                return slot.mapToItem(contentFrame, 0, 0).x - gap;
+        }
+        for (let i = dragDrop.idx - 1; i >= 0; i--) {
+            const slot = slotRegistry[list[i].id];
+            if (slot && slot.active && slot.width > 0)
+                return slot.mapToItem(contentFrame, slot.width, 0).x + gap;
+        }
+        const cluster = clusterFor(dragDrop.col);
+        return cluster ? cluster.mapToItem(contentFrame, 0, 0).x : 0;
+    }
+
+    function commitWidgetDrag() {
+        if (dragWidget && dragDrop) {
+            const result = LayoutHelpers.moveWidget(Settings.mods,
+                dragWidget.fromCol, dragWidget.id, dragDrop.col, dragDrop.idx);
+            if (result)
+                Settings.setModuleOrder(result.mods.left, result.mods.center,
+                    result.mods.right);
+        }
+        cancelWidgetDrag();
+    }
+
+    function cancelWidgetDrag() {
+        dragWidget = null;
+        dragDrop = null;
+    }
+
     // Every module that has detail text to give up, with what giving it up
     // would save and which column it would save it in.
     function measuredSlots() {
@@ -477,7 +631,8 @@ PanelWindow {
     // keeps receiving pointer motion, so resolve its scene point against the
     // same registered anchors as a reliable second path.
     function hoverPanelAt(position) {
-        if (!Popouts.open)
+        // Crossing a widget mid-drag is the drag, not a menu transition.
+        if (!Popouts.open || rearranging)
             return;
 
         // Usage owns one panel anchor but several provider targets. Resolve
@@ -675,6 +830,45 @@ PanelWindow {
             y: barWindow.hideShift
         }
 
+        // Dragging a widget along the bar.
+        //
+        // This has to live on the widgets' own ancestor, not on an overlay
+        // stacked above them. An Item carrying a pointer handler is hit-tested
+        // like any other: put one on top and it swallows the press, and every
+        // widget stops opening its panel. From here the chip's own MouseArea
+        // is still hit first and still gets its click, while this handler
+        // watches the same press and only takes the grab once the pointer has
+        // travelled far enough to mean a drag. That is what lets one gesture
+        // mean "open" and the other "move" with no mode to enter first — and
+        // it works because no bar widget sets `preventStealing`.
+        DragHandler {
+            id: widgetDrag
+            target: null
+            acceptedButtons: Qt.LeftButton
+            // Wider than the platform default. The bar is short and dense, and
+            // a hand that shifts a few pixels while clicking a widget means to
+            // click it.
+            dragThreshold: 10
+            grabPermissions: PointerHandler.CanTakeOverFromItems
+                | PointerHandler.CanTakeOverFromHandlersOfDifferentType
+                | PointerHandler.ApprovesTakeOverByAnything
+
+            onActiveChanged: {
+                if (active)
+                    barWindow.beginWidgetDrag(centroid.pressPosition);
+                else
+                    barWindow.commitWidgetDrag();
+            }
+
+            onCentroidChanged: {
+                if (!active || !barWindow.rearranging)
+                    return;
+                barWindow.dragPos = Qt.point(centroid.position.x,
+                    centroid.position.y);
+                barWindow.updateWidgetDrop(barWindow.dragPos);
+            }
+        }
+
         // LEFT — the launcher, then workspaces and media.
         Row {
             id: leftSection
@@ -752,6 +946,110 @@ PanelWindow {
                 tooltip: "Power"
                 tooltipAlign: 1
                 onClicked: Session.openMenu(barWindow.screen)
+            }
+        }
+    }
+
+    // ---- rearrange overlay ---------------------------------------------
+    // The drop indicator and the widget in flight, drawn above the bar's
+    // content. Visual only: it carries no MouseArea and no pointer handler,
+    // which is the whole reason it can sit on top without stopping a click
+    // from reaching the widget underneath. The drag itself is handled from
+    // contentFrame, where the press is still shared with the widgets.
+    //
+    // Mirrors contentFrame's geometry and transform so both use one set of
+    // coordinates — the same ones the drop measurements are taken in.
+    Item {
+        id: rearrangeLayer
+        x: contentFrame.x
+        y: contentFrame.y
+        width: contentFrame.width
+        height: contentFrame.height
+        z: 60
+
+        // Named rather than read back off the caret: `visible` returns an
+        // item's *effective* visibility, so a sibling binding to it depends on
+        // the parent chain too and latches the moment the tree is rearranged.
+        readonly property bool caretShown: barWindow.rearranging
+            && barWindow.dragDrop !== null
+
+        transform: Translate {
+            y: barWindow.hideShift
+        }
+
+        // The gap the widget will land in.
+        Rectangle {
+            id: dropCaret
+            visible: rearrangeLayer.caretShown
+            x: barWindow.dropCaretX() - width / 2
+            y: (parent.height - height) / 2
+            width: 2
+            height: Theme.chipHeight
+            radius: 1
+            color: Theme.barAccent
+            z: 1
+            // Deliberately not animated, like the settings list's caret: it
+            // would otherwise slide in from the bar's left edge on pickup,
+            // since there is no previous gap for it to have come from.
+        }
+
+        RectangularShadow {
+            visible: rearrangeLayer.caretShown
+            x: dropCaret.x
+            y: dropCaret.y
+            width: dropCaret.width
+            height: dropCaret.height
+            radius: 1
+            blur: 8
+            color: Theme.barAccentGlow
+            z: 1
+        }
+
+        RectangularShadow {
+            visible: barWindow.rearranging
+            x: dragProxy.x
+            y: dragProxy.y
+            width: dragProxy.width
+            height: dragProxy.height
+            radius: dragProxy.radius
+            blur: 12
+            offset.y: 2
+            color: Qt.rgba(0, 0, 0, 0.35)
+            z: 2
+        }
+
+        // The widget in flight. A name rather than a copy of the widget: the
+        // real one is still drawn in place under the pointer, and two of the
+        // same thing on one bar reads as a duplicate rather than a move.
+        Rectangle {
+            id: dragProxy
+            visible: barWindow.rearranging
+            x: LayoutHelpers.clamp(barWindow.dragPos.x - width / 2,
+                0, Math.max(0, parent.width - width))
+            y: (parent.height - height) / 2
+            width: proxyRow.implicitWidth + 18
+            height: Theme.chipHeight
+            radius: Theme.chipRadius
+            color: Theme.barSurface
+            border.width: 1
+            // The border carries whether releasing now would commit: away from
+            // the bar the drop clears, and the proxy says so before the user
+            // lets go rather than after.
+            border.color: barWindow.dragDrop ? Theme.barAccent : Theme.barStroke
+            z: 3
+
+            // No drag handle here, unlike the settings row's proxy: the chip
+            // is already attached to the pointer, and the bar draws its copy
+            // in the menu face like everything else on it.
+            Text {
+                id: proxyRow
+                anchors.centerIn: parent
+                text: barWindow.dragWidget
+                    ? WidgetCatalog.widgetName(barWindow.dragWidget.id) : ""
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightMedium
+                color: Theme.barTextHi
             }
         }
     }

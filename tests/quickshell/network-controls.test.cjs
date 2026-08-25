@@ -111,9 +111,9 @@ test("wired monitoring is ref-counted by each visible Network consumer", () => {
     }
 });
 
-test("the visible module label is Network while stable identifiers stay wifi", () => {
-    const modules = read("Settings/ModulesPage.qml");
+test("the visible widget label is Network while stable identifiers stay wifi", () => {
     const registry = read("Common/PanelRegistryData.js");
-    assert.match(modules, /wifi:\s*\{ name: "Network", short: "Network"/);
+    const catalog = require(path.join(shellDir, "Common", "WidgetCatalog.js"));
+    assert.equal(catalog.widgetName("wifi"), "Network");
     assert.match(registry, /name: "wifi"[\s\S]*source: "Popovers\/WifiPopover\.qml"/);
 });

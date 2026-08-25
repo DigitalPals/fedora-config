@@ -218,7 +218,7 @@ Singleton {
     function resetSection(section) {
         const labels = {
             wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar",
-            modules: "Modules", notifications: "Notifications", system: "System"
+            modules: "Widgets", notifications: "Notifications", system: "System"
         };
         resetKeys(sectionKeys[section] || [], labels[section] || "Settings");
     }
@@ -228,7 +228,7 @@ Singleton {
     }
 
     // A preset is one reversible transaction. It deliberately changes only
-    // visual modes and the workspace presentation; module order and the
+    // visual modes and the workspace presentation; widget order and the
     // user's stored floating dimensions remain untouched.
     function applyLayeredHugPreset() {
         migrationPending = false;

@@ -218,17 +218,18 @@ test("popout height cannot feed back into its own required envelope", () => {
         "the input region must not follow the animating rendered geometry");
 });
 
-test("the tray and the updates chip use the reorderable module pipeline", () => {
+test("the tray and the updates chip use the reorderable widget pipeline", () => {
     const helpers = read("Common/SettingsHelpers.js");
     const modules = read("Settings/ModulesPage.qml");
+    const catalog = read("Common/WidgetCatalog.js");
     const bar = read("Bar/Bar.qml");
 
     assert.match(helpers, /"updates", "gh"/);
     assert.match(helpers, /"usage", "tray"/);
-    assert.match(modules, /updates:\s*\{ name: "Updates"/);
-    assert.match(modules, /tray:\s*\{ name: "System tray"/);
+    assert.match(catalog, /updates:\s*\{ name: "Updates"/);
+    assert.match(catalog, /tray:\s*\{ name: "System tray"/);
     assert.doesNotMatch(modules, /pinnedTail|text:\s*"pinned"/);
-    // The modules are files; the bar maps ids to their sources.
+    // The widgets are files; the bar maps ids to their sources.
     assert.match(bar, /updates:\s*"Modules\/Updates\.qml"/);
     assert.match(bar, /tray:\s*"Modules\/Tray\.qml"/);
     assert.match(read("Bar/Modules/Updates.qml"), /panelName:\s*"updates"/);
@@ -258,15 +259,15 @@ test("the three modules the redesign absorbed leave nothing behind", () => {
     assert.match(helpers, /RETIRED_MODULE_IDS = \["bell", "idle", "control"\]/);
 });
 
-test("T3 Code and grouped model usage are separate reorderable modules", () => {
+test("T3 Code and grouped model usage are separate reorderable widgets", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    const modules = read("Settings/ModulesPage.qml");
+    const catalog = read("Common/WidgetCatalog.js");
     const bar = read("Bar/Bar.qml");
 
     assert.match(helpers, /"gh", "t3", "usage"/,
-        "fresh layouts should keep the two modules adjacent");
-    assert.match(modules, /t3:\s*\{ name: "T3 Code"/);
-    assert.match(modules, /usage:\s*\{ name: "Model usage"/);
+        "fresh layouts should keep the two widgets adjacent");
+    assert.match(catalog, /t3:\s*\{ name: "T3 Code"/);
+    assert.match(catalog, /usage:\s*\{ name: "Model usage"/);
     assert.match(bar, /t3:\s*"Modules\/T3\.qml"/);
     assert.match(bar, /usage:\s*"Modules\/Usage\.qml"/);
     assert.match(read("Bar/Modules/T3.qml"), /panelName:\s*"t3code"/);

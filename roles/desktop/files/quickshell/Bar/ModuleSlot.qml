@@ -1,4 +1,5 @@
 import QtQuick
+import "../Common"
 import "Modules"
 
 // One configured module in the bar: loads the module's component when the
@@ -37,6 +38,16 @@ Loader {
     active: host.visible && modelData.on && host.autoRule(modelData.id)
     visible: active
     source: host.moduleSources[slot.modelData.id] ?? ""
+
+    // Dimmed, not removed, while it is being dragged along the bar: the drag
+    // reads the live slot positions to decide where a drop lands, and taking
+    // this one out from under the pointer would resequence every measurement
+    // it is being compared against.
+    opacity: host.dragWidget && host.dragWidget.id === slot.modelData.id ? 0.35 : 1
+
+    Behavior on opacity {
+        NumberAnimation { duration: Theme.chipFadeDuration }
+    }
 
     // `host` goes last on purpose. Assigning it is what makes a module's chip
     // own its panel, and the chip registers its anchor at that moment — so

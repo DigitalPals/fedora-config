@@ -229,7 +229,11 @@ Item {
                         id: groupMouse
                         z: 1
                         anchors.fill: parent
-                        enabled: group.ownsPointer
+                        // A pill covers several widgets, so mid-drag its hover
+                        // would keep reopening the panel over the gap the drop
+                        // is aiming at. The drag itself holds the grab; this
+                        // only stops the hover transitions behind it.
+                        enabled: group.ownsPointer && !root.host.rearranging
                         visible: group.ownsPointer
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor

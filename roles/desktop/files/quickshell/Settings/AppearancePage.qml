@@ -148,7 +148,7 @@ SettingsPage {
             ResponsiveActionRow {
                 width: parent.width
                 actionsFirst: true
-                description: "Keeps module order and stored floating dimensions"
+                description: "Keeps widget order and stored floating dimensions"
                 SettingsAction {
                     text: "Apply Layered Hug"
                     glyph: "auto_awesome"

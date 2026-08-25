@@ -28,7 +28,7 @@ PopoutPanel {
     focus: true
     // A dialog sits on the shell's deepest surface rather than on a lighter
     // card stacked over it, so the sections inside can be separated by
-    // hairlines the way the bar separates its modules.
+    // hairlines the way the bar separates its widgets.
     surfaceColor: Theme.panelSurface
 
     readonly property var navItems: [
@@ -38,8 +38,8 @@ PopoutPanel {
             title: "Wallpaper", description: "Desktop image and automatic rotation" },
         { id: "bar", group: "SHELL", label: "Bar", glyph: "space_dashboard",
             title: "Bar", description: "Placement, shape, and behavior" },
-        { id: "modules", group: "SHELL", label: "Modules", glyph: "widgets",
-            title: "Modules", description: "Choose and arrange the bar’s contents" },
+        { id: "modules", group: "SHELL", label: "Widgets", glyph: "widgets",
+            title: "Widgets", description: "Choose and arrange the bar’s contents" },
         { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",
             title: "Notifications", description: "Toasts, quiet hours, and the notification center" },
         { id: "system", group: "SYSTEM", label: "System", glyph: "settings",

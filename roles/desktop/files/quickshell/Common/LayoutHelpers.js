@@ -38,6 +38,83 @@ function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
+// Moving one widget is a splice out and a splice in, and the index the drop
+// reported was measured against the list as it stood *before* the removal.
+// Within one column a removal above the insertion point shifts it down by
+// one; across columns nothing shifts. Both the settings list and the bar
+// commit through here, so the two cannot come to disagree about where a drop
+// landed — which they would, being measured in completely different units.
+//
+// Returns the rewritten columns together with the index the widget actually
+// came to rest at, since that is what an announcement has to name and it is
+// not always the index that was asked for.
+function moveWidget(mods, fromCol, id, toCol, index) {
+    var columns = ["left", "center", "right"];
+    if (columns.indexOf(fromCol) === -1 || columns.indexOf(toCol) === -1)
+        return null;
+
+    var next = {};
+    columns.forEach(function(col) {
+        next[col] = (((mods || {})[col]) || []).map(function(entry) {
+            return { id: entry.id, on: entry.on, detail: entry.detail };
+        });
+    });
+
+    var from = -1;
+    for (var i = 0; i < next[fromCol].length; i++) {
+        if (next[fromCol][i].id === id) {
+            from = i;
+            break;
+        }
+    }
+    if (from < 0)
+        return null;
+
+    var entry = next[fromCol][from];
+    var to = clamp(index, 0, next[toCol].length);
+    next[fromCol].splice(from, 1);
+    if (toCol === fromCol && from < to)
+        to--;
+    next[toCol].splice(to, 0, entry);
+    return { mods: next, col: toCol, idx: to };
+}
+
+// Which section of the bar a pointer at `x` is aiming at. The boundary sits
+// midway across the empty run between two clusters rather than at a cluster's
+// own edge, so a drop into that gap goes to the nearer side instead of always
+// falling to whichever cluster happens to be drawn wider.
+function barDropColumn(x, bounds) {
+    bounds = bounds || {};
+    var leftEnd = Number(bounds.leftEnd) || 0;
+    var centerStart = Number(bounds.centerStart) || 0;
+    var centerEnd = Number(bounds.centerEnd) || 0;
+    var rightStart = Number(bounds.rightStart) || 0;
+    if (x < (leftEnd + centerStart) / 2)
+        return "left";
+    if (x < (centerEnd + rightStart) / 2)
+        return "center";
+    return "right";
+}
+
+// Where a drop at `x` lands in a column's *configured* list, which is longer
+// than what the bar draws: a widget switched off, or ruled out by its own
+// auto-rule (no player, no battery, no pending updates), holds an index but
+// occupies no pixels. Only drawn widgets have a center to compare against, so
+// the insertion point is the configured index of the first drawn widget past
+// the pointer — which leaves any undrawn widgets ahead of it exactly where
+// the user left them, rather than quietly resequencing things off screen.
+function barDropIndex(entries, centers, x) {
+    var list = entries || [];
+    for (var i = 0; i < list.length; i++) {
+        var center = centers ? centers[list[i].id] : undefined;
+        if (typeof center !== "number")
+            continue;
+        if (x < center)
+            return i;
+    }
+    return list.length;
+}
+
 function stackedDropIndex(columns, y) {
     if (!Array.isArray(columns) || columns.length === 0)
         return null;
@@ -183,7 +260,11 @@ function edgeFlareRadii(options) {
 
 var exported = {
     COMPACT_ORDER: COMPACT_ORDER,
+    clamp: clamp,
     groupModules: groupModules,
+    moveWidget: moveWidget,
+    barDropColumn: barDropColumn,
+    barDropIndex: barDropIndex,
     stackedDropIndex: stackedDropIndex,
     fitBar: fitBar,
     accumulateWheel: accumulateWheel,
