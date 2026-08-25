@@ -28,6 +28,21 @@ Surface {
         - footerHeight - (footer.visible ? root.spacing : 0)
         - (noReadBanner.visible ? noReadBanner.height + root.spacing : 0))
 
+    // A thread is the one page that would take every pixel the screen offers.
+    // The inbox and the new-thread form end, so the budget above is a ceiling
+    // they rarely touch; a transcript does not end, so uncapped it stretched
+    // the panel down the whole output. The timeline already scrolls, so give
+    // it half the room below the bar instead: transcript enough to read on a
+    // tall screen, without a panel that reaches the bottom edge.
+    //
+    // The floor is what keeps a short output usable. Half is generous on a
+    // 1440px screen and mean on a 900px one, where it would land under the
+    // reading window a thread needs — so below roughly 1080px the thread
+    // takes more than half rather than less, and maxPageHeight still has the
+    // last word on the smallest outputs.
+    readonly property int threadMaxHeight: Math.min(root.maxPageHeight,
+        Math.max(520, Math.round(root.availableHeight / 2)))
+
     property string page: "inbox"
     property string selectedThreadId: ""
     property bool inboxSnoozedExpanded: false
@@ -123,7 +138,7 @@ Surface {
 
         T3ThreadPage {
             width: root.width - root.padding * 2
-            maxHeight: root.maxPageHeight
+            maxHeight: root.threadMaxHeight
             threadId: root.selectedThreadId
             onBackRequested: root.showInbox()
             onNewPlanRequested: plan => root.showPlanInNewThread(plan)
