@@ -139,18 +139,17 @@ test("Inbox cards open GitHub and expose local hover/focus settlement actions", 
         assert.ok(source.includes(context), `Inbox rows do not show ${context}`);
 });
 
-test("the bar separates live workflows from persistent Inbox badges", () => {
+test("the bar keeps its live-workflow marker clear of the GitHub mark", () => {
     const source = read("Bar/Modules/GitHub.qml");
-    const marker = source.match(/\/\/ Running status:[\s\S]*?Rectangle \{\s*id: badge/)?.[0] ?? "";
+    const marker = source.match(/\/\/ Running status:[\s\S]*?color:\s*Theme\.barAccent\s*\n\s*\}/)?.[0] ?? "";
     assert.match(marker, /visible:\s*GitHub\.runningCount > 0/);
     assert.match(marker, /width:\s*5[\s\S]*height:\s*5/);
     assert.doesNotMatch(marker, /Animation|Animator|Timer|opacity:/);
     assert.match(source, /GitHub\.badgeTone === "red" \? Theme\.barRed/);
     assert.match(source, /GitHub\.badgeTone === "amber" \? Theme\.barAmber/);
-    assert.match(source, /color:\s*ghChip\.badgeInk/,
-        "badge copy must follow the selected menubar colour's contrast palette");
-    assert.match(source, /visible:\s*GitHub\.badgeVisible/);
-    assert.match(source, /text:\s*GitHub\.pendingInboxCount > 99/);
+    assert.doesNotMatch(source, /id:\s*badge(?:Count)?\b|GitHub\.badgeVisible/,
+        "pending Inbox state must not draw a badge over the GitHub mark");
+    assert.match(source, /id:\s*countLabel[\s\S]*text:\s*GitHub\.pendingInboxCount/);
     assert.match(source,
         /githubTooltip\(GitHub\.runningCount,[\s\S]*GitHub\.pendingInboxCount,[\s\S]*GitHub\.unreadRepoCount/);
 });

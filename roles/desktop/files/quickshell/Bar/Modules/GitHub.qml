@@ -17,8 +17,6 @@ BarModule {
 
         readonly property color badgeTone: GitHub.badgeTone === "red" ? Theme.barRed
             : GitHub.badgeTone === "amber" ? Theme.barAmber : Theme.barAccent
-        readonly property color badgeInk: GitHub.badgeTone === "red" ? Theme.barRedFg
-            : GitHub.badgeTone === "amber" ? Theme.barAmberFg : Theme.barAccentFg
         readonly property real detailSaving: countLabel.visible
             ? countLabel.implicitWidth + spacing : 0
 
@@ -40,8 +38,8 @@ BarModule {
             return summary;
         }
 
-        // The mark, with its two markers hung off it: a static running dot at
-        // the foot, and the unread badge at the shoulder.
+        // The mark carries only the static running marker at its foot; pending
+        // Inbox activity stays in the adjacent count instead of covering it.
         Item {
             anchors.verticalCenter: parent.verticalCenter
             width: mark.implicitWidth
@@ -76,33 +74,6 @@ BarModule {
                 color: Theme.barAccent
             }
 
-            Rectangle {
-                id: badge
-
-                readonly property bool showCount: GitHub.badgeMode === "count"
-
-                visible: GitHub.badgeVisible
-                anchors.top: parent.top
-                anchors.topMargin: showCount ? -3 : -1
-                anchors.right: parent.right
-                anchors.rightMargin: showCount ? -2 : 0
-                width: showCount ? Math.max(height, badgeCount.implicitWidth + 8) : 8
-                height: showCount ? 14 : 8
-                radius: height / 2
-                color: showCount ? ghChip.badgeTone : ghChip.badgeTone
-
-                Text {
-                    id: badgeCount
-                    visible: badge.showCount
-                    anchors.centerIn: parent
-                    text: GitHub.pendingInboxCount > 99 ? "99+" : GitHub.pendingInboxCount
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightMedium
-                    font.features: Theme.tabularNumberFeatures
-                    color: ghChip.badgeInk
-                }
-            }
         }
 
         Text {
