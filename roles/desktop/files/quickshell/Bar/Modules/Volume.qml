@@ -16,7 +16,7 @@ BarModule {
             : Audio.volume < 50 ? "volume_down" : "volume_up"
         size: Theme.barIconSize
         fill: 1
-        color: Audio.muted ? Theme.barRedText : Theme.barTextHi
+        color: Audio.muted ? Theme.barRedText : Theme.barIcon
     }
 
     Text {

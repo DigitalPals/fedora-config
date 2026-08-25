@@ -109,10 +109,10 @@ Rectangle {
     property real contentSpacing: 4
     property string tooltip: ""
     property int tooltipAlign: 0
-    // Classic layout: solo/status glyphs rest directly on the slab. Only a
-    // chip-group member carries the screenshot's very light resting fill.
-    property color restFill: bare ? "transparent"
-        : inner ? Theme.barChip : "transparent"
+    // Every module rests directly on the slab. Callers may still override
+    // this for a deliberate state; ordinary shape selection never adds a
+    // per-module tile.
+    property color restFill: "transparent"
 
     signal clicked(real mouseX)
     signal middleClicked

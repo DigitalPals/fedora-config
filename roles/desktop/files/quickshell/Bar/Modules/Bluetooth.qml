@@ -12,7 +12,7 @@ BarModule {
         anchors.verticalCenter: parent.verticalCenter
         name: BluetoothState.enabled ? "bluetooth" : "bluetooth_disabled"
         size: Theme.barIconSize
-        color: Theme.barTextHi
+        color: Theme.barIcon
         opacity: BluetoothState.connected ? 1 : 0.35
 
         Behavior on opacity {

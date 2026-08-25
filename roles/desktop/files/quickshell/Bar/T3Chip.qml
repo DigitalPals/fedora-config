@@ -6,7 +6,8 @@ import "../Common"
 // T3 Code chip: the official T3 mark (pingdotgg/t3code, MIT), a live dot while
 // agents are working, and a status word. Sessions needing approval or input
 // win (amber), then running/background-monitoring work, then a quiet idle
-// mark. The mark is white while connected and dimmed while off or connecting.
+// mark. The mark uses the shared bar-icon tone while connected and dims only
+// while off or connecting.
 BarChip {
     id: root
 
@@ -42,9 +43,9 @@ BarChip {
     shape: "inner"
     hPadding: 9
     spacing: 6
-    // Attention is the one state that colours the chip itself: a session
-    // waiting on the user is the only thing here worth interrupting for.
-    restFill: stressed ? Theme.barAmberBg : Theme.barChip
+    // Attention remains visible in the label without giving this module a
+    // resting tile that its neighbours do not have.
+    restFill: "transparent"
     tooltipAlign: 1
     tooltip: {
         if (T3Code.cloudLoginRunning)
@@ -77,7 +78,7 @@ BarChip {
         width: 15
         sourceSize: Qt.size(30, 18)
         source: Quickshell.shellDir + "/assets/t3.svg"
-        opacity: root.live ? 0.92 : 0.52
+        opacity: root.live ? 1 : 0.52
         layer.enabled: true
         layer.effect: MultiEffect {
             colorization: 1

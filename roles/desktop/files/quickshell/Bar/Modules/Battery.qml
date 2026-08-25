@@ -43,7 +43,7 @@ BarModule {
             rotation: 90
             color: root.critical ? Theme.barRedText
                 : root.low ? Theme.barAmber
-                : Battery.pluggedIn ? Theme.barAccent : Theme.barTextHi
+                : Battery.pluggedIn ? Theme.barAccent : Theme.barIcon
         }
     }
 

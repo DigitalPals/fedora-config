@@ -35,7 +35,7 @@ BarModule {
         glyphWidth: Theme.barIconSize
         progress: Updates.runActive
             ? Math.max(0.04, Updates.runPercent / 100) : -1
-        idleColor: Theme.barTextMid
+        idleColor: Theme.barIcon
         label: Updates.runActive
             ? (Updates.runPercent >= 0 ? Updates.runPercent + "%" : "…")
             : Updates.runState === "done" ? ""

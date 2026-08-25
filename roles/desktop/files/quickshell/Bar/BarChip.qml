@@ -51,7 +51,8 @@ Rectangle {
     }
 
     // "pill" rests directly on the menubar slab; "inner" is a step shorter
-    // and carries the screenshot's quiet per-module chip fill.
+    // for grouped modules. Both rest transparent so every module shares the
+    // same slab rather than reading as a separate tile.
     property string shape: "pill"
     readonly property bool inner: shape === "inner"
     property real pillHeight: inner ? Theme.chipInnerHeight : Theme.chipHeight
@@ -60,7 +61,7 @@ Rectangle {
     property real spacing: 5
     property real leftPadding: hPadding
     property real rightPadding: hPadding
-    property color restFill: inner ? Theme.barChip : "transparent"
+    property color restFill: "transparent"
     property color hoverFill: Theme.barChipHover
     // The module's popout is expanded below it.
     property bool held: ownsPanel && host.popoutOpen(panelName)

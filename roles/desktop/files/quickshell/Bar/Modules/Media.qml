@@ -94,20 +94,18 @@ BarModule {
             : "Media"
         tooltipAlign: -1
 
-        // The player's mark, in its own tinted disc.
-        Rectangle {
+        // The player's mark rests directly on the shared menubar slab.
+        Item {
             anchors.verticalCenter: parent.verticalCenter
             width: 24
             height: 24
-            radius: 12
-            color: Theme.barChipHover
 
             Sym {
                 anchors.centerIn: parent
                 name: root.playing ? "graphic_eq" : "music_note"
                 size: Theme.iconSmall + 1
                 fill: 1
-                color: root.playing ? Theme.barAccent : Theme.barTextMid
+                color: Theme.barIcon
             }
         }
 

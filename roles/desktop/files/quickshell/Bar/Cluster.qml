@@ -7,9 +7,9 @@ import "../Common/SettingsHelpers.js" as SettingsHelpers
 // One section of the menubar, and the thing that decides where its pills are.
 //
 // Grouping remains behavioral rather than decorative. T3, usage and GitHub
-// retain their shared ordering/anchor contract but draw as individual quiet
-// chips, while status and centre runs rest directly on the single bar slab.
-// The latter still own one pointer target for their combined popovers.
+// retain their shared ordering/anchor contract, while every group rests
+// directly on the single bar slab. Status and centre runs still own one
+// pointer target for their combined popovers.
 //
 // Grouping follows adjacency in the user's own module order, so dragging a
 // module out of a run in the settings window splits the pill exactly there.
@@ -104,9 +104,8 @@ Item {
                         root.host.unregisterPanel(panelName, pill);
                 }
 
-                // Group furniture is transparent at rest, as in the August
-                // bar. Centre/status runs light only as one interactive target;
-                // chip-group members paint their own subtle rectangles.
+                // Group furniture is transparent at rest. Interactive groups
+                // still light as one target while hovered or held.
                 Rectangle {
                     id: pill
 

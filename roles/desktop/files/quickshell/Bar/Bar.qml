@@ -689,7 +689,7 @@ PanelWindow {
                 glyph: "apps"
                 glyphSize: Theme.barIconSize
                 glyphWeight: 500
-                idleColor: Theme.barTextMid
+                idleColor: Theme.barIcon
                 restFill: Launcher.open && Launcher.screen === barWindow.screen
                     ? Theme.barChipHover : "transparent"
                 hPadding: 5
@@ -747,7 +747,7 @@ PanelWindow {
                 glyphSize: Theme.barIconSize
                 glyphWeight: 600
                 hPadding: 5
-                idleColor: Theme.barTextMid
+                idleColor: Theme.barIcon
                 hoverColor: Theme.barRedText
                 tooltip: "Power"
                 tooltipAlign: 1
