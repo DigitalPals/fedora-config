@@ -119,32 +119,35 @@ test("large Control Center states use subdued accent containers", () => {
     const theme = read("Common/Theme.qml");
     const control = read("Popovers/ControlCenterPopover.qml");
     const slider = read("Popovers/FillSlider.qml");
-    const bigTile = control.slice(
-        control.indexOf("component BigTile:"),
-        control.indexOf("component RoundToggle:"));
+    const radioRow = control.slice(
+        control.indexOf("component RadioRow:"),
+        control.indexOf("component QuickTile:"));
 
     assert.match(theme,
         /readonly property color accentContainer:\s*SettingsHelpers\.mixHex\([\s\S]{0,120}?dark \? 0\.46 : 0\.30\)/);
     assert.match(theme,
         /readonly property color accentContainerFg:\s*SettingsHelpers\.foregroundFor/);
-    // The radios are rows now: they carry a value and a chevron, and a row
-    // that is merely connected is not a selection, so nothing about them is
-    // painted. Only its mark takes the accent.
-    assert.match(bigTile, /color: tileMouse\.containsMouse \? Theme\.chip : "transparent"/);
-    assert.doesNotMatch(bigTile, /Theme\.(?:accentContainer|accentSoft|accentBg|accentSubtle)/,
+    // The radios are rows: they carry a value and a chevron, and a row that is
+    // merely connected is not a selection, so nothing about them is painted.
+    // Only its mark takes the accent.
+    assert.match(radioRow, /color: radioMouse\.containsMouse \? Theme\.chip : "transparent"/);
+    assert.doesNotMatch(radioRow, /Theme\.(?:accentContainer|accentSoft|accentBg|accentSubtle)/,
         "a radio row must not paint an accent field behind its label");
-    assert.match(bigTile, /color: tile\.on \? Theme\.accent : Theme\.icon/,
+    assert.match(radioRow, /color: radio\.on \? Theme\.accent : Theme\.icon/,
         "the accent survives on the glyph, where it is a mark");
 
-    // A quick toggle and a switch track are the same idea, so they light the
+    // A quick action and a switch track are the same idea, so they light the
     // same way — on the subdued container, never on full accent. The ban is
-    // scoped to the toggle's own fill: full accent on a 16px *glyph* is a
-    // mark, which is exactly where the accent is supposed to survive.
-    const roundToggle = control.slice(
-        control.indexOf("component RoundToggle:"),
-        control.indexOf("component StatCard:"));
-    assert.match(roundToggle, /toggle\.on \? Theme\.accentContainer/);
-    assert.doesNotMatch(roundToggle, /toggle\.on \? Theme\.accent\b/);
+    // scoped to the tile's own fill: full accent on a 20px *glyph* is a mark,
+    // which is exactly where the accent is supposed to survive.
+    const quickTile = control.slice(
+        control.indexOf("component QuickTile:"),
+        control.indexOf("component StatColumn:"));
+    assert.match(quickTile, /tile\.on \? Theme\.accentContainer/);
+    assert.doesNotMatch(quickTile, /tile\.on \? Theme\.accent\b/);
+    // A running capture is the one state that owns a field of its own, and it
+    // is the error colour, not the accent.
+    assert.match(quickTile, /tile\.alert \? Theme\.redBg/);
     assert.doesNotMatch(control, /current \? Theme\.accent\b/,
         "the power profile is a segmented control; it lights the held chip");
     assert.match(control, /current \? Theme\.chipHover/);

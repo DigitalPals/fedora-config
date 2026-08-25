@@ -20,37 +20,41 @@ function objectBlock(source, start) {
     assert.fail("unterminated QML object block");
 }
 
-test("the Internet tile always opens Network details and never toggles Wi-Fi", () => {
+test("the Internet row always opens Network details and never toggles Wi-Fi", () => {
     const source = read("Popovers/ControlCenterPopover.qml");
     const title = source.indexOf('title: "Internet"');
     assert.ok(title >= 0);
-    const start = source.lastIndexOf("BigTile {", title);
-    const tile = objectBlock(source, start);
+    const start = source.lastIndexOf("RadioRow {", title);
+    const row = objectBlock(source, start);
 
-    assert.match(tile, /onToggled:\s*Popouts\.openPanel\("wifi", "right"\)/);
-    assert.match(tile, /onExpanded:\s*Popouts\.openPanel\("wifi", "right"\)/);
-    assert.doesNotMatch(tile, /WifiState\.setEnabled/);
+    assert.match(row, /onActivated:\s*Popouts\.openPanel\("wifi", "right"\)/);
+    assert.doesNotMatch(row, /WifiState\.setEnabled/);
     for (const label of ["Ethernet + Wi-Fi", "Ethernet", "No connection", "Offline"])
-        assert.match(tile, new RegExp(label.replace(/[+]/g, "\\+")));
-    assert.match(tile, /on:\s*EthernetState\.connected \|\| WifiState\.connected/);
+        assert.match(row, new RegExp(label.replace(/[+]/g, "\\+")));
+    assert.match(row, /on:\s*EthernetState\.connected \|\| WifiState\.connected/);
 
-    const bigTile = objectBlock(source, source.indexOf("component BigTile:"));
-    assert.match(bigTile, /mouse\.button === Qt\.RightButton[\s\S]*tile\.expanded\(\)/);
-    assert.match(bigTile, /else\s*tile\.toggled\(\)/);
+    // One activation, not three. Left-click, right-click and the chevron's own
+    // hit area all used to call openPanel() with the same arguments — three
+    // targets for one outcome, and a chevron that looked like it did something
+    // the row did not.
+    const radioRow = objectBlock(source, source.indexOf("component RadioRow:"));
+    assert.match(radioRow, /onClicked:\s*radio\.activated\(\)/);
+    assert.doesNotMatch(radioRow, /RightButton/,
+        "a radio row has one outcome, so it must not split the mouse buttons");
+    assert.equal(radioRow.match(/MouseArea\s*\{/g).length, 1,
+        "the whole row is the hit target — no separate chevron MouseArea");
 });
 
-test("the Bluetooth tile always opens details and never toggles the radio", () => {
+test("the Bluetooth row always opens details and never toggles the radio", () => {
     const source = read("Popovers/ControlCenterPopover.qml");
     const title = source.indexOf('title: "Bluetooth"');
     assert.ok(title >= 0);
-    const start = source.lastIndexOf("BigTile {", title);
-    const tile = objectBlock(source, start);
+    const start = source.lastIndexOf("RadioRow {", title);
+    const row = objectBlock(source, start);
 
-    assert.match(tile,
-        /onToggled:\s*Popouts\.openPanel\("bluetooth", "right"\)/);
-    assert.match(tile,
-        /onExpanded:\s*Popouts\.openPanel\("bluetooth", "right"\)/);
-    assert.doesNotMatch(tile, /BluetoothState\.toggle/);
+    assert.match(row,
+        /onActivated:\s*Popouts\.openPanel\("bluetooth", "right"\)/);
+    assert.doesNotMatch(row, /BluetoothState\.toggle/);
 });
 
 test("the stable wifi popout is a scrollable Ethernet and Wi-Fi Network view", () => {
