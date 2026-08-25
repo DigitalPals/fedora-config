@@ -4,9 +4,14 @@ import Quickshell
 import "../Common"
 import "../Common/Format.js" as Format
 
-// Per-provider usage view (design 1a + 1c): brand header with mini
-// provider tabs, blocked-bar window cards with status borders and
-// absolute reset times, credits card, usage-history block chart.
+// Per-provider usage view: brand header with mini provider tabs, blocked-bar
+// window blocks with absolute reset times, credits, usage-history block chart.
+//
+// Nothing here is a card. A limit is a label, a number and a meter, and the
+// grid gap is what separates one from the next — a filled, bordered container
+// around each was the loudest thing in a 448px panel and said nothing the
+// label did not. A limit in trouble colours its own number and meter rather
+// than washing a rectangle behind them.
 Surface {
     id: root
 
@@ -20,8 +25,8 @@ Surface {
 
     // Right-island popouts run a touch wider (design t5).
     implicitWidth: Theme.popWideWidth
-    padding: Theme.surfacePadding
-    spacing: 8
+    padding: Theme.panelPadding
+    spacing: Theme.panelSectionSpacing
 
     readonly property string sel: Usage.selected
     readonly property var p: Usage.provider(sel)
@@ -34,7 +39,7 @@ Surface {
         return Usage.histBars(sel, histMode);
     }
 
-    readonly property real cardW: (width - 2 * padding - 6) / 2
+    readonly property real cardW: (width - 2 * padding - Theme.panelSectionSpacing) / 2
 
     function cardLabel(label) {
         const m = label.match(/^Weekly \((\w+)\)$/);
@@ -88,32 +93,36 @@ Surface {
     // ---- Header: brand mark, meta, mini tabs, refresh ------------------
     Item {
         width: parent.width
-        height: Theme.rowHeight
+        height: Theme.panelHeaderHeight
+
+        // The provider mark sits inline with its name at bar-icon size, the
+        // way the T3 wordmark does. The old filled 46px brand square was a
+        // block of saturated colour standing in for a 16px logo.
+        Image {
+            id: brandSquare
+            x: 2
+            anchors.verticalCenter: parent.verticalCenter
+            width: Theme.iconMedium
+            height: Theme.iconMedium
+            sourceSize: Qt.size(32, 32)
+            fillMode: Image.PreserveAspectFit
+            source: Quickshell.shellDir + "/assets/" + root.info.icon + ".svg"
+        }
 
         Rectangle {
-            id: brandSquare
-            x: 4
-            anchors.verticalCenter: parent.verticalCenter
-            width: Theme.controlHeight
-            height: Theme.controlHeight
-            radius: 7
-            color: root.info.brand
-
-            Image {
-                anchors.centerIn: parent
-                width: root.sel === "codex" ? 15 : 14
-                height: width
-                sourceSize: Qt.size(28, 28)
-                source: Quickshell.shellDir + "/assets/" + root.info.icon + "-white.svg"
-            }
+            x: -root.padding
+            y: parent.height - 1
+            width: root.width
+            height: 1
+            color: Theme.hairlineSoft
         }
 
         Row {
             id: tabsRow
             anchors.right: parent.right
-            anchors.rightMargin: 2
+            anchors.rightMargin: 0
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 3
+            spacing: Theme.panelRowSpacing
 
             Repeater {
                 model: Usage.providerKeys
@@ -124,10 +133,10 @@ Surface {
                     required property string modelData
                     readonly property bool active: Usage.selected === modelData
 
-                    width: Theme.controlHeight
-                    height: Theme.controlHeight
-                    radius: 6
-                    color: active ? Theme.hoverFillStrong : miniTabMouse.containsMouse ? Theme.hoverFill : "transparent"
+                    width: Theme.chipHeight
+                    height: Theme.chipHeight
+                    radius: Theme.chipRadius
+                    color: active ? Theme.chipHover : miniTabMouse.containsMouse ? Theme.chip : "transparent"
 
                     Image {
                         anchors.centerIn: parent
@@ -152,15 +161,15 @@ Surface {
             }
 
             Rectangle {
-                width: Theme.controlHeight
-                height: Theme.controlHeight
-                radius: 6
-                color: refreshMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
+                width: Theme.chipHeight
+                height: Theme.chipHeight
+                radius: Theme.chipRadius
+                color: refreshMouse.containsMouse ? Theme.chipHover : "transparent"
 
                 Sym {
                     anchors.centerIn: parent
                     name: "refresh"
-                    size: Theme.fontSecondary
+                    size: Theme.iconSmall
                     color: refreshMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
 
@@ -176,11 +185,11 @@ Surface {
 
         Column {
             anchors.left: brandSquare.right
-            anchors.leftMargin: 10
+            anchors.leftMargin: 8
             anchors.right: tabsRow.left
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
+            spacing: 4
 
             Text {
                 width: parent.width
@@ -200,8 +209,8 @@ Surface {
                     return [root.p.plan, root.p.account, root.p.source].filter(Boolean).join(" · ");
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                color: Theme.textDim
+                font.pixelSize: Theme.fontMicro
+                color: Theme.textFaint
                 elide: Text.ElideRight
             }
         }
@@ -212,7 +221,7 @@ Surface {
         visible: root.p !== null && root.p.status !== "ok"
         width: parent.width
         height: errRow.implicitHeight + 24
-        radius: 10
+        radius: Theme.chipRadius
         color: Theme.redBgSoft
 
         Row {
@@ -261,8 +270,8 @@ Surface {
     Grid {
         visible: root.p !== null && root.p.status === "ok"
         columns: 2
-        columnSpacing: 6
-        rowSpacing: 6
+        columnSpacing: Theme.panelSectionSpacing
+        rowSpacing: Theme.panelSectionSpacing
         width: parent.width
 
         Repeater {
@@ -277,17 +286,12 @@ Surface {
                 readonly property bool low: remaining > 10 && remaining <= 25
 
                 width: root.cardW
-                height: cardCol.implicitHeight + 20
-                radius: 10
-                color: crit ? Theme.redBgSoft : Theme.cardFill
-                border.width: 1
-                border.color: crit ? Theme.redBorder : low ? Theme.amberBorder : "transparent"
+                height: cardCol.implicitHeight
+                color: "transparent"
 
                 Column {
                     id: cardCol
-                    x: 12
-                    y: 10
-                    width: parent.width - 24
+                    width: parent.width
                     spacing: 7
 
                     Item {
@@ -399,15 +403,12 @@ Surface {
 
             visible: root.p !== null && root.p.status === "ok" && c !== null && c !== undefined
             width: root.cardW
-            height: creditsCol.implicitHeight + 20
-            radius: 10
-            color: Theme.cardFill
+            height: creditsCol.implicitHeight
+            color: "transparent"
 
             Column {
                 id: creditsCol
-                x: 12
-                y: 10
-                width: parent.width - 24
+                width: parent.width
                 spacing: 7
 
                 Item {
@@ -469,18 +470,14 @@ Surface {
     }
 
     // ---- Usage history ---------------------------------------------------
-    Rectangle {
+    Item {
         visible: root.p !== null && root.p.status === "ok"
         width: parent.width
-        height: histCol.implicitHeight + 20
-        radius: 10
-        color: Theme.cardFill
+        height: histCol.implicitHeight
 
         Column {
             id: histCol
-            x: 12
-            y: 10
-            width: parent.width - 24
+            width: parent.width
             spacing: 8
 
             Item {
@@ -489,20 +486,32 @@ Surface {
 
                 Text {
                     id: historyTitle
+                    anchors.left: parent.left
+                    anchors.leftMargin: 2
                     anchors.verticalCenter: parent.verticalCenter
                     text: "USAGE HISTORY"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.fontMicro
                     font.weight: Theme.weightSemibold
-                    font.letterSpacing: 0.6
-                    color: Theme.textDim
+                    font.letterSpacing: 1
+                    color: Theme.textFaint
+                }
+
+                Rectangle {
+                    anchors.left: historyTitle.right
+                    anchors.leftMargin: 10
+                    anchors.right: historyRanges.left
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 1
+                    color: Theme.hairlineSoft
                 }
 
                 Row {
                     id: historyRanges
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 3
+                    spacing: Theme.panelRowSpacing
 
                     Repeater {
                         model: [{ key: "h24", label: "24H" }, { key: "d7", label: "7D" }]
@@ -513,19 +522,19 @@ Surface {
                             required property var modelData
                             readonly property bool active: root.histMode === modelData.key
 
-                            width: rangeText.implicitWidth + 14
-                            height: rangeText.implicitHeight + 4
-                            radius: 5
-                            color: active ? Theme.hoverFillStrong : rangeMouse.containsMouse ? Theme.hoverFill : "transparent"
+                            width: rangeText.implicitWidth + 16
+                            height: Theme.chipInnerHeight
+                            radius: Theme.chipRadius
+                            color: active ? Theme.chipHover : rangeMouse.containsMouse ? Theme.chip : "transparent"
 
                             Text {
                                 id: rangeText
                                 anchors.centerIn: parent
                                 text: rangeChip.modelData.label
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontCaption
-                                font.weight: Theme.weightSemibold
-                                color: rangeChip.active ? Theme.textHi : Theme.textDim
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.fontMicro
+                                font.weight: Theme.weightMedium
+                                color: rangeChip.active ? Theme.textHi : Theme.textLow
                             }
 
                             MouseArea {
@@ -614,16 +623,24 @@ Surface {
     // ---- Footer -----------------------------------------------------------
     Item {
         width: parent.width
-        height: Theme.controlHeight
+        height: Theme.panelFooterHeight
+
+        Rectangle {
+            x: -root.padding
+            anchors.top: parent.top
+            width: root.width
+            height: 1
+            color: Theme.hairlineSoft
+        }
 
         Text {
-            x: 6
+            x: 2
             anchors.verticalCenter: parent.verticalCenter
             // A fetcher failure is plain text — a Python traceback can carry
             // "<module>" and would otherwise be read as markup — and elides
             // instead of running under the countdown. The journal has it in
             // full.
-            width: parent.width - 12 - nextPoll.implicitWidth - 8
+            width: parent.width - 4 - nextPoll.implicitWidth - 8
             elide: Text.ElideRight
             textFormat: Usage.fetchError !== "" ? Text.PlainText : Text.RichText
             text: Usage.fetchError !== ""
@@ -632,20 +649,20 @@ Surface {
                     ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Usage.updatedAt), "HH:mm:ss")}</font>`
                     : "Loading…"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            color: Usage.fetchError !== "" ? Theme.redText : Theme.textDim
+            font.pixelSize: Theme.fontMicro
+            color: Usage.fetchError !== "" ? Theme.redText : Theme.textFaint
         }
 
         Text {
             id: nextPoll
             anchors.right: parent.right
-            anchors.rightMargin: 6
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.RichText
             text: `next poll <font color="${Theme.textLow}" face="${Theme.fontMono}">${Format.mmss(Usage.nextPollSecs)}</font>`
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            color: Theme.textDim
+            font.pixelSize: Theme.fontMicro
+            color: Theme.textFaint
         }
     }
 }

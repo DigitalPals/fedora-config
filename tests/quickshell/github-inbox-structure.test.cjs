@@ -103,11 +103,38 @@ test("the GitHub workspace follows the integrated T3 module hierarchy", () => {
     const source = read("Popovers/GitHubPopover.qml");
     assert.match(source, /padding:\s*T3Theme\.pagePadding/);
     assert.match(source, /surfaceColor:\s*T3Theme\.canvas/);
-    assert.match(source, /id:\s*moduleHeader[\s\S]{0,180}?radius:\s*T3Theme\.panelRadius/);
+    // The header stopped being a card when T3's did: copy over the panel,
+    // closed by a hairline, with no branded wash behind the title.
+    assert.match(source, /id:\s*moduleHeader[\s\S]{0,240}?color:\s*T3Theme\.border/);
+    assert.doesNotMatch(source, /id:\s*moduleHeader[\s\S]{0,240}?gradient:\s*Gradient/,
+        "no accent wash behind the module title");
+    assert.match(source,
+        /component TabButton[\s\S]{0,400}?color:\s*selected \? T3Theme\.hoverStrong/,
+        "a selected tab lights the held chip rather than the accent");
     assert.match(source, /component GroupHeader:[\s\S]*?T3Theme\.tabularNumberFeatures/);
     assert.match(source,
         /height:\s*quiet \? T3Theme\.quietRowHeight : T3Theme\.activeRowHeight/,
         "settled activity should use the same density shift as parked T3 work");
+
+    // These two are a one-line row and a two-line row, and only the height
+    // says which is which. Collapsing the tall one onto the short one draws
+    // the detail line straight through the group header underneath it — which
+    // is what happened when T3's inbox went single-line and both tokens were
+    // pointed at the shared list-row height.
+    const t3Theme = read("Common/T3Theme.qml");
+    const rowToken = name => {
+        const m = t3Theme.match(new RegExp(
+            `readonly property int ${name}:\\s*(?:Theme\\.(\\w+)|(\\d+))`));
+        assert.ok(m, `T3Theme.${name} must be an integer token`);
+        if (m[2] !== undefined)
+            return Number(m[2]);
+        const t = read("Common/Theme.qml").match(new RegExp(
+            `readonly property int ${m[1]}:\\s*(\\d+)`));
+        assert.ok(t, `Theme.${m[1]} must be a literal integer token`);
+        return Number(t[1]);
+    };
+    assert.ok(rowToken("activeRowHeight") >= rowToken("quietRowHeight") + 20,
+        "the two-line row must stay a full line taller than the one-line row");
     assert.match(source, /label:\s*"Working"|\?\s*"Working"/);
     assert.match(source, /label:\s*"Repositories"[\s\S]{0,80}?root\.filteredRepos\.length/);
     assert.match(source, /text:\s*"Search repositories"/);

@@ -52,11 +52,15 @@ Surface {
         signal toggled
         signal expanded
 
-        width: (root.width - 2 * root.padding - 10) / 2
-        height: Theme.tileHeight
-        radius: Theme.cardRadius
-        color: Theme.tile
-        scale: tileMouse.pressed ? 0.97 : 1
+        // Two settings with a value and a chevron each. Side by side as 64px
+        // cards they were the heaviest thing in the panel and still had to
+        // elide "Ethernet + …"; stacked as full-width rows they read as what
+        // they are, in the same rhythm as every other row in the shell.
+        width: parent ? parent.width : 0
+        height: Theme.listRowHeight
+        radius: Theme.chipRadius
+        color: tileMouse.containsMouse ? Theme.chip : "transparent"
+        scale: tileMouse.pressed ? 0.98 : 1
 
         Behavior on color {
             ColorAnimation { duration: Theme.surfaceDuration }
@@ -84,68 +88,60 @@ Surface {
             }
         }
 
-        Rectangle {
-            x: 11
+        Item {
+            id: tileMark
+            x: 6
             anchors.verticalCenter: parent.verticalCenter
-            width: 38
-            height: 38
-            radius: 19
-            color: tile.on ? Theme.accentContainer : Theme.chipHover
-
-            Behavior on color {
-                ColorAnimation { duration: Theme.surfaceDuration }
-            }
+            width: Theme.iconMedium
+            height: Theme.iconMedium
 
             Sym {
                 anchors.centerIn: parent
                 name: tile.glyph
-                size: 19
+                size: Theme.iconMedium
                 fill: tile.on ? 1 : 0
-                color: tile.on ? Theme.accentContainerFg : Theme.textMid
+                color: tile.on ? Theme.accent : Theme.icon
             }
         }
 
-        Column {
-            x: 60
+        Text {
+            id: tileTitle
+            anchors.left: tileMark.right
+            anchors.leftMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - x - 32
-            spacing: 1
-
-            Text {
-                width: parent.width
-                text: tile.title
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
-                font.weight: Theme.weightBold
-                color: Theme.textHi
-                elide: Text.ElideRight
-            }
-
-            Text {
-                width: parent.width
-                text: tile.sub
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
-                font.weight: Theme.weightSemibold
-                color: Theme.textMid
-                elide: Text.ElideRight
-            }
+            text: tile.title
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            color: Theme.textHi
         }
 
-        Rectangle {
+        Text {
+            anchors.left: tileTitle.right
+            anchors.leftMargin: 8
+            anchors.right: tileChevron.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            horizontalAlignment: Text.AlignRight
+            text: tile.sub
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontMicro
+            color: tile.on ? Theme.textMid : Theme.textFaint
+            elide: Text.ElideRight
+        }
+
+        Item {
+            id: tileChevron
             anchors.right: parent.right
-            anchors.rightMargin: 6
+            anchors.rightMargin: 4
             anchors.verticalCenter: parent.verticalCenter
-            width: 24
-            height: 24
-            radius: 12
-            color: chevMouse.containsMouse ? Theme.chipHover : "transparent"
+            width: Theme.chipInnerHeight
+            height: Theme.chipInnerHeight
 
             Sym {
                 anchors.centerIn: parent
                 name: "chevron_right"
-                size: Theme.fontBody
-                symWeight: 600
+                size: Theme.iconSmall
+                symWeight: 450
                 color: chevMouse.containsMouse ? Theme.textHi : Theme.textFaint
             }
 
@@ -160,8 +156,10 @@ Surface {
         }
     }
 
-    // Round quick toggle: a 46px circle that lights on the accent, with its
-    // label underneath. Right-click opens the detail view where one exists.
+    // Quick toggle: the menubar's own chip, lit on the accent container when
+    // the thing is on, with its label underneath. Right-click opens the detail
+    // view where one exists. It was a 46px circle; nothing else in the shell
+    // is round, and five of them were the panel's dominant shape.
     component RoundToggle: Item {
         id: toggle
 
@@ -173,28 +171,20 @@ Surface {
         signal toggled
         signal expanded
 
-        width: (root.width - 2 * root.padding - 4 * 8) / 5
-        height: circle.height + 7 + toggleLabel.implicitHeight + 8
-
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.rowRadius
-            color: toggleMouse.containsMouse ? Theme.chip : "transparent"
-
-            Behavior on color {
-                ColorAnimation { duration: Theme.chipFadeDuration }
-            }
-        }
+        width: (root.width - 2 * root.padding - 4 * Theme.panelRowSpacing) / 5
+        height: circle.height + 6 + toggleLabel.implicitHeight
 
         Rectangle {
             id: circle
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 4
-            width: 46
-            height: 46
-            radius: 23
-            color: toggle.on ? Theme.accentContainer : Theme.tile
-            scale: toggleMouse.pressed ? 0.92 : 1
+            y: 0
+            width: parent.width
+            height: Theme.listRowHeight
+            radius: Theme.chipRadius
+            color: toggle.on ? Theme.accentContainer
+                : toggleMouse.containsMouse ? Theme.chipHover : Theme.chip
+            // rest is the quiet chip; `on` is the only lit state
+            scale: toggleMouse.pressed ? 0.95 : 1
 
             Behavior on color {
                 ColorAnimation { duration: Theme.surfaceDuration }
@@ -212,16 +202,16 @@ Surface {
                 visible: toggle.glyph !== ""
                 anchors.centerIn: parent
                 name: toggle.glyph
-                size: Theme.iconLarge
+                size: Theme.iconMedium
                 fill: toggle.on ? 1 : 0
-                color: toggle.on ? Theme.accentContainerFg : Theme.textMid
+                color: toggle.on ? Theme.accentContainerFg : Theme.icon
             }
 
             Image {
                 visible: toggle.iconSource !== ""
                 anchors.centerIn: parent
-                width: 20
-                height: 20
+                width: Theme.iconMedium
+                height: Theme.iconMedium
                 sourceSize: Qt.size(40, 40)
                 source: toggle.iconSource
             }
@@ -231,13 +221,15 @@ Surface {
             id: toggleLabel
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: circle.bottom
-            anchors.topMargin: 7
+            anchors.topMargin: 6
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
             text: toggle.title
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontMicro
-            font.weight: Theme.weightBold
-            font.letterSpacing: 0.2
-            color: Theme.textLow
+            font.weight: Theme.weightMedium
+            color: toggle.on ? Theme.textMid : Theme.textFaint
         }
 
         MouseArea {
@@ -265,25 +257,22 @@ Surface {
         property color tone: Theme.textHi
         property color barTone: Theme.accent
 
-        width: (root.width - 2 * root.padding - 12) / 3
-        height: statCol.implicitHeight + 18
-        radius: Theme.rowRadius
-        color: Theme.cardFill
+        width: (root.width - 2 * root.padding - 2 * Theme.panelSectionSpacing) / 3
+        height: statCol.implicitHeight
+        color: "transparent"
 
         Column {
             id: statCol
-            x: 11
-            y: 9
-            width: parent.width - 22
+            width: parent.width
             spacing: 5
 
             Text {
                 text: stat.label
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.fontMicro
                 font.weight: Theme.weightSemibold
-                font.letterSpacing: 0.6
-                color: Theme.textDim
+                font.letterSpacing: 1
+                color: Theme.textFaint
             }
 
             Text {
@@ -305,10 +294,10 @@ Surface {
         }
     }
 
-    // ---- Radio tiles -----------------------------------------------------
-    Row {
+    // ---- Radios ----------------------------------------------------------
+    Column {
         width: parent.width
-        spacing: 10
+        spacing: Theme.panelRowSpacing
 
         BigTile {
             glyph: EthernetState.connected ? "lan"
@@ -343,7 +332,7 @@ Surface {
     // ---- Quick toggles ---------------------------------------------------
     Row {
         width: parent.width
-        spacing: 8
+        spacing: Theme.panelRowSpacing
 
         RoundToggle {
             glyph: "dark_mode"
@@ -386,16 +375,10 @@ Surface {
     // ---- Power profile ---------------------------------------------------
     // Only where there is a profile daemon to talk to: on a machine without
     // power-profiles-daemon this row would be three buttons that do nothing.
-    Rectangle {
+    Item {
         visible: PowerProfiles.hasPerformanceProfile
         width: parent.width
-        height: Theme.controlHeight
-        radius: height / 2
-        color: Theme.tile
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.surfaceDuration }
-        }
+        height: Theme.chipHeight
 
         Row {
             id: modeRow
@@ -418,9 +401,9 @@ Surface {
 
                     width: (modeRow.width - modeRow.spacing * 2) / 3
                     height: modeRow.height
-                    radius: height / 2
-                    color: current ? Theme.accentContainer
-                        : modeMouse.containsMouse ? Theme.chipHover : "transparent"
+                    radius: Theme.chipRadius
+                    color: current ? Theme.chipHover
+                        : modeMouse.containsMouse ? Theme.chip : "transparent"
 
                     Behavior on color {
                         ColorAnimation { duration: Theme.chipFadeDuration }
@@ -435,7 +418,7 @@ Surface {
                             name: mode.modelData.glyph
                             size: Theme.iconSmall + 2
                             fill: mode.current ? 1 : 0
-                            color: mode.current ? Theme.accentContainerFg : Theme.textFaint
+                            color: mode.current ? Theme.textHi : Theme.textLow
                         }
 
                         Text {
@@ -445,7 +428,7 @@ Surface {
                             font.pixelSize: Theme.fontMicro
                             font.weight: Theme.weightMedium
                             font.letterSpacing: 0.2
-                            color: mode.current ? Theme.accentContainerFg : Theme.textFaint
+                            color: mode.current ? Theme.textHi : Theme.textLow
                         }
                     }
 
@@ -496,10 +479,10 @@ Surface {
         Rectangle {
             id: outputButton
 
-            width: Theme.controlHeight
-            height: Theme.controlHeight
-            radius: height / 2
-            color: outputMouse.containsMouse || activeFocus ? Theme.chipHover : Theme.tile
+            width: Theme.chipHeight
+            height: Theme.chipHeight
+            radius: Theme.chipRadius
+            color: outputMouse.containsMouse || activeFocus ? Theme.chipHover : Theme.chip
             activeFocusOnTab: true
             Accessible.role: Accessible.Button
             Accessible.name: "Choose audio output"
@@ -523,8 +506,8 @@ Surface {
             Sym {
                 anchors.centerIn: parent
                 name: "chevron_right"
-                size: Theme.iconMedium
-                color: Theme.textMid
+                size: Theme.iconSmall
+                color: Theme.icon
             }
 
             MouseArea {
@@ -540,7 +523,7 @@ Surface {
     // ---- Capture actions -------------------------------------------------
     Row {
         width: parent.width
-        spacing: 8
+        spacing: Theme.panelRowSpacing
 
         Repeater {
             model: [
@@ -559,11 +542,12 @@ Surface {
                 readonly property bool isRecord: index === 1
                 readonly property bool recording: isRecord && Recorder.active
 
-                width: (root.width - 2 * root.padding - 16) / 3
-                height: 38
-                radius: 19
+                width: (root.width - 2 * root.padding
+                    - 2 * Theme.panelRowSpacing) / 3
+                height: Theme.chipHeight
+                radius: Theme.chipRadius
                 color: recording ? Theme.redBg
-                    : actionMouse.containsMouse ? Theme.chipHover : Theme.tile
+                    : actionMouse.containsMouse ? Theme.chipHover : Theme.chip
 
                 Behavior on color {
                     ColorAnimation { duration: Theme.chipFadeDuration }
@@ -578,7 +562,7 @@ Surface {
                         name: action.isRecord
                             ? (action.recording ? "stop_circle" : "radio_button_checked")
                             : action.modelData.glyph
-                        size: Theme.iconSmall + 2
+                        size: Theme.iconSmall
                         color: action.recording ? Theme.redText
                             : action.isRecord ? Theme.red
                             : actionMouse.containsMouse ? Theme.textHi : Theme.textMid
@@ -590,7 +574,7 @@ Surface {
                             ? (action.recording ? "Stop" : "Record")
                             : action.modelData.label
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.fontMicro
                         font.weight: Theme.weightMedium
                         color: action.recording ? Theme.redText
                             : actionMouse.containsMouse ? Theme.textHi : Theme.textMid
@@ -618,8 +602,8 @@ Surface {
     // ---- System stats ----------------------------------------------------
     Grid {
         columns: 3
-        columnSpacing: 6
-        rowSpacing: 6
+        columnSpacing: Theme.panelSectionSpacing
+        rowSpacing: Theme.panelSectionSpacing
         width: parent.width
 
         StatCard {
@@ -646,43 +630,37 @@ Surface {
     // ---- Footer ----------------------------------------------------------
     Row {
         width: parent.width
-        spacing: 6
+        spacing: Theme.panelRowSpacing
 
         Rectangle {
-            width: settingsLabel.x + settingsLabel.implicitWidth + 12
-            height: 36
-            radius: 14
+            width: settingsLabel.x + settingsLabel.implicitWidth + 9
+            height: Theme.chipHeight
+            radius: Theme.chipRadius
             color: settingsMouse.containsMouse ? Theme.chip : "transparent"
 
             Behavior on color {
                 ColorAnimation { duration: Theme.chipFadeDuration }
             }
 
-            Rectangle {
-                x: 5
+            Sym {
+                id: settingsMark
+                x: 7
                 anchors.verticalCenter: parent.verticalCenter
-                width: 26
-                height: 26
-                radius: 13
-                color: Theme.chip
-
-                Sym {
-                    anchors.centerIn: parent
-                    name: "settings" // gear
-                    size: Theme.fontBody
-                    symWeight: 600
-                    color: settingsMouse.containsMouse ? Theme.textHi : Theme.textLow
-                }
+                name: "settings"
+                size: Theme.iconSmall
+                symWeight: 450
+                color: settingsMouse.containsMouse ? Theme.textHi : Theme.icon
             }
 
             Text {
                 id: settingsLabel
-                x: 40
+                anchors.left: settingsMark.right
+                anchors.leftMargin: 7
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Settings"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
-                font.weight: Theme.weightBold
+                font.pixelSize: Theme.fontMicro
+                font.weight: Theme.weightMedium
                 color: settingsMouse.containsMouse ? Theme.textHi : Theme.textLow
             }
 
@@ -696,9 +674,9 @@ Surface {
         }
 
         Rectangle {
-            width: 36
-            height: 36
-            radius: 14
+            width: Theme.chipHeight
+            height: Theme.chipHeight
+            radius: Theme.chipRadius
             color: keysMouse.containsMouse ? Theme.chip : "transparent"
 
             Behavior on color {
@@ -708,8 +686,8 @@ Surface {
             Sym {
                 anchors.centerIn: parent
                 name: "keyboard"
-                size: Theme.iconMedium
-                color: keysMouse.containsMouse ? Theme.textHi : Theme.textLow
+                size: Theme.iconSmall
+                color: keysMouse.containsMouse ? Theme.textHi : Theme.icon
             }
 
             MouseArea {

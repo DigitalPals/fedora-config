@@ -37,7 +37,7 @@ Rectangle {
     // Tighter pill, and a brighter default tint than the other pages.
     component Action: ActionButton {
         hPadding: 16
-        fontFamily: T3Theme.fontSans
+        fontFamily: T3Theme.fontUi
         focusColor: T3Theme.focus
         buttonRadius: T3Theme.controlRadius
         tint: T3Theme.textMuted
@@ -72,7 +72,7 @@ Rectangle {
                     ? root.question.header
                     : root.request.kind === "file-change" ? "Edit approval"
                     : root.request.kind === "file-read" ? "Read approval" : "Command approval"
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontCaption
                 font.weight: Theme.weightSemibold
                 color: T3Theme.amber
@@ -85,7 +85,7 @@ Rectangle {
                 text: root.isInput ? (root.questionIndex + 1) + "/" + root.questions.length
                     + (root.queuedCount > 0 ? "  ·  +" + root.queuedCount + " queued" : "")
                     : "needs you"
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontCaption
                 font.features: T3Theme.tabularNumberFeatures
                 color: T3Theme.textFaint
@@ -101,7 +101,7 @@ Rectangle {
             lineHeight: Theme.proseLineHeight
             maximumLineCount: root.isInput ? 5 : 6
             elide: Text.ElideRight
-            font.family: root.isInput ? T3Theme.fontSans : T3Theme.fontMono
+            font.family: root.isInput ? T3Theme.fontUi : T3Theme.fontMono
             font.pixelSize: Theme.fontBody
             color: T3Theme.textSecondary
         }
@@ -111,7 +111,7 @@ Rectangle {
                 && root.question.multiSelect === true
             width: parent.width
             text: "Select one or more options."
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontCaption
             color: T3Theme.textFaint
         }
@@ -193,7 +193,7 @@ Rectangle {
                             text: option.modelData.label
                             wrapMode: Text.WordWrap
                             lineHeight: Theme.proseLineHeight
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontSecondary
                             color: option.chosen ? T3Theme.textPrimary : T3Theme.textSecondary
                         }
@@ -206,7 +206,7 @@ Rectangle {
                             elide: Text.ElideRight
                             wrapMode: Text.WordWrap
                             lineHeight: Theme.proseLineHeight
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontCaption
                             color: T3Theme.textFaint
                         }
@@ -217,7 +217,7 @@ Rectangle {
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
                         text: option.index < 9 ? String(option.index + 1) : ""
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontMicro
                         font.features: T3Theme.tabularNumberFeatures
                         color: T3Theme.textFaint
@@ -273,7 +273,7 @@ Rectangle {
                 verticalAlignment: TextInput.AlignVCenter
                 enabled: root.actionable
                 clip: true
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontSecondary
                 color: T3Theme.textPrimary
                 onDraftKeyChanged: syncDraft()
@@ -288,7 +288,7 @@ Rectangle {
                     visible: custom.text === "" && !custom.activeFocus
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Or type a custom answer…"
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontSecondary
                     color: T3Theme.textFaint
                 }
@@ -386,7 +386,7 @@ Rectangle {
             lineHeight: Theme.proseLineHeight
             maximumLineCount: 3
             elide: Text.ElideRight
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontCaption
             color: T3Theme.red
         }

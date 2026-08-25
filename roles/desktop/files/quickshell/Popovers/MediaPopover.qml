@@ -41,7 +41,7 @@ Surface {
     // ---- Header: title + source switcher -----------------------------
     Item {
         width: parent.width
-        height: Theme.rowHeight
+        height: Theme.listRowHeight
 
         Text {
             x: 14

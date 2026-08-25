@@ -52,12 +52,19 @@ Singleton {
     // Menus that float above a panel need to stay legible over it.
     readonly property color glassMenu: Qt.rgba(menuBg.r, menuBg.g, menuBg.b,
         dark ? 0.88 : 0.92)
+    // A dialog is the menubar unrolled rather than a card stacked on it, so it
+    // takes the shell's deepest surface and lets the hairlines and the chip
+    // fills below carry every group inside it. Denser than `glass` for the
+    // same reason `glassStrong` is: it holds long copy over a busy wallpaper.
+    readonly property color glassPanel: Qt.rgba(background.r, background.g,
+        background.b, dark ? 0.72 : 0.80)
     // Rendering uses semantic surface tokens. The raw glass colours above
     // remain the translucent variants; disabling glass swaps in opaque
     // references without making nested chip/tile fills opaque.
     readonly property color barSurface: Settings.glassEnabled ? glass : barBg
     readonly property color surfaceStrong: Settings.glassEnabled ? glassStrong : popBg
     readonly property color surfaceMenu: Settings.glassEnabled ? glassMenu : menuBg
+    readonly property color panelSurface: Settings.glassEnabled ? glassPanel : background
     // Full-screen scrims behind the power menu / shortcut sheet.
     readonly property color scrim: dark
         ? Qt.rgba(10 / 255, 8 / 255, 22 / 255, 0.42)
@@ -175,12 +182,15 @@ Singleton {
     readonly property color wsOccupied: dark
         ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(28 / 255, 26 / 255, 46 / 255, 0.62)
 
-    // Legacy aliases, kept so every popover keeps reading one vocabulary.
+    // Aliases, so every popover keeps reading one vocabulary. There are no
+    // cards left in the shell's dialogs, so the names that used to mean "a
+    // container with a fill and a border" now mean the resting chip the
+    // menubar draws: the same recessed step, without the container.
     readonly property color hoverFill: chip
     readonly property color hoverFillStrong: chipHover
     readonly property color activeFill: chip
-    readonly property color cardFill: tile
-    readonly property color insetSurface: tile
+    readonly property color cardFill: chip
+    readonly property color insetSurface: chip
 
     // ---- text -------------------------------------------------------------
     // The design's --txt3 lands at 3.2:1 over the panel reference, below the
@@ -337,12 +347,16 @@ Singleton {
         "#4d6bfe", copyReferenceBg.toString(), 4.5)
 
     // ---- typography --------------------------------------------------------
-    // fontMenu is settings-driven; the family strings live in
-    // SettingsHelpers.FONT_CHOICES so the picker and this token agree.
+    // One face for the whole shell. `fontMenu` is settings-driven — the family
+    // strings live in SettingsHelpers.FONT_CHOICES so the picker and this token
+    // agree — and every surface draws through it: the bar, the panels hanging
+    // off it, the launcher, the toasts and the overlays. `fontSans` is the
+    // shipped default that `fontMenu` falls back to, and nothing draws it
+    // directly; a view that named it would be opting out of the setting.
     readonly property string fontSans: "Google Sans Flex"
     readonly property string fontMenu: {
         const choice = Settings.fontChoices.find(f => f.id === Settings.font);
-        return choice ? choice.family : "Google Sans Flex";
+        return choice ? choice.family : fontSans;
     }
     readonly property string fontMono: "JetBrains Mono"
     // Material Symbols Rounded, installed as a pinned variable font by the
@@ -365,7 +379,11 @@ Singleton {
     readonly property int fontProminent: 20
     readonly property int fontDisplay: 28
     readonly property int fontHero: 34
-    readonly property real proseLineHeight: 1.45
+    // Monospaced faces set wider than they are tall, so a measure that reads
+    // comfortably at 1.45 in the proportional faces runs together in JetBrains
+    // Mono. The step is per-face rather than global: raising it for everyone
+    // would loosen prose that is already correct.
+    readonly property real proseLineHeight: Settings.font === "mono" ? 1.55 : 1.45
 
     // Google Sans Flex accepts continuous weights. The slightly inkier 450
     // body and 550 heading steps mirror end-4 without making compact labels
@@ -433,12 +451,39 @@ Singleton {
     readonly property int tileHeight: 64
     readonly property int calendarCellSize: 22
     readonly property int pickerRowHeight: 40
-    readonly property int popRadius: surfaceRadius
-    readonly property int cardRadius: surfaceRadius
-    readonly property int rowRadius: surfaceRadius
-    readonly property int tileRadius: surfaceRadius
+    // A panel takes the bar's corner and everything inside it takes the bar's
+    // chip corner. `surfaceRadius` stays where it is: it is the compositor's
+    // window rounding (roles/desktop/files/looknfeel.lua) and the Hug corners
+    // that have to match it, not a shell-internal design choice.
+    readonly property int popRadius: panelRadius
+    readonly property int cardRadius: chipRadius
+    readonly property int rowRadius: chipRadius
+    readonly property int tileRadius: chipRadius
     // Gap between the bar's inner edge and the top of a panel hanging from it.
     readonly property int popGap: 12
+
+    // ---- dialog metrics ----------------------------------------------------
+    // A dialog answers to the bar rather than to the card system above: it
+    // takes the bar's own corner, so squaring the menubar squares the panels
+    // hanging off it, and its rows keep the bar's compact rhythm. The list row
+    // is the menubar's own default height, held as a literal so a taller bar
+    // does not drag every thread row up with it.
+    readonly property int panelRadius: Settings.barRadius
+    readonly property int panelPadding: 14
+    readonly property int sectionHeaderHeight: 22
+    readonly property int panelRowHeight: 28
+    readonly property int listRowHeight: 34
+    // A panel's title block: subject on one line, its qualifiers on the next,
+    // closed by a hairline. The footer carries one line and no more.
+    readonly property int panelHeaderHeight: 52
+    readonly property int panelFooterHeight: 30
+    // A row that genuinely carries two lines — a device and what it is doing,
+    // a track and its artist. Most rows do not: one line and a right-aligned
+    // qualifier is the shell's default, and `listRowHeight` is that.
+    readonly property int panelTileHeight: 48
+    // Between two rows in one group, and between two groups.
+    readonly property int panelRowSpacing: 2
+    readonly property int panelSectionSpacing: 16
 
     // The settings workspace uses one stable label lane in every font. Rows
     // stack below their labels only when the page itself becomes narrow.

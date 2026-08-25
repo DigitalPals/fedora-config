@@ -4,7 +4,7 @@ import "../Common"
 Flickable {
     id: root
     default property alias content: contentRoot.data
-    property int spacing: 10
+    property int spacing: Theme.panelSectionSpacing
     readonly property bool scrollbarVisible: contentHeight > height + 1
     // Always reserved: tying the gutter to scrollbarVisible loops, because
     // the narrower content re-wraps taller, which flips scrollbarVisible.

@@ -9,8 +9,8 @@ Item {
 
     signal clicked()
 
-    width: 28
-    height: 28
+    width: Theme.chipHeight
+    height: Theme.chipHeight
     activeFocusOnTab: visible
     Accessible.role: Accessible.Button
     Accessible.name: "Reset to default"
@@ -27,18 +27,18 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: 5
+        radius: Theme.chipRadius
         color: mouse.pressed ? Theme.hoverFillStrong
             : mouse.containsMouse || root.activeFocus ? Theme.hoverFill : "transparent"
         border.width: root.activeFocus ? 1 : 0
         border.color: Theme.accent
     }
 
-    Text {
+    Sym {
         anchors.centerIn: parent
-        text: "↺"
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        name: "undo"
+        size: Theme.iconSmall
+        symWeight: 450
         color: mouse.containsMouse ? Theme.textHi : Theme.textDim
     }
 

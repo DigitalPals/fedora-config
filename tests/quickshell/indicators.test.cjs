@@ -127,15 +127,29 @@ test("large Control Center states use subdued accent containers", () => {
         /readonly property color accentContainer:\s*SettingsHelpers\.mixHex\([\s\S]{0,120}?dark \? 0\.46 : 0\.30\)/);
     assert.match(theme,
         /readonly property color accentContainerFg:\s*SettingsHelpers\.foregroundFor/);
-    assert.match(bigTile, /color:\s*Theme\.tile/);
-    assert.doesNotMatch(bigTile, /color:\s*tile\.on \? Theme\.accentSoft/);
-    assert.match(control, /tile\.on \? Theme\.accentContainer : Theme\.chipHover/);
-    assert.match(control, /toggle\.on \? Theme\.accentContainer : Theme\.tile/);
-    assert.match(control, /current \? Theme\.accentContainer/);
-    assert.doesNotMatch(control, /(?:tile|toggle)\.on \? Theme\.accent\b/);
-    assert.doesNotMatch(control, /current \? Theme\.accent\b/);
+    // The radios are rows now: they carry a value and a chevron, and a row
+    // that is merely connected is not a selection, so nothing about them is
+    // painted. Only its mark takes the accent.
+    assert.match(bigTile, /color: tileMouse\.containsMouse \? Theme\.chip : "transparent"/);
+    assert.doesNotMatch(bigTile, /Theme\.(?:accentContainer|accentSoft|accentBg|accentSubtle)/,
+        "a radio row must not paint an accent field behind its label");
+    assert.match(bigTile, /color: tile\.on \? Theme\.accent : Theme\.icon/,
+        "the accent survives on the glyph, where it is a mark");
+
+    // A quick toggle and a switch track are the same idea, so they light the
+    // same way — on the subdued container, never on full accent. The ban is
+    // scoped to the toggle's own fill: full accent on a 16px *glyph* is a
+    // mark, which is exactly where the accent is supposed to survive.
+    const roundToggle = control.slice(
+        control.indexOf("component RoundToggle:"),
+        control.indexOf("component StatCard:"));
+    assert.match(roundToggle, /toggle\.on \? Theme\.accentContainer/);
+    assert.doesNotMatch(roundToggle, /toggle\.on \? Theme\.accent\b/);
+    assert.doesNotMatch(control, /current \? Theme\.accent\b/,
+        "the power profile is a segmented control; it lights the held chip");
+    assert.match(control, /current \? Theme\.chipHover/);
     assert.match(slider,
-        /GradientStop \{ position: 1; color: Theme\.accentContainer \}/);
+        /GradientStop \{ position: 1; color: Theme\.accentSoft \}/);
 });
 
 test("reminder manager and shell-wide refresh IPC are wired to the action", () => {

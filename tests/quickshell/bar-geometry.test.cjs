@@ -60,8 +60,14 @@ test("Hyprland and shell surfaces share the hug corner radius", () => {
     assert.ok(surfaceRadius, "Theme.surfaceRadius must remain a literal design token");
     assert.ok(windowRadius, "Hyprland decoration.rounding must remain explicit");
     assert.equal(Number(windowRadius[1]), Number(surfaceRadius[1]));
-    for (const alias of ["hugCornerSize", "popRadius", "cardRadius", "rowRadius", "tileRadius"])
+    // Only the Hug corners answer to the compositor. The shell's own dialogs
+    // answer to the menubar instead: a panel takes the bar's corner, and
+    // everything inside it takes the bar's chip corner.
+    assert.match(theme, /readonly property int hugCornerSize:\s*surfaceRadius/,
+        "the Hug corners must keep matching Hyprland's window rounding");
+    assert.match(theme, /readonly property int popRadius:\s*panelRadius/);
+    for (const alias of ["cardRadius", "rowRadius", "tileRadius"])
         assert.match(theme,
-            new RegExp(`readonly property int ${alias}:\\s*surfaceRadius`),
-            `Theme.${alias} must use the shared surface radius`);
+            new RegExp(`readonly property int ${alias}:\\s*chipRadius`),
+            `Theme.${alias} must use the bar's chip corner`);
 });

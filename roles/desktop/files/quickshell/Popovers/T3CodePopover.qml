@@ -141,34 +141,28 @@ Surface {
         }
     }
 
-    Rectangle {
+    // The header is a block of copy over the panel, closed by a hairline —
+    // not a card sitting on one. The branded wash went with the card: an
+    // accent field behind a title is the loudest thing a 460px panel can do,
+    // and the menubar earns its identity from the marks inside it instead.
+    Item {
         id: inboxHeader
         visible: root.page === "inbox"
         z: 100
         width: parent.width
         height: T3Theme.headerHeight
-        radius: T3Theme.panelRadius
-        color: T3Theme.chrome
-        border.width: 1
-        border.color: T3Theme.border
 
-        // A restrained Nightly wash recalls the web sidebar stage artwork
-        // without turning the full panel into a branded gradient.
         Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            opacity: T3Theme.dark ? 0.42 : 0.22
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: T3Theme.accentSubtle }
-                GradientStop { position: 0.58; color: "transparent" }
-                GradientStop { position: 1.0; color: "transparent" }
-            }
+            x: -root.padding
+            y: parent.height - 1
+            width: root.width
+            height: 1
+            color: T3Theme.border
         }
 
         Column {
             anchors.left: parent.left
-            anchors.leftMargin: 11
+            anchors.leftMargin: 2
             anchors.right: headerActions.left
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
@@ -191,29 +185,28 @@ Surface {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Code"
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontBody
                     font.weight: Theme.weightSemibold
                     font.letterSpacing: -0.25
                     color: T3Theme.textPrimary
                 }
 
-                Rectangle {
+                Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: nightlyText.implicitWidth + 10
-                    height: 18
-                    radius: 5
-                    color: T3Theme.accentSubtle
+                    text: "·"
+                    font.family: T3Theme.fontUi
+                    font.pixelSize: Theme.fontMicro
+                    color: Theme.dotDim
+                }
 
-                    Text {
-                        id: nightlyText
-                        anchors.centerIn: parent
-                        text: "Nightly"
-                        font.family: T3Theme.fontSans
-                        font.pixelSize: Theme.fontMicro
-                        font.weight: Theme.weightMedium
-                        color: T3Theme.accent
-                    }
+                Text {
+                    id: nightlyText
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Nightly"
+                    font.family: T3Theme.fontUi
+                    font.pixelSize: Theme.fontMicro
+                    color: T3Theme.textFaint
                 }
             }
 
@@ -230,7 +223,7 @@ Surface {
                 }
 
                 Text {
-                    width: Math.max(0, inboxHeader.width - headerActions.width - 54)
+                    width: Math.max(0, inboxHeader.width - headerActions.width - 30)
                     anchors.verticalCenter: parent.verticalCenter
                     elide: Text.ElideRight
                     text: {
@@ -244,7 +237,7 @@ Surface {
                         return (T3Code.environmentLabel || "Connected")
                             + (T3Code.readOnly ? " · read-only" : "");
                     }
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Code.readOnly ? T3Theme.amber : T3Theme.textFaint
                 }
@@ -254,7 +247,7 @@ Surface {
         Row {
             id: headerActions
             anchors.right: parent.right
-            anchors.rightMargin: 8
+            anchors.rightMargin: 0
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
 
@@ -285,7 +278,7 @@ Surface {
             visible: root.connectionMenuOpen
             z: 1000
             anchors.right: parent.right
-            anchors.rightMargin: 4
+            anchors.rightMargin: 0
             y: parent.height + 4
             width: Math.min(250, inboxHeader.width - 8)
             height: connectionMenuColumn.implicitHeight + 12
@@ -309,7 +302,7 @@ Surface {
                     bottomPadding: 4
                     text: T3Code.environmentLabel || "T3 Code Nightly"
                     elide: Text.ElideRight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontSecondary
                     font.weight: Theme.weightSemibold
                     color: T3Theme.textPrimary
@@ -358,7 +351,7 @@ Surface {
                         anchors.leftMargin: 30
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Reconnect"
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontSecondary
                         color: T3Theme.textSecondary
                     }
@@ -396,7 +389,7 @@ Surface {
             text: "This credential does not grant orchestration read access."
             wrapMode: Text.WordWrap
             lineHeight: Theme.proseLineHeight
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontCaption
             color: T3Theme.red
         }
@@ -417,16 +410,16 @@ Surface {
         height: T3Theme.footerHeight
 
         Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
+            x: -root.padding
             anchors.top: parent.top
+            width: root.width
             height: 1
             color: T3Theme.border
         }
 
         Row {
             anchors.left: parent.left
-            anchors.leftMargin: 7
+            anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 1
             spacing: 6
@@ -442,21 +435,21 @@ Surface {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: T3Code.environmentLabel || "Connected"
-                font.family: T3Theme.fontSans
-                font.pixelSize: Theme.fontCaption
+                font.family: T3Theme.fontUi
+                font.pixelSize: Theme.fontMicro
                 color: T3Theme.textFaint
             }
         }
 
         Text {
             anchors.right: parent.right
-            anchors.rightMargin: 7
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 1
             text: T3Code.runningCount + " active"
                 + (T3Code.attentionCount > 0 ? " · " + T3Code.attentionCount + " waiting" : "")
-            font.family: T3Theme.fontSans
-            font.pixelSize: Theme.fontCaption
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontMicro
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
         }

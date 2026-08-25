@@ -74,7 +74,7 @@ PanelWindow {
             width: launcherView.implicitWidth
             height: launcherView.implicitHeight
             radius: Theme.popRadius
-            color: Theme.surfaceStrong
+            color: Theme.panelSurface
 
             // These animations never gate input: the warm view and selected
             // first row are actionable before the first visible frame.

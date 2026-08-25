@@ -68,12 +68,15 @@ Item {
 
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: 44
-            height: 44
-            radius: 16
-            color: root.kind === "error" ? root.errorFill : root.accentFill
-            border.width: 1
-            border.color: root.kind === "error" ? root.errorOutline : root.outlineColor
+            // An empty state is a quiet mark and a sentence. The filled,
+            // bordered badge it used to draw was the most emphatic thing on a
+            // panel that had nothing to say.
+            width: Theme.iconHero
+            height: Theme.iconHero
+            radius: Theme.chipRadius
+            color: root.kind === "error" ? root.errorFill : "transparent"
+            border.width: root.kind === "error" ? 1 : 0
+            border.color: root.errorOutline
 
             Sym {
                 id: statusGlyph

@@ -9,7 +9,7 @@ Item {
     required property Flickable target
     property int orientation: Qt.Vertical
     property real fadeSize: 24
-    property color edgeColor: Theme.surfaceStrong
+    property color edgeColor: Theme.panelSurface
     property color thumbColor: Theme.accent
 
     readonly property bool vertical: orientation === Qt.Vertical

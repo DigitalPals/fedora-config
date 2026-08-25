@@ -69,13 +69,14 @@ test("every style key the card reads is supplied by every caller", () => {
     }
 });
 
-test("the two surfaces keep their own type, as typography.test.cjs requires", () => {
-    // Not a restatement of that test: this one checks the split survives the
-    // move into a shared card, which is the thing this refactor could break.
+test("both surfaces take the one shell face, as typography.test.cjs requires", () => {
+    // The toast and the notification centre draw the same card; they used to
+    // hand it two different faces, which is how the same notification read as
+    // two different products depending on where you saw it.
     const toast = keysSuppliedSource("NotificationToasts.qml");
     const centre = keysSuppliedSource(path.join("Popovers", "NotifsPopover.qml"));
-    assert.match(toast, /face:\s*Theme\.fontSans/,
-        "the toast style must stay on the general UI face");
+    assert.match(toast, /face:\s*Theme\.fontMenu/,
+        "the toast style must follow the Typography setting");
     assert.match(centre, /face:\s*Theme\.fontMenu/,
         "the centre style must follow the menu font");
     // The centre is a popover, so every size it names must be a Theme token —

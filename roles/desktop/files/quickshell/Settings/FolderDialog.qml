@@ -148,7 +148,7 @@ Controls.Dialog {
                     width: folderList.width
                     height: 34
                     radius: Theme.rowRadius
-                    color: selected ? Theme.accentBg
+                    color: selected ? Theme.chipHover
                         : rowMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
                     activeFocusOnTab: index === folderList.currentIndex
                     Accessible.role: Accessible.ListItem

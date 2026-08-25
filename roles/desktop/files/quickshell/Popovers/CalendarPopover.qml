@@ -42,7 +42,7 @@ Surface {
     // Month navigation
     Item {
         width: parent.width
-        height: Theme.rowHeight
+        height: Theme.listRowHeight
 
         Text {
             x: 12

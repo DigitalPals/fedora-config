@@ -3,18 +3,23 @@ import QtQuick
 import "../Common"
 
 // Wrapping segmented control with roving keyboard selection.
+//
+// Selection is the menubar's own held-chip grammar rather than an accent
+// tint: the taken option lights the same surface a bar chip lights when its
+// popout is open, and the value jump from low copy to high copy is what says
+// which one is chosen. Full accent stays on the small state marks.
 Flow {
     id: root
 
     property var model: []
     property var current
     property bool mono: false
-    property int pillHeight: 24
+    property int pillHeight: Theme.chipInnerHeight
     property int padH: 11
     signal picked(var value)
     readonly property bool anySelected: model.some(item => item.value === current)
 
-    spacing: 6
+    spacing: Theme.panelRowSpacing
     Repeater {
         id: pillRepeater
         model: root.model
@@ -28,8 +33,8 @@ Flow {
 
             width: pillText.implicitWidth + root.padH * 2
             height: root.pillHeight
-            radius: height / 2
-            color: pill.selected ? Theme.accentAlpha(0.16) : Theme.cardFill
+            radius: Theme.chipRadius
+            color: pill.selected ? Theme.chipHover : "transparent"
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accent
             activeFocusOnTab: pill.selected || (!root.anySelected && index === 0)

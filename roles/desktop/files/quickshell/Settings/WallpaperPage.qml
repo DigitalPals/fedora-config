@@ -116,7 +116,7 @@ Item {
                     contentInsideBorder: true
                     border.width: cell.current || cell.activeFocus ? 2 : cell.shuffle ? 1 : 0
                     border.color: cell.activeFocus ? Theme.textHi
-                        : cell.current ? Theme.accent : Qt.rgba(1, 1, 1, 0.16)
+                        : cell.current ? Theme.accent : Theme.stroke
 
                     Rectangle {
                         anchors.fill: parent

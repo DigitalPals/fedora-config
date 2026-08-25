@@ -83,26 +83,41 @@ test("glass switches every shell surface through semantic fills", () => {
     assert.match(theme,
         /readonly property color surfaceMenu:\s*Settings\.glassEnabled \? glassMenu : menuBg/);
 
+    assert.match(theme,
+        /readonly property color panelSurface:\s*Settings\.glassEnabled \? glassPanel : background/);
+
+    // Every surface that hangs off the bar is a panel now and shares one fill.
+    // A menu floating *above* a panel still needs to stay legible over it, so
+    // the tooltip and the folder picker keep the denser variant.
     const expected = {
         "Bar/Bar.qml": "barSurface",
-        "Bar/PopoutHost.qml": "surfaceStrong",
+        "Bar/PopoutHost.qml": "panelSurface",
         "Bar/BarTooltip.qml": "surfaceMenu",
-        "LauncherWindow.qml": "surfaceStrong",
-        "NotificationToasts.qml": "surfaceStrong",
-        "OsdWindow.qml": "surfaceStrong",
-        "PowerMenu.qml": "surfaceStrong",
-        "ShortcutsOverlay.qml": "surfaceStrong",
-        "Popovers/PopoutPanel.qml": "surfaceStrong",
+        "LauncherWindow.qml": "panelSurface",
+        "NotificationToasts.qml": "panelSurface",
+        "OsdWindow.qml": "panelSurface",
+        "ShortcutsOverlay.qml": "panelSurface",
+        "Popovers/PopoutPanel.qml": "panelSurface",
         "Settings/FolderDialog.qml": "surfaceMenu"
     };
     for (const [file, token] of Object.entries(expected))
         assert.match(read(file), new RegExp(`Theme\\.${token}\\b`),
             `${file} does not follow the glass setting`);
 
+    // The power menu is action tiles over a full-screen scrim rather than a
+    // panel, so it has no surface of its own to switch. Its fills are the
+    // bar's alpha chip tokens, which composite over whatever is behind them
+    // and are therefore glass-neutral by construction.
+    const power = read("PowerMenu.qml");
+    assert.match(power, /Theme\.scrim/);
+    assert.match(power, /Theme\.chipHover : Theme\.chip/);
+    assert.doesNotMatch(power, /Theme\.(popBg|barBg|menuBg)\b/,
+        "an opaque reference would ignore the glass setting entirely");
+
     assert.match(read("Popovers/Surface.qml"), /color:\s*root\.surfaceColor\b/,
         "shared surfaces must honor the panel-specific surface contract");
     assert.match(read("Bar/PopoutHost.qml"),
-        /host\.activePanel \? host\.activePanel\.surfaceColor : Theme\.surfaceStrong/,
+        /host\.activePanel \? host\.activePanel\.surfaceColor : Theme\.panelSurface/,
         "the host must preserve global glass as the default while allowing product canvases");
 
     for (const file of qmlFiles(".")) {

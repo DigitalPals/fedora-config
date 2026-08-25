@@ -125,9 +125,9 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         width: countText.implicitWidth + 12
-                        height: 20
-                        radius: 6
-                        color: Theme.accentBg
+                        height: Theme.chipInnerHeight
+                        radius: Theme.chipRadius
+                        color: "transparent"
 
                         Text {
                             id: countText
@@ -135,9 +135,9 @@ Rectangle {
                             text: card.groupCount
                             font.family: card.style.face
                             font.pixelSize: card.style.pill
-                            font.weight: Theme.weightSemibold
+                            font.weight: Theme.weightMedium
                             font.features: Theme.tabularNumberFeatures
-                            color: Theme.accent
+                            color: Theme.textMid
                         }
                     }
 

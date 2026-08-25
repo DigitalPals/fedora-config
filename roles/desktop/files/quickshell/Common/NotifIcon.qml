@@ -2,8 +2,9 @@ import QtQuick
 
 // A notification's source icon: the desktop entry's icon where one resolves,
 // otherwise a glyph — a warning for critical, a globe for a web origin, a
-// bell for everything else. Toasts opt into a compact tinted well so icons
-// with very different silhouettes keep the same visual weight.
+// bell for everything else. Toasts opt into a compact well so icons with very
+// different silhouettes keep the same visual weight — the shell's resting chip
+// rather than an accent tint, which made every toast look like an alert.
 Item {
     id: root
 
@@ -14,12 +15,12 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: Math.min(width, height) * 0.32
+        radius: Theme.chipRadius
         color: root.framed
-            ? (root.urgent ? Theme.redBgSoft : Theme.accentBgSoft)
+            ? (root.urgent ? Theme.redBgSoft : Theme.chip)
             : "transparent"
-        border.width: root.framed ? 1 : 0
-        border.color: root.urgent ? Theme.redBorder : Theme.hairlineSoft
+        border.width: root.framed && root.urgent ? 1 : 0
+        border.color: Theme.redBorder
 
         Image {
             id: image

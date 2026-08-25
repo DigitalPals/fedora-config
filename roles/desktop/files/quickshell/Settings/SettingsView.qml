@@ -13,9 +13,9 @@ PopoutPanel {
     availableWidth: 900
     availableHeight: 680
     readonly property bool compactNav: availableWidth < 860
-    readonly property int headerHeight: 58
-    readonly property int gutter: 14
-    readonly property int navWidth: compactNav ? 60 : 188
+    readonly property int headerHeight: 44
+    readonly property int gutter: Theme.panelPadding
+    readonly property int navWidth: compactNav ? 56 : 176
     readonly property int preferredWidth: 900
     readonly property int preferredHeight: 680
     readonly property int pageIndex: Math.max(0,
@@ -26,6 +26,10 @@ PopoutPanel {
     implicitWidth: Math.max(320, Math.min(preferredWidth, availableWidth))
     implicitHeight: Math.max(280, Math.min(preferredHeight, availableHeight))
     focus: true
+    // A dialog sits on the shell's deepest surface rather than on a lighter
+    // card stacked over it, so the sections inside can be separated by
+    // hairlines the way the bar separates its modules.
+    surfaceColor: Theme.panelSurface
 
     readonly property var navItems: [
         { id: "appearance", group: "SHELL", label: "Appearance", glyph: "palette",
@@ -94,9 +98,13 @@ PopoutPanel {
         readonly property bool current: Settings.page === modelData.id
 
         width: navColumn.width
-        height: 42
-        radius: Theme.rowRadius
-        color: current ? Theme.accentBg : "transparent"
+        height: Theme.panelRowHeight + 2
+        radius: Theme.chipRadius
+        // The current page lights the same surface a bar chip lights when its
+        // popout is open. A 176px slab of accent would be the loudest thing
+        // in the workspace; the accent survives on the icon, where it is a
+        // mark rather than a field.
+        color: current ? Theme.chip : "transparent"
         border.width: activeFocus ? 1 : 0
         border.color: Theme.accent
         activeFocusOnTab: navItem.current
@@ -140,7 +148,7 @@ PopoutPanel {
         Sym {
             id: navIcon
             anchors.left: parent.left
-            anchors.leftMargin: root.compactNav ? 0 : 12
+            anchors.leftMargin: root.compactNav ? 0 : 8
             anchors.verticalCenter: parent.verticalCenter
             width: root.compactNav ? parent.width : 20
             horizontalAlignment: Text.AlignHCenter
@@ -152,7 +160,7 @@ PopoutPanel {
         Text {
             visible: !root.compactNav
             anchors.left: navIcon.right
-            anchors.leftMargin: 7
+            anchors.leftMargin: 9
             anchors.verticalCenter: parent.verticalCenter
             text: navItem.modelData.label
             font.family: Theme.fontMenu
@@ -179,18 +187,18 @@ PopoutPanel {
         property alias text: labelText.text
         property int topPad: 6
         width: navColumn.width
-        height: visible ? 18 + topPad : 0
+        height: visible ? Theme.sectionHeaderHeight + topPad : 0
 
         Text {
             id: labelText
             anchors.left: parent.left
-            anchors.leftMargin: 11
+            anchors.leftMargin: 8
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 2
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.fontMicro
             font.weight: Theme.weightSemibold
-            font.letterSpacing: 0.8
+            font.letterSpacing: 1
             color: Theme.textFaint
         }
     }
@@ -200,31 +208,45 @@ PopoutPanel {
         width: parent.width
         height: root.headerHeight
 
-        Column {
+        // One line, the way the clock reads: the subject, then what it is
+        // about as a quieter qualifier after a middot. Two stacked lines made
+        // the header the tallest thing on the page and said no more than this.
+        Row {
             id: headerCopy
             anchors.left: parent.left
             anchors.leftMargin: root.gutter
             anchors.right: headerActions.left
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
+            spacing: 8
 
             Text {
+                id: headerTitle
+                anchors.verticalCenter: parent.verticalCenter
                 text: root.navItems[root.pageIndex].title
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontHeading
+                font.pixelSize: Theme.fontBody
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
-                width: parent.width
-                elide: Text.ElideRight
             }
 
             Text {
-                text: root.navItems[root.pageIndex].description
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !root.compactNav
+                text: "·"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
-                color: Theme.textDim
-                width: parent.width
+                color: Theme.dotDim
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !root.compactNav
+                text: root.navItems[root.pageIndex].description.toLowerCase()
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: Theme.textFaint
+                width: Math.max(0, parent.width - headerTitle.width - parent.spacing * 2 - 8)
                 elide: Text.ElideRight
             }
         }
@@ -239,14 +261,14 @@ PopoutPanel {
             SettingsAction {
                 visible: Settings.sectionDirty(Settings.page)
                 text: "Reset page"
-                glyph: "↺"
+                glyph: "undo"
                 onTriggered: Settings.resetSection(Settings.page)
             }
 
             SettingsAction {
                 compact: true
                 text: "Close"
-                glyph: "×"
+                glyph: "close"
                 onTriggered: Settings.closePanel()
             }
         }
@@ -309,26 +331,24 @@ PopoutPanel {
 
             SettingsAction {
                 visible: Settings.undoAvailable
-                height: 26
                 compact: root.compactNav
                 text: "Undo"
-                glyph: "↺"
+                glyph: "undo"
                 Accessible.name: "Undo " + Settings.resetLabel + " reset"
                 onTriggered: Settings.undoReset()
             }
 
             SettingsAction {
                 visible: Settings.saveError && !Settings.undoAvailable
-                height: 26
                 compact: root.compactNav
                 text: "Retry"
-                glyph: "↻"
+                glyph: "refresh"
                 onTriggered: Settings.retrySave()
             }
 
             Row {
                 spacing: 7
-                leftPadding: root.compactNav ? 0 : 11
+                leftPadding: root.compactNav ? 0 : 8
                 width: parent.width
 
                 Rectangle {
@@ -348,7 +368,7 @@ PopoutPanel {
                         : Settings.savePending ? "Saving changes…"
                         : Settings.font === "mono" ? "Saved · live" : "Saved · applies live"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.fontMicro
                     color: Settings.saveError ? Theme.redText : Theme.textFaint
                     elide: Text.ElideRight
                     Accessible.role: Settings.saveError

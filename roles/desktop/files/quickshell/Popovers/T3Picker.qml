@@ -137,7 +137,7 @@ Item {
                 width: parent.width
                 text: root.label
                 elide: Text.ElideRight
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontMicro
                 font.weight: Theme.weightMedium
                 color: T3Theme.textFaint
@@ -147,7 +147,7 @@ Item {
                 width: parent.width
                 text: root.selectedLabel()
                 elide: Text.ElideRight
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontSecondary
                 color: root.valueColor
             }
@@ -235,7 +235,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.optionLabel(choice.modelData)
                             elide: Text.ElideRight
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontSecondary
                             color: choice.chosen ? T3Theme.textPrimary : T3Theme.textSecondary
                         }
@@ -246,7 +246,7 @@ Item {
                             anchors.rightMargin: mark.visible ? 27 : 9
                             anchors.verticalCenter: parent.verticalCenter
                             text: choice.index < 9 ? String(choice.index + 1) : ""
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontMicro
                             font.features: T3Theme.tabularNumberFeatures
                             color: T3Theme.textFaint

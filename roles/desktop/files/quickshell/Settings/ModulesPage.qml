@@ -242,9 +242,9 @@ Item {
         height: 18
         width: Math.min(104, chipText.implicitWidth + 12)
         radius: 4
-        color: on ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
+        color: on ? Theme.chip : "transparent"
         border.width: on ? 0 : 1
-        border.color: Qt.rgba(1, 1, 1, 0.18)
+        border.color: Theme.stroke
 
         Text {
             id: chipText
@@ -275,7 +275,7 @@ Item {
         radius: 7
         color: modelData.on ? Theme.cardFill : "transparent"
         border.width: activeFocus ? 1 : 0
-        border.color: activeFocus ? Theme.accent : Qt.rgba(1, 1, 1, 0.14)
+        border.color: activeFocus ? Theme.accent : Theme.hairline
         opacity: row.dragged ? 0.35 : modelData.on ? 1 : 0.55
         activeFocusOnTab: index === 0 && (colId === "left"
             || (Settings.mods.left.length === 0 && colId === "center")

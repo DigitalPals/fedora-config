@@ -28,7 +28,7 @@ PanelWindow {
     // rather than the menu font, and it is free of the popover scale's 12px
     // floor — the timestamp is deliberately small and monospaced.
     readonly property var cardStyle: ({
-        face: Theme.fontSans,
+        face: Theme.fontMenu,
         header: Theme.fontCaption,
         body: Theme.fontCaption,
         bodyColor: Theme.icon,
@@ -248,7 +248,7 @@ PanelWindow {
                 radius: Theme.cardRadius
                 clip: true
                 color: slot.critical ? Theme.redBgSoft
-                    : hovered ? Theme.surfaceMenu : Theme.surfaceStrong
+                    : hovered ? Theme.surfaceMenu : Theme.panelSurface
                 border.width: 1
                 border.color: slot.critical ? Theme.redBorder
                     : hovered ? Theme.accentAlpha(0.32) : Theme.popBorder

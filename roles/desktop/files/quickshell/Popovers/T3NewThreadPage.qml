@@ -37,7 +37,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: "New thread"
             elide: Text.ElideRight
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontBody
             font.weight: Theme.weightSemibold
             color: T3Theme.textPrimary
@@ -87,7 +87,7 @@ Item {
                                 : "A ready provider configuration is required."
                         wrapMode: Text.WordWrap
                         lineHeight: Theme.proseLineHeight
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontCaption
                         color: T3Theme.amber
                     }
@@ -121,7 +121,7 @@ Item {
                     text: "This plan stays in the source project and Default mode. Provider, model, traits, and access remain adjustable."
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.textFaint
                 }
@@ -145,7 +145,7 @@ Item {
                     lineHeight: Theme.proseLineHeight
                     maximumLineCount: 3
                     elide: Text.ElideRight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.red
                 }
@@ -155,7 +155,7 @@ Item {
                     width: parent.width
                     text: T3Code.pendingNewThreadId !== ""
                         ? "Creating thread and waiting for shell confirmation…" : "Creating thread…"
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.textFaint
                 }

@@ -167,8 +167,8 @@ Surface {
         return (value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    function highlight(value, muted) {
-        if (term === "" || muted)
+    function highlight(value) {
+        if (term === "")
             return esc(value);
         const index = (value || "").toLowerCase().indexOf(term.toLowerCase());
         if (index < 0)
@@ -178,21 +178,21 @@ Surface {
             + esc(value.slice(index + term.length));
     }
 
-    // `muted` suppresses the accent match highlight — on the selected row the
-    // accent is the background.
-    function titleFor(row, muted) {
+    // The match highlight is the accent, and it now shows on every row: the
+    // selected row lights a chip rather than an accent field, so there is
+    // nothing for it to collide with.
+    function titleFor(row) {
         if (!row)
             return "";
-        return row.highlight === false ? esc(row.title)
-            : highlight(row.title, muted);
+        return row.highlight === false ? esc(row.title) : highlight(row.title);
     }
 
     // ---- Provider tabs ---------------------------------------------------
     Rectangle {
         width: parent.width
         height: root.tabHeight
-        radius: 15
-        color: Theme.tile
+        radius: Theme.chipRadius
+        color: "transparent"
 
         Row {
             id: tabRow
@@ -222,10 +222,10 @@ Surface {
                     width: (tabRow.width - tabRow.spacing
                         * (root.tabs.length - 1)) / root.tabs.length
                     height: tabRow.height
-                    radius: 11
-                    color: active ? Theme.accentBg
+                    radius: Theme.chipRadius
+                    color: active ? Theme.chipHover
                         : providerTabMouse.containsMouse
-                            ? Theme.hoverFillStrong : "transparent"
+                            ? Theme.chip : "transparent"
 
                     Behavior on color {
                         ColorAnimation { duration: Theme.chipFadeDuration }
@@ -246,7 +246,7 @@ Surface {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: providerTab.label
-                            font.family: Theme.fontSans
+                            font.family: Theme.fontMenu
                             font.pixelSize: Theme.fontTiny
                             font.weight: Theme.weightBold
                             color: providerTab.active
@@ -276,8 +276,8 @@ Surface {
     Rectangle {
         width: parent.width
         height: root.searchHeight
-        radius: 20
-        color: Theme.tile
+        radius: Theme.chipRadius
+        color: Theme.chip
 
         Behavior on color {
             ColorAnimation { duration: Theme.surfaceDuration }
@@ -297,7 +297,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             x: 44
             width: parent.width - x - (modeChip.visible ? modeChip.width + 24 : 16)
-            font.family: Theme.fontSans
+            font.family: Theme.fontMenu
             font.pixelSize: Theme.fontBody
             font.weight: Theme.weightSemibold
             color: Theme.textHi
@@ -332,7 +332,7 @@ Surface {
                 id: modeLabel
                 anchors.centerIn: parent
                 text: root.mode !== "" ? root.provider.label : ""
-                font.family: Theme.fontSans
+                font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontMicro
                 font.weight: Theme.weightMedium
                 font.letterSpacing: 0.5
@@ -366,7 +366,11 @@ Surface {
             width: resultList.width
             height: root.rowHeight
             radius: Theme.rowRadius
-            color: isSelected ? Theme.accent : "transparent"
+            // The selected result lights the bar's held chip. A full-accent
+            // slab across a 460px row was the loudest thing in the shell, and
+            // the value jump from mid copy to white already says which row it
+            // is — the same way a taken segment says it everywhere else.
+            color: isSelected ? Theme.chipHover : "transparent"
 
             Item {
                 x: 10
@@ -396,14 +400,14 @@ Surface {
                         name: resultRow.modelData.glyph || root.provider.glyph
                         size: Theme.iconMedium
                         animateColor: false
-                        color: resultRow.isSelected ? Theme.textOnAccent : Theme.textMid
+                        color: resultRow.isSelected ? Theme.textHi : Theme.textMid
                     }
 
                     Text {
                         anchors.centerIn: parent
                         visible: !!resultRow.modelData.iconText
                         text: resultRow.modelData.iconText || ""
-                        font.family: Theme.fontSans
+                        font.family: Theme.fontMenu
                         font.pixelSize: 20
                     }
                 }
@@ -414,11 +418,11 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - x - 12
                 textFormat: Text.StyledText
-                text: root.titleFor(resultRow.modelData, resultRow.isSelected)
-                font.family: Theme.fontSans
+                text: root.titleFor(resultRow.modelData)
+                font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontSecondary
                 font.weight: Theme.weightBold
-                color: resultRow.isSelected ? Theme.textOnAccent : Theme.textHi
+                color: Theme.textHi
                 elide: Text.ElideRight
             }
 
@@ -459,7 +463,7 @@ Surface {
             width: parent.width - 40
             horizontalAlignment: Text.AlignHCenter
             text: LauncherProviders.emptyText
-            font.family: Theme.fontSans
+            font.family: Theme.fontMenu
             font.pixelSize: Theme.fontTiny
             font.weight: Theme.weightBold
             color: LauncherProviders.error !== "" ? Theme.redText : Theme.textDim

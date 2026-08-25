@@ -336,7 +336,7 @@ Item {
                                 anchors.centerIn: parent
                                 text: String(railEntry.modelData.displayName ?? "?")
                                     .slice(0, 1).toUpperCase()
-                                font.family: T3Theme.fontSans
+                                font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.fontMicro
                                 font.weight: Theme.weightSemibold
                                 color: T3Theme.textSecondary
@@ -405,7 +405,7 @@ Item {
                         root.highlighted = 0;
                     }
                     selectByMouse: true
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontSecondary
                     color: T3Theme.textPrimary
                     selectionColor: T3Theme.accentSoft
@@ -439,7 +439,7 @@ Item {
                     Text {
                         visible: searchInput.text === ""
                         text: "Search models…"
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontSecondary
                         color: T3Theme.textFaint
                     }
@@ -466,7 +466,7 @@ Item {
                 visible: root.rows.length === 0
                 anchors.centerIn: parent
                 text: root.searching ? "No models found" : "No models available"
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontSecondary
                 color: T3Theme.textFaint
             }
@@ -531,7 +531,7 @@ Item {
                                 anchors.top: parent.top
                                 anchors.topMargin: 6
                                 text: "Legacy models"
-                                font.family: T3Theme.fontSans
+                                font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.fontSecondary
                                 font.weight: Theme.weightMedium
                                 color: T3Theme.textPrimary
@@ -544,7 +544,7 @@ Item {
                                 anchors.bottom: parent.bottom
                                 anchors.bottomMargin: 6
                                 text: pickerRow.modelData.count + " models"
-                                font.family: T3Theme.fontSans
+                                font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.fontCaption
                                 color: T3Theme.textFaint
                             }
@@ -581,7 +581,7 @@ Item {
                                 anchors.topMargin: 6
                                 text: pickerRow.modelData.label ?? ""
                                 elide: Text.ElideRight
-                                font.family: T3Theme.fontSans
+                                font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.fontSecondary
                                 font.weight: Theme.weightMedium
                                 color: pickerRow.chosen ? T3Theme.textPrimary
@@ -615,7 +615,7 @@ Item {
                                 text: pickerRow.blocked ? pickerRow.modelData.disabledReason
                                     : (pickerRow.modelData.providerLabel ?? "")
                                 elide: Text.ElideRight
-                                font.family: T3Theme.fontSans
+                                font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.fontCaption
                                 color: pickerRow.blocked ? T3Theme.amber : T3Theme.textFaint
                             }
@@ -638,7 +638,7 @@ Item {
                                     id: shortcutText
                                     anchors.centerIn: parent
                                     text: "Ctrl+" + (pickerRow.modelData.shortcut ?? "")
-                                    font.family: T3Theme.fontSans
+                                    font.family: T3Theme.fontUi
                                     font.pixelSize: Theme.fontMicro
                                     font.features: T3Theme.tabularNumberFeatures
                                     color: T3Theme.textFaint

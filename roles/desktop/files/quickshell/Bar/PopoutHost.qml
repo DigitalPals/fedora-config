@@ -592,7 +592,7 @@ Item {
             id: surface
             anchors.fill: parent
             radius: Theme.popRadius
-            color: host.activePanel ? host.activePanel.surfaceColor : Theme.surfaceStrong
+            color: host.activePanel ? host.activePanel.surfaceColor : Theme.panelSurface
             border.width: 1
             border.color: host.activePanel
                 ? host.activePanel.surfaceBorderColor : Theme.stroke

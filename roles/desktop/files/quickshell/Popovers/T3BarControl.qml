@@ -103,7 +103,7 @@ Item {
                     - chevron.width - triggerRow.spacing))
                 text: root.text
                 elide: Text.ElideRight
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontBody
                 font.weight: Theme.weightMedium
                 color: root.tint

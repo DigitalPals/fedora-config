@@ -8,11 +8,19 @@ function read(rel) {
     return fs.readFileSync(path.join(shellDir, rel), "utf8");
 }
 
-function intToken(source, name) {
+// T3's metrics now defer to the shell's shared panel rhythm rather than
+// restating it, so a token may resolve either to a literal or to one hop
+// through Theme. Follow that hop rather than banning it: the point of the
+// assertion is the resulting number, and pinning the literal here is what
+// would let T3 and the menubar drift apart again.
+function intToken(source, name, theme) {
     const match = source.match(new RegExp(
-        `readonly property int ${name}:\\s*(\\d+)`));
-    assert.ok(match, `Theme.${name} must remain a literal integer token`);
-    return Number(match[1]);
+        `readonly property int ${name}:\\s*(?:Theme\\.(\\w+)|(\\d+))`));
+    assert.ok(match, `${name} must remain an integer token`);
+    if (match[2] !== undefined)
+        return Number(match[2]);
+    assert.ok(theme, `${name} defers to Theme.${match[1]}; pass Theme.qml to resolve it`);
+    return intToken(theme, match[1]);
 }
 
 test("every T3 thread row is one flat line with room for its hover icons", () => {
@@ -20,20 +28,23 @@ test("every T3 thread row is one flat line with room for its hover icons", () =>
     const t3Theme = read("Common/T3Theme.qml");
     const inbox = read("Popovers/T3InboxPage.qml");
 
-    const rowHeight = intToken(t3Theme, "quietRowHeight");
+    const rowHeight = intToken(t3Theme, "quietRowHeight", theme);
 
     assert.match(inbox, /height:\s*T3Theme\.quietRowHeight/,
         "the inbox draws one row height; a thread is not a card");
     assert.doesNotMatch(inbox, /T3Theme\.activeRowHeight/,
         "the two-height row is gone — the tall form belongs to GitHub rows now");
 
-    // The pill form is Theme.inlineActionHeight (32) and does not fit a 42px
-    // row with margin, which is why the row uses its own smaller icon control.
-    const controlSize = inbox.match(/component RowAction: IconButton \{\s*controlSize:\s*(\d+)/);
+    // The pill form is Theme.inlineActionHeight (32) and does not fit the
+    // one-menubar-tall row with margin, which is why the row uses its own
+    // smaller icon control.
+    const controlSize = inbox.match(
+        /component RowAction: IconButton \{\s*controlSize:\s*Theme\.(\w+)/);
     assert.ok(controlSize, "expected the row's own icon-button size");
-    assert.ok(Number(controlSize[1]) <= rowHeight - 8,
+    const control = intToken(theme, controlSize[1]);
+    assert.ok(control <= rowHeight - 8,
         "hover icons leave too little margin inside the thread row");
-    assert.ok(Number(controlSize[1]) < intToken(theme, "inlineActionHeight"),
+    assert.ok(control < intToken(theme, "inlineActionHeight"),
         "the row control must be denser than the shared inline pill");
 
     assert.match(inbox,

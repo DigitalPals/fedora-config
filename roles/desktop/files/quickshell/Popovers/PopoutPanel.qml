@@ -21,7 +21,7 @@ FocusScope {
 
     // Most panels use the shell surface. A product-integrated panel can
     // supply its own canvas without teaching the host about panel names.
-    property color surfaceColor: Theme.surfaceStrong
+    property color surfaceColor: Theme.panelSurface
     property color surfaceBorderColor: Theme.stroke
 
     // The host paints the surface itself while it morphs the panel out of the

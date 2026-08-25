@@ -35,16 +35,10 @@ Surface {
     }
 
     // ---- date + month ----------------------------------------------------
-    Rectangle {
+    Item {
         width: parent.width
-        implicitHeight: dateRow.implicitHeight + 24
+        implicitHeight: dateRow.implicitHeight
         height: implicitHeight
-        radius: Theme.cardRadius
-        color: Theme.tile
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.surfaceDuration }
-        }
 
         Row {
             id: dateRow
@@ -150,22 +144,16 @@ Surface {
     }
 
     // ---- weather ---------------------------------------------------------
-    Rectangle {
+    Item {
         visible: Weather.ready || Weather.offline
         width: parent.width
-        implicitHeight: 68
+        implicitHeight: 56
         height: implicitHeight
-        radius: Theme.cardRadius
-        color: Theme.tile
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.surfaceDuration }
-        }
 
         Row {
             anchors.fill: parent
-            anchors.leftMargin: 14
-            anchors.rightMargin: 14
+            anchors.leftMargin: 2
+            anchors.rightMargin: 2
             spacing: 12
 
             Row {

@@ -30,7 +30,7 @@ Surface {
 
         width: root.width - root.padding * 2 - 4
         x: 2
-        height: Theme.rowHeight
+        height: Theme.listRowHeight
         radius: Theme.rowRadius
         color: sinkMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
         activeFocusOnTab: visible
@@ -164,7 +164,7 @@ Surface {
         visible: root.networkSinks.length > 0
         width: parent.width - 4
         x: 2
-        height: Theme.rowHeight
+        height: Theme.listRowHeight
         radius: Theme.rowRadius
         color: networkMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
         activeFocusOnTab: visible

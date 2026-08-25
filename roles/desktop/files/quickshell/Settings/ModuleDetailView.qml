@@ -58,7 +58,7 @@ SettingsPage {
             SettingsAction {
                 id: backAction
                 text: "All modules"
-                glyph: "‹"
+                glyph: "arrow_back"
                 Accessible.name: "Back to all modules"
                 onTriggered: view.backRequested()
             }

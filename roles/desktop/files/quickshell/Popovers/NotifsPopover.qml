@@ -141,10 +141,10 @@ Surface {
             visible: block.expanded
             width: parent.width
             height: expandedColumn.implicitHeight + 2
-            radius: 11
-            color: Theme.cardFill
-            border.width: 1
-            border.color: block.hasUrgent ? Theme.redBorder : Theme.hairlineSoft
+            radius: Theme.chipRadius
+            color: Theme.chip
+            border.width: block.hasUrgent ? 1 : 0
+            border.color: Theme.redBorder
             clip: true
 
             Column {
@@ -198,19 +198,19 @@ Surface {
                         anchors.rightMargin: 42
                         anchors.verticalCenter: parent.verticalCenter
                         width: expandedCount.implicitWidth + 12
-                        height: 20
-                        radius: 6
-                        color: Theme.accentBg
+                        height: Theme.chipInnerHeight
+                        radius: Theme.chipRadius
+                        color: "transparent"
 
                         Text {
                             id: expandedCount
                             anchors.centerIn: parent
                             text: block.group.items.length
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightSemibold
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Theme.weightMedium
                             font.features: Theme.tabularNumberFeatures
-                            color: Theme.accent
+                            color: Theme.textMid
                         }
                     }
 
@@ -257,49 +257,64 @@ Surface {
 
     Item {
         width: parent.width
-        height: Theme.rowHeight
+        height: Theme.sectionHeaderHeight + 8
 
+        // The section mark every panel draws, with the count as its detail and
+        // the clear action at the end of the rule.
         Row {
-            x: 10
+            id: headerRow
+            x: 2
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
+            spacing: 7
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Notifications"
+                text: "NOTIFICATIONS"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontHeading
+                font.pixelSize: Theme.fontMicro
                 font.weight: Theme.weightSemibold
-                color: Theme.textHi
+                font.letterSpacing: 1
+                color: Theme.textFaint
             }
 
             Rectangle {
                 visible: Notifs.count > 0
                 anchors.verticalCenter: parent.verticalCenter
                 width: countText.implicitWidth + 12
-                height: 22
-                radius: 7
-                color: Theme.accentBg
+                height: Theme.chipInnerHeight
+                radius: Theme.chipRadius
+                color: "transparent"
 
                 Text {
                     id: countText
                     anchors.centerIn: parent
                     text: Notifs.count
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightSemibold
+                    font.pixelSize: Theme.fontMicro
+                    font.weight: Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
-                    color: Theme.accent
+                    color: Theme.textMid
                 }
             }
         }
 
         LinkText {
+            id: clearAll
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             text: "Clear all"
             onClicked: Notifs.clearAll()
+        }
+
+        Rectangle {
+            anchors.left: headerRow.right
+            anchors.leftMargin: 10
+            anchors.right: clearAll.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            height: 1
+            color: Theme.hairlineSoft
         }
     }
 

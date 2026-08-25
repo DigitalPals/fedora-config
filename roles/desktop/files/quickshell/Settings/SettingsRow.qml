@@ -47,14 +47,14 @@ Item {
     readonly property bool narrow: width < Theme.settingsNarrowWidth
     readonly property int labelWidth: Theme.settingsLabelWidth >= root.minimumLabelWidth
         ? Theme.settingsLabelWidth : root.minimumLabelWidth
-    readonly property int undoWidth: 28
+    readonly property int undoWidth: Theme.chipHeight
     // The undo column is always reserved, so the chip appearing never shifts
     // the row (design v2). Controls stop here rather than at the row's edge.
     readonly property real contentRight: width - undoWidth
     readonly property real labelTextWidth: labelText.width
     readonly property var stored: settingKey === "" ? undefined : Settings[settingKey]
 
-    height: narrow ? narrowHeight : 40
+    height: narrow ? narrowHeight : Theme.panelRowHeight
 
     function commit(value) {
         if (root.settingKey !== "")

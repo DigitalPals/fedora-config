@@ -236,7 +236,7 @@ Surface {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: nameBox.owner + "/"
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontBody
             color: T3Theme.textFaint
         }
@@ -246,7 +246,7 @@ Surface {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: nameBox.name
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontBody
             font.weight: nameBox.strong ? Theme.weightMedium : Theme.weightRegular
             color: nameBox.strong ? T3Theme.textPrimary : T3Theme.textSecondary
@@ -269,13 +269,13 @@ Surface {
         bottomPadding: 14
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
-        font.family: T3Theme.fontSans
+        font.family: T3Theme.fontUi
         font.pixelSize: Theme.fontSecondary
         color: T3Theme.textFaint
     }
 
     component Action: ActionButton {
-        fontFamily: T3Theme.fontSans
+        fontFamily: T3Theme.fontUi
         focusColor: T3Theme.focus
         buttonRadius: T3Theme.controlRadius
         tint: T3Theme.textMuted
@@ -283,7 +283,7 @@ Surface {
     }
 
     component GitHubStatus: StatusPlaceholder {
-        fontFamily: T3Theme.fontSans
+        fontFamily: T3Theme.fontUi
         accentColor: T3Theme.accent
         accentFill: T3Theme.accentSubtle
         outlineColor: T3Theme.border
@@ -305,18 +305,21 @@ Surface {
         property color rule: T3Theme.border
 
         width: parent ? parent.width : 0
-        height: 30
+        height: Theme.sectionHeaderHeight + 8
 
+        // The shared section mark: uppercase micro label, count, hairline to
+        // the edge. Settings/SectionHeader.qml and T3's inbox draw the same
+        // shape — one grammar across every dialog is the point.
         Text {
             id: groupLabel
             anchors.left: parent.left
-            anchors.leftMargin: 6
+            anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: group.label
-            font.family: T3Theme.fontSans
-            font.pixelSize: Theme.fontCaption
+            text: group.label.toUpperCase()
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontMicro
             font.weight: Theme.weightSemibold
-            font.letterSpacing: 0.1
+            font.letterSpacing: 1
             color: group.tint
         }
 
@@ -326,8 +329,8 @@ Surface {
             anchors.leftMargin: 7
             anchors.verticalCenter: parent.verticalCenter
             text: group.count
-            font.family: T3Theme.fontSans
-            font.pixelSize: Theme.fontCaption
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontMicro
             font.weight: Theme.weightMedium
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
@@ -335,7 +338,7 @@ Surface {
 
         Rectangle {
             anchors.left: groupCount.right
-            anchors.leftMargin: 8
+            anchors.leftMargin: 10
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             height: 1
@@ -351,9 +354,9 @@ Surface {
         readonly property bool selected: root.page === pageName
 
         width: tabText.implicitWidth + 20
-        height: 30
+        height: Theme.chipHeight
         radius: T3Theme.controlRadius
-        color: selected ? T3Theme.accentSubtle
+        color: selected ? T3Theme.hoverStrong
             : tabMouse.containsMouse || activeFocus ? T3Theme.hover : "transparent"
         border.width: activeFocus ? 1 : 0
         border.color: T3Theme.focus
@@ -389,10 +392,10 @@ Surface {
             id: tabText
             anchors.centerIn: parent
             text: tab.label
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontSecondary
             font.weight: tab.selected ? Theme.weightSemibold : Theme.weightRegular
-            color: tab.selected ? T3Theme.accent : T3Theme.textMuted
+            color: tab.selected ? T3Theme.textPrimary : T3Theme.textMuted
         }
 
         MouseArea {
@@ -541,7 +544,7 @@ Surface {
                     id: statusLabel
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.inboxStatus(inboxCard.row)
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     font.weight: Theme.weightMedium
                     color: inboxCard.statusColor
@@ -574,7 +577,7 @@ Surface {
             anchors.rightMargin: 8
             y: inboxCard.quiet ? 10 : 8
             text: inboxCard.row.title
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontBody
             font.weight: inboxCard.row.unread || inboxCard.row.active
                 ? Theme.weightSemibold : Theme.weightMedium
@@ -595,7 +598,7 @@ Surface {
                     ? inboxCard.row.detail + " · " + meta
                     : inboxCard.row.detail || meta;
             }
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontSecondary
             color: inboxCard.row.tone === "red" ? T3Theme.red : T3Theme.textFaint
             elide: Text.ElideRight
@@ -603,25 +606,20 @@ Surface {
     }
 
     // ---- header -----------------------------------------------------------
-    Rectangle {
+    // Copy over the panel, closed by a hairline. This popover shares T3's
+    // type and metrics, so it shares the rule that replaced their cards: a
+    // branded wash behind a title is the loudest thing a 460px panel can do.
+    Item {
         id: moduleHeader
         width: parent.width
         height: root.headerHeight
-        radius: T3Theme.panelRadius
-        color: T3Theme.chrome
-        border.width: 1
-        border.color: T3Theme.border
 
         Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            opacity: T3Theme.dark ? 0.36 : 0.2
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: T3Theme.accentSubtle }
-                GradientStop { position: 0.6; color: "transparent" }
-                GradientStop { position: 1.0; color: "transparent" }
-            }
+            x: -root.padding
+            y: parent.height - 1
+            width: root.width
+            height: 1
+            color: T3Theme.border
         }
 
         Item {
@@ -651,7 +649,7 @@ Surface {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "GitHub"
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontBody
                         font.weight: Theme.weightSemibold
                         font.letterSpacing: -0.2
@@ -670,7 +668,7 @@ Surface {
                             id: pendingText
                             anchors.centerIn: parent
                             text: GitHub.pendingInboxCount + " pending"
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontMicro
                             font.weight: Theme.weightMedium
                             font.features: T3Theme.tabularNumberFeatures
@@ -711,7 +709,7 @@ Surface {
                             const age = checked > 0 ? Helpers.agoLabel(checked, root.now) : "not checked";
                             return account + " · " + age;
                         }
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontCaption
                         color: T3Theme.textFaint
                     }
@@ -921,7 +919,7 @@ Surface {
                 return GitHub.login !== "" ? "@" + GitHub.login : "GitHub CLI";
             }
             elide: Text.ElideRight
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontCaption
             color: T3Theme.textFaint
         }
@@ -941,7 +939,7 @@ Surface {
                     + (GitHub.pendingInboxCount > 0
                         ? " · " + GitHub.pendingInboxCount + " pending" : "");
             }
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontCaption
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
@@ -1040,7 +1038,7 @@ Surface {
                     text: GitHub.pendingInboxCount
                         + (GitHub.pendingInboxCount === 1 ? " item to review" : " items to review")
                     elide: Text.ElideRight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontSecondary
                     color: T3Theme.textFaint
                 }
@@ -1111,31 +1109,50 @@ Surface {
                             }
                         }
 
+                        // Anchored to the label rather than to a measured
+                        // lane: the count used to sit at a fixed 62px, which
+                        // only cleared "Settled" while the panel was set in a
+                        // proportional face. It follows the word now.
                         Text {
+                            id: settledLabel
                             anchors.left: parent.left
-                            anchors.leftMargin: 11
+                            anchors.leftMargin: 2
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Settled"
-                            font.family: T3Theme.fontSans
-                            font.pixelSize: Theme.fontSecondary
+                            text: "Settled".toUpperCase()
+                            font.family: T3Theme.fontUi
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Theme.weightSemibold
+                            font.letterSpacing: 1
                             color: T3Theme.textFaint
                         }
 
                         Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 62
+                            id: settledCount
+                            anchors.left: settledLabel.right
+                            anchors.leftMargin: 7
                             anchors.verticalCenter: parent.verticalCenter
                             text: inboxSection.modelData.rows.length
-                            font.family: T3Theme.fontSans
-                            font.pixelSize: Theme.fontCaption
+                            font.family: T3Theme.fontUi
+                            font.pixelSize: Theme.fontMicro
                             font.weight: Theme.weightMedium
                             font.features: T3Theme.tabularNumberFeatures
                             color: T3Theme.textFaint
                         }
 
+                        Rectangle {
+                            anchors.left: settledCount.right
+                            anchors.leftMargin: 10
+                            anchors.right: settledChevron.left
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 1
+                            color: T3Theme.border
+                        }
+
                         Sym {
+                            id: settledChevron
                             anchors.right: parent.right
-                            anchors.rightMargin: 11
+                            anchors.rightMargin: 2
                             anchors.verticalCenter: parent.verticalCenter
                             name: root.settledExpanded ? "expand_less" : "expand_more"
                             size: Theme.iconSmall
@@ -1210,7 +1227,7 @@ Surface {
                     onTextEdited: root.repoSearchText = text
                     clip: true
                     selectByMouse: true
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontSecondary
                     color: T3Theme.textPrimary
 
@@ -1218,7 +1235,7 @@ Surface {
                         visible: repoSearchInput.text === ""
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Search repositories"
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontSecondary
                         color: T3Theme.textFaint
                     }
@@ -1280,7 +1297,7 @@ Surface {
                 text: "No repositories match “" + root.repoSearchText + "”"
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontSecondary
                 color: T3Theme.textFaint
             }
@@ -1410,7 +1427,7 @@ Surface {
                                 id: watchLabel
                                 anchors.centerIn: parent
                                 text: "Watching"
-                                font.family: T3Theme.fontSans
+                                font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.fontMicro
                                 font.weight: Theme.weightMedium
                                 color: T3Theme.accent
@@ -1461,7 +1478,7 @@ Surface {
                             return parts.join(" · ");
                         }
                         elide: Text.ElideRight
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontSecondary
                         color: T3Theme.textFaint
                     }
@@ -1613,7 +1630,7 @@ Surface {
                             Text {
                                 width: parent.width
                                 text: commitRow.modelData.subject
-                                font.family: T3Theme.fontSans
+                                font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.fontBody
                                 font.weight: commitRow.unread
                                     ? Theme.weightMedium : Theme.weightRegular
@@ -1635,7 +1652,7 @@ Surface {
                                 Text {
                                     text: " · " + commitRow.modelData.author + " · "
                                         + Helpers.agoLabelIso(commitRow.modelData.date, root.now)
-                                    font.family: T3Theme.fontSans
+                                    font.family: T3Theme.fontUi
                                     font.pixelSize: Theme.fontCaption
                                     color: T3Theme.textFaint
                                 }
@@ -1692,7 +1709,7 @@ Surface {
                                 Text {
                                     width: parent.width - 17
                                     text: commitRow.modelData.subject
-                                    font.family: T3Theme.fontSans
+                                    font.family: T3Theme.fontUi
                                     font.pixelSize: Theme.fontBody
                                     font.weight: Theme.weightMedium
                                     color: T3Theme.textPrimary
@@ -1706,7 +1723,7 @@ Surface {
                                 width: parent.width - 17
                                 topPadding: 7
                                 text: commitRow.modelData.body
-                                font.family: T3Theme.fontSans
+                                font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.fontSecondary
                                 lineHeight: Theme.proseLineHeight
                                 color: T3Theme.textMuted
@@ -1755,7 +1772,7 @@ Surface {
                                             ? commitRow.stats.files
                                                 + (commitRow.stats.files === 1 ? " file" : " files")
                                             : ""
-                                        font.family: T3Theme.fontSans
+                                        font.family: T3Theme.fontUi
                                         font.pixelSize: Theme.fontCaption
                                         color: T3Theme.textFaint
                                     }
@@ -1781,7 +1798,7 @@ Surface {
                                     Text {
                                         visible: commitRow.stats === null
                                         text: "counting…"
-                                        font.family: T3Theme.fontSans
+                                        font.family: T3Theme.fontUi
                                         font.pixelSize: Theme.fontCaption
                                         color: T3Theme.textFaint
                                     }
@@ -1801,7 +1818,7 @@ Surface {
                                     text: commitRow.modelData.author + " · "
                                         + Helpers.agoLabelIso(commitRow.modelData.date, root.now)
                                     elide: Text.ElideRight
-                                    font.family: T3Theme.fontSans
+                                    font.family: T3Theme.fontUi
                                     font.pixelSize: Theme.fontCaption
                                     color: T3Theme.textFaint
                                 }

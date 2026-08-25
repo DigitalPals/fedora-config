@@ -66,21 +66,32 @@ Singleton {
     readonly property color redBorder: Theme.redBorder
     readonly property color success: Theme.ok
 
-    readonly property string fontSans: Theme.fontSans
+    // T3 used to hold a product face of its own, which is why this was called
+    // fontSans. It reads as a second application inside the shell — the bar
+    // beside it obeys the Typography setting and this did not — so the views
+    // now take the same face, and the token is named for the job rather than
+    // for a classification it no longer makes.
+    readonly property string fontUi: Theme.fontMenu
     readonly property string fontMono: Theme.fontMono
     readonly property var tabularNumberFeatures: Theme.tabularNumberFeatures
 
-    readonly property int outerRadius: 16
-    readonly property int composerRadius: 22
-    readonly property int panelRadius: 14
-    readonly property int rowRadius: 10
-    readonly property int controlRadius: 10
-    readonly property int pagePadding: 16
-    readonly property int headerHeight: 56
-    readonly property int footerHeight: 34
+    // The panel answers to the menubar: same corner, same compact rhythm. Only
+    // the composer keeps a shape of its own, and it is the bar's chip corner
+    // rather than the old pill so the prompt reads as a well in the page.
+    readonly property int outerRadius: Theme.panelRadius
+    readonly property int composerRadius: Theme.panelRadius
+    readonly property int panelRadius: Theme.panelRadius
+    readonly property int rowRadius: Theme.chipRadius
+    readonly property int controlRadius: Theme.chipRadius
+    readonly property int pagePadding: Theme.panelPadding
+    readonly property int headerHeight: Theme.panelHeaderHeight
+    readonly property int footerHeight: Theme.panelFooterHeight
+    // Every one-line row in these panels is one menubar tall. `activeRowHeight`
+    // is the two-line form, which only GitHub still draws — T3's inbox went to
+    // a single line — so it keeps its own height rather than following this.
     readonly property int activeRowHeight: 64
-    readonly property int quietRowHeight: 42
-    readonly property int iconButtonSize: 32
+    readonly property int quietRowHeight: Theme.listRowHeight
+    readonly property int iconButtonSize: Theme.chipHeight
 
     // T3 interactions are deliberately quick. Continuous state animation is
     // duty-cycled at the call site so idle windows do not repaint forever.

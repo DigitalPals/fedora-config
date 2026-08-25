@@ -315,16 +315,12 @@ SettingsPage {
                     spacing: 6
                     SectionHeader { label: "WALLPAPER PALETTE PREVIEW" }
 
-                    Rectangle {
+                    Item {
                         width: parent.width
-                        height: paletteContent.implicitHeight + 18
-                        radius: Theme.rowRadius
-                        color: Theme.hoverFill
+                        height: paletteContent.implicitHeight
                         Column {
                             id: paletteContent
-                            x: 10
-                            y: 9
-                            width: parent.width - 20
+                            width: parent.width
                             spacing: 7
                             Flow {
                                 width: parent.width
@@ -593,7 +589,7 @@ SettingsPage {
                             width: 14; height: 14; radius: 7
                             color: "transparent"
                             border.width: 1.5
-                            border.color: fontRow.selected ? Theme.accent : Qt.rgba(1, 1, 1, 0.22)
+                            border.color: fontRow.selected ? Theme.accent : Theme.dotDim
                             Rectangle {
                                 anchors.centerIn: parent
                                 width: 6; height: 6; radius: 3

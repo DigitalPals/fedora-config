@@ -206,7 +206,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.optionLabel(choice.modelData)
                             elide: Text.ElideRight
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontSecondary
                             color: choice.chosen ? T3Theme.textPrimary : T3Theme.textSecondary
                         }
@@ -220,7 +220,7 @@ Item {
                             text: String(choice.modelData.detail ?? "")
                             elide: Text.ElideRight
                             horizontalAlignment: Text.AlignRight
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontMicro
                             color: T3Theme.textFaint
                         }

@@ -245,6 +245,75 @@ command is rejected deliberately. For example:
 ]
 ```
 
+## Dialogs are the menubar unrolled
+
+Every surface in the shell — the settings workspace, T3 Code, the GitHub
+workspace, the control centre, the network and audio panels, the notification
+centre and its toasts, the launcher, the OSD, the shortcut sheet — used to be
+a stack of filled, bordered cards on a lighter surface, and two of them were
+in a face of their own. They all follow the menubar now. Four rules, and
+`Common/Theme.qml` carries the tokens:
+
+- **One surface.** A dialog sits on `Theme.panelSurface` (the shell's deepest
+  surface, glass-aware) with no card stacked on it. `Theme.chip` /
+  `Theme.chipHover` are the only fills left inside: a text field, a row that is
+  current, a segment that is taken.
+- **A section is a label plus a hairline.** `Settings/SectionHeader.qml` is the
+  shape — uppercase `fontMicro`, letter-spaced, then a rule to the edge.
+  T3's inbox groups and the GitHub workspace draw the same mark inline.
+  `SettingsGroup.qml` is a layout, not a Rectangle; there is nothing left to
+  paint.
+- **One accent, four places.** The current workspace pill, a live status dot
+  and its working label, the current page's icon in the settings rail, and an
+  on-switch track or selected swatch ring. Never a nav-row background, never a
+  selected segment fill, never a wash behind a title, never a slab behind the
+  selected launcher result or a connected device. `typography.test.cjs` bans
+  `accentBg*` / `accentSoft` / `accentSubtle` / `accentContainer` as a `color:`
+  or `border.color:` shell-wide, with a short allow-list naming the four fills
+  that earn it: a slider's value readout, a switch or quick-toggle track, the
+  one primary action per panel, and the current-day / current-workspace pill.
+- **One face.** `Theme.fontMenu`, the Typography setting, everywhere.
+  `T3Theme.fontUi` is the T3/GitHub indirection. `Theme.fontSans` is now only
+  what `fontMenu` falls back to; **naming it in a view is how a surface opts
+  out of the setting**, which is exactly the bug this closed, so
+  `typography.test.cjs` bans it outside Theme itself.
+
+Metrics live in Theme's `---- dialog metrics ----` block: `panelRadius` follows
+`Settings.barRadius`, so squaring the menubar squares the panels under it;
+`panelRowHeight` 28 is a settings row, `listRowHeight` 34 is one menubar-tall
+list row, `panelTileHeight` 48 is the two-line form, `sectionHeaderHeight` 22
+is the mark above them, and `panelHeaderHeight` / `panelFooterHeight` are a
+panel's title block and its one-line footer.
+
+Two aliases changed meaning rather than value: `Theme.cardFill`,
+`Theme.tile` and `Theme.insetSurface` now resolve to `Theme.chip`, and
+`cardRadius` / `rowRadius` / `tileRadius` to `chipRadius`. There are no cards
+left, so the names that meant "a container with a fill and a border" mean the
+menubar's resting chip — which is why most panels needed no edit of their own.
+`popRadius` follows `panelRadius`. `surfaceRadius` did **not** move: it is
+Hyprland's window rounding (`roles/desktop/files/looknfeel.lua`) and the Hug
+corners that must match it, and `bar-geometry.test.cjs` pins the pair.
+
+Two things this pass had to fix, both worth remembering:
+
+- **A fixed pixel lane beside a text label breaks when the face changes.** The
+  GitHub inbox positioned its Settled count at `leftMargin: 62`, which cleared
+  the word only in a proportional face; in JetBrains Mono the two overlapped.
+  Anchor a count to `label.right`, never to a measured constant. Lanes that
+  clear a fixed-size *icon* (the 30–32px ones) are fine.
+- **Two row-height tokens that mean different things must not be merged.**
+  `T3Theme.quietRowHeight` is one line and `activeRowHeight` is two; pointing
+  both at the shared list height drew GitHub's detail line straight through the
+  group header below it. `github-inbox-structure.test.cjs` now requires a full
+  line between them.
+
+`SettingsHelpers.semanticPalette` also gained a real step at every level. It
+built the ladder with `ensureContrast`, which only ever *raises* a colour, so a
+Material palette whose `onSurfaceVariant` already cleared 7:1 returned the same
+tone for all five steps — in wallpaper mode every label, value and piece of
+metadata rendered identically. `paletteTone` folds the tone back toward the
+background when it over-clears, so each step lands on its own floor.
+
 ## Layered Hug, glass, and the wallpaper palette
 
 The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project

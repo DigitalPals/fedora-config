@@ -60,7 +60,7 @@ PanelWindow {
             width: Math.min(680, root.width - 48)
             height: body.implicitHeight + 46
             radius: Theme.popRadius
-            color: Theme.surfaceStrong
+            color: Theme.panelSurface
             border.width: 1
             border.color: Theme.stroke
             opacity: scrim.opacity
@@ -105,17 +105,15 @@ PanelWindow {
                     width: parent.width
                     spacing: 10
 
-                    Rectangle {
+                    Item {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 32
-                        height: 32
-                        radius: 11
-                        color: Theme.accentSoft
+                        width: Theme.iconLarge
+                        height: Theme.iconLarge
 
                         Sym {
                             anchors.centerIn: parent
                             name: "keyboard"
-                            size: Theme.iconMedium + 1
+                            size: Theme.iconLarge
                             color: Theme.accent
                         }
                     }

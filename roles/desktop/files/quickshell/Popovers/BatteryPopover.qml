@@ -131,8 +131,9 @@ Surface {
                 visible: modelData.available
                 width: (root.width - 16 - 20 - 8) / 3
                 height: Theme.controlHeight
-                radius: 8
-                color: current ? Theme.accent : profMouse.containsMouse ? Theme.hoverFillStrong : Theme.cardFill
+                radius: Theme.chipRadius
+                color: current ? Theme.chipHover
+                    : profMouse.containsMouse ? Theme.chip : "transparent"
 
                 Text {
                     anchors.centerIn: parent
@@ -140,7 +141,8 @@ Surface {
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontSecondary
                     font.weight: parent.current ? Theme.weightSemibold : Theme.weightMedium
-                    color: parent.current ? Theme.accentFg : profMouse.containsMouse ? Theme.textHi : Theme.textLow
+                    color: parent.current ? Theme.textHi
+                        : profMouse.containsMouse ? Theme.textHi : Theme.textLow
                 }
 
                 MouseArea {

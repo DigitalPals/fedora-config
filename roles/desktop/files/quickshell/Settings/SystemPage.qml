@@ -162,7 +162,7 @@ SettingsPage {
                 }
                 SettingsAction {
                     text: "Reset all"
-                    glyph: "↺"
+                    glyph: "undo"
                     danger: true
                     onTriggered: Settings.resetAll()
                 }

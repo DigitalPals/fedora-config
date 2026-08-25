@@ -77,11 +77,11 @@ Column {
             }
         }
 
-        Text {
+        Sym {
             anchors.centerIn: parent
-            text: button.glyph
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
+            name: button.glyph
+            size: Theme.iconSmall
+            symWeight: 450
             color: buttonMouse.containsMouse ? Theme.textMid : Theme.textDim
         }
 
@@ -235,7 +235,7 @@ Column {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: "Add"
-            glyph: "+"
+            glyph: "add"
             onTriggered: {
                 if (root.addWatch(addInput.text))
                     addInput.text = "";
@@ -338,7 +338,7 @@ Column {
                     anchors.right: parent.right
                     anchors.rightMargin: 3
                     anchors.verticalCenter: parent.verticalCenter
-                    glyph: "×"
+                    glyph: "close"
                     action: "Stop watching " + watchRow.modelData
                     onTriggered: root.removeWatch(watchRow.modelData)
                 }

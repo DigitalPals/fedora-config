@@ -155,7 +155,7 @@ PanelWindow {
                             radius: 38
                             color: action.modelData.danger
                                 ? (action.lit ? Theme.red : Qt.rgba(1, 99 / 255, 99 / 255, 0.85))
-                                : (action.lit ? Theme.chipHover : Theme.surfaceStrong)
+                                : (action.lit ? Theme.chipHover : Theme.chip)
                             border.width: 1
                             border.color: action.current ? Theme.accent
                                 : Qt.rgba(1, 1, 1, 0.16)

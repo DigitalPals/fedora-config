@@ -97,10 +97,10 @@ Surface {
 
                 Item {
                     width: parent.width
-                    height: Theme.rowHeight
+                    height: Theme.listRowHeight
 
                     Text {
-                        x: 10
+                        x: 2
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Network"
                         font.family: Theme.fontMenu
@@ -111,12 +111,19 @@ Surface {
 
                     Sym {
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.rightMargin: 2
                         anchors.verticalCenter: parent.verticalCenter
                         name: EthernetState.connected ? "lan" : "wifi"
-                        size: Theme.fontBody
+                        size: Theme.iconMedium
                         color: EthernetState.connected || WifiState.connected
-                            ? Theme.accent : Theme.textDim
+                            ? Theme.accent : Theme.icon
+                    }
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: Theme.hairlineSoft
                     }
                 }
 
@@ -187,9 +194,9 @@ Surface {
 
                         width: networkContent.width - 4
                         x: 2
-                        height: Theme.tileHeight + 4
+                        height: Theme.panelTileHeight + 4
                         radius: Theme.rowRadius
-                        color: modelData.connected ? Theme.accentBgSoft : Theme.cardFill
+                        color: modelData.connected ? Theme.chip : "transparent"
 
                         Row {
                             anchors.verticalCenter: parent.verticalCenter
@@ -255,7 +262,7 @@ Surface {
 
                 Item {
                     width: parent.width
-                    height: Theme.rowHeight
+                    height: Theme.listRowHeight
 
                     Text {
                         x: 10
@@ -281,9 +288,9 @@ Surface {
                     visible: WifiState.connected
                     width: parent.width - 4
                     x: 2
-                    height: Theme.tileHeight
+                    height: Theme.panelTileHeight
                     radius: Theme.rowRadius
-                    color: Theme.accentBgSoft
+                    color: Theme.chip
 
                     Row {
                         anchors.verticalCenter: parent.verticalCenter
@@ -378,7 +385,7 @@ Surface {
 
                         width: networkContent.width - 4
                         x: 2
-                        height: Theme.rowHeight
+                        height: Theme.listRowHeight
                         radius: Theme.rowRadius
                         color: netMouse.containsMouse ? Theme.hoverFill : "transparent"
 
@@ -435,7 +442,7 @@ Surface {
 
                 Item {
                     width: parent.width
-                    height: Theme.rowHeight
+                    height: Theme.listRowHeight
 
                     Text {
                         x: 10

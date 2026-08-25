@@ -86,10 +86,12 @@ test("the control dashboard uses a compact Settings action without a chevron", (
     const control = read("Popovers/ControlCenterPopover.qml");
     const footer = control.slice(control.indexOf("// ---- Footer"));
 
-    assert.match(footer, /id:\s*settingsLabel[\s\S]{0,160}?text:\s*"Settings"/);
+    assert.match(footer, /id:\s*settingsLabel[\s\S]{0,200}?text:\s*"Settings"/);
     assert.match(footer,
-        /width:\s*settingsLabel\.x \+ settingsLabel\.implicitWidth \+ 12/,
+        /width:\s*settingsLabel\.x \+ settingsLabel\.implicitWidth \+ 9/,
         "the Settings hit target should hug its visible content");
+    assert.match(footer, /height:\s*Theme\.chipHeight/,
+        "footer actions are chips, at the bar's own control height");
     assert.doesNotMatch(footer, /Shell settings|chevron_right/);
 });
 
@@ -508,7 +510,7 @@ test("the grouped rail keeps labeled sections and the rail save state without a 
     assert.match(settings, /"notifications", "system"\]/);
 });
 
-test("settings workspace uses shared responsive cards and bounded header lanes", () => {
+test("settings workspace uses shared responsive groups and bounded header lanes", () => {
     const view = read("Settings/SettingsView.qml");
     const group = read("Settings/SettingsGroup.qml");
     const action = read("Settings/ResponsiveActionRow.qml");
@@ -517,10 +519,12 @@ test("settings workspace uses shared responsive cards and bounded header lanes",
     assert.match(view, /preferredWidth:\s*900/);
     assert.match(view, /preferredHeight:\s*680/);
     assert.match(view, /compactNav:\s*availableWidth < 860/);
-    assert.match(view, /height:\s*42/,
-        "navigation targets must remain comfortably larger than the old 34px rows");
+    assert.match(view, /height:\s*Theme\.panelRowHeight \+ 2/,
+        "navigation rows follow the shared panel rhythm, not a local literal");
+    assert.match(view, /headerHeight:\s*44/,
+        "the header is one line; the two-line form made it the tallest thing here");
     assert.match(view, /anchors\.right:\s*headerActions\.left/);
-    assert.match(view, /id:\s*headerCopy[\s\S]{0,700}?elide:\s*Text\.ElideRight/,
+    assert.match(view, /id:\s*headerCopy[\s\S]{0,1400}?elide:\s*Text\.ElideRight/,
         "header copy must be bounded before the action lane");
 
     assert.match(group, /default property alias content:/);
@@ -533,10 +537,44 @@ test("settings workspace uses shared responsive cards and bounded header lanes",
 
     for (const page of ["AppearancePage", "BarLayoutPage", "NotificationsPage", "SystemPage"])
         assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
-            `${page} must use grouped setting cards`);
+            `${page} must use grouped settings sections`);
     for (const page of ["AppearancePage", "WallpaperPage", "NotificationsPage", "SystemPage"])
         assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must use bounded responsive action copy`);
+});
+
+// The menubar separates one run of modules from the next with a hairline and a
+// gap. A settings page says the same thing the same way: nothing in it is a
+// filled, bordered container, and the one accent stays a mark rather than
+// becoming a field behind a 176px navigation row.
+test("dialog chrome carries the menubar's grammar rather than a card stack", () => {
+    const group = read("Settings/SettingsGroup.qml");
+    const header = read("Settings/SectionHeader.qml");
+    const pills = read("Settings/PillRow.qml");
+    const view = read("Settings/SettingsView.qml");
+
+    assert.match(group, /^Item \{$/m,
+        "a settings group is a layout, not a Rectangle to paint");
+    for (const banned of [/\bcolor:\s*Theme\.cardFill/, /\bborder\.color:/, /\bradius:/])
+        assert.doesNotMatch(group, banned,
+            "the group card is gone; the section header and its rule replace it");
+
+    assert.match(header, /height:\s*Theme\.sectionHeaderHeight/);
+    assert.match(header, /color:\s*Theme\.hairlineSoft/,
+        "a section label runs a hairline to the page edge, as T3's inbox groups do");
+
+    assert.match(pills, /color:\s*pill\.selected \? Theme\.chipHover : "transparent"/,
+        "the taken option lights the bar's held chip, not an accent tint");
+    assert.match(pills, /radius:\s*Theme\.chipRadius/,
+        "segments take the bar's chip corner rather than a pill");
+    assert.doesNotMatch(pills, /Theme\.accentAlpha/,
+        "broad selected controls must not paint the accent");
+
+    assert.doesNotMatch(view, /Theme\.accentBg/,
+        "the navigation rail's accent survives on the icon, never as a field");
+    assert.match(view, /color:\s*current \? Theme\.chip : "transparent"/);
+    assert.match(view, /surfaceColor:\s*Theme\.panelSurface/,
+        "a dialog sits on the shell's deepest surface, not on a lighter card");
 });
 
 test("progressive disclosure hides inactive controls without discarding latent values", () => {

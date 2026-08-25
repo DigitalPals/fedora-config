@@ -74,7 +74,7 @@ PanelWindow {
         implicitWidth: row.implicitWidth + 28
         implicitHeight: 46
         radius: height / 2
-        color: Theme.surfaceStrong
+        color: Theme.panelSurface
         border.width: 1
         border.color: root.muted ? Theme.redBorder : Theme.popBorder
 

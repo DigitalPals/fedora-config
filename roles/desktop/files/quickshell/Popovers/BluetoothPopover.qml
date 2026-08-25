@@ -11,7 +11,7 @@ Surface {
     // Header + toggle
     Item {
         width: parent.width
-        height: Theme.rowHeight
+        height: Theme.listRowHeight
 
         Text {
             x: 10
@@ -70,9 +70,10 @@ Surface {
 
             width: parent.width - 4
             x: 2
-            height: modelData.connected ? Theme.tileHeight : Theme.rowHeight
+            height: modelData.connected ? Theme.panelTileHeight : Theme.listRowHeight
             radius: Theme.rowRadius
-            color: modelData.connected ? Theme.accentBgSoft : btMouse.containsMouse ? Theme.hoverFill : "transparent"
+            color: modelData.connected ? Theme.chip
+                : btMouse.containsMouse ? Theme.chipHover : "transparent"
             opacity: modelData.connected || btMouse.containsMouse ? 1 : 0.75
 
             Row {

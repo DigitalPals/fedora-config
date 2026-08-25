@@ -11,9 +11,9 @@ Rectangle {
     property bool danger: false
     signal triggered()
 
-    width: compact ? 30 : actionRow.implicitWidth + 16
-    height: 30
-    radius: Theme.rowRadius
+    width: compact ? Theme.chipHeight : actionRow.implicitWidth + 16
+    height: Theme.chipHeight
+    radius: Theme.chipRadius
     color: "transparent"
     border.width: activeFocus ? 1 : 0
     border.color: danger ? Theme.red : Theme.accent
@@ -51,11 +51,16 @@ Rectangle {
         anchors.centerIn: parent
         spacing: 6
 
-        Text {
-            text: root.glyph
-            font.family: root.glyph === "↺" || root.glyph === "×"
-                ? Theme.fontMenu : Theme.fontIcon
-            font.pixelSize: Theme.fontSecondary
+        // One icon system. Undo, close and back used to be typographic arrows
+        // drawn in the menu face, which only worked while that face happened
+        // to carry them: JetBrains Mono has no ↺, so every reset control in
+        // the workspace fell back to whatever glyph the fontconfig chain
+        // offered. Material Symbols is a set the shell installs and checks.
+        Sym {
+            anchors.verticalCenter: parent.verticalCenter
+            name: root.glyph
+            size: Theme.iconSmall
+            symWeight: 450
             color: root.danger ? Theme.redText : Theme.textMid
         }
         Text {

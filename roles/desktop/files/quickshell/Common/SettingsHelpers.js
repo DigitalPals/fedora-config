@@ -322,6 +322,19 @@ function barPalette(background) {
     };
 }
 
+// One step of a semantic ladder, in whichever direction the source needs.
+// `ensureContrast` only ever *raises* a colour toward the foreground, so a
+// palette whose variant already clears the highest target returns that same
+// variant for every step and the ladder collapses to one tone — which is
+// exactly what Material's own on-surface roles do on a deep container. Fold
+// the tone back toward the background in that case, the way the menubar
+// builds its own ladder, so each step lands on its floor rather than above it.
+function paletteTone(background, source, target) {
+    return contrastRatio(source, background) < target
+        ? ensureContrast(source, background, target)
+        : contrastTone(background, source, target);
+}
+
 // Material palettes provide their own on-surface tones. Build the established
 // semantic ladder from those roles while retaining the shell-wide AA floor.
 function semanticPalette(background, onSurface, onSurfaceVariant) {
@@ -332,11 +345,11 @@ function semanticPalette(background, onSurface, onSurfaceVariant) {
         background: bg,
         foreground: hi,
         textHi: hi,
-        textMid: ensureContrast(variant, bg, 7.0),
-        textLow: ensureContrast(variant, bg, 5.5),
-        textDim: ensureContrast(variant, bg, 4.8),
-        textFaint: ensureContrast(variant, bg, 4.5),
-        icon: ensureContrast(variant, bg, 6.0)
+        textMid: paletteTone(bg, variant, 7.0),
+        textLow: paletteTone(bg, variant, 5.5),
+        textDim: paletteTone(bg, variant, 4.8),
+        textFaint: paletteTone(bg, variant, 4.5),
+        icon: paletteTone(bg, variant, 6.0)
     };
 }
 

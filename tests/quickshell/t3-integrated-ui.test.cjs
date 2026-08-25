@@ -32,7 +32,7 @@ test("T3 adapts the shell palette through one product-theme boundary", () => {
     assert.match(popover, /readonly property int pageMaxWidth:\s*page === "inbox" \? 460 : 520/);
     assert.match(popover, /T3Theme\.dark[\s\S]*?"t3-dark\.svg"/,
         "the wordmark needs a dark asset on the light T3 canvas");
-    assert.match(panel, /property color surfaceColor:\s*Theme\.surfaceStrong/);
+    assert.match(panel, /property color surfaceColor:\s*Theme\.panelSurface/);
     assert.match(host, /host\.activePanel\.surfaceColor/);
 });
 
@@ -98,12 +98,17 @@ test("thread page mirrors live task progress from plan-update activities", () =>
         /taskProgress\.completedCount \+ "\/"[\s\S]*?taskProgress\.total/);
 });
 
-test("the T3 composer is one rounded glass shell with inline controls", () => {
+test("the T3 composer is one shell with inline controls, cornered like the bar", () => {
     const composer = read("Popovers/T3Composer.qml");
     const theme = read("Common/T3Theme.qml");
 
     assert.match(composer, /id:\s*composerShell[\s\S]*?radius:\s*T3Theme\.composerRadius/);
-    assert.match(theme, /readonly property int composerRadius:\s*22/);
+    // The old 22px pill was T3's own shape. The composer is a well inside a
+    // panel that hangs off the menubar, so it takes the menubar's corner and
+    // follows it when the bar's radius setting changes.
+    assert.match(theme, /readonly property int composerRadius:\s*Theme\.panelRadius/);
+    assert.match(read("Common/Theme.qml"),
+        /readonly property int panelRadius:\s*Settings\.barRadius/);
 });
 
 test("the T3 composer exposes an attached settings drawer and round send action", () => {
@@ -144,19 +149,37 @@ test("thread transcript follows T3 message rhythm and attaches response UI", () 
     const message = thread.match(/component MessageCard:\s*Item\s*\{([\s\S]*?)\n\s*component MenuEntry:/);
 
     assert.ok(message, "expected the transcript message component");
-    assert.match(message[1], /fromUser \? width \* 0\.82 : width/);
-    assert.match(message[1], /x:\s*parent\.width - messageCard\.messageWidth/);
+
+    // One reading column for both roles. The right-aligned bubble spent a
+    // fifth of a 460px measure saying what the speaker label says, and it was
+    // the last card left in the transcript.
+    assert.doesNotMatch(message[1], /messageWidth/,
+        "a user turn no longer claims a narrower column than the reply to it");
+    assert.doesNotMatch(message[1], /id:\s*userBubble/,
+        "the user bubble is gone; a label and a hairline separate the turns");
+    assert.match(message[1], /readonly property string speaker:\s*fromUser \? "YOU"/,
+        "each turn opens with its speaker");
+    assert.match(message[1], /color:\s*T3Theme\.border/,
+        "and is separated from the one above it by a hairline");
+
     assert.match(message[1], /textFormat:\s*messageCard\.fromUser \? Text\.PlainText : Text\.MarkdownText/);
     assert.match(message[1], /root\.themedMarkdown\(messageCard\.message\.text\)/);
     assert.match(message[1], /messageHover\.hovered \|\| activeFocus/);
+
+    // The metadata used to float because it had nowhere stable to sit: putting
+    // it in the content column made every later message jump as the pointer
+    // crossed a card. The speaker row is that stable home, so the overlay goes.
+    assert.doesNotMatch(message[1], /id:\s*messageMetadata/,
+        "hover metadata belongs in the speaker row, not in a floating pill");
     assert.match(message[1],
-        /id:\s*messageMetadata[\s\S]*?z:\s*5[\s\S]*?id:\s*copyMessageButton/,
-        "hover metadata should float above the message instead of entering its layout");
+        /id:\s*speakerLabel[\s\S]*?id:\s*copyMessageButton[\s\S]*?id:\s*messageTime/,
+        "the speaker row carries the copy action and the timestamp");
+    assert.match(message[1],
+        /id:\s*copyMessageButton[\s\S]{0,200}?visible:\s*messageCard\.metadataVisible/,
+        "only the copy action is revealed on hover; the time is always readable");
     assert.doesNotMatch(message[1],
         /visible:\s*messageCard\.longMessage \|\| messageCard\.metadataVisible/,
         "hovering must not add a metadata row to the message column");
-    assert.doesNotMatch(message[1], /text:\s*messageCard\.fromUser \? "You"/,
-        "permanent role labels should not interrupt the transcript");
 
     const attachments = thread.indexOf("id: composerAttachmentsViewport");
     const composer = thread.lastIndexOf("id: composer");

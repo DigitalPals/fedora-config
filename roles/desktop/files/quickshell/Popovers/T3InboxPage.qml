@@ -43,12 +43,12 @@ Column {
     // a one-line row, and the row is 42px, so the shared 32px control height
     // would leave no margin.
     component RowAction: IconButton {
-        controlSize: 28
+        controlSize: Theme.chipInnerHeight
     }
 
     // The page's own T3 defaults over the shell's shared action primitive.
     component Action: ActionButton {
-        fontFamily: T3Theme.fontSans
+        fontFamily: T3Theme.fontUi
         focusColor: T3Theme.focus
         buttonRadius: T3Theme.controlRadius
         tint: T3Theme.textMuted
@@ -56,7 +56,7 @@ Column {
     }
 
     component T3Status: StatusPlaceholder {
-        fontFamily: T3Theme.fontSans
+        fontFamily: T3Theme.fontUi
         accentColor: T3Theme.accent
         accentFill: T3Theme.accentSubtle
         outlineColor: T3Theme.border
@@ -77,18 +77,21 @@ Column {
         property color rule: T3Theme.border
 
         width: parent ? parent.width : 0
-        height: 30
+        height: Theme.sectionHeaderHeight + 8
 
+        // The same mark the settings pages draw: an uppercase micro label, its
+        // count, then a hairline to the edge. One section grammar across every
+        // dialog is the point of the pass.
         Text {
             id: groupLabel
             anchors.left: parent.left
-            anchors.leftMargin: 6
+            anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: group.label
-            font.family: T3Theme.fontSans
-            font.pixelSize: Theme.fontCaption
+            text: group.label.toUpperCase()
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontMicro
             font.weight: Theme.weightSemibold
-            font.letterSpacing: 0.1
+            font.letterSpacing: 1
             color: group.tint
         }
 
@@ -98,8 +101,8 @@ Column {
             anchors.leftMargin: 7
             anchors.verticalCenter: parent.verticalCenter
             text: group.count
-            font.family: T3Theme.fontSans
-            font.pixelSize: Theme.fontCaption
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontMicro
             font.weight: Theme.weightMedium
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
@@ -107,7 +110,7 @@ Column {
 
         Rectangle {
             anchors.left: groupCount.right
-            anchors.leftMargin: 8
+            anchors.leftMargin: 10
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             height: 1
@@ -285,9 +288,9 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     text: entry.thread.title
                     elide: Text.ElideRight
-                    font.family: T3Theme.fontSans
-                    font.pixelSize: Theme.fontBody
-                    font.weight: entry.subdued ? Theme.weightMedium : Theme.weightSemibold
+                    font.family: T3Theme.fontUi
+                    font.pixelSize: Theme.fontSecondary
+                    font.weight: entry.subdued ? Theme.weightRegular : Theme.weightMedium
                     color: entry.subdued ? T3Theme.textSecondary : T3Theme.textPrimary
                 }
 
@@ -326,8 +329,8 @@ Column {
                         return parts.join(" · ");
                     }
                     elide: Text.ElideRight
-                    font.family: T3Theme.fontSans
-                    font.pixelSize: Theme.fontSecondary
+                    font.family: T3Theme.fontUi
+                    font.pixelSize: Theme.fontMicro
                     color: entry.thread.cls === "error" ? T3Theme.red
                         : T3Theme.textFaint
                 }
@@ -359,8 +362,8 @@ Column {
                             id: statusText
                             anchors.verticalCenter: parent.verticalCenter
                             text: entry.statusWord
-                            font.family: T3Theme.fontSans
-                            font.pixelSize: Theme.fontCaption
+                            font.family: T3Theme.fontUi
+                            font.pixelSize: Theme.fontMicro
                             font.weight: Theme.weightMedium
                             font.features: T3Theme.tabularNumberFeatures
                             color: entry.statusColor
@@ -453,7 +456,7 @@ Column {
             lineHeight: Theme.proseLineHeight
             maximumLineCount: 2
             elide: Text.ElideRight
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontCaption
             color: T3Theme.red
         }
@@ -467,10 +470,12 @@ Column {
         property bool subdued: false
         signal toggled()
 
-        height: 36
+        // A collapsed drawer is a section that happens to be openable, so it
+        // reads as one: the same uppercase mark and rule as every other group,
+        // with the chevron at the end. Only the pointer lights a fill.
+        height: Theme.sectionHeaderHeight + 8
         radius: T3Theme.controlRadius
-        color: drawerMouse.containsMouse ? T3Theme.hoverStrong
-            : drawer.subdued ? "transparent" : T3Theme.surface
+        color: drawerMouse.containsMouse ? T3Theme.hover : "transparent"
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
         Accessible.name: drawer.label + ", " + drawer.count
@@ -486,35 +491,46 @@ Column {
             }
         }
 
-        Row {
+        Text {
+            id: drawerLabel
             anchors.left: parent.left
-            anchors.leftMargin: 11
+            anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 7
+            text: drawer.label.toUpperCase()
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontMicro
+            font.weight: Theme.weightSemibold
+            font.letterSpacing: 1
+            color: drawer.subdued ? T3Theme.textFaint : T3Theme.textMuted
+        }
 
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: drawer.label
-                font.family: T3Theme.fontSans
-                font.pixelSize: Theme.fontSecondary
-                font.weight: drawer.subdued ? Theme.weightRegular : Theme.weightSemibold
-                color: drawer.subdued ? T3Theme.textFaint : T3Theme.textMuted
-            }
+        Text {
+            id: drawerCount
+            anchors.left: drawerLabel.right
+            anchors.leftMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            text: drawer.count
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontMicro
+            font.weight: Theme.weightMedium
+            font.features: T3Theme.tabularNumberFeatures
+            color: T3Theme.textFaint
+        }
 
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: drawer.count
-                font.family: T3Theme.fontSans
-                font.pixelSize: Theme.fontCaption
-                font.weight: Theme.weightMedium
-                font.features: T3Theme.tabularNumberFeatures
-                color: T3Theme.textFaint
-            }
+        Rectangle {
+            anchors.left: drawerCount.right
+            anchors.leftMargin: 10
+            anchors.right: drawerChevron.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            height: 1
+            color: T3Theme.border
         }
 
         Sym {
+            id: drawerChevron
             anchors.right: parent.right
-            anchors.rightMargin: 11
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             name: drawer.expanded ? "expand_less" : "expand_more"
             size: Theme.iconSmall
@@ -582,7 +598,7 @@ Column {
                         onTextEdited: root.searchText = text
                         clip: true
                         selectByMouse: true
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontSecondary
                         color: T3Theme.textPrimary
 
@@ -590,7 +606,7 @@ Column {
                             visible: searchInput.text === ""
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Search threads"
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontSecondary
                             color: T3Theme.textFaint
                         }
@@ -622,7 +638,7 @@ Column {
                     topPadding: 5
                     bottomPadding: 5
                     text: "Read-only access · actions are disabled"
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontSecondary
                     color: T3Theme.amber
                 }
@@ -681,7 +697,7 @@ Column {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.textFaint
                 }
@@ -694,7 +710,7 @@ Column {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.textFaint
                 }
@@ -706,7 +722,7 @@ Column {
                     text: T3Code.cloudLoginError
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.red
                 }
@@ -732,7 +748,7 @@ Column {
                     text: "No threads match “" + root.searchText + "”"
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontSecondary
                     color: T3Theme.textFaint
                 }
@@ -830,7 +846,7 @@ Column {
                     width: parent.width
                     leftPadding: 9
                     text: "+" + (root.snoozedThreads.length - 5) + " more in T3 Code"
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.textFaint
                 }
@@ -845,7 +861,7 @@ Column {
                     width: parent.width
                     leftPadding: 9
                     text: "+" + (root.settledThreads.length - 5) + " more in T3 Code"
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.textFaint
                 }

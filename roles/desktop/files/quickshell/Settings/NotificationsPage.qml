@@ -84,7 +84,7 @@ SettingsPage {
                             : (Settings.position === "bottom" ? miniBar.y - height - 7
                                 : parent.height - height - 7)
                         radius: Theme.cardRadius
-                        color: Theme.surfaceStrong
+                        color: Theme.panelSurface
                         border.width: 1
                         border.color: Theme.popBorder
 
@@ -99,7 +99,7 @@ SettingsPage {
                                 visible: Settings.notifIcons
                                 width: 28; height: 28
                                 radius: 9
-                                color: Theme.accentBgSoft
+                                color: Theme.chip
                                 border.width: 1
                                 border.color: Theme.hairlineSoft
 

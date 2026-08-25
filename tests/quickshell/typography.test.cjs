@@ -119,25 +119,76 @@ test("shared surfaces carry the roomier density tokens", () => {
     ], [408, 448, 16, 52, 64]);
 });
 
-test("the menu face is scoped to shell chrome while T3 keeps its product face", () => {
+test("every dialog shares the menubar's face, including T3", () => {
+    // T3 used to hold a product face of its own. Beside a monospace menubar
+    // that reads as a second application docked inside the shell, so its views
+    // now take the same setting-driven face — through T3Theme.fontUi, which is
+    // the one place the indirection lives.
+    const t3Theme = fs.readFileSync(path.join(shellDir, "Common", "T3Theme.qml"), "utf8");
+    assert.match(t3Theme, /readonly property string fontUi:\s*Theme\.fontMenu/,
+        "T3's UI face must follow the shell's Typography setting");
+    assert.doesNotMatch(t3Theme, /property string fontSans/,
+        "the renamed token must not linger beside its replacement");
+
     for (const file of [...qmlFiles("Bar"), ...qmlFiles("Popovers"), ...qmlFiles("Settings")]) {
         const source = fs.readFileSync(file, "utf8");
         const label = path.relative(shellDir, file);
-        if (/^Popovers\/T3.*\.qml$/.test(label)) {
-            assert.match(source, /T3Theme\.fontSans/,
-                `${label} must use the stable T3 product face`);
-            assert.doesNotMatch(source, /Theme\.fontMenu/,
-                `${label} must not inherit the user-selected shell menu face`);
-        } else {
-            assert.doesNotMatch(source, /(?<!T3)Theme\.fontSans/,
-                `${label} bypasses Theme.fontMenu`);
-        }
+        assert.doesNotMatch(source, /(?<!T3)Theme\.fontSans/,
+            `${label} bypasses Theme.fontMenu`);
+        if (/^Popovers\/T3.*\.qml$/.test(label))
+            assert.match(source, /T3Theme\.fontUi/,
+                `${label} must draw its copy through the shared T3 UI face`);
     }
 
-    for (const name of ["LauncherView.qml", "NotificationToasts.qml"]) {
-        const source = fs.readFileSync(path.join(shellDir, name), "utf8");
-        assert.match(source, /Theme\.fontSans/, `${name} must retain the general UI face`);
-        assert.doesNotMatch(source, /Theme\.fontMenu/, `${name} must remain outside menu typography`);
+    // Nothing draws the default family directly any more: it is what fontMenu
+    // falls back to, and naming it in a view is how a surface opts out of the
+    // Typography setting. That is the whole bug this pass closed.
+    assert.match(theme, /return choice \? choice\.family : fontSans;/,
+        "fontMenu must fall back to the shipped default rather than a literal");
+    const walk = dir => {
+        const out = [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory() && entry.name !== "tests") out.push(...walk(full));
+            else if (entry.name.endsWith(".qml")) out.push(full);
+        }
+        return out;
+    };
+    for (const file of walk(shellDir)) {
+        if (path.relative(shellDir, file) === path.join("Common", "Theme.qml"))
+            continue;
+        assert.doesNotMatch(fs.readFileSync(file, "utf8"), /(?<!T3)Theme\.fontSans/,
+            `${path.relative(shellDir, file)} bypasses Theme.fontMenu`);
+    }
+});
+
+test("the semantic copy ladder keeps a real step at every level", () => {
+    // Material's on-surface-variant role already clears the highest target on
+    // a deep container, and `ensureContrast` only ever raises a colour, so the
+    // wallpaper palette used to return one tone for all five steps: metadata,
+    // labels and values rendered identically. Each step must land on its own
+    // floor, and be visibly quieter than the step above it.
+    const H = load("SettingsHelpers.js");
+    const cases = [
+        ["wallpaper dark", "#292a2f", "#e3e1e9", "#c6c5d0"],
+        ["wallpaper light", "#e9e7ef", "#1b1b21", "#45464f"],
+        ["fixed dark", "#171526", "#f5f4fb", "#a1a0a9"]
+    ];
+    const floors = { textMid: 7.0, icon: 6.0, textLow: 5.5, textDim: 4.8, textFaint: 4.5 };
+    for (const [label, bg, onSurface, onVariant] of cases) {
+        const ladder = H.semanticPalette(bg, onSurface, onVariant);
+        const seen = new Set();
+        for (const [step, floor] of Object.entries(floors)) {
+            const ratio = H.contrastRatio(ladder[step], bg);
+            assert.ok(ratio >= floor,
+                `${label}: ${step} falls to ${ratio.toFixed(2)}:1, below its ${floor}:1 floor`);
+            assert.ok(ratio < floor + 1.5,
+                `${label}: ${step} sits at ${ratio.toFixed(2)}:1, far above its ${floor}:1 floor`);
+            seen.add(ladder[step]);
+        }
+        assert.equal(seen.size, Object.keys(floors).length,
+            `${label}: the ladder collapsed to ${seen.size} tone(s)`);
+        assert.ok(H.contrastRatio(ladder.textHi, bg) >= 7.0, `${label}: textHi`);
     }
 });
 
@@ -257,4 +308,62 @@ test("low-emphasis text remains WCAG AA in both palettes", () => {
     // The one decorative token, and the reason the others cannot be lowered
     // to meet the design: it exists so nothing else has to be.
     assert.match(theme, /\/\/ Decorative only[\s\S]*?readonly property color dotDim/);
+});
+
+
+// The one accent, enforced shell-wide. It is allowed on a mark — a glyph, a
+// dot, a piece of copy, a meter — and on exactly four fills: the current
+// workspace pill, a switch or quick-toggle track, a value readout, and a
+// primary action. Everywhere else a fill is the bar's own chip, because a
+// selected row, a taken segment, a connected device and an open tab are all
+// the same idea and the shell only has one way of saying it.
+test("no surface paints an accent field where a chip belongs", () => {
+    const ALLOWED = new Set([
+        // the value readout inside a slider track
+        "Popovers/FillSlider.qml",
+        // a switch track, and the quick toggles that are switches
+        "Popovers/ControlCenterPopover.qml",
+        "Common/Toggle.qml",
+        // the one primary action per panel
+        "Popovers/UpdatesPopover.qml",
+        // the current day, which is the calendar's workspace pill
+        "Popovers/CalendarPopover.qml",
+        // T3 and GitHub carry their own reviewed treatment
+        "Popovers/T3Composer.qml",
+        "Popovers/T3ThreadPage.qml",
+        "Popovers/T3InboxPage.qml",
+        "Popovers/T3ModelPicker.qml",
+        "Popovers/T3RequestCard.qml",
+        "Popovers/T3InlineSelect.qml",
+        "Popovers/T3Picker.qml",
+        "Popovers/T3NewThreadPage.qml",
+        "Popovers/T3CodePopover.qml",
+        "Popovers/GitHubPopover.qml",
+        // the bar's own workspace pill and status marks
+        "Bar/Workspaces.qml",
+        "Bar/BarIcon.qml",
+        "Bar/T3Chip.qml",
+        "Bar/Modules/Indicators.qml"
+    ]);
+    const walk = dir => {
+        const out = [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory() && entry.name !== "tests") out.push(...walk(full));
+            else if (entry.name.endsWith(".qml")) out.push(full);
+        }
+        return out;
+    };
+    const offenders = [];
+    for (const file of walk(shellDir)) {
+        const label = path.relative(shellDir, file).split(path.sep).join("/");
+        if (ALLOWED.has(label) || label === "Common/Theme.qml")
+            continue;
+        fs.readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+            if (/^\s*(?:color|border\.color):[^\n]*Theme\.(?:accentBg|accentBgSoft|accentSoft|accentSubtle|accentContainer)\b/.test(line))
+                offenders.push(`${label}:${index + 1}`);
+        });
+    }
+    assert.deepEqual(offenders, [],
+        "these paint an accent field; use Theme.chip / Theme.chipHover");
 });

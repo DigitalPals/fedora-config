@@ -71,26 +71,21 @@ Surface {
         spacing: 9
 
         readonly property real rightWidth: root.mode === "running"
-            ? hideButton.width : 32
+            ? hideButton.width : Theme.chipHeight
 
-        Rectangle {
+        // The state is in the mark, not in a filled square behind it: the bar
+        // says "T3 • 1 running" the same way.
+        Item {
             anchors.verticalCenter: parent.verticalCenter
-            width: 32
-            height: 32
-            radius: 11
-            color: root.mode === "done" ? Theme.okBg
-                : root.mode === "failed" ? Theme.redBg : Theme.accentSoft
-
-            Behavior on color {
-                ColorAnimation { duration: Theme.surfaceDuration }
-            }
+            width: Theme.iconLarge
+            height: Theme.iconLarge
 
             Sym {
                 anchors.centerIn: parent
                 name: root.headerGlyph(root.mode === "running",
                     root.mode === "done", root.mode === "failed")
-                size: Theme.iconMedium
-                symWeight: 600
+                size: Theme.iconLarge
+                symWeight: 450
                 fill: root.mode === "done" || root.mode === "failed" ? 1 : 0
                 color: root.mode === "done" ? Theme.ok
                     : root.mode === "failed" ? Theme.redText : Theme.accent
@@ -107,7 +102,7 @@ Surface {
 
         Column {
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - 32 - parent.rightWidth - parent.spacing * 2
+            width: parent.width - Theme.iconLarge - parent.rightWidth - parent.spacing * 2
             spacing: 1
 
             Text {

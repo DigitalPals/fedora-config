@@ -35,10 +35,10 @@ Surface {
     // Header + toggle
     Item {
         width: parent.width
-        height: Theme.rowHeight
+        height: Theme.listRowHeight
 
         Text {
-            x: 10
+            x: 2
             anchors.verticalCenter: parent.verticalCenter
             text: "Tailscale"
             font.family: Theme.fontMenu
@@ -47,9 +47,16 @@ Surface {
             color: Theme.textHi
         }
 
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: Theme.hairlineSoft
+        }
+
         Toggle {
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 0
             anchors.verticalCenter: parent.verticalCenter
             checked: Tailscale.running
             accessibleName: "Tailscale"
@@ -65,9 +72,9 @@ Surface {
         visible: Tailscale.running
         width: parent.width - 4
         x: 2
-        height: Theme.tileHeight
+        height: Theme.panelTileHeight
         radius: Theme.rowRadius
-        color: Theme.accentBgSoft
+        color: Theme.chip
 
         Row {
             anchors.verticalCenter: parent.verticalCenter
@@ -172,7 +179,7 @@ Surface {
 
             width: parent.width - 4
             x: 2
-            height: Theme.rowHeight
+            height: Theme.listRowHeight
             radius: Theme.rowRadius
             color: peerMouse.containsMouse ? Theme.hoverFill : "transparent"
             opacity: modelData.online || peerMouse.containsMouse ? 1 : 0.55
@@ -214,7 +221,7 @@ Surface {
                     width: exitText.implicitWidth + 10
                     height: exitText.implicitHeight + 4
                     radius: 4
-                    color: peerRow.modelData.exit ? Theme.accentBgSoft : Theme.hoverFill
+                    color: Theme.chip
 
                     Text {
                         id: exitText
@@ -256,11 +263,16 @@ Surface {
     // Footer
     Item {
         width: parent.width
-        height: Theme.rowHeight
+        height: Theme.listRowHeight
 
         Text {
-            x: 10
+            x: 2
             anchors.verticalCenter: parent.verticalCenter
+            // Bound against the link rather than left to run under it: the two
+            // used to overlap as soon as the face got wider than the one this
+            // was measured in.
+            width: parent.width - 4 - adminLink.width - 10
+            elide: Text.ElideRight
             text: {
                 if (!Tailscale.running || !Tailscale.statusKnown)
                     return "click a device to copy its IP";
@@ -272,13 +284,14 @@ Surface {
                 return online + " of " + Tailscale.peers.length + " devices online · click to copy IP";
             }
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
-            color: Theme.textDim
+            font.pixelSize: Theme.fontMicro
+            color: Theme.textFaint
         }
 
         LinkText {
+            id: adminLink
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             text: "Admin console"
             onClicked: {

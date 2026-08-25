@@ -17,7 +17,7 @@ Surface {
     // ---- Current conditions ------------------------------------------
     Item {
         width: parent.width
-        height: Theme.rowHeight
+        height: Theme.listRowHeight
 
         Row {
             x: 6

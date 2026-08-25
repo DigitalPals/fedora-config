@@ -133,7 +133,7 @@ Column {
     // Tightest pill: the thread page packs several of these per row.
     component Action: ActionButton {
         hPadding: 14
-        fontFamily: T3Theme.fontSans
+        fontFamily: T3Theme.fontUi
         focusColor: T3Theme.focus
         buttonRadius: T3Theme.controlRadius
         tint: T3Theme.textMuted
@@ -141,7 +141,7 @@ Column {
     }
 
     component T3Status: StatusPlaceholder {
-        fontFamily: T3Theme.fontSans
+        fontFamily: T3Theme.fontUi
         accentColor: T3Theme.accent
         accentFill: T3Theme.accentSubtle
         outlineColor: T3Theme.border
@@ -179,7 +179,7 @@ Column {
             Text {
                 width: parent.width
                 text: card.heading
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontCaption
                 font.weight: Theme.weightSemibold
                 font.letterSpacing: 0.1
@@ -193,32 +193,41 @@ Column {
                 lineHeight: Theme.proseLineHeight
                 maximumLineCount: 5
                 elide: Text.ElideRight
-                font.family: T3Theme.fontSans
+                font.family: T3Theme.fontUi
                 font.pixelSize: Theme.fontBody
                 color: T3Theme.textSecondary
             }
         }
     }
 
-    // User turns form a compact right-aligned bubble. Assistant turns remain
-    // plain markdown in the shared reading column. Hover metadata floats above
-    // that stable geometry: inserting it into the content column made every
-    // later message jump down and back up as the pointer crossed a card.
+    // Every turn is plain copy in one reading column, opened by a speaker
+    // label and closed by a hairline — the way the menubar separates one run
+    // of modules from the next. The right-aligned bubble was the last card in
+    // the transcript, and at 460px it cost a fifth of the measure to say
+    // something the label already says. The label row also gives the hover
+    // metadata a fixed home, so it no longer floats over the geometry.
     component MessageCard: Item {
         id: messageCard
         required property var message
+        // A run of replies is one speaker talking, so it is named once. The
+        // hairline and the timestamp still separate the turns; repeating the
+        // label down a four-message run is the noise the bubble used to be.
+        required property int index
         property bool expanded: false
         readonly property bool fromUser: message.role === "user"
+        readonly property bool continuation: index > 0
+            && (root.history.items[index - 1]?.role ?? "") === message.role
         readonly property bool longMessage: typeof message.text === "string"
             && (message.text.length > 1200 || message.text.split("\n").length > 12)
-        readonly property real messageWidth: fromUser ? width * 0.82 : width
         readonly property bool metadataVisible: messageHover.hovered || activeFocus
             || copyMessageButton.activeFocus
-        readonly property bool metadataFitsGutter: fromUser
-            && userBubble.x >= messageMetadata.width + 6
+        // A message carries a role and its text, and no model of its own, so
+        // the assistant side names the product rather than attributing a
+        // historical turn to whatever the composer happens to be set to now.
+        readonly property string speaker: fromUser ? "YOU" : "T3 CODE"
 
         width: parent ? parent.width : 0
-        height: messageColumn.implicitHeight + (fromUser ? 18 : 8)
+        height: messageColumn.implicitHeight + 12
         activeFocusOnTab: true
         Accessible.role: Accessible.StaticText
         Accessible.name: (fromUser ? "You" : "T3 Code") + ": " + (message.text ?? "")
@@ -226,24 +235,65 @@ Column {
         HoverHandler { id: messageHover }
 
         Rectangle {
-            id: userBubble
-            visible: messageCard.fromUser
-            x: parent.width - messageCard.messageWidth
-            y: 0
-            width: messageCard.messageWidth
-            height: parent.height
-            radius: 16
-            color: T3Theme.surfaceRaised
-            border.width: 1
-            border.color: T3Theme.border
+            anchors.top: parent.top
+            x: 2
+            width: parent.width - 4
+            height: 1
+            color: T3Theme.border
         }
 
         Column {
             id: messageColumn
-            x: messageCard.fromUser ? parent.width - messageCard.messageWidth + 12 : 4
-            y: messageCard.fromUser ? 9 : 4
-            width: messageCard.messageWidth - (messageCard.fromUser ? 24 : 8)
+            x: 2
+            y: 8
+            width: parent.width - 4
             spacing: 5
+
+            Item {
+                width: parent.width
+                height: Theme.sectionHeaderHeight
+
+                Text {
+                    id: speakerLabel
+                    visible: !messageCard.continuation
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: messageCard.speaker
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, parent.width - 90)
+                    font.family: T3Theme.fontUi
+                    font.pixelSize: Theme.fontMicro
+                    font.weight: Theme.weightSemibold
+                    font.letterSpacing: 1
+                    color: T3Theme.textFaint
+                }
+
+                IconButton {
+                    id: copyMessageButton
+                    anchors.right: messageTime.left
+                    anchors.rightMargin: 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: messageCard.metadataVisible
+                    controlSize: Theme.chipInnerHeight
+                    symbol: "content_copy"
+                    accessibleName: "Copy message"
+                    tint: T3Theme.textFaint
+                    onTriggered: Quickshell.clipboardText = messageCard.message.text ?? ""
+                }
+
+                Text {
+                    id: messageTime
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: messageCard.message.streaming === true ? "streaming…"
+                        : T3Code.relTime(messageCard.message.updatedAt
+                            ?? messageCard.message.createdAt)
+                    font.family: T3Theme.fontUi
+                    font.pixelSize: Theme.fontMicro
+                    font.features: T3Theme.tabularNumberFeatures
+                    color: T3Theme.textFaint
+                }
+            }
 
             Text {
                 width: parent.width
@@ -254,8 +304,8 @@ Column {
                 lineHeight: Theme.proseLineHeight
                 maximumLineCount: messageCard.expanded ? 100000 : 12
                 elide: messageCard.expanded ? Text.ElideNone : Text.ElideRight
-                font.family: T3Theme.fontSans
-                font.pixelSize: Theme.fontBody
+                font.family: T3Theme.fontUi
+                font.pixelSize: Theme.fontSecondary
                 color: messageCard.fromUser ? T3Theme.textPrimary : T3Theme.textSecondary
                 onLinkActivated: link => root.openMessageLink(link)
             }
@@ -272,49 +322,6 @@ Column {
                     onTriggered: messageCard.expanded = !messageCard.expanded
                 }
 
-            }
-        }
-
-        Rectangle {
-            id: messageMetadata
-            visible: messageCard.metadataVisible
-            z: 5
-            x: messageCard.metadataFitsGutter
-                ? userBubble.x - width - 6 : messageCard.width - width - 4
-            y: messageCard.metadataFitsGutter ? 4
-                : Math.max(0, messageCard.height - height - (messageCard.fromUser ? 4 : 0))
-            width: metadataRow.implicitWidth + 8
-            height: 24
-            radius: height / 2
-            color: T3Theme.overlay
-            border.width: 1
-            border.color: T3Theme.borderStrong
-
-            Row {
-                id: metadataRow
-                anchors.centerIn: parent
-                spacing: 5
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: messageCard.message.streaming === true ? "Streaming…"
-                        : T3Code.relTime(messageCard.message.updatedAt
-                            ?? messageCard.message.createdAt)
-                    font.family: T3Theme.fontSans
-                    font.pixelSize: Theme.fontMicro
-                    font.features: T3Theme.tabularNumberFeatures
-                    color: T3Theme.textFaint
-                }
-
-                IconButton {
-                    id: copyMessageButton
-                    anchors.verticalCenter: parent.verticalCenter
-                    controlSize: 20
-                    symbol: "content_copy"
-                    accessibleName: "Copy message"
-                    tint: T3Theme.textFaint
-                    onTriggered: Quickshell.clipboardText = messageCard.message.text ?? ""
-                }
             }
         }
     }
@@ -356,7 +363,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             text: menuEntry.label
             elide: Text.ElideRight
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontSecondary
             font.weight: Theme.weightMedium
             color: menuEntry.tint
@@ -434,7 +441,7 @@ Column {
                         width: parent.width
                         text: root.thread ? root.thread.title : "Thread"
                         elide: Text.ElideRight
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontBody
                         font.weight: Theme.weightSemibold
                         color: T3Theme.textPrimary
@@ -477,7 +484,7 @@ Column {
                                 Math.max(0, threadMetadata.width - threadMetadata.fixedWidth))
                             text: threadMetadata.projectName
                             elide: Text.ElideRight
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontCaption
                             color: T3Theme.textFaint
                         }
@@ -488,7 +495,7 @@ Column {
                                 && threadMetadata.providerGlyph !== ""
                             anchors.verticalCenter: parent.verticalCenter
                             text: "·"
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontCaption
                             color: T3Theme.textFaint
                         }
@@ -762,7 +769,7 @@ Column {
             maximumLineCount: 2
             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             lineHeight: Theme.proseLineHeight
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontCaption
             color: root.gitFeedbackFailed ? T3Theme.red : T3Theme.textMuted
         }
@@ -833,7 +840,10 @@ Column {
 
                 Repeater {
                     model: root.history.items
-                    delegate: MessageCard { required property var modelData; message: modelData }
+                    delegate: MessageCard {
+                        required property var modelData
+                        message: modelData
+                    }
                 }
 
                 Item {
@@ -867,7 +877,7 @@ Column {
                         Text {
                             text: root.workingTime !== ""
                                 ? "Working for " + root.workingTime : "Working…"
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontCaption
                             font.weight: Theme.weightMedium
                             font.features: T3Theme.tabularNumberFeatures
@@ -909,7 +919,7 @@ Column {
                         lineHeight: Theme.proseLineHeight
                         maximumLineCount: 3
                         elide: Text.ElideRight
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontCaption
                         color: T3Theme.red
                     }
@@ -957,7 +967,7 @@ Column {
                             + (root.checkpoint.fileCount === 1 ? "" : "s") + " · +"
                             + root.checkpoint.additions + " −" + root.checkpoint.deletions : ""
                         elide: Text.ElideRight
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontCaption
                         font.weight: Theme.weightSemibold
                         color: T3Theme.textSecondary
@@ -970,7 +980,7 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         text: T3Code.detailDiff.loading && root.changesExpanded ? "Loading…"
                             : root.changesExpanded ? "Hide diff" : "View diff"
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontCaption
                         color: T3Theme.textFaint
                     }
@@ -1053,7 +1063,7 @@ Column {
                         Text {
                             visible: T3Code.detailDiff.truncated
                             text: "Preview truncated at 100,000 characters / 2,000 lines"
-                            font.family: T3Theme.fontSans
+                            font.family: T3Theme.fontUi
                             font.pixelSize: Theme.fontCaption
                             color: T3Theme.amber
                         }
@@ -1075,7 +1085,7 @@ Column {
                         text: T3Code.detailDiff.error
                         wrapMode: Text.WordWrap
                         lineHeight: Theme.proseLineHeight
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontCaption
                         color: T3Theme.red
                     }
@@ -1147,7 +1157,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             text: root.backgroundStatus
             elide: Text.ElideRight
-            font.family: T3Theme.fontSans
+            font.family: T3Theme.fontUi
             font.pixelSize: Theme.fontBody
             font.weight: Theme.weightMedium
             color: T3Theme.textSecondary
@@ -1255,7 +1265,7 @@ Column {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Ready plan"
-                        font.family: T3Theme.fontSans
+                        font.family: T3Theme.fontUi
                         font.pixelSize: Theme.fontCaption
                         font.weight: Theme.weightSemibold
                         color: T3Theme.accent
@@ -1270,7 +1280,7 @@ Column {
                     lineHeight: Theme.proseLineHeight
                     maximumLineCount: 12
                     elide: Text.ElideRight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontBody
                     color: T3Theme.textSecondary
                 }
@@ -1382,7 +1392,7 @@ Column {
                     anchors.leftMargin: 6
                     anchors.verticalCenter: taskProgressGlyph.verticalCenter
                     text: "Tasks"
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     font.weight: Theme.weightSemibold
                     color: T3Theme.textMuted
@@ -1397,7 +1407,7 @@ Column {
                     anchors.verticalCenter: taskProgressGlyph.verticalCenter
                     text: root.taskProgress ? root.taskProgress.activeStep : ""
                     elide: Text.ElideRight
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     font.weight: Theme.weightMedium
                     color: T3Theme.textPrimary
@@ -1410,7 +1420,7 @@ Column {
                     anchors.verticalCenter: taskProgressGlyph.verticalCenter
                     text: root.taskProgress ? root.taskProgress.completedCount + "/"
                         + root.taskProgress.total : ""
-                    font.family: T3Theme.fontSans
+                    font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     font.weight: Theme.weightMedium
                     font.features: T3Theme.tabularNumberFeatures
@@ -1501,7 +1511,7 @@ Column {
         lineHeight: Theme.proseLineHeight
         maximumLineCount: 3
         elide: Text.ElideRight
-        font.family: T3Theme.fontSans
+        font.family: T3Theme.fontUi
         font.pixelSize: Theme.fontCaption
         color: T3Theme.red
     }
