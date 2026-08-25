@@ -13,6 +13,13 @@ TS="$(date +'%Y-%m-%d_%H-%M-%S')"
 OUTPUT_FILE="$OUTPUT_DIR/screenshot-${TS}.png"
 FREEZE_PID=""
 CAPTURED=0
+NO_HW_CURSORS=""
+CURSOR_SETTING_CHANGED=0
+
+set_no_hw_cursors() {
+  hyprctl eval "hl.config({ cursor = { no_hardware_cursors = $1 } })" &>/dev/null ||
+    hyprctl keyword cursor:no_hardware_cursors "$1" &>/dev/null
+}
 
 cleanup_freeze() {
   if [ -n "${FREEZE_PID:-}" ]; then
@@ -22,7 +29,24 @@ cleanup_freeze() {
   fi
 }
 
-trap cleanup_freeze EXIT
+cleanup() {
+  cleanup_freeze
+
+  if [ "$CURSOR_SETTING_CHANGED" -eq 1 ]; then
+    set_no_hw_cursors "$NO_HW_CURSORS" || true
+    CURSOR_SETTING_CHANGED=0
+  fi
+}
+
+trap cleanup EXIT
+
+# grim omits hardware cursors, while software-composited cursors can already be
+# baked into captured frames. Force hardware composition for the capture and
+# restore the user's setting on every exit path, as Omarchy does.
+NO_HW_CURSORS=$(hyprctl getoption cursor:no_hardware_cursors -j | jq -r '.int') || exit 1
+[[ $NO_HW_CURSORS =~ ^[0-9]+$ ]] || exit 1
+CURSOR_SETTING_CHANGED=1
+set_no_hw_cursors 0 || exit 1
 
 edit_screenshot() {
   satty --filename "$1" \
@@ -54,7 +78,9 @@ case "$MODE" in
     SELECTION=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | "\(.x),\(.y) \((.width / .scale) | floor)x\((.height / .scale) | floor)"')
     ;;
   region|*)
-    wayfreeze & FREEZE_PID=$!
+    # wayfreeze otherwise requests that the compositor copy the cursor into
+    # its frozen layer, where grim can no longer distinguish it from pixels.
+    wayfreeze --hide-cursor & FREEZE_PID=$!
     sleep 0.1
     SELECTION=$(slurp 2>/dev/null || true)
     if [ -n "$SELECTION" ]; then

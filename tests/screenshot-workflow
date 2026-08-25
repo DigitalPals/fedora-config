@@ -18,9 +18,20 @@ write_mock() {
 }
 
 write_mock pkill 'exit 1'
-write_mock wayfreeze 'while :; do sleep 1; done'
-write_mock slurp 'printf "%s\n" "10,20 300x200"'
+write_mock hyprctl \
+  'printf "hyprctl %s\n" "$*" >> "$SCREENSHOT_TEST_LOG/events"' \
+  'case "$1" in' \
+  '  getoption) printf "%s\n" '\''{"int":1}'\'' ;;' \
+  '  eval|keyword) ;;' \
+  '  *) exit 1 ;;' \
+  'esac'
+write_mock wayfreeze \
+  'printf "wayfreeze %s\n" "$*" >> "$SCREENSHOT_TEST_LOG/events"' \
+  'while :; do sleep 1; done'
+write_mock slurp 'printf "%s\n" "${SCREENSHOT_TEST_SELECTION-10,20 300x200}"'
 write_mock grim \
+  'printf "grim %s %s <output>\n" "$1" "$2" >> "$SCREENSHOT_TEST_LOG/events"' \
+  '[[ ${SCREENSHOT_TEST_GRIM_FAIL:-0} == 1 ]] && exit 1' \
   'printf "%s\n" "$*" > "$SCREENSHOT_TEST_LOG/grim"' \
   'printf "%s" "captured-image" > "${@: -1}"'
 write_mock wl-copy \
@@ -51,5 +62,41 @@ grep -Fxq -- "${screenshots[0]}" "$log_dir/satty"
 grep -Fxq -- '--actions-on-enter' "$log_dir/satty"
 grep -Fxq -- 'save-to-clipboard' "$log_dir/satty"
 grep -Fxq -- '--save-after-copy' "$log_dir/satty"
+diff -u <(printf '%s\n' \
+  'hyprctl getoption cursor:no_hardware_cursors -j' \
+  'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 0 } })' \
+  'wayfreeze --hide-cursor' \
+  'grim -g 10,20 300x200 <output>' \
+  'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 1 } })') \
+  "$log_dir/events"
 
-printf 'Screenshot is saved, copied, and offered to Satty through a notification action\n'
+cancel_home="$fixture/cancel-home"
+cancel_log="$fixture/cancel-log"
+mkdir -p "$cancel_home" "$cancel_log"
+HOME="$cancel_home" SCREENSHOT_TEST_LOG="$cancel_log" SCREENSHOT_TEST_SELECTION="" \
+  PATH="$mock_bin:$PATH" bash "$repo_root/assets/scripts/screenshot" region
+[[ ! -e $cancel_log/grim ]]
+diff -u <(printf '%s\n' \
+  'hyprctl getoption cursor:no_hardware_cursors -j' \
+  'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 0 } })' \
+  'wayfreeze --hide-cursor' \
+  'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 1 } })') \
+  "$cancel_log/events"
+
+failure_home="$fixture/failure-home"
+failure_log="$fixture/failure-log"
+mkdir -p "$failure_home" "$failure_log"
+if HOME="$failure_home" SCREENSHOT_TEST_LOG="$failure_log" SCREENSHOT_TEST_GRIM_FAIL=1 \
+  PATH="$mock_bin:$PATH" bash "$repo_root/assets/scripts/screenshot" region; then
+  printf 'Expected a failed grim capture to return non-zero\n' >&2
+  exit 1
+fi
+diff -u <(printf '%s\n' \
+  'hyprctl getoption cursor:no_hardware_cursors -j' \
+  'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 0 } })' \
+  'wayfreeze --hide-cursor' \
+  'grim -g 10,20 300x200 <output>' \
+  'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 1 } })') \
+  "$failure_log/events"
+
+printf 'Screenshot hides the cursor, restores compositor state, and preserves save/copy/edit behavior\n'
