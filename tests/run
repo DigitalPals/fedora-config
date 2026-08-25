@@ -220,9 +220,46 @@ assert not detect("06cb", "0701", "SVP7500"), "camera bridge detected as reader"
 assert not detect("06cb", "9999", "Generic USB", "usbio-bridge"), "driven Synaptics device detected"
 assert detect("27c6", "1234"), "unclaimed known-vendor reader not detected"
 assert detect("1234", "5678", "Goodix Fingerprint USB Device", "usbhid"), "named reader not detected"
+
+speaker_manager = Path("roles/xps-2026/files/xps-speaker-tuning").read_text()
+camera_tasks = Path("roles/xps-2026/tasks/camera.yml").read_text()
+sleep_hook = Path("roles/xps-2026/files/camera/xps-ipu7-camera-sleep").read_text()
+resume_unit = Path("roles/xps-2026/templates/xps-ipu7-camera-resume.service.j2").read_text()
+camera_builder = Path("roles/xps-2026/templates/xps-ipu7-build.j2").read_text()
+
+assert "wait_for_speaker()" in speaker_manager
+assert "speaker_stable_samples=4" in speaker_manager
+assert "speaker=$(wait_for_speaker)" in speaker_manager
+assert "path: /etc/v4l2-relayd.d/icamerasrc.conf\n    state: absent" in camera_tasks
+assert "xps-ipu7-camera-resume.service.j2" in camera_tasks
+assert "systemd-run" not in sleep_hook
+assert "systemctl stop xps-ipu7-camera-resume.service" in sleep_hook
+assert "systemctl --no-block restart xps-ipu7-camera-resume.service" in sleep_hook
+assert "Type=oneshot" in resume_unit
+assert "ExecStartPre=/usr/bin/sleep 2" in resume_unit
+assert "ExecStart=/usr/bin/systemctl restart xps-ipu7-camera-init.service" in resume_unit
+assert "ExecStart=/usr/bin/systemctl start v4l2-relayd@ipu7.service" in resume_unit
+assert "module_status=$(dkms status" in camera_builder
+assert 'dkms status -m "$module" -v "$bundle_version" 2>/dev/null | grep -q' not in camera_builder
 print("Python syntax and fingerprint detection fixtures valid")
 PY
 ) || rc=1
+  fi
+
+  if ((rc == 0)); then
+    out=$(bash -c '
+      source roles/xps-2026/files/xps-speaker-tuning
+      sleep_calls=0
+      speaker_sink() { printf "%s\n" test-speaker; }
+      sleep() { sleep_calls=$((sleep_calls + 1)); }
+      wait_for_speaker >/dev/null || exit 1
+      [[ $sleep_calls -eq $((speaker_stable_samples - 1)) ]] || exit 1
+
+      sleep_calls=0
+      speaker_sink() { return 1; }
+      if wait_for_speaker >/dev/null; then exit 1; fi
+      [[ $sleep_calls -eq $((speaker_wait_attempts - 1)) ]]
+    ' 2>&1) || rc=1
   fi
 
   if ((rc == 0)); then

@@ -16,7 +16,9 @@ SKU `0DB9` (plus Quattro-listed XPS 16 SKU `0DBA`) gets Omarchy Quattro's curren
 PipeWire process hosts the graph, so a broken optional profile cannot prevent
 the normal PipeWire daemon from starting. Its output is pinned to the exact
 `sof_sdw` internal-speaker sink. Headphones, Bluetooth, HDMI/DP, USB, and
-network sinks bypass it.
+network sinks bypass it. At login the manager waits for four consecutive
+observations of the physical speaker, avoiding WirePlumber's initial device
+enumeration churn without masking a genuinely absent sink.
 
 The XPS 14 profile was measured on `0DB9`; `0DBA` is included on the same basis
 as Quattro and has not been independently measured here. Fedora provides the
@@ -161,8 +163,13 @@ smoke test explicitly:
 XPS_CAMERA_FRAME_TEST=1 /usr/local/libexec/xps-ipu7-camera-check
 ```
 
+The Fedora package's unused generic `icamerasrc` generator trigger is removed
+on this hardware; the role's `ipu7` relay is the only camera relay instance.
 The suspend hook stops only the userspace relay before sleep and restarts it
-after resume; it avoids fragile module unload/reprobe operations.
+through a managed, restartable oneshot service after resume. A pending resume
+job is cancelled before another sleep transition, so rapid suspend cycles and
+suspend-then-hibernate cannot collide on a transient unit name. The hook avoids
+fragile module unload/reprobe operations.
 
 ## Haptic touchpad
 

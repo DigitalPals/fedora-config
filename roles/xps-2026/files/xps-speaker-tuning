@@ -6,6 +6,9 @@ readonly output_node=xps_speaker_tuning_output
 readonly speaker_pattern='^alsa_output.*sof_sdw.*HiFi__Speaker__sink$'
 readonly profile=/usr/local/share/xps-2026/audio/filter-chain.conf
 readonly host=/usr/local/share/xps-2026/audio/host.conf
+readonly speaker_wait_attempts=60
+readonly speaker_stable_samples=4
+readonly speaker_wait_interval=0.25
 
 matches_hardware() {
   [[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == 'Dell Inc.' ]] || return 1
@@ -21,6 +24,29 @@ speaker_sink() {
   sinks=$(pactl list sinks short 2>/dev/null | awk -v pattern="$speaker_pattern" '$2 ~ pattern {print $2}')
   [[ $(wc -w <<<"$sinks") -eq 1 ]] || return 1
   printf '%s\n' "$sinks"
+}
+
+wait_for_speaker() {
+  local attempt candidate='' current stable=0
+  for ((attempt = 1; attempt <= speaker_wait_attempts; attempt++)); do
+    current=$(speaker_sink 2>/dev/null || true)
+    if [[ -n $current && $current == "$candidate" ]]; then
+      stable=$((stable + 1))
+    elif [[ -n $current ]]; then
+      candidate=$current
+      stable=1
+    else
+      candidate=''
+      stable=0
+    fi
+
+    if ((stable >= speaker_stable_samples)); then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    ((attempt == speaker_wait_attempts)) || sleep "$speaker_wait_interval"
+  done
+  return 1
 }
 
 tuning_present() {
@@ -77,8 +103,8 @@ prepare_runtime_config() {
 
 activate() {
   local speaker downstream default_sink
-  speaker=$(speaker_sink) || {
-    echo 'The exact internal speaker sink is absent; leaving audio unchanged.' >&2
+  speaker=$(wait_for_speaker) || {
+    echo 'The exact internal speaker sink did not become stable; leaving audio unchanged.' >&2
     return 1
   }
   for _ in {1..40}; do
@@ -169,12 +195,19 @@ check_graph() {
   printf 'virtual=%s downstream=%s biquads=26 limiter=present\n' "$virtual_sink" "$speaker"
 }
 
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then
+  return 0
+fi
+
 action=${1:-check}
 case "$action" in
   run)
     matches_hardware || { echo 'XPS 2026 speaker SKU does not match.' >&2; exit 1; }
     plugin_present || { echo 'lsp-plugins-lv2 stereo limiter is missing.' >&2; exit 1; }
-    speaker=$(speaker_sink) || { echo 'The exact internal speaker sink is absent.' >&2; exit 1; }
+    speaker=$(wait_for_speaker) || {
+      echo 'The exact internal speaker sink did not become stable within 15 seconds.' >&2
+      exit 1
+    }
     runtime=$(prepare_runtime_config "$speaker") || exit 1
     export PIPEWIRE_CONFIG_DIR="$runtime"
     exec /usr/bin/pipewire -c xps-speaker-tuning.conf

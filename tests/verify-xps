@@ -177,6 +177,15 @@ if $xps_2026; then
   lspci -Dn -d 8086:b05d 2>/dev/null | grep -q '8086:b05d' && has_ipu7=true
   if $has_ovti08f4 && $has_ipu7; then
     check 'local IPU7 userspace/DKMS RPM installed' rpm -q xps-ipu7-camera-stack
+    check 'unused generic camera relay generator trigger is absent' bash -c \
+      '[[ ! -e /etc/v4l2-relayd.d/icamerasrc.conf && ! -L /etc/v4l2-relayd.d/icamerasrc.conf ]]'
+    check 'unused generic camera relay instance is not failed' bash -c \
+      '! systemctl is-failed --quiet v4l2-relayd@icamerasrc.service'
+    check 'managed camera resume service is installed' \
+      systemctl cat xps-ipu7-camera-resume.service
+    check 'camera sleep hook restarts the managed resume service' \
+      grep -q 'systemctl --no-block restart xps-ipu7-camera-resume.service' \
+      /usr/lib/systemd/system-sleep/xps-ipu7-camera
     check 'IPU7 PSYS DKMS built for the running kernel' bash -c \
       'dkms status -m ipu7-drivers -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"'
     check 'Intel CVS DKMS built for the running kernel' bash -c \

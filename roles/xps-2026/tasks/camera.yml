@@ -55,6 +55,29 @@
     - not xps_2026_camera_dependencies_ready | bool
   tags: [xps-2026, hardware, camera]
 
+- name: Stop Fedora's unused generic camera relay instance
+  ansible.builtin.systemd_service:
+    name: v4l2-relayd@icamerasrc.service
+    state: stopped
+  failed_when: false
+  when: not ansible_check_mode
+  tags: [xps-2026, hardware, camera]
+
+- name: Clear Fedora's unused generic camera relay failure state
+  ansible.builtin.command:
+    argv: [systemctl, reset-failed, v4l2-relayd@icamerasrc.service]
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+  tags: [xps-2026, hardware, camera]
+
+- name: Keep Fedora's unused generic camera relay out of the generator
+  ansible.builtin.file:
+    path: /etc/v4l2-relayd.d/icamerasrc.conf
+    state: absent
+  notify: Reload XPS 2026 systemd
+  tags: [xps-2026, hardware, camera]
+
 - name: End this hardware role after an optional camera dependency failure
   ansible.builtin.meta: end_role
   when: not xps_2026_camera_dependencies_ready | bool
@@ -461,6 +484,9 @@
       mode: "0644"
     - src: xps-ipu7-camera.service.j2
       dest: /etc/systemd/system/xps-ipu7-camera.service
+      mode: "0644"
+    - src: xps-ipu7-camera-resume.service.j2
+      dest: /etc/systemd/system/xps-ipu7-camera-resume.service
       mode: "0644"
     - src: xps-ipu7-refresh-wireplumber.j2
       dest: /usr/local/libexec/xps-ipu7-refresh-wireplumber

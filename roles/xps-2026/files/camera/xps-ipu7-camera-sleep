@@ -3,16 +3,14 @@
 # sleep hook is intentionally avoided because it makes stock-kernel PM fragile.
 case "${1:-}" in
   pre)
+    # Cancel a prior delayed resume before stopping the relay. This makes an
+    # immediate second suspend, including suspend-then-hibernate, idempotent.
+    systemctl stop xps-ipu7-camera-resume.service >/dev/null 2>&1 || true
     systemctl stop v4l2-relayd@ipu7.service >/dev/null 2>&1 || true
     ;;
   post)
-    systemd-run --no-block --collect --unit=xps-ipu7-camera-resume \
-      /usr/bin/bash -c '
-        sleep 2
-        systemctl restart xps-ipu7-camera-init.service || exit 1
-        systemctl reset-failed v4l2-relayd@ipu7.service || true
-        systemctl start v4l2-relayd@ipu7.service
-      ' >/dev/null 2>&1 || true
+    systemctl reset-failed xps-ipu7-camera-resume.service >/dev/null 2>&1 || true
+    systemctl --no-block restart xps-ipu7-camera-resume.service >/dev/null 2>&1 || true
     ;;
 esac
 exit 0

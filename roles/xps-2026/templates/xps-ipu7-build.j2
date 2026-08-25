@@ -185,7 +185,7 @@ prune_dkms() {
 }
 
 install_dkms() {
-  local kernel module boot_id marker
+  local kernel module boot_id marker module_status
   local changed=0
   kernel=${2:-$(uname -r)}
   [[ -d /usr/src/ipu7-drivers-$bundle_version ]]
@@ -203,12 +203,16 @@ install_dkms() {
   # makes Secure Boot enrollment a single, explicit owner action.
   /usr/bin/kmodgenca -a >/dev/null
   for module in ipu7-drivers vision-drivers; do
-    if ! dkms status -m "$module" -v "$bundle_version" 2>/dev/null | grep -q .; then
+    # Do not pipe `dkms status` into `grep -q` under pipefail: when multiple
+    # kernels are installed, grep exits after the first line and DKMS can get
+    # SIGPIPE, making an existing registration look absent.
+    module_status=$(dkms status -m "$module" -v "$bundle_version" 2>/dev/null || true)
+    if [[ -z $module_status ]]; then
       dkms add -m "$module" -v "$bundle_version"
       changed=1
     fi
-    if ! dkms status -m "$module" -v "$bundle_version" -k "$kernel" 2>/dev/null | \
-         grep -qE ':[[:space:]]+installed$'; then
+    module_status=$(dkms status -m "$module" -v "$bundle_version" -k "$kernel" 2>/dev/null || true)
+    if [[ ! $module_status =~ :[[:space:]]+installed$ ]]; then
       dkms install -m "$module" -v "$bundle_version" -k "$kernel"
       changed=1
     fi
