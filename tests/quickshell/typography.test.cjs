@@ -71,7 +71,7 @@ test("semantic typography tokens retain the intended logical-pixel scale", () =>
 });
 
 test("menu typography keeps the bar's own compact metrics", () => {
-    assert.equal(stringToken("fontSans"), "Google Sans Flex");
+    assert.equal(stringToken("fontSans"), "JetBrains Mono");
     assert.equal(stringToken("fontIcon"), "Material Symbols Rounded");
     assert.deepEqual([
         intToken("chipHeight"),
@@ -83,7 +83,7 @@ test("menu typography keeps the bar's own compact metrics", () => {
     assert.match(theme, /readonly property var tabularNumberFeatures:\s*\(\{\s*"tnum":\s*1\s*\}\)/);
 });
 
-test("settings-driven tokens default to the softer menu face", () => {
+test("settings-driven tokens default to the selected menu face", () => {
     // fontMenu / barHeight / clusterRadius moved from literals to Shell
     // settings bindings; the defaults must still reproduce the design values
     // and Theme must actually bind to Settings rather than re-hardcode.
@@ -95,7 +95,7 @@ test("settings-driven tokens default to the softer menu face", () => {
     assert.equal(d.barStyle, "hug");
     assert.equal(d.accent, "#9ecbeb");
     const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
-    assert.equal(menuChoice.family, "Google Sans Flex");
+    assert.equal(menuChoice.family, "JetBrains Mono");
 
     assert.match(theme, /readonly property int barHeight:\s*Settings\.barHeight/);
     assert.match(theme, /readonly property bool barFloating:\s*Settings\.barStyle === "floating"/);

@@ -15,7 +15,7 @@ test("defaults carry the design values", () => {
         [230, 14, 9]);
     assert.equal(d.barHeight, 34);
     assert.equal(d.barRadius, 11);
-    assert.equal(d.font, "google");
+    assert.equal(d.font, "mono");
     assert.equal(d.accent, "#9ecbeb");
     assert.equal(d.paletteMode, "wallpaper");
     assert.equal(d.position, "top");
@@ -311,7 +311,7 @@ test("merge clamps and snaps numeric ranges", () => {
 });
 
 test("merge falls back on invalid enums, colors and names", () => {
-    assert.equal(H.merge({ font: "comic-sans" }).font, "google");
+    assert.equal(H.merge({ font: "comic-sans" }).font, "mono");
     assert.equal(H.merge({ v: H.VERSION, font: "oppo" }).font, "oppo",
         "the previous menu face stays selectable");
     assert.equal(H.merge({ themeMode: "sepia" }).themeMode, "dark");
@@ -679,7 +679,7 @@ test("serialize is stable, versioned, and round-trips through merge", () => {
     const text = H.serialize(d);
     assert.match(text, new RegExp(`^\\{\\n  "v": ${H.VERSION},\\n  "wall":`));
     assert.ok(text.endsWith("\n"));
-    const reparsed = H.merge(H.parse(text));
+    const reparsed = H.merge(H.parse(text).value);
     assert.equal(H.serialize(reparsed), text);
 });
 

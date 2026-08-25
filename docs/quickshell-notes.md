@@ -320,11 +320,12 @@ The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project
 `facd7f56`) replaced an opaque bar and its bar-fused popouts with translucent
 glass and detached panels. What that added, and what it needs:
 
-- **Three pinned fonts.** `Google Sans Flex` is the default UI face,
-  `Urbanist` remains an optional menu face, and `Material Symbols Rounded` is
-  every icon. All three install from
-  `inventory/group_vars/all.yml → pinned_font_files`. **Qt reads the font
-  database once at startup**, so a freshly installed face needs
+- **Pinned shell fonts.** `JetBrains Mono` is the default UI face;
+  `Google Sans Flex`, `Urbanist`, `OPPO Sans 4.0`, and `IBM Plex Sans` remain
+  optional menu faces, and `Material Symbols Rounded` is every icon. The apps
+  role installs the packaged faces and the remaining fonts come from
+  `inventory/group_vars/all.yml`. **Qt reads the font database once at
+  startup**, so a freshly installed face needs
   `systemctl --user restart quickshell.service`, not a hot reload — a missing
   icon font renders each ligature as its own name in plain text.
 - **Icons are ligatures, not codepoints.** `Sym { name: "wifi" }` draws the

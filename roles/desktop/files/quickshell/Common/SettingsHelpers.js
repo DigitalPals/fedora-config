@@ -128,7 +128,7 @@ function defaults() {
         barCustomLightness: 9,
         barHeight: 34,
         barRadius: 11,
-        font: "google",
+        font: "mono",
         accent: "#9ecbeb",
         paletteMode: "wallpaper",
         position: "top",

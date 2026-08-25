@@ -353,7 +353,7 @@ Singleton {
     // off it, the launcher, the toasts and the overlays. `fontSans` is the
     // shipped default that `fontMenu` falls back to, and nothing draws it
     // directly; a view that named it would be opting out of the setting.
-    readonly property string fontSans: "Google Sans Flex"
+    readonly property string fontSans: "JetBrains Mono"
     readonly property string fontMenu: {
         const choice = Settings.fontChoices.find(f => f.id === Settings.font);
         return choice ? choice.family : fontSans;
@@ -369,7 +369,7 @@ Singleton {
     readonly property string fontNerd: "JetBrainsMono Nerd Font"
 
     // Semantic logical-pixel type scale. Metadata now floors at 11px and the
-    // roomier Google Sans metrics keep compact copy from feeling compressed.
+    // the roomier scale keeps compact copy from feeling compressed.
     readonly property int fontMicro: 11
     readonly property int fontTiny: 12
     readonly property int fontCaption: 12
