@@ -52,6 +52,8 @@ Singleton {
     property bool checkingFlatpak: false
     property bool checkAgain: false
     property bool initialized: false
+    property int checkFailureCount: 0
+    property string lastLoggedCheckError: ""
 
     readonly property int total: dnfCount + flatpakCount
     readonly property bool flatpakEnabled: Settings.modOpts.updates.flatpak
@@ -130,13 +132,31 @@ Singleton {
             flatpakProc.running = true;
     }
 
+    // Automatic work waits for NetworkManager's global connected state.
+    // Manual refresh remains an explicit attempt, even on a network whose
+    // connectivity check is conservative or unavailable.
+    function automaticCheck(resetRetries) {
+        if (!NetworkStatus.online)
+            return;
+        if (resetRetries)
+            checkFailureCount = 0;
+        check();
+    }
+
+    function logCheckError(reason) {
+        if (reason === lastLoggedCheckError)
+            return;
+        console.warn("update check:", reason);
+        lastLoggedCheckError = reason;
+    }
+
     function finishDnf(exitCode, body, errText) {
         if (exitCode === 0 || exitCode === 100) {
             nextDnfNames = UpdatesHelpers.dnfNames(body);
         } else {
             dnfError = ProcHelpers.commandError("dnf check-update", exitCode, errText,
                 ({ 124: "dnf check-update timed out" }));
-            console.warn("update check:", dnfError);
+            logCheckError(dnfError);
         }
         dnfDone = true;
         finishCheck();
@@ -148,7 +168,7 @@ Singleton {
         } else {
             flatpakError = ProcHelpers.commandError("flatpak update check", exitCode, errText,
                 ({ 124: "Flatpak update check timed out" }));
-            console.warn("update check:", flatpakError);
+            logCheckError(flatpakError);
         }
         flatpakDone = true;
         finishCheck();
@@ -187,8 +207,13 @@ Singleton {
                 nextTotal + (nextTotal === 1 ? " update ready" : " updates ready"),
                 summary]);
         }
-        if (complete)
+        if (complete) {
             hasBaseline = true;
+            checkFailureCount = 0;
+            lastLoggedCheckError = "";
+        } else {
+            checkFailureCount++;
+        }
 
         if (checkAgain)
             Qt.callLater(root.check);
@@ -544,12 +569,23 @@ Singleton {
         }
     }
 
+    // A transient endpoint failure after NetworkManager came online should
+    // not survive until the ordinary (30 minute by default) poll. Four
+    // bounded retries cover startup DNS/repository lag without hammering a
+    // permanently broken remote.
+    Timer {
+        interval: Math.min(120000, 15000 * Math.pow(2,
+            Math.max(0, root.checkFailureCount - 1)))
+        running: root.error !== "" && root.checkFailureCount <= 4
+            && NetworkStatus.online && !root.busy && !root.runActive
+        onTriggered: root.automaticCheck(false)
+    }
+
     Timer {
         interval: Math.max(10, Settings.modOpts.updates.pollMins) * 60000
-        running: true
+        running: NetworkStatus.online
         repeat: true
-        triggeredOnStart: true
-        onTriggered: root.check()
+        onTriggered: root.automaticCheck(true)
     }
 
     // dnf check-update lists one package per line as "name.arch  version  repo"
@@ -624,9 +660,21 @@ Singleton {
         }
     }
 
-    Component.onCompleted: initialized = true
+    Connections {
+        target: NetworkStatus
+
+        function onOnlineChanged() {
+            if (NetworkStatus.online)
+                root.automaticCheck(true);
+        }
+    }
+
+    Component.onCompleted: {
+        initialized = true;
+        automaticCheck(true);
+    }
     onFlatpakEnabledChanged: {
         if (initialized)
-            check();
+            automaticCheck(true);
     }
 }

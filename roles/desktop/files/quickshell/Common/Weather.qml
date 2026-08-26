@@ -26,6 +26,10 @@ Singleton {
     // Why the last fetch failed, "" while it is working.
     property string fetchError: ""
     readonly property bool offline: fetchError !== ""
+        || (NetworkStatus.known && !NetworkStatus.online)
+    readonly property string unavailableReason: fetchError !== "" ? fetchError
+        : NetworkStatus.known && !NetworkStatus.online
+            ? "waiting for a network connection" : ""
     property double updatedAt: 0
     property int temp: 0
     property int feels: 0
@@ -49,13 +53,23 @@ Singleton {
         target: Settings
 
         function onUnitChanged() {
-            root.refresh();
+            if (NetworkStatus.online)
+                root.refresh();
         }
 
         // Any modOpts write lands here; only refetch when it moved the
         // request (location change), not on unrelated module options.
         function onModOptsChanged() {
-            if (root.url !== root.fetchedUrl)
+            if (NetworkStatus.online && root.url !== root.fetchedUrl)
+                root.refresh();
+        }
+    }
+
+    Connections {
+        target: NetworkStatus
+
+        function onOnlineChanged() {
+            if (NetworkStatus.online)
                 root.refresh();
         }
     }
@@ -271,7 +285,7 @@ Singleton {
 
     Timer {
         interval: root.pollIntervalSecs * 1000
-        running: true
+        running: NetworkStatus.online
         repeat: true
         onTriggered: root.refresh()
     }
@@ -280,10 +294,13 @@ Singleton {
     // associating at session start).
     Timer {
         interval: 30000
-        running: !root.ready
+        running: NetworkStatus.online && (!root.ready || root.fetchError !== "")
         repeat: true
         onTriggered: root.refresh()
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: {
+        if (NetworkStatus.online)
+            refresh();
+    }
 }

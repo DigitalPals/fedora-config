@@ -178,7 +178,7 @@ Surface {
             elide: Text.ElideRight
             textFormat: Weather.offline ? Text.PlainText : Text.RichText
             text: Weather.offline
-                ? Weather.fetchError
+                ? Weather.unavailableReason
                 : Weather.updatedAt > 0
                     ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Weather.updatedAt), "HH:mm")}</font>`
                     : "loading…"
