@@ -3,6 +3,25 @@ const assert = require("node:assert/strict");
 const { load } = require("./shell.cjs");
 
 const H = load("LayoutHelpers.js");
+const SettingsHelpers = load("SettingsHelpers.js");
+
+test("calendar, weather, and notifications remain separate pills", () => {
+    const defaults = SettingsHelpers.defaultMods();
+    const center = H.groupModules(defaults.center,
+        id => SettingsHelpers.moduleGroup(id));
+    assert.deepEqual(center.map(group => group.kind), ["solo", "solo", "solo"]);
+    assert.deepEqual(center.map(group => group.items[0].entry.id),
+        ["indicators", "clock", "weather"]);
+
+    const right = H.groupModules(defaults.right,
+        id => SettingsHelpers.moduleGroup(id));
+    const notificationGroup = right.find(group =>
+        group.items.some(item => item.entry.id === "notifications"));
+    assert.equal(notificationGroup.kind, "solo");
+    assert.deepEqual(right.at(-1).items.map(item => item.entry.id),
+        ["vol", "wifi", "bt", "batt"],
+        "only the adjacent status widgets share a pointer target");
+});
 
 test("stacked drops subtract each column origin before finding the row", () => {
     const columns = [
@@ -79,6 +98,18 @@ test("all-auto detail follows the documented compaction order", () => {
     assert.deepEqual(result.compact, H.COMPACT_ORDER);
     assert.equal(entries.length, H.COMPACT_ORDER.length,
         "fitting changes detail, not module enablement");
+});
+
+test("notification count participates in responsive compaction", () => {
+    assert.ok(H.COMPACT_ORDER.includes("notifications"));
+    const result = H.fitBar({
+        width: 600, gutter: 8,
+        widths: { left: 240, center: 180, right: 250 },
+        entries: [
+            { id: "notifications", col: "right", saving: 24, policy: "auto" }
+        ]
+    });
+    assert.deepEqual(result.compact, ["notifications"]);
 });
 
 test("asymmetric center extents pin the clock while actions reveal on its left", () => {

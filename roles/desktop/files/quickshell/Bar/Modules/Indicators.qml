@@ -89,18 +89,6 @@ BarModule {
             host.unregisterPanel("reminders", button);
     }
 
-    function actionAtScenePoint(position: point): bool {
-        for (const button of actionButtons) {
-            if (!button || !button.visible || button.width <= 0)
-                continue;
-            const local = button.mapFromItem(null, position.x, position.y);
-            if (local.x >= 0 && local.x <= button.width
-                    && local.y >= 0 && local.y <= button.height)
-                return true;
-        }
-        return false;
-    }
-
     function tooltipFor(id) {
         switch (id) {
         case "dictation":

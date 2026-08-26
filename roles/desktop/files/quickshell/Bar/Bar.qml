@@ -29,7 +29,7 @@ PanelWindow {
         const actual = currentCenterExtents();
         return centerCluster.width / 2 - actual.left;
     }
-    // What the centre pill is actually drawn at. The fit pass moves
+    // What the centre cluster is actually drawn at. The fit pass moves
     // `centerShift` in one step when a module appears or the bar is resized;
     // routing it through a second property lets the pill glide there, and a
     // Behavior cannot be attached to a grouped anchor property directly.
@@ -47,10 +47,12 @@ PanelWindow {
     // exit when the pointer leaves this layer surface, while the full-window
     // handler below still reports that the bar itself is no longer hovered.
     readonly property bool tooltipPointerInside: barHover.hovered
-    property bool indicatorActionHovered: false
-    // Indicators owns the width spring while its inactive block opens or
-    // closes. The center pill observes this to avoid wrapping that motion in
-    // its older width animation and making the clock rebound.
+    // Hovering the clock discloses its neighbouring quick actions. This is
+    // resolved by the bar-wide pointer path so mapping a detached popout cannot
+    // strand disclosure on a missed child enter/exit event.
+    property bool indicatorTriggerHovered: false
+    // The Indicators revealer owns its width spring while opening or closing;
+    // its Cluster wrapper yields so the two animations do not compound.
     property bool indicatorDisclosureAnimating: false
     property point tooltipPointerPosition: Qt.point(-1, -1)
     readonly property int safetyGutter: 8
@@ -586,7 +588,7 @@ PanelWindow {
         indicators: "Modules/Indicators.qml",
         t3: "Modules/T3.qml", usage: "Modules/Usage.qml",
         gh: "Modules/GitHub.qml", updates: "Modules/Updates.qml",
-        tray: "Modules/Tray.qml",
+        tray: "Modules/Tray.qml", notifications: "Modules/Notifications.qml",
         vol: "Modules/Volume.qml", wifi: "Modules/Wifi.qml",
         batt: "Modules/Battery.qml", bt: "Modules/Bluetooth.qml"
     })
@@ -725,10 +727,8 @@ PanelWindow {
                     point.position.x, point.position.y);
                 barWindow.tooltipPointerPosition = scenePoint;
                 barWindow.hoverPanelAt(scenePoint);
-                const indicatorSlot = barWindow.slotRegistry.indicators;
-                barWindow.indicatorActionHovered = indicatorSlot !== undefined
-                    && indicatorSlot.mod !== null
-                    && indicatorSlot.mod.actionAtScenePoint(scenePoint);
+                barWindow.indicatorTriggerHovered = barWindow.itemContainsPoint(
+                    barWindow.panelAnchors.calendar, scenePoint);
             }
 
             onHoveredChanged: {
@@ -739,7 +739,7 @@ PanelWindow {
                     hideTimer.restart();
                 }
                 if (!hovered)
-                    barWindow.indicatorActionHovered = false;
+                    barWindow.indicatorTriggerHovered = false;
             }
         }
     }
@@ -901,7 +901,8 @@ PanelWindow {
             }
         }
 
-        // CENTER — clock, date and weather in one pill.
+        // CENTER — independent action, calendar and forecast pills, pinned on
+        // the clock so disclosure grows outwards without moving the time.
         Cluster {
             id: centerCluster
             host: barWindow

@@ -39,12 +39,18 @@ test("inactive disclosure and persistent active actions use separate animated bl
     assert.match(revealer,
         /easing\.bezierCurve:\s*root\.reveal\s*\? Theme\.springCurve : Theme\.easeInCurve/,
         "closing disclosure must not spring past zero width and rebound");
-    assert.match(indicators,
-        /host\.indicatorDisclosureAnimating = disclosureAnimating/);
-    assert.match(cluster,
-        /group\.kind === "center"[\s\S]{0,100}?root\.host\.indicatorDisclosureAnimating/,
-        "the old center-pill spring must yield while the revealer owns width motion");
     const bar = read("Bar/Bar.qml");
+    assert.match(cluster,
+        /groupHovered:\s*entry\.modelData\.entry\.id === "indicators"[\s\S]{0,100}?indicatorTriggerHovered/,
+        "the separate clock pill must still disclose its neighbouring actions");
+    assert.match(cluster,
+        /group\.items\[0\]\.entry\.id === "indicators"[\s\S]{0,100}?indicatorDisclosureAnimating/,
+        "the Indicators wrapper must yield while its revealer owns width motion");
+    assert.match(bar,
+        /indicatorTriggerHovered = barWindow\.itemContainsPoint\([\s\S]{0,100}?panelAnchors\.calendar/,
+        "bar-wide pointer truth must recover a clock enter lost while mapping a popout");
+    assert.doesNotMatch(cluster, /kind === "center"|center:\s*"notifications"/,
+        "the indicators must not depend on a shared notification-center target");
     assert.match(bar,
         /readonly property real centerPinBias:[\s\S]{0,180}?currentCenterExtents\(\)/,
         "the clock pin must follow reveal geometry synchronously");
@@ -57,15 +63,14 @@ test("inactive disclosure and persistent active actions use separate animated bl
         "clock placement must react to each intermediate Row layout position");
 });
 
-test("center pointer routing leaves action buttons above the notification target", () => {
+test("clock and weather own their targets without covering indicator actions", () => {
     const cluster = read("Bar/Cluster.qml");
-    const bar = read("Bar/Bar.qml");
-    assert.match(cluster, /id:\s*slotRow\s*\n\s*z:\s*2/);
-    assert.match(cluster, /id:\s*groupMouse\s*\n\s*z:\s*1/);
-    assert.match(cluster, /!root\.host\.indicatorActionHovered/,
-        "the center tooltip must disappear over a real action");
-    assert.match(bar, /actionAtScenePoint\(scenePoint\)/,
-        "the bar-wide pointer path must independently hit-test action buttons");
+    const clock = read("Bar/Modules/Clock.qml");
+    const weather = read("Bar/Modules/Weather.qml");
+    assert.match(clock, /BarChip\s*\{[\s\S]*?panelName:\s*"calendar"/);
+    assert.match(weather, /BarChip\s*\{[\s\S]*?panelName:\s*"weather"/);
+    assert.match(cluster, /ownsPointer:\s*kind === "status"/);
+    assert.doesNotMatch(cluster, /center:\s*"notifications"/);
     assert.match(indicators, /acceptedButtons:\s*Qt\.LeftButton \| Qt\.MiddleButton/);
 });
 

@@ -32,20 +32,24 @@ test("expressive text and reveal motion use the shared timing language", () => {
         "a seconds clock should not run a transition every second");
 });
 
-test("the center cluster keeps clock spacing and restores the weather hairline", () => {
+test("clock and weather use separate transparent-resting pills", () => {
     const divider = read("Bar/Divider.qml");
     const cluster = read("Bar/Cluster.qml");
     const clock = read("Bar/Modules/Clock.qml");
+    const weather = read("Bar/Modules/Weather.qml");
+    const helpers = read("Common/SettingsHelpers.js");
 
     assert.match(divider, /width:\s*kind === "space" \? 8 : 9/,
         "classic spacing and hairlines must remain compact");
     assert.match(divider, /visible:\s*root\.kind === "rule"/,
         "space separators must not draw a mark");
-    assert.match(cluster, /function previousShownId\(at\)/);
-    assert.match(cluster, /entry\.modelData\.entry\.id === "clock"/);
-    assert.match(cluster, /=== "indicators"\)[\s\S]{0,80}?\? "space" : "rule"/);
+    assert.match(clock, /BarChip\s*\{[\s\S]*?panelName:\s*"calendar"/);
+    assert.match(weather, /BarChip\s*\{[\s\S]*?panelName:\s*"weather"/);
     assert.match(clock, /id:\s*dateSeparator[\s\S]{0,60}?kind:\s*"space"/);
-    assert.doesNotMatch(divider + cluster + clock, /kind:\s*"dot"/);
+    assert.match(helpers,
+        /indicators:\s*"solo", clock:\s*"solo", weather:\s*"solo"/);
+    assert.doesNotMatch(cluster, /kind === "center"|center:\s*"notifications"/);
+    assert.doesNotMatch(divider + cluster + clock + weather, /kind:\s*"dot"/);
 });
 
 test("menubar modules rest directly on one shared slab", () => {
@@ -80,6 +84,8 @@ test("every module family uses the shared bar hover surface", () => {
     const tray = read("Bar/Modules/Tray.qml");
     const usage = read("Bar/UsageChips.qml");
     const indicators = read("Bar/Modules/Indicators.qml");
+    const clock = read("Bar/Modules/Clock.qml");
+    const weather = read("Bar/Modules/Weather.qml");
     const workspaces = read("Bar/Workspaces.qml");
 
     assert.match(hover, /^import[\s\S]*StateLayer\s*\{/,
@@ -105,13 +111,13 @@ test("every module family uses the shared bar hover surface", () => {
         "the bar-wide pointer observer must not take a module click");
     assert.match(cluster,
         /BarHover\s*\{[\s\S]{0,180}?visible:\s*group\.ownsPointer[\s\S]{0,100}?target:\s*pill/,
-        "a combined status/centre click target needs one matching hover surface");
-    assert.match(cluster,
-        /visualEnabled:\s*group\.kind !== "center"[\s\S]{0,80}?indicatorActionHovered/,
-        "an indicator button must replace, not stack with, the centre hover surface");
-    assert.match(cluster, /groupHovered:\s*groupHover\.over/);
+        "the combined status click target needs one matching hover surface");
+    assert.match(cluster, /ownsPointer:\s*kind === "status"/);
+    assert.match(cluster, /groupHovered:[\s\S]{0,120}?indicatorTriggerHovered/);
+    assert.match(clock, /BarChip\s*\{/);
+    assert.match(weather, /BarChip\s*\{/);
     assert.doesNotMatch(cluster, /sharedHoverLayer|slotLoader\.mod,[\s\S]{0,80}?tooltipPointerPosition/,
-        "group content must not grow independent affordances beneath one click target");
+        "status content must not grow independent affordances beneath one click target");
 
     for (const [name, source] of [
         ["tray", tray], ["usage", usage], ["indicators", indicators],

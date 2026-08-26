@@ -21,8 +21,8 @@ function barSources() {
 }
 
 // Every panel name the bar claims: a module's own `panelName: "x"`, plus the
-// two the cluster's group pills open, which come from a named map rather than
-// from a module because the pill is furniture the modules sit inside.
+// Control Center opened by the status-group pill, which is furniture rather
+// than a module.
 function claimedPanels() {
     const bar = barSources();
     const groupMap = read("Bar/Cluster.qml")
@@ -106,18 +106,39 @@ test("a bar module that owns a panel registers it under the registry's name", ()
     }
 });
 
+test("calendar, weather, and notifications each have one widget and one view", () => {
+    assert.deepEqual(R.byName("calendar"), {
+        name: "calendar", island: "center", moduleId: "clock",
+        source: "Popovers/CalendarPopover.qml"
+    });
+    assert.deepEqual(R.byName("weather"), {
+        name: "weather", island: "center", moduleId: "weather",
+        source: "Popovers/WeatherPopover.qml"
+    });
+    assert.deepEqual(R.byName("notifications"), {
+        name: "notifications", island: "right", moduleId: "notifications",
+        source: "Popovers/NotifsPopover.qml"
+    });
+
+    assert.match(read("Bar/Modules/Clock.qml"), /panelName:\s*"calendar"/);
+    assert.match(read("Bar/Modules/Weather.qml"), /panelName:\s*"weather"/);
+    assert.match(read("Bar/Modules/Notifications.qml"),
+        /panelName:\s*"notifications"/);
+    assert.equal(fs.existsSync(path.join(shellDir,
+        "Popovers/NotifCenterPopover.qml")), false);
+    assert.doesNotMatch(read("Popovers/qmldir"), /NotifCenterPopover/);
+});
+
 test("panels no module owns are exactly the ones the bar sweep must skip", () => {
     // The Tailscale bug in one assertion: an ownerless panel left in the
     // sweep gets closed by any unrelated module change.
-    // The redesign added to this set on purpose. `control` is opened by the
-    // status pill, which is furniture the status modules fill in rather than a
-    // module of its own; the four detail panels behind it and the two the
-    // notification centre absorbed are now reachable only from IPC or from
-    // inside another panel. None of them can be closed by a module going away,
-    // so none of them may be swept.
+    // `control` is opened by the status pill, which is furniture the status
+    // modules fill in rather than a module of its own. The four detail panels
+    // behind it are reachable from IPC or from inside that panel, so no module
+    // sweep may close them.
     assert.deepEqual(R.PANELS.filter(p => R.ownerless(p.name)).map(p => p.name).sort(),
-        ["audio", "battery", "bluetooth", "calendar", "control", "settings",
-         "tailscale", "weather", "wifi"]);
+        ["audio", "battery", "bluetooth", "control", "settings",
+         "tailscale", "wifi"]);
 });
 
 test("only settings carries the behaviour flags", () => {
@@ -239,7 +260,7 @@ test("menu hover switching is latched behind an open popout", () => {
     }
     assert.match(cluster,
         /onEntered:\s*root\.host\.hoverPopout\(group\.panelName, root\.col, pill\)/,
-        "group-owned status and centre menus must join hover switching");
+        "the group-owned status menu must join hover switching");
     assert.match(cluster,
         /onPositionChanged:\s*root\.host\.hoverPopout\(group\.panelName, root\.col, pill\)/);
 

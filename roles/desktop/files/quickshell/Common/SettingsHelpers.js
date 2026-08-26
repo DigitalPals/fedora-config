@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 10;
+var VERSION = 11;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -10,20 +10,20 @@ var PALETTE_MODES = ["wallpaper", "fixed"];
 // only decides where an id the settings file has never seen is appended, but
 // keeping the two lists in step is what makes that placement predictable.
 //
-// Schema 4 (the glass menubar) retired three ids. `bell` folded into the
-// centre clock — that button is the notification centre now; `idle` became a
-// Control Center toggle whose state shows as a coffee mark inside the clock;
-// and `control` became the status pill itself, so a separate trigger for it
-// would open the panel the pill already owns.
+// Schema 4 (the glass menubar) retired three ids. `bell` was absorbed by the
+// old combined centre pill; schema 11 deliberately introduces the distinct
+// `notifications` id rather than reviving that historical key. `idle` became
+// a Control Center toggle, and `control` became the status pill itself, so a
+// separate trigger for it would open the panel the pill already owns.
 var MODULE_IDS = [
     "ws", "media", "indicators", "clock", "weather", "updates", "gh", "t3", "usage", "tray",
-    "vol", "wifi", "bt", "batt"
+    "notifications", "vol", "wifi", "bt", "batt"
 ];
 
 var RETIRED_MODULE_IDS = ["bell", "idle", "control"];
 
 var DETAIL_IDS = ["media", "weather", "clock", "t3", "usage", "gh", "updates",
-    "vol", "batt"];
+    "notifications", "vol", "batt"];
 var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
 var FONT_CHOICES = [
@@ -69,8 +69,9 @@ var BAR_COLOR_PRESETS = {
 // by hairlines; `status` modules are bare glyphs inside the pill that opens
 // the Control Center; `solo` modules bring their own pill.
 var MODULE_GROUPS = {
-    ws: "solo", media: "solo", indicators: "center", clock: "center", weather: "center",
+    ws: "solo", media: "solo", indicators: "solo", clock: "solo", weather: "solo",
     updates: "solo", gh: "chip", t3: "chip", usage: "chip", tray: "solo",
+    notifications: "solo",
     vol: "status", wifi: "status", bt: "status", batt: "status"
 };
 
@@ -87,14 +88,15 @@ function defaultMods() {
         center: [mod("indicators", true), mod("clock", true), mod("weather", true)],
         right: [
             mod("updates", true), mod("gh", true), mod("t3", true),
-            mod("usage", true), mod("tray", true), mod("vol", true),
+            mod("usage", true), mod("tray", true), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", false), mod("batt", true)
         ]
     };
 }
 
 // Per-module options: one object per configurable module id. Modules absent
-// here (wifi, bt, idle, control) have no options and get no settings cog.
+// here have no option controls; a detail-only module may still get a settings
+// page for its compaction policy.
 function defaultModOpts() {
     return {
         ws: { minSlots: 5, hideEmpty: false, style: "numbers" },
@@ -593,6 +595,29 @@ function migrateMods(raw, sourceVersion) {
             });
             break;
         }
+    }
+
+    // Schema 11 gives notification history its own right-side widget. Older
+    // layouts retain every existing entry exactly where the user put it; add
+    // only the new widget, immediately before the first status item that still
+    // lives on the right. If the user moved all status items elsewhere, the
+    // right column's end is the least surprising stable fallback.
+    var notificationsPresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) {
+            return entry && entry.id === "notifications";
+        });
+    });
+    if ((typeof sourceVersion !== "number" || sourceVersion < 11)
+            && !notificationsPresent) {
+        var statusIds = ["vol", "wifi", "bt", "batt"];
+        var notificationIndex = migrated.right.findIndex(function(entry) {
+            return entry && statusIds.indexOf(entry.id) !== -1;
+        });
+        if (notificationIndex === -1)
+            notificationIndex = migrated.right.length;
+        migrated.right.splice(notificationIndex, 0, {
+            id: "notifications", on: true, detail: "auto"
+        });
     }
     return normalizeMods(migrated);
 }

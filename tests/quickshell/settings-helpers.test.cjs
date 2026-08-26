@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 10);
+    assert.equal(H.VERSION, 11);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, false);
     assert.equal(d.barColorMode, "default");
@@ -46,12 +46,20 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id), ["indicators", "clock", "weather"]);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["updates", "gh", "t3", "usage", "tray", "vol", "wifi", "bt", "batt"]);
+        ["updates", "gh", "t3", "usage", "tray", "notifications",
+         "vol", "wifi", "bt", "batt"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, false,
         "Bluetooth is opt-in; its auto-rule already hides it when nothing is connected");
     assert.equal(d.mods.right.find(m => m.id === "tray").on, true);
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
+    assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
+    const moduleIds = [...d.mods.left, ...d.mods.center, ...d.mods.right]
+        .map(module => module.id);
+    assert.equal(new Set(moduleIds).size, moduleIds.length,
+        "fresh layouts contain each widget exactly once");
+    assert.deepEqual([...moduleIds].sort(), [...H.MODULE_IDS].sort());
+    assert.ok(H.DETAIL_IDS.includes("notifications"));
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
@@ -411,7 +419,8 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.equal(next.left[0].on, false);
     assert.deepEqual(next.center.map(m => m.id), ["indicators", "clock", "weather"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["updates", "gh", "t3", "usage", "tray", "wifi", "bt", "batt"]);
+        ["updates", "gh", "t3", "usage", "tray", "notifications",
+         "wifi", "bt", "batt"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === false),
         "appended module keeps its default enable flag");
 });
@@ -558,10 +567,60 @@ test("the tray and the updates chip persist in any module column", () => {
     assert.ok(!next.right.some(m => m.id === "tray" || m.id === "updates"));
 });
 
-test("schema 4 retires the three modules the redesign absorbed", () => {
-    // The bell folded into the centre pill, idle inhibit into the Control
-    // Center, and the Control Center trigger into the status pill. A settings
-    // file naming any of them must not resurrect it.
+test("schema-11 adds notifications without rewriting a custom layout", () => {
+    const oldIds = H.MODULE_IDS.filter(id => id !== "notifications");
+    const entry = (id, index) => ({
+        id,
+        on: index % 3 !== 0,
+        detail: ["auto", "prefer", "compact"][index % 3]
+    });
+    const raw = {
+        left: oldIds.slice(0, 5).reverse().map(entry),
+        center: oldIds.slice(5, 9).map((id, index) => entry(id, index + 5)),
+        right: oldIds.slice(9).map((id, index) => entry(id, index + 9))
+    };
+
+    const migrated = H.merge({ v: 10, mods: raw }).mods;
+    for (const col of ["left", "center", "right"])
+        assert.deepEqual(migrated[col].filter(mod => mod.id !== "notifications"), raw[col],
+            `${col} entries changed while adding notifications`);
+    const added = migrated.right.filter(mod => mod.id === "notifications");
+    assert.deepEqual(added, [{ id: "notifications", on: true, detail: "auto" }]);
+    const all = [...migrated.left, ...migrated.center, ...migrated.right]
+        .map(mod => mod.id);
+    assert.equal(new Set(all).size, H.MODULE_IDS.length);
+});
+
+test("schema-11 inserts notifications before the first right-side status widget", () => {
+    const raw = H.defaultMods();
+    raw.right = raw.right.filter(mod => mod.id !== "notifications");
+    const byId = Object.fromEntries(raw.right.map(mod => [mod.id, mod]));
+    raw.right = [byId.updates, byId.tray, byId.gh, byId.wifi, byId.t3,
+        byId.usage, byId.vol, byId.bt, byId.batt];
+
+    const migrated = H.merge({ v: 10, mods: raw }).mods.right;
+    assert.deepEqual(migrated.map(mod => mod.id),
+        ["updates", "tray", "gh", "notifications", "wifi", "t3",
+         "usage", "vol", "bt", "batt"]);
+});
+
+test("schema-11 appends notifications on the right when its status group moved", () => {
+    const raw = H.defaultMods();
+    raw.right = raw.right.filter(mod => mod.id !== "notifications");
+    const statusIds = ["vol", "wifi", "bt", "batt"];
+    const moved = raw.right.filter(mod => statusIds.includes(mod.id));
+    raw.right = raw.right.filter(mod => !statusIds.includes(mod.id));
+    raw.left = raw.left.concat(moved);
+
+    const migrated = H.merge({ v: 10, mods: raw }).mods;
+    assert.equal(migrated.right.at(-1).id, "notifications");
+    assert.deepEqual(migrated.left, raw.left,
+        "status widgets keep their custom column, order, flags and policies");
+});
+
+test("schema 4 keeps its three retired ids retired", () => {
+    // Schema 11 uses the new `notifications` id rather than resurrecting the
+    // historical bell key. The other two remain represented by shared UI.
     for (const id of H.RETIRED_MODULE_IDS)
         assert.ok(!H.MODULE_IDS.includes(id), `${id} is still a module`);
     const next = H.normalizeMods({
@@ -598,7 +657,8 @@ test("version one layouts insert usage after t3 with its column and enabled stat
             right: [{ id: "vol", on: true }, { id: "t3", on: false }]
         }
     }).mods;
-    assert.deepEqual(disabled.right.slice(0, 3), [
+    assert.deepEqual(disabled.right.slice(0, 4), [
+        { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: true, detail: "auto" },
         { id: "t3", on: false, detail: "auto" },
         { id: "usage", on: false, detail: "auto" }
@@ -631,7 +691,8 @@ test("schema-8 inserts indicators immediately before the existing clock", () => 
         ]
     };
     const migrated = H.merge({ v: 7, mods: raw }).mods;
-    assert.deepEqual(migrated.right.slice(0, 4), [
+    assert.deepEqual(migrated.right.slice(0, 5), [
+        { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: false, detail: "compact" },
         { id: "indicators", on: true, detail: "auto" },
         { id: "clock", on: true, detail: "prefer" },

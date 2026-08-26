@@ -21,9 +21,11 @@ Loader {
     // shape the pointer actually clicked rather than under the glyph.
     property Item groupAnchor: null
     // Whether this module draws its own pointer target. Modules inside the
-    // status pill or the centre pill are pure content: the pill owns the
-    // click, so a second target inside it would swallow it.
+    // status pill are pure content: the pill owns the click, so a second
+    // target inside it would swallow it.
     property bool interactive: true
+    // Trigger hover handed to progressive-disclosure content. The clock uses
+    // this to reveal its adjacent Indicators module without sharing a target.
     property bool groupHovered: false
 
     // `as` gives qmllint a typed handle on what the Loader built, so the

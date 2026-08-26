@@ -8,8 +8,8 @@ import "../Common/SettingsHelpers.js" as SettingsHelpers
 //
 // Grouping remains behavioral rather than decorative. T3, usage and GitHub
 // retain their shared ordering/anchor contract, while every group rests
-// directly on the single bar slab. Status and centre runs still own one
-// pointer target for their combined popovers.
+// directly on the single bar slab. Only the status run owns a shared pointer;
+// calendar, weather and notifications each belong to their own widget.
 //
 // Grouping follows adjacency in the user's own module order, so dragging a
 // module out of a run in the settings window splits the pill exactly there.
@@ -42,15 +42,11 @@ Item {
                 required property var modelData
                 readonly property string kind: modelData.kind
                 readonly property var items: modelData.items
-                // The status and centre pills own the pointer themselves;
-                // their modules are content, not targets.
-                readonly property bool ownsPointer: kind === "status" || kind === "center"
-                // Which panel each interactive group opens. A map rather than
-                // a chain of comparisons so the panel names sit together and
-                // the registry test can find them.
+                // Status modules are content inside the Control Center target.
+                // Every other interactive widget owns its pointer itself.
+                readonly property bool ownsPointer: kind === "status"
                 readonly property var groupPanels: ({
-                    status: "control",
-                    center: "notifications"
+                    status: "control"
                 })
                 readonly property string panelName: groupPanels[kind] ?? ""
                 readonly property bool held: panelName !== ""
@@ -78,14 +74,6 @@ Item {
                     return false;
                 }
 
-                function previousShownId(at) {
-                    for (let i = Math.min(at, items.length) - 1; i >= 0; i--) {
-                        if (root.host.moduleShown(items[i].entry))
-                            return items[i].entry.id;
-                    }
-                    return "";
-                }
-
                 visible: populated
                 width: populated ? pill.width : 0
                 height: Theme.barHeight
@@ -104,17 +92,15 @@ Item {
                         root.host.unregisterPanel(panelName, pill);
                 }
 
-                // Group furniture is transparent at rest. Status and centre
-                // groups are one click target, so their shared hover surface
-                // follows that same target instead of suggesting that each
-                // piece of status content has a separate action.
+                // Group furniture is transparent at rest. The status group's
+                // hover surface follows its one shared click target.
                 Rectangle {
                     id: pill
 
                     readonly property string isle: root.col
                     readonly property real pad: group.kind === "chip" ? 0
                         : group.kind === "status" ? 6
-                        : group.kind === "center" ? 7 : 0
+                        : 0
 
                     width: slotRow.implicitWidth + pad * 2
                     height: Theme.chipHeight
@@ -147,8 +133,6 @@ Item {
                         visible: group.ownsPointer
                         host: root.host
                         target: pill
-                        visualEnabled: group.kind !== "center"
-                            || !root.host.indicatorActionHovered
                         radius: pill.radius
                         pressed: groupMouse.pressed
                         tint: Theme.barTextHi
@@ -160,7 +144,8 @@ Item {
                     // from snapping sideways.
                     Behavior on width {
                         enabled: root.host.animationsReady
-                            && !(group.kind === "center"
+                            && !(group.items.length === 1
+                                && group.items[0].entry.id === "indicators"
                                 && root.host.indicatorDisclosureAnimating)
                         NumberAnimation {
                             duration: Theme.expandDuration
@@ -176,7 +161,7 @@ Item {
                         x: pill.pad
                         spacing: group.kind === "chip" ? 2
                             : group.kind === "status" ? 7
-                            : group.kind === "center" ? 0 : root.spacing
+                            : root.spacing
 
                         Repeater {
                             id: slotRepeater
@@ -199,14 +184,7 @@ Item {
                                 spacing: 0
 
                                 Divider {
-                                    // Quick actions sit quietly against the
-                                    // clock. The clock/weather boundary gets
-                                    // the fine rule visible in the screenshot.
-                                    kind: group.kind === "center"
-                                            && (entry.modelData.entry.id === "clock"
-                                                || group.previousShownId(
-                                                    entry.modelData.at) === "indicators")
-                                        ? "space" : "rule"
+                                    kind: "rule"
                                     visible: group.kind !== "solo"
                                         && group.shownBefore(entry.modelData.at)
                                 }
@@ -219,7 +197,8 @@ Item {
                                     index: entry.modelData.index
                                     groupAnchor: group.ownsPointer ? pill : null
                                     interactive: !group.ownsPointer
-                                    groupHovered: groupHover.over
+                                    groupHovered: entry.modelData.entry.id === "indicators"
+                                        && root.host.indicatorTriggerHovered
                                 }
                             }
                         }
@@ -244,10 +223,8 @@ Item {
 
                     BarTooltip {
                         check: groupHover.check
-                        text: group.kind === "status" ? root.host.statusSummary
-                            : group.kind === "center" && !root.host.indicatorActionHovered
-                                ? "Notifications & calendar" : ""
-                        align: group.kind === "status" ? 1 : 0
+                        text: group.kind === "status" ? root.host.statusSummary : ""
+                        align: 1
                         y: pill.height + 8
                         x: align > 0 ? pill.width - width : (pill.width - width) / 2
                     }

@@ -1,11 +1,10 @@
 // Pure geometry/input helpers shared by QML and Node tests.
 
 // Which module gives up its detail text first when the bar runs out of room.
-// Mirrors the design's two breakpoints: the counts and labels in the right
-// cluster go at the first one, the weather segment and the media title at the
-// second, and the clock's own date only as a last resort.
-var COMPACT_ORDER = ["media", "updates", "t3", "usage", "gh", "weather",
-    "clock", "vol", "batt"];
+// Notification/update counts and other expendable labels give way before
+// weather conditions, while the clock's own date remains a late resort.
+var COMPACT_ORDER = ["media", "updates", "notifications", "t3", "usage", "gh",
+    "weather", "clock", "vol", "batt"];
 
 // Consecutive modules that draw the same way share one rounded background:
 // the T3/usage/GitHub chips sit in a single group pill, and the volume,

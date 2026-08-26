@@ -363,7 +363,8 @@ Item {
 
         Rectangle {
             id: cogButton
-            visible: Settings.defaults.modOpts[row.modelData.id] !== undefined
+            visible: row.meta.detail === true
+                || Settings.defaults.modOpts[row.modelData.id] !== undefined
             anchors.right: rowSwitch.left
             anchors.rightMargin: 1
             anchors.verticalCenter: parent.verticalCenter
@@ -386,8 +387,9 @@ Item {
 
             // Dirty when the detail policy or any widget option left default.
             readonly property bool optsDirty: row.modelData.detail !== "auto"
-                || JSON.stringify(Settings.modOpts[row.modelData.id])
-                    !== JSON.stringify(Settings.defaults.modOpts[row.modelData.id])
+                || (Settings.defaults.modOpts[row.modelData.id] !== undefined
+                    && JSON.stringify(Settings.modOpts[row.modelData.id])
+                        !== JSON.stringify(Settings.defaults.modOpts[row.modelData.id]))
 
             Sym {
                 anchors.centerIn: parent

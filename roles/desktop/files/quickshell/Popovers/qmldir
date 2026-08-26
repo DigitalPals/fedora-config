@@ -15,7 +15,6 @@ HDivider HDivider.qml
 IconButton IconButton.qml
 LinkText LinkText.qml
 MediaPopover MediaPopover.qml
-NotifCenterPopover NotifCenterPopover.qml
 NotifsPopover NotifsPopover.qml
 ReminderPopover ReminderPopover.qml
 PopoutPanel PopoutPanel.qml

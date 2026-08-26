@@ -26,6 +26,7 @@ var WIDGETS = {
     gh: { name: "GitHub", short: "GH", detail: true },
     updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true },
     tray: { name: "System tray", short: "Tray", tag: "when populated" },
+    notifications: { name: "Notifications", short: "Notifs", detail: true },
     vol: { name: "Volume", short: "Vol", tag: "status pill", detail: true },
     wifi: { name: "Network", short: "Network", tag: "status pill" },
     bt: { name: "Bluetooth", short: "BT", tag: "when connected" },

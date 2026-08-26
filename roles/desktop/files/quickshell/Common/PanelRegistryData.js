@@ -33,9 +33,11 @@ var PANELS = [
     // module of its own, which is why this panel is ownerless.
     { name: "control", island: "right", moduleId: "", source: "Popovers/ControlCenterPopover.qml" },
 
-    // The centre pill (clock, date, weather) is the notification centre's
-    // trigger, and that panel carries the calendar and the forecast with it.
-    { name: "notifications", island: "center", moduleId: "clock", source: "Popovers/NotifCenterPopover.qml" },
+    // The three glanceable views each belong to the widget that presents
+    // them. Their names remain the established IPC names.
+    { name: "calendar", island: "center", moduleId: "clock", source: "Popovers/CalendarPopover.qml" },
+    { name: "weather", island: "center", moduleId: "weather", source: "Popovers/WeatherPopover.qml" },
+    { name: "notifications", island: "right", moduleId: "notifications", source: "Popovers/NotifsPopover.qml" },
     { name: "reminders", island: "center", moduleId: "indicators", source: "Popovers/ReminderPopover.qml" },
 
     { name: "media", island: "left", moduleId: "media", source: "Popovers/MediaPopover.qml" },
@@ -48,8 +50,6 @@ var PANELS = [
     // the redesign moved audio, Wi-Fi, Bluetooth and battery detail. Kept as
     // standalone panels so `qs ipc call popouts toggle wifi` still works and
     // so a keybind can go straight to one.
-    { name: "calendar", island: "center", moduleId: "", source: "Popovers/CalendarPopover.qml" },
-    { name: "weather", island: "center", moduleId: "", source: "Popovers/WeatherPopover.qml" },
     { name: "audio", island: "right", moduleId: "", source: "Popovers/AudioPopover.qml" },
     { name: "wifi", island: "right", moduleId: "", source: "Popovers/WifiPopover.qml" },
     { name: "bluetooth", island: "right", moduleId: "", source: "Popovers/BluetoothPopover.qml" },
@@ -70,13 +70,12 @@ var PANELS = [
     }
 ];
 
-// Bar modules that own no panel of their own. `ws` has no detail view;
-// `weather` rides inside the centre pill, whose panel the clock owns; `tray`
+// Bar modules that own no panel of their own. `ws` has no detail view; `tray`
 // opens each item's own menu; and the four status modules are glyphs inside
 // the pill that opens the Control Center. Listed so the test can insist the
 // module-id space and the panel space account for each other completely,
 // rather than silently tolerating a typo'd moduleId.
-var PANEL_LESS_MODULES = ["ws", "weather", "tray", "vol", "wifi", "bt", "batt"];
+var PANEL_LESS_MODULES = ["ws", "tray", "vol", "wifi", "bt", "batt"];
 
 var SETTINGS = "settings";
 

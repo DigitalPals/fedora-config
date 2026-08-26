@@ -8,6 +8,7 @@ Clock Clock.qml
 GitHub GitHub.qml
 Indicators Indicators.qml
 Media Media.qml
+Notifications Notifications.qml
 T3 T3.qml
 Tray Tray.qml
 Updates Updates.qml
