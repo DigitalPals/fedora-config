@@ -38,7 +38,10 @@ Surface {
         if (m)
             return `${m[1]}\n${m[2].replace(" ", "-")} usage`.toUpperCase();
         const weekly = label.match(/^Weekly \((\w+)\)$/);
-        return (weekly ? weekly[1] + " weekly" : label).toUpperCase();
+        const title = weekly ? weekly[1] + " weekly" : label;
+        // Keep the subtitle lane even when a provider only supplies a title,
+        // so readings and meters align with two-line cards beside them.
+        return `${title.toUpperCase()}\n\u00a0`;
     }
 
     function remainColor(rem) {

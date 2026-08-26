@@ -18,6 +18,8 @@ test("model usage no longer collects or renders usage history", () => {
 test("model-specific quota periods render in full on their own line", () => {
     assert.ok(popover.includes(
         'return `${m[1]}\\n${m[2].replace(" ", "-")} usage`.toUpperCase();'));
+    assert.ok(popover.includes('return `${title.toUpperCase()}\\n\\u00a0`;'),
+        "single-line labels should reserve an empty subtitle row");
     assert.match(popover,
         /id:\s*cardLabel[\s\S]{0,600}?wrapMode:\s*Text\.Wrap/);
 });
