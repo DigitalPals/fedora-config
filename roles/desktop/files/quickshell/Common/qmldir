@@ -38,6 +38,7 @@ singleton WifiState WifiState.qml
 singleton EthernetState EthernetState.qml
 singleton BluetoothState BluetoothState.qml
 singleton Battery Battery.qml
+singleton BatteryHealth BatteryHealth.qml
 singleton Media Media.qml
 singleton Tailscale Tailscale.qml
 singleton Updates Updates.qml

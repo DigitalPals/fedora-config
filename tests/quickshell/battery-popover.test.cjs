@@ -11,10 +11,12 @@ test("battery popover keeps the hero, meter, telemetry, profile hierarchy", () =
     const hero = battery.indexOf("id: hero");
     const rail = battery.indexOf("id: chargeMeter");
     const telemetry = battery.indexOf('text: "BATTERY TELEMETRY"');
+    const health = battery.indexOf('text: "BATTERY HEALTH"');
     const profile = battery.indexOf('text: "POWER PROFILE"');
 
     assert.ok(hero >= 0, "battery hero is missing");
-    assert.ok(hero < rail && rail < telemetry && telemetry < profile,
+    assert.ok(hero < rail && rail < telemetry && telemetry < health
+        && health < profile,
         "battery sections must retain their visual reading order");
     assert.match(battery, /id:\s*heroGlyph[\s\S]{0,180}?name:\s*root\.batteryGlyph/);
     assert.match(battery,
@@ -24,6 +26,17 @@ test("battery popover keeps the hero, meter, telemetry, profile hierarchy", () =
         /statusText:\s*Battery\.full \? "Fully charged"[\s\S]{0,100}?"Charging"[\s\S]{0,80}?"On battery"/);
     assert.match(battery,
         /id:\s*heroNumber[\s\S]{0,260}?font\.pixelSize:\s*Theme\.fontHero[\s\S]{0,160}?font\.features:\s*Theme\.tabularNumberFeatures/);
+});
+
+test("battery health is a capability-driven accessible UPower control", () => {
+    assert.match(battery,
+        /id:\s*batteryHealthSection[\s\S]{0,140}?visible:\s*BatteryHealth\.known && BatteryHealth\.supported/);
+    assert.match(battery, /text:\s*"Preserve battery health"/);
+    assert.match(battery, /BatteryHealth\.enabled \? BatteryHealth\.limitText\s*:\s*"Charge to 100%"/);
+    assert.match(battery,
+        /id:\s*healthToggle[\s\S]{0,260}?checked:\s*BatteryHealth\.enabled[\s\S]{0,140}?accessibleName:\s*"Preserve battery health"[\s\S]{0,120}?BatteryHealth\.setEnabled\(value\)/);
+    assert.match(battery, /BatteryHealth\.acquire\(\)/);
+    assert.match(battery, /BatteryHealth\.release\(\)/);
 });
 
 test("battery charge matches the animated blocked usage meter with discharge-only warnings", () => {

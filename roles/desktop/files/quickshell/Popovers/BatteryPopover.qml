@@ -6,7 +6,8 @@ import "../Common"
 import "../Common/BatteryViewHelpers.js" as BatteryView
 
 // The dedicated battery view follows one stable hierarchy: level and state,
-// a blocked charge meter, aggregate telemetry, then the profile radio.
+// a blocked charge meter, aggregate telemetry, battery health, then the
+// profile radio.
 // The bar module and Control Panel intentionally keep their own compact forms.
 Surface {
     id: root
@@ -37,6 +38,10 @@ Surface {
         : Battery.charging ? displayDevice.timeToFull
         : discharging ? displayDevice.timeToEmpty : 0
     readonly property string rateLabel: discharging ? "Discharge rate" : "Charge rate"
+    readonly property string healthDetail: BatteryHealth.busy ? "Updating…"
+        : BatteryHealth.error !== "" ? BatteryHealth.error
+        : BatteryHealth.mixed ? "Battery limits differ"
+        : BatteryHealth.enabled ? BatteryHealth.limitText : "Charge to 100%"
     readonly property int availableProfileCount:
         PowerProfiles.hasPerformanceProfile ? 3 : 2
     readonly property bool knownProfile:
@@ -46,6 +51,12 @@ Surface {
             && PowerProfiles.profile === PowerProfile.Performance)
 
     property string cycleCountText: BatteryView.MISSING
+
+    Claim {
+        active: root.visible
+        onClaimed: BatteryHealth.acquire()
+        onReleased: BatteryHealth.release()
+    }
 
     function pickProfile(index) {
         const segment = profileRepeater.itemAt(index);
@@ -295,6 +306,84 @@ Surface {
                 label: root.rateLabel
                 value: BatteryView.formatW(root.displayDevice
                     ? root.displayDevice.changeRate : undefined)
+            }
+        }
+    }
+
+    // UPower exposes this only on physical battery objects, not its aggregate
+    // display device. Unsupported laptops omit the whole section; there is no
+    // software approximation that can safely enforce an 80% firmware limit.
+    Column {
+        id: batteryHealthSection
+
+        visible: BatteryHealth.known && BatteryHealth.supported
+        width: parent.width
+        spacing: Theme.panelSectionSpacing
+
+        SectionLabel {
+            width: parent.width
+            text: "BATTERY HEALTH"
+        }
+
+        Rectangle {
+            id: healthRow
+
+            width: parent.width
+            height: Theme.panelTileHeight
+            radius: Theme.rowRadius
+            color: Theme.chip
+
+            Sym {
+                id: healthGlyph
+
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                name: "battery_saver"
+                size: Theme.iconMedium
+                fill: BatteryHealth.enabled ? 1 : 0
+                color: BatteryHealth.enabled ? Theme.accent : Theme.textLow
+            }
+
+            Column {
+                anchors.left: healthGlyph.right
+                anchors.leftMargin: 10
+                anchors.right: healthToggle.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+
+                Text {
+                    width: parent.width
+                    text: "Preserve battery health"
+                    elide: Text.ElideRight
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightMedium
+                    color: Theme.textHi
+                }
+
+                Text {
+                    width: parent.width
+                    text: root.healthDetail
+                    elide: Text.ElideRight
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    color: BatteryHealth.error !== "" ? Theme.red : Theme.textLow
+                }
+            }
+
+            Toggle {
+                id: healthToggle
+
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                enabled: !BatteryHealth.busy
+                opacity: enabled ? 1 : 0.5
+                checked: BatteryHealth.enabled
+                accessibleName: "Preserve battery health"
+                onToggled: value => BatteryHealth.setEnabled(value)
             }
         }
     }

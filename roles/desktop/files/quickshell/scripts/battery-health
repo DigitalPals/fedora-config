@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Read and change UPower's charge-threshold policy for physical system
+# batteries. No preference is stored here: firmware and UPower remain the
+# source of truth, and UPower's polkit policy authorizes the active user.
+set -uo pipefail
+
+export LC_ALL=C
+
+service=org.freedesktop.UPower
+manager=/org/freedesktop/UPower
+device_interface=org.freedesktop.UPower.Device
+
+property() {
+  local path=$1 name=$2
+  busctl --system --no-pager get-property \
+    "$service" "$path" "$device_interface" "$name"
+}
+
+optional_property() {
+  property "$1" "$2" 2>/dev/null || true
+}
+
+unsigned_value() {
+  case $1 in
+    'u '*) printf '%s' "${1#u }" ;;
+    *) printf '%s' '-1' ;;
+  esac
+}
+
+collect_batteries() {
+  local devices path type power_supply supported enabled start end settings
+  if ! devices=$(upower --enumerate); then
+    printf 'Could not enumerate UPower devices\n' >&2
+    return 1
+  fi
+
+  while IFS= read -r path; do
+    [[ $path == /org/freedesktop/UPower/devices/* ]] || continue
+    # `upower --enumerate` appends its aggregate DisplayDevice even though
+    # UPower's EnumerateDevices D-Bus method does not. It is not a physical
+    # pack and deliberately reports threshold support as false.
+    [[ $path == "$manager/devices/DisplayDevice" ]] && continue
+
+    if ! type=$(property "$path" Type); then
+      printf 'Could not read the UPower device type for %s\n' "$path" >&2
+      return 1
+    fi
+    [[ $type == 'u 2' ]] || continue
+
+    if ! power_supply=$(property "$path" PowerSupply); then
+      printf 'Could not identify the UPower battery %s\n' "$path" >&2
+      return 1
+    fi
+    [[ $power_supply == 'b true' ]] || continue
+
+    supported=$(optional_property "$path" ChargeThresholdSupported)
+    supported=${supported#b }
+    [[ $supported == true ]] || supported=false
+
+    enabled=false
+    start=-1
+    end=-1
+    settings=0
+    if [[ $supported == true ]]; then
+      enabled=$(optional_property "$path" ChargeThresholdEnabled)
+      enabled=${enabled#b }
+      # A backend without readable enabled state cannot safely back a switch.
+      if [[ $enabled != true && $enabled != false ]]; then
+        supported=false
+        enabled=false
+      else
+        start=$(unsigned_value "$(optional_property "$path" ChargeStartThreshold)")
+        end=$(unsigned_value "$(optional_property "$path" ChargeEndThreshold)")
+        settings=$(unsigned_value "$(optional_property "$path" ChargeThresholdSettingsSupported)")
+        [[ $settings == -1 ]] && settings=0
+      fi
+    fi
+
+    printf 'battery\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$path" "$supported" "$enabled" "$start" "$end" "$settings"
+  done <<<"$devices"
+}
+
+set_threshold() {
+  local wanted=$1 records kind path supported enabled start end settings
+  local battery_count=0 supported_count=0 failures=0
+
+  if ! records=$(collect_batteries); then
+    return 1
+  fi
+
+  while IFS=$'\t' read -r kind path supported enabled start end settings; do
+    [[ $kind == battery ]] || continue
+    ((battery_count++))
+    [[ $supported == true ]] || continue
+    ((supported_count++))
+
+    if ! busctl --system --no-pager \
+        --allow-interactive-authorization=yes call \
+        "$service" "$path" "$device_interface" \
+        EnableChargeThreshold b "$wanted" >/dev/null; then
+      printf 'Could not update the charge limit for %s\n' "$path" >&2
+      ((failures++))
+    fi
+  done <<<"$records"
+
+  if ((battery_count == 0)); then
+    printf 'No system battery was found\n' >&2
+    return 1
+  fi
+  if ((supported_count == 0)); then
+    printf 'Charge limits are not supported on this laptop\n' >&2
+    return 1
+  fi
+  ((failures == 0))
+}
+
+case ${1:-} in
+  status)
+    collect_batteries
+    ;;
+  set)
+    case ${2:-} in
+      true|false) set_threshold "$2" ;;
+      *) printf 'usage: %s set true|false\n' "${0##*/}" >&2; exit 2 ;;
+    esac
+    ;;
+  *)
+    printf 'usage: %s status | set true|false\n' "${0##*/}" >&2
+    exit 2
+    ;;
+esac

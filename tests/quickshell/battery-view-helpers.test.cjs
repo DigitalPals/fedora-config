@@ -47,3 +47,71 @@ test("missing and malformed cycle output uses stable placeholders", () => {
     assert.equal(H.parseCycleCounts("not-a-count\n"), "—");
     assert.equal(H.parseCycleCounts("42\nnot-a-count\n"), "42 · —");
 });
+
+test("a supported UPower battery exposes its current health limit", () => {
+    const state = H.parseChargeThresholdStatus(
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT0"
+        + "\ttrue\tfalse\t75\t80\t7\n");
+
+    assert.deepEqual({
+        batteryCount: state.batteryCount,
+        supportedCount: state.supportedCount,
+        supported: state.supported,
+        enabled: state.enabled,
+        mixed: state.mixed
+    }, {
+        batteryCount: 1,
+        supportedCount: 1,
+        supported: true,
+        enabled: false,
+        mixed: false
+    });
+    assert.equal(H.formatChargeLimit(state), "Charge between 75–80%");
+});
+
+test("charge-limit formatting handles end-only and firmware-managed limits", () => {
+    const endOnly = H.parseChargeThresholdStatus(
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT0"
+        + "\ttrue\ttrue\t-1\t80\t2\n");
+    const firmware = H.parseChargeThresholdStatus(
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT0"
+        + "\ttrue\ttrue\t-1\t-1\t4\n");
+
+    assert.equal(H.formatChargeLimit(endOnly), "Charge to 80%");
+    assert.equal(H.formatChargeLimit(firmware), "Use the firmware charge limit");
+});
+
+test("multiple packs must all support charge limits", () => {
+    const shared = H.parseChargeThresholdStatus([
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT0\ttrue\ttrue\t75\t80\t7",
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT1\ttrue\tfalse\t75\t80\t3"
+    ].join("\n"));
+    const partial = H.parseChargeThresholdStatus([
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT0\ttrue\tfalse\t75\t80\t7",
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT1\tfalse\tfalse\t-1\t-1\t0"
+    ].join("\n"));
+
+    assert.equal(shared.supported, true);
+    assert.equal(shared.enabled, false);
+    assert.equal(shared.mixed, true);
+    assert.equal(H.formatChargeLimit(shared), "Charge between 75–80%");
+    assert.equal(partial.supported, false);
+    assert.equal(H.formatChargeLimit(partial), "—");
+});
+
+test("missing and malformed charge-threshold snapshots fail closed", () => {
+    assert.deepEqual(H.parseChargeThresholdStatus(""), {
+        batteryCount: 0,
+        supportedCount: 0,
+        supported: false,
+        enabled: false,
+        mixed: false,
+        batteries: []
+    });
+    for (const value of [undefined, "garbage",
+        "battery\t/not/a/upower/path\ttrue\tfalse\t75\t80\t7",
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT0\tyes\tfalse\t75\t80\t7",
+        "battery\t/org/freedesktop/UPower/devices/battery_BAT0\ttrue\tfalse\t75\t101\t7"]) {
+        assert.equal(H.parseChargeThresholdStatus(value), null);
+    }
+});
