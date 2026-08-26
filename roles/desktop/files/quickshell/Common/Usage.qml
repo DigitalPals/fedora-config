@@ -11,9 +11,9 @@ Singleton {
 
     readonly property var providerKeys: ["claude", "codex", "kimi"]
     readonly property var meta: ({
-            claude: { name: "Claude", title: "Claude Code", brand: Theme.brandClaude, icon: "claude", cmd: "claude /login" },
-            codex: { name: "Codex", title: "Codex CLI", brand: Theme.brandCodex, icon: "openai", cmd: "codex login" },
-            kimi: { name: "Kimi", title: "Kimi Code", brand: Theme.brandKimi, icon: "kimi", cmd: "kimi login" }
+            claude: { name: "Claude", title: "Claude Code", icon: "claude", cmd: "claude /login" },
+            codex: { name: "Codex", title: "Codex CLI", icon: "openai", cmd: "codex login" },
+            kimi: { name: "Kimi", title: "Kimi Code", icon: "kimi", cmd: "kimi login" }
         })
 
     readonly property int pollIntervalSecs: Settings.pollMax
@@ -75,11 +75,6 @@ Singleton {
         countdownWatchers = Math.max(0, countdownWatchers - 1);
     }
     property string selected: "claude"
-
-    // Session-window usage sampled at every poll, per provider, kept for
-    // seven days: { claude: [[ms, usedPct], …], … }. Backs the USAGE
-    // HISTORY chart (design 1c) and persists across shell restarts.
-    property var history: ({ claude: [], codex: [], kimi: [] })
 
     // True once any provider ever returned ok data.
     readonly property bool anyOk: providerKeys.some(k => data[k] && data[k].status === "ok")
@@ -157,84 +152,6 @@ Singleton {
         return Qt.formatDateTime(d, "MMM d, HH:mm");
     }
 
-    // ---- usage history ------------------------------------------------
-
-    // Used % of the most dynamic window (the session window when present).
-    function sessionUsed(p) {
-        if (!p || p.status !== "ok" || !p.windows || p.windows.length === 0)
-            return -1;
-        const w = p.windows.find(w => /5.hour|session/i.test(w.label)) ?? p.windows[0];
-        return Math.min(100, Math.max(0, w.used));
-    }
-
-    function recordSamples() {
-        const now = Date.now();
-        const cutoff = now - 7 * 86400 * 1000;
-        const next = {};
-        for (const k of providerKeys) {
-            const arr = (history[k] ?? []).filter(s => s[0] >= cutoff);
-            const used = sessionUsed(provider(k));
-            if (used >= 0)
-                arr.push([now, Math.round(used)]);
-            next[k] = arr;
-        }
-        history = next;
-        // FileView.adapter has an incomplete type in the qmltypes, so qmllint
-        // cannot see ids declared under it. The id resolves normally at
-        // runtime — verified against a live instance under this pragma.
-        // qmllint disable unqualified
-        histData.claude = next.claude;
-        histData.codex = next.codex;
-        histData.kimi = next.kimi;
-        // qmllint enable unqualified
-        histFile.writeAdapter();
-    }
-
-    // Bucketed chart values (0..100): 24 hourly buckets or 7 daily ones.
-    // Empty buckets carry the last known level so the chart reads as a
-    // continuous line even with sparse samples.
-    function histBars(key, mode) {
-        const samples = history[key] ?? [];
-        const buckets = mode === "d7" ? 7 : 24;
-        const span = (mode === "d7" ? 7 * 86400 : 24 * 3600) * 1000;
-        const start = Date.now() - span;
-        const out = new Array(buckets).fill(-1);
-        for (const s of samples) {
-            if (s[0] < start)
-                continue;
-            const i = Math.min(buckets - 1, Math.floor((s[0] - start) / (span / buckets)));
-            out[i] = Math.max(out[i], s[1]);
-        }
-        let last = 0;
-        for (let i = 0; i < buckets; i++) {
-            if (out[i] < 0)
-                out[i] = last;
-            else
-                last = out[i];
-        }
-        return out;
-    }
-
-    FileView {
-        id: histFile
-        path: Quickshell.env("HOME") + "/.local/state/quickshell-usage-history.json"
-        printErrors: false
-        // qmllint disable unqualified
-        onLoaded: root.history = {
-            claude: histData.claude ?? [],
-            codex: histData.codex ?? [],
-            kimi: histData.kimi ?? []
-        }
-        // qmllint enable unqualified
-
-        JsonAdapter {
-            id: histData
-            property var claude: []
-            property var codex: []
-            property var kimi: []
-        }
-    }
-
     // Everything a finished run has to say, in one place. `loading` clears
     // here whatever happened, including the case where python3 itself could
     // not be launched (ProcHelpers.NOT_STARTED) and no output ever arrived.
@@ -255,11 +172,8 @@ Singleton {
             fetchError = "usage-fetch.py returned output this shell could not read";
             return;
         }
-        // Deliberately outside the try: a throw out of recordSamples() should
-        // reach the journal as itself, not pose as unreadable output.
         data = parsed;
         updatedAt = Date.now();
-        recordSamples();
         fetchError = "";
     }
 

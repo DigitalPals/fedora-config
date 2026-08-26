@@ -4,13 +4,11 @@ import "../Common"
 import "../Common/Format.js" as Format
 
 // Per-provider usage view: brand header with mini provider tabs, blocked-bar
-// window blocks with absolute reset times, credits, usage-history block chart.
+// window blocks with absolute reset times, and credits.
 //
-// Nothing here is a card. A limit is a label, a number and a meter, and the
-// grid gap is what separates one from the next — a filled, bordered container
-// around each was the loudest thing in a 448px panel and said nothing the
-// label did not. A limit in trouble colours its own number and meter rather
-// than washing a rectangle behind them.
+// Each limit is a compact tile so neighbouring reset details and meters stay
+// visually contained. A limit in trouble colours its own number and meter
+// rather than washing the whole tile with a status colour.
 Surface {
     id: root
 
@@ -31,18 +29,16 @@ Surface {
     readonly property var p: Usage.provider(sel)
     readonly property var info: Usage.meta[sel]
 
-    // 24H / 7D history range toggle.
-    property string histMode: "h24"
-    readonly property var histBars: {
-        const h = Usage.history; // dependency: refresh on new samples
-        return Usage.histBars(sel, histMode);
-    }
-
     readonly property real cardW: (width - 2 * padding - Theme.panelSectionSpacing) / 2
+    readonly property int cardPadding: 12
+    readonly property int cardMinHeight: 148
 
     function cardLabel(label) {
-        const m = label.match(/^Weekly \((\w+)\)$/);
-        return (m ? m[1] + " weekly" : label).toUpperCase();
+        const m = label.match(/^(.*) \((5 hour|7 day)\)$/i);
+        if (m)
+            return `${m[1]}\n${m[2].replace(" ", "-")} usage`.toUpperCase();
+        const weekly = label.match(/^Weekly \((\w+)\)$/);
+        return (weekly ? weekly[1] + " weekly" : label).toUpperCase();
     }
 
     function remainColor(rem) {
@@ -280,31 +276,64 @@ Surface {
                 readonly property int remaining: Math.round(100 - modelData.used)
                 readonly property bool crit: remaining <= 10
                 readonly property bool low: remaining > 10 && remaining <= 25
+                readonly property bool hasReset: modelData.resetsAt !== null
+                    && modelData.resetsAt !== undefined
 
                 width: root.cardW
-                height: cardCol.implicitHeight
-                color: "transparent"
+                height: Math.max(root.cardMinHeight,
+                    cardCol.implicitHeight + 2 * root.cardPadding)
+                radius: Theme.cardRadius
+                color: Theme.tile
+                border.width: 1
+                border.color: Theme.hairlineSoft
+                clip: true
 
                 Column {
                     id: cardCol
-                    width: parent.width
+                    x: root.cardPadding
+                    y: root.cardPadding
+                    width: parent.width - 2 * root.cardPadding
                     spacing: 7
 
+                    Text {
+                        id: cardLabel
+                        width: parent.width
+                        text: root.cardLabel(card.modelData.label)
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightSemibold
+                        font.letterSpacing: 0.6
+                        color: Theme.textDim
+                        wrapMode: Text.Wrap
+                    }
+
+                    // Sized to the reading, with the suffix hung off its
+                    // baseline. A Row would take its height from the small
+                    // suffix and let the reading overhang it by an ascender.
                     Item {
                         width: parent.width
-                        height: Math.max(cardLabel.implicitHeight, badge.implicitHeight)
+                        height: Math.max(remainingValue.implicitHeight, badge.implicitHeight)
 
                         Text {
-                            id: cardLabel
+                            id: remainingValue
+                            anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
-                            text: root.cardLabel(card.modelData.label)
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
+                            text: card.remaining
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontProminent
                             font.weight: Theme.weightSemibold
-                            font.letterSpacing: 0.6
-                            color: Theme.textDim
-                            width: parent.width - (badge.visible ? badge.width + 6 : 0)
-                            elide: Text.ElideRight
+                            color: root.remainColor(card.remaining)
+                        }
+
+                        Text {
+                            id: remainingSuffix
+                            anchors.left: remainingValue.right
+                            anchors.leftMargin: 3
+                            anchors.baseline: remainingValue.baseline
+                            text: "% left"
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontCaption
+                            color: Theme.textLow
                         }
 
                         Rectangle {
@@ -330,36 +359,6 @@ Surface {
                         }
                     }
 
-                    // Sized to the reading, with the suffix hung off its
-                    // baseline. A Row would take its height from the small
-                    // suffix and let the reading overhang it by an ascender.
-                    Item {
-                        width: remainingValue.implicitWidth + 3 + remainingSuffix.implicitWidth
-                        height: remainingValue.implicitHeight
-
-                        Text {
-                            id: remainingValue
-                            anchors.left: parent.left
-                            anchors.top: parent.top
-                            text: card.remaining
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontProminent
-                            font.weight: Theme.weightSemibold
-                            color: root.remainColor(card.remaining)
-                        }
-
-                        Text {
-                            id: remainingSuffix
-                            anchors.left: remainingValue.right
-                            anchors.leftMargin: 3
-                            anchors.baseline: remainingValue.baseline
-                            text: "% left"
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontCaption
-                            color: Theme.textLow
-                        }
-                    }
-
                     BlockMeter {
                         width: parent.width
                         height: 10
@@ -367,15 +366,31 @@ Surface {
                         fillColor: root.barColor(card.remaining)
                     }
 
-                    Text {
-                        visible: card.modelData.resetsAt !== null && card.modelData.resetsAt !== undefined
+                    Column {
+                        id: resetCol
+
+                        visible: card.hasReset
                         width: parent.width
-                        textFormat: Text.RichText
-                        text: `resets in <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatReset(card.modelData.resetsAt)}</font> · <font color="${Theme.textFaint}">${Usage.formatResetAbs(card.modelData.resetsAt)}</font>`
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
-                        color: Theme.textDim
-                        elide: Text.ElideRight
+                        spacing: 2
+
+                        Text {
+                            width: parent.width
+                            text: card.hasReset
+                                ? "resets in " + Usage.formatReset(card.modelData.resetsAt) : ""
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontCaption
+                            color: Theme.textLow
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            width: parent.width
+                            text: card.hasReset ? Usage.formatResetAbs(card.modelData.resetsAt) : ""
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontCaption
+                            color: Theme.textFaint
+                            elide: Text.ElideRight
+                        }
                     }
                 }
             }
@@ -408,12 +423,19 @@ Surface {
 
             visible: root.p !== null && root.p.status === "ok" && c !== null && c !== undefined
             width: root.cardW
-            height: creditsCol.implicitHeight
-            color: "transparent"
+            height: Math.max(root.cardMinHeight,
+                creditsCol.implicitHeight + 2 * root.cardPadding)
+            radius: Theme.cardRadius
+            color: Theme.tile
+            border.width: 1
+            border.color: Theme.hairlineSoft
+            clip: true
 
             Column {
                 id: creditsCol
-                width: parent.width
+                x: root.cardPadding
+                y: root.cardPadding
+                width: parent.width - 2 * root.cardPadding
                 spacing: 7
 
                 Item {
@@ -475,157 +497,6 @@ Surface {
                     color: Theme.textDim
                     wrapMode: Text.Wrap
                     lineHeight: Theme.proseLineHeight
-                }
-            }
-        }
-    }
-
-    // ---- Usage history ---------------------------------------------------
-    Item {
-        visible: root.p !== null && root.p.status === "ok"
-        width: parent.width
-        height: histCol.implicitHeight
-
-        Column {
-            id: histCol
-            width: parent.width
-            spacing: 8
-
-            Item {
-                width: parent.width
-                height: Math.max(historyTitle.implicitHeight, historyRanges.implicitHeight)
-
-                Text {
-                    id: historyTitle
-                    anchors.left: parent.left
-                    anchors.leftMargin: 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "USAGE HISTORY"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightSemibold
-                    font.letterSpacing: 1
-                    color: Theme.textFaint
-                }
-
-                Rectangle {
-                    anchors.left: historyTitle.right
-                    anchors.leftMargin: 10
-                    anchors.right: historyRanges.left
-                    anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 1
-                    color: Theme.hairlineSoft
-                }
-
-                Row {
-                    id: historyRanges
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.panelRowSpacing
-
-                    Repeater {
-                        model: [{ key: "h24", label: "24H" }, { key: "d7", label: "7D" }]
-
-                        delegate: Rectangle {
-                            id: rangeChip
-
-                            required property var modelData
-                            readonly property bool active: root.histMode === modelData.key
-
-                            width: rangeText.implicitWidth + 16
-                            height: Theme.chipInnerHeight
-                            radius: Theme.chipRadius
-                            color: active ? Theme.chipHover : rangeMouse.containsMouse ? Theme.chip : "transparent"
-
-                            Text {
-                                id: rangeText
-                                anchors.centerIn: parent
-                                text: rangeChip.modelData.label
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontMicro
-                                font.weight: Theme.weightMedium
-                                color: rangeChip.active ? Theme.textHi : Theme.textLow
-                            }
-
-                            MouseArea {
-                                id: rangeMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.histMode = rangeChip.modelData.key
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Block chart: vertical dashed bars in the provider's brand
-            // color, bottom-aligned.
-            Row {
-                width: parent.width
-                height: 52
-                spacing: 2
-
-                Repeater {
-                    model: root.histBars
-
-                    delegate: Item {
-                        id: bar
-
-                        required property var modelData
-                        readonly property real barH: 4 + Math.max(0, Math.min(100, bar.modelData)) * 0.48
-
-                        width: (parent.width - (root.histBars.length - 1) * 2) / root.histBars.length
-                        height: 52
-
-                        Repeater {
-                            model: Math.ceil(bar.barH / 5)
-
-                            delegate: Rectangle {
-                                required property int index
-                                readonly property real segH: Math.min(3, bar.barH - index * 5)
-
-                                width: bar.width
-                                height: segH
-                                y: bar.height - index * 5 - segH
-                                color: root.info.brand
-                            }
-                        }
-                    }
-                }
-            }
-
-            Item {
-                width: parent.width
-                height: Math.max(axisStart.implicitHeight, axisMiddle.implicitHeight,
-                    axisEnd.implicitHeight)
-
-                Text {
-                    id: axisStart
-                    anchors.left: parent.left
-                    text: root.histMode === "h24" ? "-24h" : "-7d"
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textFaint
-                }
-
-                Text {
-                    id: axisMiddle
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.histMode === "h24" ? "-12h" : "-3d"
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textFaint
-                }
-
-                Text {
-                    id: axisEnd
-                    anchors.right: parent.right
-                    text: "now"
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textFaint
                 }
             }
         }

@@ -338,14 +338,6 @@ Singleton {
     readonly property color wxStorm: SettingsHelpers.ensureContrast(
         "#a992e0", copyReferenceBg.toString(), 4.5)
 
-    // Provider brand colors
-    readonly property color brandClaude: SettingsHelpers.ensureContrast(
-        "#d97757", copyReferenceBg.toString(), 4.5)
-    readonly property color brandCodex: SettingsHelpers.ensureContrast(
-        "#4fb8a8", copyReferenceBg.toString(), 4.5)
-    readonly property color brandKimi: SettingsHelpers.ensureContrast(
-        "#4d6bfe", copyReferenceBg.toString(), 4.5)
-
     // ---- typography --------------------------------------------------------
     // One face for the whole shell. `fontMenu` is settings-driven — the family
     // strings live in SettingsHelpers.FONT_CHOICES so the picker and this token
