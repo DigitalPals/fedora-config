@@ -38,9 +38,12 @@ Rectangle {
     property int iconSize: 28
     property bool framedIcon: false
     // Toasts can trade their compact resting height for the complete text
-    // while the pointer is holding their expiry timer. Centre rows leave this
-    // off so moving through notification history does not reflow the panel.
+    // while the pointer is holding their expiry timer. History rows instead
+    // opt into an explicit disclosure so merely moving through them never
+    // reflows the panel.
     property bool expandTextOnHover: false
+    property bool allowTextExpansion: false
+    property bool textExpandedByUser: false
 
     signal activated
     signal closeRequested
@@ -48,7 +51,13 @@ Rectangle {
     readonly property bool urgent: groupUrgent
         || entry.urgency === NotificationUrgency.Critical
     readonly property bool hovered: cardHover.hovered
-    readonly property bool textExpanded: expandTextOnHover && hovered
+    readonly property bool textExpanded: textExpandedByUser
+        || (expandTextOnHover && hovered)
+    readonly property bool textTruncated: header.truncated
+        || (summary.visible && summary.truncated)
+        || (bodyText.visible && bodyText.truncated)
+    readonly property bool showTextDisclosure: allowTextExpansion
+        && (textExpandedByUser || textTruncated)
     readonly property bool actionable: groupCount > 1 || Notifs.canActivate(entry)
     // Real, not int: a card's height is text metrics plus padding and lands
     // on fractions, and truncating it costs a pixel that then shifts every
@@ -56,6 +65,12 @@ Rectangle {
     readonly property real contentHeight: cardContent.implicitHeight + card.padV * 2
 
     height: contentHeight
+
+    function toggleTextExpansion() {
+        textExpandedByUser = !textExpandedByUser;
+    }
+
+    onEntryChanged: textExpandedByUser = false
 
     HoverHandler {
         id: cardHover
@@ -121,7 +136,11 @@ Rectangle {
                     id: trailing
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    width: card.groupCount > 1 ? 60 : 32
+                    width: (card.groupCount > 1 ? 60 : 32)
+                        // Keep the title's collapsed width stable while the
+                        // disclosure appears. Letting `textTruncated` add its
+                        // own width creates a binding loop at runtime.
+                        + (card.allowTextExpansion ? textDisclosure.width : 0)
                     height: card.style.trailingHeight
 
                     // Collapsed-group count. The toast never groups, so this
@@ -154,6 +173,8 @@ Rectangle {
                     // surfaces where they were rather than picking one.
                     Text {
                         anchors.right: card.style.stampCentred ? undefined : parent.right
+                        anchors.rightMargin: card.showTextDisclosure
+                            && !card.style.stampCentred ? textDisclosure.width : 0
                         anchors.horizontalCenter: card.style.stampCentred
                             ? parent.horizontalCenter : undefined
                         anchors.verticalCenter: parent.verticalCenter
@@ -175,6 +196,8 @@ Rectangle {
 
                     Rectangle {
                         anchors.right: card.style.stampCentred ? undefined : parent.right
+                        anchors.rightMargin: card.showTextDisclosure
+                            && !card.style.stampCentred ? textDisclosure.width : 0
                         anchors.horizontalCenter: card.style.stampCentred
                             ? parent.horizontalCenter : undefined
                         anchors.verticalCenter: parent.verticalCenter
@@ -209,10 +232,62 @@ Rectangle {
                             }
                         }
                     }
+
+                    Rectangle {
+                        id: textDisclosure
+
+                        visible: card.showTextDisclosure
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: card.style.trailingHeight + 4
+                        height: width
+                        radius: width / 2
+                        color: disclosureMouse.containsMouse || activeFocus
+                            ? Theme.hoverFillStrong : "transparent"
+                        activeFocusOnTab: visible
+                        border.width: activeFocus ? 1 : 0
+                        border.color: Theme.accent
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: card.textExpandedByUser
+                            ? "Collapse notification text"
+                            : "Show full notification"
+                        Accessible.onPressAction: card.toggleTextExpansion()
+
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Space) {
+                                card.toggleTextExpansion();
+                                event.accepted = true;
+                            }
+                        }
+
+                        Sym {
+                            anchors.centerIn: parent
+                            name: card.textExpandedByUser
+                                ? "expand_less" : "expand_more"
+                            size: card.style.close
+                            color: disclosureMouse.containsMouse
+                                || textDisclosure.activeFocus
+                                ? Theme.textHi : Theme.textDim
+                        }
+
+                        MouseArea {
+                            id: disclosureMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                textDisclosure.forceActiveFocus();
+                                card.toggleTextExpansion();
+                            }
+                        }
+                    }
                 }
             }
 
             Text {
+                id: summary
                 visible: card.style.stackedHeader && card.showApp
                     && card.entry.displaySummary !== ""
                 width: parent.width
@@ -226,6 +301,7 @@ Rectangle {
             }
 
             Text {
+                id: bodyText
                 visible: text !== "" && card.style.bodyLines > 0
                 width: parent.width
                 text: card.entry.displayBody || ""

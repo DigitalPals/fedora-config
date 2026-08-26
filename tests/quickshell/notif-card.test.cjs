@@ -122,14 +122,16 @@ test("toast geometry and list motion stay compact and edge-aware", () => {
         "the final toast's exit must finish before the layer is unmapped");
 });
 
-test("hover reveals a toast's full text without reflowing notification history", () => {
+test("toast hover and a history disclosure reveal the full notification text", () => {
     const card = read(CARD);
     const toast = read("NotificationToasts.qml");
     const centre = read(path.join("Popovers", "NotifsPopover.qml"));
 
     assert.match(card, /property bool expandTextOnHover:\s*false/);
+    assert.match(card, /property bool allowTextExpansion:\s*false/);
+    assert.match(card, /property bool textExpandedByUser:\s*false/);
     assert.match(card,
-        /readonly property bool textExpanded:\s*expandTextOnHover && hovered/);
+        /readonly property bool textExpanded:\s*textExpandedByUser\s*\n\s*\|\| \(expandTextOnHover && hovered\)/);
     assert.equal((card.match(
         /elide:\s*card\.textExpanded \? Text\.ElideNone : Text\.ElideRight/g
     ) || []).length, 3,
@@ -140,6 +142,18 @@ test("hover reveals a toast's full text without reflowing notification history",
     assert.match(toast, /expandTextOnHover:\s*true/);
     assert.doesNotMatch(centre, /expandTextOnHover:\s*true/,
         "hovering through notification history should keep its layout stable");
+    assert.match(centre, /allowTextExpansion:\s*true/,
+        "history rows must expose the explicit full-text disclosure");
+    assert.match(card,
+        /showTextDisclosure:\s*allowTextExpansion\s*\n\s*&& \(textExpandedByUser \|\| textTruncated\)/,
+        "the disclosure should only be visible when text is cut off or open");
+    assert.match(card,
+        /\+ \(card\.allowTextExpansion \? textDisclosure\.width : 0\)/,
+        "history cards must reserve a stable slot so truncation cannot form a geometry loop");
+    assert.match(card, /name:\s*card\.textExpandedByUser\s*\n\s*\? "expand_less" : "expand_more"/);
+    assert.match(card, /Accessible\.name:\s*card\.textExpandedByUser\s*\n\s*\? "Collapse notification text"\s*\n\s*:\s*"Show full notification"/);
+    assert.match(card, /onClicked:\s*\{[\s\S]*?card\.toggleTextExpansion\(\);[\s\S]*?\}/,
+        "the disclosure must consume its own click instead of invoking the notification");
 });
 
 function keysSuppliedSource(rel) {

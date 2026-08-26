@@ -88,6 +88,7 @@ Surface {
 
         style: root.cardStyle
         nowMs: root.nowMs
+        allowTextExpansion: true
         showIcon: centre.showApp
         padH: centre.nested ? 10 : 12
         padV: centre.nested ? 8 : 12
