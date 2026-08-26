@@ -1,4 +1,6 @@
+pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import Quickshell.Services.Mpris
 import ".."
 import "../../Common"
@@ -108,6 +110,7 @@ BarModule {
                 width: 18
                 height: 18
                 name: Media.brandIcon
+                highlighted: mediaChip.held || mediaChip.hovered
                 visible: available && status === Image.Ready
             }
 
@@ -121,6 +124,15 @@ BarModule {
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 visible: !playerBrand.visible && status === Image.Ready
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    colorization: mediaChip.held || mediaChip.hovered ? 1 : 0
+                    colorizationColor: mediaChip.hoverColor
+
+                    Behavior on colorization {
+                        NumberAnimation { duration: Theme.chipFadeDuration }
+                    }
+                }
             }
 
             Sym {
@@ -129,7 +141,7 @@ BarModule {
                 name: root.playing ? "graphic_eq" : "music_note"
                 size: Theme.iconSmall + 1
                 fill: 1
-                color: Theme.barIcon
+                color: mediaChip.fg
             }
         }
 

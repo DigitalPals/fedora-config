@@ -19,6 +19,8 @@ BarModule {
         isle: root.isle
         anchorItem: root.groupAnchor ?? chip
         spacing: root.spacing
+        idleColor: Audio.muted ? Theme.barRedText : Theme.barIcon
+        hoverColor: Audio.muted ? Theme.barRedText : Theme.barTextHi
         tooltip: "Volume " + Audio.volume + "%"
             + (Audio.muted ? " · muted" : "") + " · wheel to adjust"
         tooltipAlign: 1
@@ -29,7 +31,7 @@ BarModule {
                 : Audio.volume < 50 ? "volume_down" : "volume_up"
             size: Theme.barIconSize
             fill: 1
-            color: Audio.muted ? Theme.barRedText : Theme.barIcon
+            color: chip.fg
         }
 
         Text {

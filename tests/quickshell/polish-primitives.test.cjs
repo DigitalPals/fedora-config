@@ -128,8 +128,10 @@ test("every module family uses the shared bar hover surface", () => {
             `${name} bypasses the shared hover surface`);
 });
 
-test("resting menubar icons share one tone while weather keeps its palette", () => {
+test("menubar icons share one resting-to-hover foreground ladder", () => {
     const bar = read("Bar/Bar.qml");
+    const chip = read("Bar/BarChip.qml");
+    const icon = read("Bar/BarIcon.qml");
     const updates = read("Bar/Modules/Updates.qml");
     const media = read("Bar/Modules/Media.qml");
     const tray = read("Bar/Modules/Tray.qml");
@@ -142,26 +144,46 @@ test("resting menubar icons share one tone while weather keeps its palette", () 
     const usage = read("Bar/UsageChips.qml");
     const weather = read("Bar/Modules/Weather.qml");
 
+    assert.match(chip, /property color idleColor:\s*Theme\.barIcon/);
+    assert.match(chip, /property color hoverColor:\s*Theme\.barTextHi/);
+    assert.match(chip,
+        /readonly property color fg:\s*held \|\| hovered \? hoverColor : idleColor/,
+        "content chips must expose the same hover foreground as glyph chips");
+    assert.match(icon,
+        /held \|\| root\.hovered \? hoverColor : idleColor/);
+
     assert.equal((bar.match(/idleColor:\s*Theme\.barIcon/g) || []).length, 1,
         "the launcher keeps the shared resting icon tone");
     assert.match(bar,
-        /BarChip\s*\{[\s\S]{0,220}?panelName:\s*"control"[\s\S]{0,420}?Quickshell\.iconPath\("fedora-logo-icon", true\)/,
-        "the fixed Control Panel trigger must use Fedora's themed logo");
+        /BarChip\s*\{[\s\S]{0,220}?panelName:\s*"control"[\s\S]{0,700}?name:\s*"fedora"/,
+        "the fixed Control Panel trigger must use Fedora's bundled vector");
+    assert.match(bar,
+        /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/);
     assert.match(updates, /idleColor:\s*Theme\.barIcon/);
-    assert.match(media, /name:\s*root\.playing[\s\S]{0,180}?color:\s*Theme\.barIcon/);
+    assert.match(media, /name:\s*root\.playing[\s\S]{0,180}?color:\s*mediaChip\.fg/);
+    assert.match(media, /highlighted:\s*mediaChip\.held \|\| mediaChip\.hovered/);
+    assert.match(media, /colorization:\s*mediaChip\.held \|\| mediaChip\.hovered \? 1 : 0/);
     assert.match(tray, /Theme\.barTextHi : Theme\.barIcon/);
-    assert.match(volume, /Audio\.muted \? Theme\.barRedText : Theme\.barIcon/);
-    assert.match(wifi, /color:\s*Theme\.barIcon/);
-    assert.match(bluetooth, /color:\s*Theme\.barIcon/);
+    assert.match(tray, /colorization:\s*itemHover\.over \? 1 : 0/);
+    assert.match(volume, /idleColor:\s*Audio\.muted \? Theme\.barRedText : Theme\.barIcon/);
+    assert.match(volume, /color:\s*chip\.fg/);
+    assert.match(wifi, /color:\s*chip\.fg/);
+    assert.match(bluetooth, /color:\s*chip\.fg/);
     assert.match(battery, /Battery\.pluggedIn \? Theme\.barAccent : Theme\.barIcon/);
-    assert.match(github, /Theme\.barTextHi : Theme\.barIcon/);
-    assert.match(t3, /opacity:\s*root\.live \? 1 : 0\.52/);
-    assert.match(t3, /BrandIcon\s*\{[\s\S]{0,500}?tint:\s*Theme\.barIcon/);
-    assert.match(usage, /opacity:\s*chip\.status === "error" \? 0\.52 : 1/);
-    assert.match(usage, /BrandIcon\s*\{[\s\S]{0,500}?tint:\s*Theme\.barIcon/);
-    assert.match(weather, /color:\s*Weather\.barGlyphColor\(Weather\.code, Weather\.isDay\)/);
+    assert.match(battery, /color:\s*chip\.fg/);
+    assert.match(github, /highlighted:\s*ghChip\.held \|\| ghChip\.hovered/);
+    assert.match(t3, /opacity:\s*highlighted \|\| root\.live \? 1 : 0\.52/);
+    assert.match(t3,
+        /BrandIcon\s*\{[\s\S]{0,500}?highlighted:\s*root\.held \|\| root\.hovered/);
+    assert.match(usage,
+        /opacity:\s*highlighted \|\| chip\.status !== "error" \? 1 : 0\.52/);
+    assert.match(usage, /highlighted:\s*root\.held \|\| emptyHover\.over/);
+    assert.match(usage, /highlighted:\s*chip\.current \|\| chipHover\.over/);
+    assert.match(weather, /idleColor:\s*Weather\.barGlyphColor\(Weather\.code, Weather\.isDay\)/);
+    assert.match(weather, /color:\s*chip\.fg/);
+    assert.match(weather, /opacity:\s*chip\.held \|\| chip\.hovered \? 1 : 0\.68/);
     assert.doesNotMatch(weather, /color:\s*Theme\.barIcon/,
-        "weather is the intentional coloured-glyph exception");
+        "weather must retain its condition palette at rest");
 });
 
 test("scroll chrome discloses overflow without becoming an input surface", () => {

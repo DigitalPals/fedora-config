@@ -103,7 +103,6 @@ Item {
             id: emptyChip
 
             property string providerKey: "claude"
-
             visible: root.empty
             height: Theme.chipInnerHeight
             width: emptyRow.implicitWidth + 14
@@ -136,9 +135,10 @@ Item {
                     width: 12
                     height: 12
                     name: "claude"
-                    opacity: 0.52
+                    opacity: highlighted ? 1 : 0.52
                     colorized: true
                     tint: Theme.barIcon
+                    highlighted: root.held || emptyHover.over
                 }
 
                 Text {
@@ -183,7 +183,6 @@ Item {
                 // This provider's view is expanded below the bar.
                 readonly property bool current: root.held && Usage.selected === modelData
                 readonly property real detailSaving: usageText.implicitWidth + 4
-
                 height: Theme.chipInnerHeight
                 width: chipRow.implicitWidth + 14
                 radius: Theme.chipRadius
@@ -229,9 +228,10 @@ Item {
                         width: chip.modelData === "codex" ? 13 : 12
                         height: width
                         name: Usage.meta[chip.modelData].icon
-                        opacity: chip.status === "error" ? 0.52 : 1
+                        opacity: highlighted || chip.status !== "error" ? 1 : 0.52
                         colorized: true
                         tint: Theme.barIcon
+                        highlighted: chip.current || chipHover.over
                     }
 
                     Text {

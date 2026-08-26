@@ -24,6 +24,9 @@ BarModule {
         isle: root.isle
         anchorItem: root.groupAnchor ?? chip
         spacing: 5
+        // The condition palette remains the resting identity; interaction
+        // joins the shared high-foreground hover state.
+        idleColor: Weather.barGlyphColor(Weather.code, Weather.isDay)
         tooltip: Weather.offline ? "Weather · offline" : "Weather"
 
         Sym {
@@ -31,10 +34,14 @@ BarModule {
             name: Weather.symbol(Weather.code, Weather.isDay)
             size: Theme.iconSmall + 1
             fill: 1
-            // Weather.code is -1 until a forecast lands, and both symbol() and
-            // barGlyphColor() already answer that with the "no data" mark in
-            // Theme.barTextDim — no fallback needed here.
-            color: Weather.barGlyphColor(Weather.code, Weather.isDay)
+            // Weather.code is -1 until a forecast lands, and barGlyphColor()
+            // already answers that with the "no data" resting tone.
+            color: chip.fg
+            opacity: chip.held || chip.hovered ? 1 : 0.68
+
+            Behavior on opacity {
+                NumberAnimation { duration: Theme.chipFadeDuration }
+            }
         }
 
         Text {

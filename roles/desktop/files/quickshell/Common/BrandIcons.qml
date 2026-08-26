@@ -12,11 +12,12 @@ Singleton {
     id: root
 
     readonly property var names: [
-        "claude", "github", "kimi", "openai",
+        "claude", "fedora", "github", "kimi", "openai",
         "t3", "tailscale", "whatsapp", "youtube"
     ]
     readonly property var files: ({
         claude: "claude.svg",
+        fedora: "fedora.svg",
         github: "github.svg",
         kimi: "kimi.svg",
         openai: "openai.svg",
@@ -25,8 +26,24 @@ Singleton {
         whatsapp: "whatsapp.svg",
         youtube: "youtube.svg"
     })
+    // Hover marks are real SVG paint variants rather than alpha masks.  Their
+    // paths and viewBoxes match the canonical files byte-for-byte, which
+    // keeps thin outlines (notably OpenAI's) at their original weight.
+    readonly property var highlightFiles: ({
+        claude: "claude-white.svg",
+        fedora: "fedora-white.svg",
+        github: "github-white.svg",
+        kimi: "kimi-white.svg",
+        openai: "openai-white.svg",
+        // The canonical T3 wordmark is already white.
+        t3: "t3.svg",
+        tailscale: "tailscale-white.svg",
+        whatsapp: "whatsapp-white.svg",
+        youtube: "youtube-white.svg"
+    })
     readonly property var labels: ({
         claude: "Claude",
+        fedora: "Fedora",
         github: "GitHub",
         kimi: "Kimi",
         openai: "OpenAI",
@@ -47,6 +64,12 @@ Singleton {
     function source(value) {
         const name = key(value);
         return has(name) ? Quickshell.shellDir + "/assets/" + files[name] : "";
+    }
+
+    function highlightSource(value) {
+        const name = key(value);
+        return has(name)
+            ? Quickshell.shellDir + "/assets/" + highlightFiles[name] : "";
     }
 
     function label(value) {

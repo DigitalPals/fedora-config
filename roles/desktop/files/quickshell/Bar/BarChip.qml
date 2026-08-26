@@ -4,10 +4,9 @@ import "../Common"
 // A content chip in the bar: the same compact shape BarIcon draws for glyph
 // modules, wrapping arbitrary content instead of glyph + label.
 //
-// Like BarIcon, this knows nothing about the bar: it reports pointer events as
-// signals and takes `held` as a property, so the module wires it to
-// barWindow.togglePopout at the use site. Content binds its own colours off
-// `held` and `hovered`.
+// Like BarIcon, this knows nothing about the content it wraps. It supplies the
+// shared resting/hover foreground as `fg`; content keeps its semantic colours
+// where needed and binds ordinary icons to that one value.
 Rectangle {
     id: root
 
@@ -63,6 +62,8 @@ Rectangle {
     property real rightPadding: hPadding
     property color restFill: "transparent"
     property color hoverFill: Theme.barChipHover
+    property color idleColor: Theme.barIcon
+    property color hoverColor: Theme.barTextHi
     // The module's popout is expanded below it.
     property bool held: ownsPanel && host.popoutOpen(panelName)
     property bool pressFeedback: true
@@ -73,6 +74,7 @@ Rectangle {
     // tooltip together. It remains correct when a child MouseArea misses an
     // enter or exit while a detached layer surface is being mapped.
     readonly property bool hovered: hover.over
+    readonly property color fg: held || hovered ? hoverColor : idleColor
 
     signal clicked()
     signal entered()

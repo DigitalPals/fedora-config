@@ -2,17 +2,22 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 
-// One approved product mark. BrandIcons owns name-to-file resolution; this
-// component owns sampling and optional contextual tinting.
+// One approved identity mark. BrandIcons owns name-to-file resolution; this
+// component owns sampling and optional contextual tinting/highlighting.
 //
 // Leave colorized false where product identity matters. Menubar and control
-// marks set it true so the same canonical SVG follows their shared icon tone.
+// marks set it true so the canonical SVG follows their shared resting tone.
+// Interactive white uses a source SVG with identical geometry: a mask or
+// effect can alter antialiased edges and make small marks look heavier.
 Item {
     id: root
 
     property string name: ""
     property bool colorized: false
     property color tint: Theme.icon
+    property real tintAmount: colorized ? 1 : 0
+    property bool highlighted: false
+    property real highlightAmount: highlighted ? 1 : 0
     readonly property bool available: BrandIcons.has(name)
     readonly property int status: sourceImage.status
 
@@ -21,6 +26,14 @@ Item {
     // Every use sits beside copy or inside a named control; exposing the image
     // as a second accessibility node would announce the same identity twice.
     Accessible.ignored: true
+
+    Behavior on tintAmount {
+        NumberAnimation { duration: Theme.chipFadeDuration }
+    }
+
+    Behavior on highlightAmount {
+        NumberAnimation { duration: Theme.chipFadeDuration }
+    }
 
     Image {
         id: sourceImage
@@ -31,12 +44,27 @@ Item {
         fillMode: Image.PreserveAspectFit
         smooth: true
         mipmap: true
+        opacity: 1 - root.highlightAmount
         Accessible.ignored: true
 
-        layer.enabled: root.available && root.colorized
+        // Keep the layer alive until a dynamic tint has faded all the way
+        // out, then return static product marks to the cheaper image path.
+        layer.enabled: root.available && root.tintAmount > 0.001
         layer.effect: MultiEffect {
-            colorization: 1
+            colorization: root.tintAmount
             colorizationColor: root.tint
         }
+    }
+
+    Image {
+        anchors.fill: parent
+        source: BrandIcons.highlightSource(root.name)
+        sourceSize: Qt.size(Math.max(1, Math.round(root.width * 2)),
+            Math.max(1, Math.round(root.height * 2)))
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        mipmap: true
+        opacity: root.highlightAmount
+        Accessible.ignored: true
     }
 }

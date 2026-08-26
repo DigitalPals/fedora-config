@@ -927,19 +927,14 @@ PanelWindow {
                 tooltip: "Control Panel"
                 tooltipAlign: 1
 
-                Image {
+                BrandIcon {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Theme.barIconSize
                     height: Theme.barIconSize
-                    sourceSize: Qt.size(32, 32)
-                    source: Quickshell.iconPath("fedora-logo-icon", true)
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                    layer.enabled: true
-                    layer.effect: MultiEffect {
-                        colorization: 1
-                        colorizationColor: Theme.barTextHi
-                    }
+                    name: "fedora"
+                    colorized: true
+                    tint: Theme.barIcon
+                    highlighted: controlButton.held || controlButton.hovered
                 }
             }
         }

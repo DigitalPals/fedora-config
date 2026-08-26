@@ -53,3 +53,19 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Fedora Project mark
+
+The Fedora mark is adapted from `fedora_default-horizontal.svg` by the Fedora
+Design Team, revision `e7ee4e88ac5b43a1acf2ab39157b63c80e8093f2`:
+https://gitlab.com/fedora/design/team/logos/fedora-project-logos
+
+The source repository states that its contents are licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), except that
+Fedora and other trademarks remain the property of their respective trademark
+holders. Local changes crop out the wordmark and redundant SVG metadata;
+`fedora-white.svg` changes only the fill from Fedora blue to white.
+
+Fedora®, the Fedora word design, and the Fedora logo are trademarks of Red
+Hat, Inc. Use remains subject to the
+[Fedora trademark guidelines](https://docs.fedoraproject.org/en-US/legal/trademarks/).

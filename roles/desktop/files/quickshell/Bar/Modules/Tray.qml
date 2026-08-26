@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Services.SystemTray
 import ".."
@@ -161,6 +162,15 @@ BarModule {
                                 fillMode: Image.PreserveAspectFit
                                 source: trayItem.modelData.icon
                                 smooth: true
+                                layer.enabled: true
+                                layer.effect: MultiEffect {
+                                    colorization: itemHover.over ? 1 : 0
+                                    colorizationColor: Theme.barTextHi
+
+                                    Behavior on colorization {
+                                        NumberAnimation { duration: Theme.chipFadeDuration }
+                                    }
+                                }
                             }
 
                             QsMenuAnchor {

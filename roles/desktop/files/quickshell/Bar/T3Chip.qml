@@ -76,9 +76,10 @@ BarChip {
         height: 9
         width: 15
         name: "t3"
-        opacity: root.live ? 1 : 0.52
+        opacity: highlighted || root.live ? 1 : 0.52
         colorized: true
         tint: Theme.barIcon
+        highlighted: root.held || root.hovered
     }
 
     // Live work: a lit dot with its own bloom, deliberately static. A pulse

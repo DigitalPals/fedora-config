@@ -52,11 +52,8 @@ BarModule {
                 height: Theme.barIconSize
                 name: "github"
                 colorized: true
-                tint: ghChip.held || ghChip.hovered ? Theme.barTextHi : Theme.barIcon
-
-                Behavior on tint {
-                    ColorAnimation { duration: Theme.chipFadeDuration }
-                }
+                tint: Theme.barIcon
+                highlighted: ghChip.held || ghChip.hovered
             }
 
             // Running status: a static marker, deliberately not tied to badge

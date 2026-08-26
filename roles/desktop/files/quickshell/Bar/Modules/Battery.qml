@@ -28,6 +28,13 @@ BarModule {
         isle: root.isle
         anchorItem: root.groupAnchor ?? chip
         spacing: root.spacing
+        idleColor: root.critical ? Theme.barRedText
+            : root.low ? Theme.barAmber
+            : Battery.pluggedIn ? Theme.barAccent : Theme.barIcon
+        // Warnings keep their semantic tone; ordinary battery states use the
+        // same brighter hover foreground as every other menubar icon.
+        hoverColor: root.critical ? Theme.barRedText
+            : root.low ? Theme.barAmber : Theme.barTextHi
         tooltip: "Battery " + root.level + "%"
             + (Battery.charging ? " · charging"
                 : Battery.full ? " · fully charged" : "")
@@ -55,9 +62,7 @@ BarModule {
                 size: Theme.barIconSize
                 fill: 1
                 rotation: 90
-                color: root.critical ? Theme.barRedText
-                    : root.low ? Theme.barAmber
-                    : Battery.pluggedIn ? Theme.barAccent : Theme.barIcon
+                color: chip.fg
             }
         }
 
