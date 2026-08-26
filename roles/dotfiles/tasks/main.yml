@@ -277,6 +277,31 @@
     mode: "0755"
   tags: [browser]
 
+- name: Configure Brave initial profile defaults
+  ansible.builtin.copy:
+    dest: /opt/brave.com/brave/initial_preferences
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {
+        "extensions": {
+          "theme": {
+            "system_theme": 1
+          }
+        },
+        "webkit": {
+          "webprefs": {
+            "fonts": {
+              "standard": {
+                "Zyyy": "Inter"
+              }
+            }
+          }
+        }
+      }
+  tags: [browser]
+
 - name: Configure Brave managed policies
   ansible.builtin.copy:
     dest: /etc/brave/policies/managed/xps.json

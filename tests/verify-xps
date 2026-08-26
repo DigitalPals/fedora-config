@@ -287,6 +287,12 @@ check 'Android platform-tools' test -x "$HOME/Android/Sdk/platform-tools/adb"
 check 'Brave restore, Dutch spellcheck, and 1Password policy' \
   jq -e '.RestoreOnStartup == 1 and .SpellcheckLanguage == ["nl"] and (.ExtensionInstallForcelist | length == 1)' \
   /etc/brave/policies/managed/xps.json
+check 'Brave initial profile defaults to the GTK theme' \
+  jq -e '.extensions.theme.system_theme == 1' \
+  /opt/brave.com/brave/initial_preferences
+check 'Brave initial profile defaults to Inter' \
+  jq -e '.webkit.webprefs.fonts.standard.Zyyy == "Inter"' \
+  /opt/brave.com/brave/initial_preferences
 check 'Brave launchers automatically restore after an unclean exit' bash -c \
   'grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.config/hypr/bindings.lua" && grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/applications/brave-browser.desktop"'
 check 'Firefox 1Password policy' jq -e '.policies.ExtensionSettings["{d634138d-c276-4fc8-924b-40a0ea21d284}"].installation_mode == "force_installed"' /usr/lib64/firefox/distribution/policies.json
