@@ -7,6 +7,12 @@ const { shellDir } = require("./shell.cjs");
 const weather = fs.readFileSync(
     path.join(shellDir, "Popovers", "WeatherPopover.qml"), "utf8");
 
+test("current conditions reserve a generous gap before the forecast", () => {
+    assert.match(weather, /Surface\s*\{[\s\S]{0,160}?spacing:\s*Theme\.panelSectionSpacing/);
+    assert.match(weather,
+        /Current conditions[\s\S]{0,160}?height:\s*Theme\.controlHeight/);
+});
+
 test("standalone forecast icons retain their weather colours", () => {
     assert.match(weather,
         /color:\s*Weather\.glyphColor\(dayRow\.modelData\.code,\s*true\)/,

@@ -8,7 +8,7 @@ Surface {
     id: root
 
     padding: Theme.surfacePadding
-    spacing: 8
+    spacing: Theme.panelSectionSpacing
 
     readonly property int weekLo: Weather.days.reduce((m, d) => Math.min(m, d.lo), 99)
     readonly property int weekHi: Weather.days.reduce((m, d) => Math.max(m, d.hi), -99)
@@ -17,7 +17,7 @@ Surface {
     // ---- Current conditions ------------------------------------------
     Item {
         width: parent.width
-        height: Theme.listRowHeight
+        height: Theme.controlHeight
 
         Row {
             x: 6
