@@ -37,7 +37,7 @@ test("the composer bar names the run in place and each part is its own menu", ()
     for (const id of ["effortSelect", "accessSelect"])
         assert.match(bar[1], new RegExp(`T3InlineSelect\\s*\\{\\s*\\n\\s*id:\\s*${id}\\b`),
             `${id} must be an inline dropdown on the bar`);
-    assert.match(bar[1], /id:\s*modelSelect[\s\S]*?iconSource:\s*root\.providerGlyph/,
+    assert.match(bar[1], /id:\s*modelSelect[\s\S]*?brand:\s*root\.providerGlyph/,
         "the provider travels as the model's brand mark rather than a second control");
     assert.match(bar[1], /id:\s*accessSelect[\s\S]*?symbol:\s*settingsPresentation\.accessSymbol\(\)/);
     assert.match(composer,

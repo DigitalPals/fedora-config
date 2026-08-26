@@ -804,7 +804,7 @@ Singleton {
         Notifs.send({
             appName: "GitHub",
             appIcon: "github",
-            image: Quickshell.shellDir + "/assets/github.svg",
+            brandIcon: "github",
             summary: toast.summary,
             body: toast.body
         });

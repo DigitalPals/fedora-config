@@ -156,9 +156,9 @@ test("resting menubar icons share one tone while weather keeps its palette", () 
     assert.match(battery, /Battery\.pluggedIn \? Theme\.barAccent : Theme\.barIcon/);
     assert.match(github, /Theme\.barTextHi : Theme\.barIcon/);
     assert.match(t3, /opacity:\s*root\.live \? 1 : 0\.52/);
-    assert.match(t3, /colorizationColor:\s*Theme\.barIcon/);
+    assert.match(t3, /BrandIcon\s*\{[\s\S]{0,500}?tint:\s*Theme\.barIcon/);
     assert.match(usage, /opacity:\s*chip\.status === "error" \? 0\.52 : 1/);
-    assert.match(usage, /colorizationColor:\s*Theme\.barIcon/);
+    assert.match(usage, /BrandIcon\s*\{[\s\S]{0,500}?tint:\s*Theme\.barIcon/);
     assert.match(weather, /color:\s*Weather\.barGlyphColor\(Weather\.code, Weather\.isDay\)/);
     assert.doesNotMatch(weather, /color:\s*Theme\.barIcon/,
         "weather is the intentional coloured-glyph exception");

@@ -638,12 +638,13 @@ Surface {
                 Row {
                     spacing: 7
 
-                    Text {
+                    BrandIcon {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: ""
-                        font.family: Theme.fontNerd
-                        font.pixelSize: Theme.iconMedium
-                        color: T3Theme.textPrimary
+                        width: Theme.iconMedium
+                        height: Theme.iconMedium
+                        name: "github"
+                        colorized: true
+                        tint: T3Theme.textPrimary
                     }
 
                     Text {

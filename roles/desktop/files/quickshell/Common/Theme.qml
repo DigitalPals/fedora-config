@@ -364,9 +364,6 @@ Singleton {
     // glyph is selected by ligature name and the fill/weight axes need
     // setting for the icon to read at the intended optical weight.
     readonly property string fontIcon: "Material Symbols Rounded"
-    // Retained for the handful of places that still want a Nerd Font glyph
-    // (provider marks in prose, the Fedora logo).
-    readonly property string fontNerd: "JetBrainsMono Nerd Font"
 
     // Semantic logical-pixel type scale. Metadata now floors at 11px and the
     // the roomier scale keeps compact copy from feeling compressed.

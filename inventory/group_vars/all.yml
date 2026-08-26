@@ -105,8 +105,9 @@ pinned_font_archives:
 # archives. The URL is pinned to a commit and the checksum pins the bytes, so
 # the version below is only the directory label. JetBrains Mono (installed by
 # the apps role) is the Quickshell UI default; Google Sans Flex and Urbanist
-# remain appearance choices, and Material Symbols Rounded supplies every icon
-# in the shell (Common/Sym.qml).
+# remain appearance choices, and Material Symbols Rounded supplies every
+# generic interface glyph in the shell (Common/Sym.qml). Product identities
+# are the audited SVGs behind Common/BrandIcon.qml.
 pinned_font_files:
   - name: google-sans-flex
     version: "2025.11.18"

@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
 import "../Common/Format.js" as Format
 
@@ -98,15 +97,13 @@ Surface {
         // The provider mark sits inline with its name at bar-icon size, the
         // way the T3 wordmark does. The old filled 46px brand square was a
         // block of saturated colour standing in for a 16px logo.
-        Image {
+        BrandIcon {
             id: brandSquare
             x: 2
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.iconMedium
             height: Theme.iconMedium
-            sourceSize: Qt.size(32, 32)
-            fillMode: Image.PreserveAspectFit
-            source: Quickshell.shellDir + "/assets/" + root.info.icon + ".svg"
+            name: root.info.icon
         }
 
         Rectangle {
@@ -138,12 +135,11 @@ Surface {
                     radius: Theme.chipRadius
                     color: active ? Theme.chipHover : miniTabMouse.containsMouse ? Theme.chip : "transparent"
 
-                    Image {
+                    BrandIcon {
                         anchors.centerIn: parent
                         width: miniTab.modelData === "codex" ? 12 : 11
                         height: width
-                        sourceSize: Qt.size(24, 24)
-                        source: Quickshell.shellDir + "/assets/" + Usage.meta[miniTab.modelData].icon + ".svg"
+                        name: Usage.meta[miniTab.modelData].icon
                         opacity: miniTab.active ? 1 : 0.45
                     }
 

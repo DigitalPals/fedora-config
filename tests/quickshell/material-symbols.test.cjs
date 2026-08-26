@@ -190,3 +190,20 @@ test("icons are drawn through Sym rather than by hand", () => {
     }
     assert.deepEqual(offenders, []);
 });
+
+test("presentation marks do not fall back to unrelated text-font symbols", () => {
+    // Arrow strings in Session's shortcut-key data are copy, not icons. This
+    // targets only visual `text:` properties, where a check, close mark or
+    // direction arrow would otherwise vary with the selected menu typeface.
+    const offenders = [];
+    const marks = /[✓✔✕×⌃⌄↑↓←→]/;
+    for (const file of qmlFiles()) {
+        const relative = path.relative(shellDir, file);
+        fs.readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+            if (/\btext\s*:/.test(line) && marks.test(line))
+                offenders.push(`${relative}:${index + 1}`);
+        });
+    }
+    assert.deepEqual(offenders, [],
+        "presentation glyphs belong in Sym so one icon face controls them");
+});

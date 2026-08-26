@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
 
 // Responsive T3 Code mini-client. T3 owns the inner canvas and type system;
@@ -186,15 +185,14 @@ Surface {
             Row {
                 spacing: 6
 
-                Image {
+                BrandIcon {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 18
                     height: 11
-                    sourceSize: Qt.size(36, 22)
-                    fillMode: Image.PreserveAspectFit
-                    source: Quickshell.shellDir + "/assets/" + (T3Theme.dark
-                        ? (T3Code.state === "connected" ? "t3.svg" : "t3-dim.svg")
-                        : (T3Code.state === "connected" ? "t3-dark.svg" : "t3-light-dim.svg"))
+                    name: "t3"
+                    colorized: true
+                    tint: T3Code.state === "connected"
+                        ? T3Theme.textPrimary : T3Theme.textFaint
                 }
 
                 Text {

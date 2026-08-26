@@ -198,12 +198,11 @@ Item {
                         anchors.rightMargin: 6
                         width: 16; height: 16; radius: 8
                         color: Theme.accent
-                        Text {
+                        Sym {
                             anchors.centerIn: parent
-                            text: "✓"
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightBold
+                            name: "check"
+                            size: Theme.iconSmall
+                            symWeight: 700
                             color: Theme.accentFg
                         }
                     }

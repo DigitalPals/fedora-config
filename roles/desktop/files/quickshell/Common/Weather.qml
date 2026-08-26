@@ -100,10 +100,8 @@ Singleton {
         return "—";
     }
 
-    // Material Symbols ligature for a WMO code, for anything drawn with
-    // Common/Sym.qml. Kept in the same code order as glyph() and glyphColor()
-    // below, so a mark, its Nerd Font twin and its tint cannot disagree about
-    // what the sky is doing.
+    // Material Symbols ligature for a WMO code. Kept in the same code order as
+    // glyphColor() below so a mark and its tint cannot disagree about the sky.
     function symbol(code, day) {
         if (code < 0)
             return "cloud_off";

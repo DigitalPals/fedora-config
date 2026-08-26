@@ -225,7 +225,7 @@ Surface {
         id: tile
 
         property string glyph: ""
-        property string iconSource: ""
+        property string brand: ""
         property string title
         property bool on: false
         // A running capture, which owns the red field rather than the accent.
@@ -284,13 +284,14 @@ Surface {
                     color: tile.mark
                 }
 
-                Image {
-                    visible: tile.iconSource !== ""
+                BrandIcon {
+                    visible: tile.brand !== ""
                     anchors.centerIn: parent
                     width: Theme.iconLarge
                     height: Theme.iconLarge
-                    sourceSize: Qt.size(40, 40)
-                    source: tile.iconSource
+                    name: tile.brand
+                    colorized: true
+                    tint: tile.mark
                 }
             }
 
@@ -746,7 +747,7 @@ Surface {
             }
 
             QuickTile {
-                iconSource: Quickshell.shellDir + "/assets/tailscale" + (Tailscale.running ? "" : "-dim") + ".svg"
+                brand: "tailscale"
                 title: "Tailscale"
                 on: Tailscale.running
                 detail: true

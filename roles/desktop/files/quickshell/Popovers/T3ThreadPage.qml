@@ -500,16 +500,13 @@ Column {
                             color: T3Theme.textFaint
                         }
 
-                        Image {
+                        BrandIcon {
                             id: providerIcon
                             visible: threadMetadata.providerGlyph !== ""
                             anchors.verticalCenter: parent.verticalCenter
                             width: 13
                             height: 13
-                            sourceSize: Qt.size(26, 26)
-                            fillMode: Image.PreserveAspectFit
-                            source: visible ? Quickshell.shellDir + "/assets/"
-                                + threadMetadata.providerGlyph + ".svg" : ""
+                            name: threadMetadata.providerGlyph
                             opacity: 0.92
                         }
                     }

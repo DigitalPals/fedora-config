@@ -14,9 +14,9 @@ Item {
     property string text: ""
     // What the control is for, when the value alone ("Max") does not say.
     property string accessibleDescription: ""
-    // Either a bundled brand SVG or a Material Symbol. A control that shows
-    // both marks would be two icons for one idea, so iconSource wins.
-    property string iconSource: ""
+    // Either an approved brand name or a Material Symbol. A control that shows
+    // both marks would be two icons for one idea, so brand wins.
+    property string brand: ""
     property string symbol: ""
     property color tint: T3Theme.textSecondary
     property color iconTint: T3Theme.textFaint
@@ -73,20 +73,18 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 5
 
-            Image {
+            BrandIcon {
                 id: brandMark
-                visible: root.iconSource !== ""
+                visible: root.brand !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 width: visible ? 15 : 0
                 height: 15
-                sourceSize: Qt.size(30, 30)
-                fillMode: Image.PreserveAspectFit
-                source: root.iconSource
+                name: root.brand
             }
 
             Sym {
                 id: symbolMark
-                visible: root.iconSource === "" && root.symbol !== ""
+                visible: root.brand === "" && root.symbol !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 name: root.symbol
                 size: Theme.iconSmall

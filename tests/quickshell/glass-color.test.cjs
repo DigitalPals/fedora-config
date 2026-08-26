@@ -138,8 +138,10 @@ test("menubar content uses its colour-derived palette", () => {
     assert.match(theme, /readonly property color barAccent:\s*SettingsHelpers\.ensureContrast/);
     assert.match(read("Common/Weather.qml"), /function barGlyphColor/);
     assert.match(read("Bar/Modules/Weather.qml"), /Weather\.barGlyphColor/);
-    assert.match(read("Bar/T3Chip.qml"), /colorizationColor:\s*Theme\.barIcon/);
-    assert.match(read("Bar/UsageChips.qml"), /colorizationColor:\s*Theme\.barIcon/);
+    assert.match(read("Bar/T3Chip.qml"),
+        /BrandIcon\s*\{[\s\S]{0,500}?tint:\s*Theme\.barIcon/);
+    assert.match(read("Bar/UsageChips.qml"),
+        /BrandIcon\s*\{[\s\S]{0,500}?tint:\s*Theme\.barIcon/);
 });
 
 test("the named Hyprland blur rule persists and applies without remapping surfaces", () => {

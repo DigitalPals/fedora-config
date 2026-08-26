@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
 
 // T3's composer is one recognisable glass surface: prompt above, contextual
@@ -614,8 +613,7 @@ Column {
                         id: modelSelect
                         threadId: root.threadId
                         newThread: root.newThread
-                        iconSource: root.providerGlyph !== ""
-                            ? Quickshell.shellDir + "/assets/" + root.providerGlyph + ".svg" : ""
+                        brand: root.providerGlyph
                         label: settingsPresentation.modelSummary()
                         value: root.selectionValue
                         openUpward: !root.newThread

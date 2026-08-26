@@ -42,21 +42,19 @@ BarModule {
         // Inbox activity stays in the adjacent count instead of covering it.
         Item {
             anchors.verticalCenter: parent.verticalCenter
-            width: mark.implicitWidth
-            height: mark.implicitHeight
+            width: Theme.barIconSize
+            height: Theme.barIconSize
 
-            Text {
+            BrandIcon {
                 id: mark
                 anchors.centerIn: parent
-                // nf-fa-github: the mark the design draws. Kept as a Nerd Font
-                // glyph rather than a Material Symbol because Material Symbols
-                // carries no brand marks, and the shell already ships the face.
-                text: ""
-                font.family: Theme.fontNerd
-                font.pixelSize: Theme.barIconSize
-                color: ghChip.held || ghChip.hovered ? Theme.barTextHi : Theme.barIcon
+                width: Theme.barIconSize
+                height: Theme.barIconSize
+                name: "github"
+                colorized: true
+                tint: ghChip.held || ghChip.hovered ? Theme.barTextHi : Theme.barIcon
 
-                Behavior on color {
+                Behavior on tint {
                     ColorAnimation { duration: Theme.chipFadeDuration }
                 }
             }

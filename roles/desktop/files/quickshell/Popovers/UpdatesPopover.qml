@@ -48,9 +48,9 @@ Surface {
         return Qt.formatTime(new Date(stamp), Settings.clock24 ? "HH:mm" : "h:mm ap");
     }
 
-    function verbMark(verb) {
-        return verb === "add" ? "+" : verb === "del" ? "−"
-            : verb === "down" ? "↓" : "↑";
+    function verbIcon(verb) {
+        return verb === "add" ? "add" : verb === "del" ? "remove"
+            : verb === "down" ? "arrow_downward" : "arrow_upward";
     }
 
     function verbColor(verb) {
@@ -758,34 +758,76 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 10
 
-                    Text {
+                    Row {
                         visible: Updates.upCount > 0
-                        text: "↑ " + Updates.upCount
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontMicro
-                        font.weight: Theme.weightBold
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.ok
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 3
+
+                        Sym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "arrow_upward"
+                            size: Theme.iconTiny
+                            symWeight: 700
+                            color: Theme.ok
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Updates.upCount
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Theme.weightBold
+                            font.features: Theme.tabularNumberFeatures
+                            color: Theme.ok
+                        }
                     }
 
-                    Text {
+                    Row {
                         visible: Updates.addCount > 0
-                        text: "+ " + Updates.addCount
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontMicro
-                        font.weight: Theme.weightBold
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.accent
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 3
+
+                        Sym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "add"
+                            size: Theme.iconTiny
+                            symWeight: 700
+                            color: Theme.accent
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Updates.addCount
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Theme.weightBold
+                            font.features: Theme.tabularNumberFeatures
+                            color: Theme.accent
+                        }
                     }
 
-                    Text {
+                    Row {
                         visible: Updates.delCount > 0
-                        text: "− " + Updates.delCount
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontMicro
-                        font.weight: Theme.weightBold
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.redText
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 3
+
+                        Sym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "remove"
+                            size: Theme.iconTiny
+                            symWeight: 700
+                            color: Theme.redText
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Updates.delCount
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Theme.weightBold
+                            font.features: Theme.tabularNumberFeatures
+                            color: Theme.redText
+                        }
                     }
                 }
             }
@@ -885,14 +927,12 @@ Surface {
                             ? Theme.feedDnf : Theme.feedFlatpak
                     }
 
-                    Text {
+                    Sym {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        text: root.verbMark(feedRow.model.verb)
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontTiny
-                        font.weight: Theme.weightBold
+                        name: root.verbIcon(feedRow.model.verb)
+                        size: Theme.iconTiny
+                        symWeight: 700
                         color: root.verbColor(feedRow.model.verb)
                     }
 

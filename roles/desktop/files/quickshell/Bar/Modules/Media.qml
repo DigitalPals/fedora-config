@@ -102,6 +102,15 @@ BarModule {
             width: 24
             height: 24
 
+            BrandIcon {
+                id: playerBrand
+                anchors.centerIn: parent
+                width: 18
+                height: 18
+                name: Media.brandIcon
+                visible: available && status === Image.Ready
+            }
+
             Image {
                 id: playerIcon
                 anchors.centerIn: parent
@@ -111,12 +120,12 @@ BarModule {
                 sourceSize: Qt.size(36, 36)
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
-                visible: status === Image.Ready
+                visible: !playerBrand.visible && status === Image.Ready
             }
 
             Sym {
                 anchors.centerIn: parent
-                visible: playerIcon.status !== Image.Ready
+                visible: !playerBrand.visible && !playerIcon.visible
                 name: root.playing ? "graphic_eq" : "music_note"
                 size: Theme.iconSmall + 1
                 fill: 1

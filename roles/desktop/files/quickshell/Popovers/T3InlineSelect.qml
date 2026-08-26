@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
 
 // A composer-bar dropdown: mark, current value, chevron, and nothing else.
@@ -14,9 +13,9 @@ Item {
     id: root
 
     property string text: ""
-    // Either a bundled brand SVG or a Material Symbol. A control that shows
-    // both marks would be two icons for one idea, so iconSource wins.
-    property string iconSource: ""
+    // Either an approved brand name or a Material Symbol. A control that shows
+    // both marks would be two icons for one idea, so brand wins.
+    property string brand: ""
     property string symbol: ""
     property color tint: T3Theme.textSecondary
     property color iconTint: T3Theme.textFaint
@@ -127,7 +126,7 @@ Item {
         text: root.selectedLabel()
         accessibleDescription: root.text
         maxWidth: root.maxWidth
-        iconSource: root.iconSource
+        brand: root.brand
         symbol: root.symbol
         tint: root.tint
         iconTint: root.iconTint
@@ -183,7 +182,7 @@ Item {
                             : choiceMouse.containsMouse ? T3Theme.hoverStrong : "transparent"
                         opacity: modelData.disabled === true ? 0.35 : 1
 
-                        Image {
+                        BrandIcon {
                             id: choiceMark
                             visible: String(choice.modelData.icon ?? "") !== ""
                             anchors.left: parent.left
@@ -191,10 +190,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             width: visible ? 14 : 0
                             height: 14
-                            sourceSize: Qt.size(28, 28)
-                            fillMode: Image.PreserveAspectFit
-                            source: visible ? Quickshell.shellDir + "/assets/"
-                                + choice.modelData.icon + ".svg" : ""
+                            name: String(choice.modelData.icon ?? "")
                         }
 
                         Text {

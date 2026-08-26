@@ -214,14 +214,13 @@ Surface {
                         }
                     }
 
-                    Text {
+                    Sym {
                         anchors.right: parent.right
                         anchors.rightMargin: 13
                         anchors.verticalCenter: parent.verticalCenter
-                        text: groupHeaderHover.hovered ? "×" : "⌃"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: groupHeaderHover.hovered
-                            ? Theme.fontHeading : Theme.fontBody
+                        name: groupHeaderHover.hovered ? "close" : "expand_less"
+                        size: groupHeaderHover.hovered
+                            ? Theme.iconMedium : Theme.iconSmall
                         color: groupCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
 
                         MouseArea {

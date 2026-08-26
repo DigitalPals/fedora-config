@@ -1,7 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Effects
-import Quickshell
 import "../Common"
 
 // Model usage: one mini chip per provider (brand mark + minimum remaining).
@@ -133,18 +131,14 @@ Item {
                 anchors.centerIn: parent
                 spacing: 4
 
-                Image {
+                BrandIcon {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 12
                     height: 12
-                    sourceSize: Qt.size(24, 24)
-                    source: Quickshell.shellDir + "/assets/claude.svg"
+                    name: "claude"
                     opacity: 0.52
-                    layer.enabled: true
-                    layer.effect: MultiEffect {
-                        colorization: 1
-                        colorizationColor: Theme.barIcon
-                    }
+                    colorized: true
+                    tint: Theme.barIcon
                 }
 
                 Text {
@@ -230,19 +224,14 @@ Item {
                     anchors.centerIn: parent
                     spacing: 4
 
-                    Image {
+                    BrandIcon {
                         anchors.verticalCenter: parent.verticalCenter
                         width: chip.modelData === "codex" ? 13 : 12
                         height: width
-                        sourceSize: Qt.size(26, 26)
-                        source: Quickshell.shellDir + "/assets/"
-                            + Usage.meta[chip.modelData].icon + ".svg"
+                        name: Usage.meta[chip.modelData].icon
                         opacity: chip.status === "error" ? 0.52 : 1
-                        layer.enabled: true
-                        layer.effect: MultiEffect {
-                            colorization: 1
-                            colorizationColor: Theme.barIcon
-                        }
+                        colorized: true
+                        tint: Theme.barIcon
                     }
 
                     Text {

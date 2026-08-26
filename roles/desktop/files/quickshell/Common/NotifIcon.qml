@@ -22,21 +22,30 @@ Item {
         border.width: root.framed && root.urgent ? 1 : 0
         border.color: Theme.redBorder
 
+        BrandIcon {
+            id: brand
+            anchors.centerIn: parent
+            width: root.iconSize
+            height: root.iconSize
+            name: root.entry.brandIcon || ""
+            visible: available && status === Image.Ready
+        }
+
         Image {
             id: image
             anchors.centerIn: parent
             width: root.iconSize
             height: root.iconSize
-            source: Notifs.iconSource(root.entry)
+            source: brand.available ? "" : Notifs.iconSource(root.entry)
             sourceSize: Qt.size(root.iconSize, root.iconSize)
             fillMode: Image.PreserveAspectFit
             asynchronous: true
-            visible: status === Image.Ready
+            visible: !brand.visible && status === Image.Ready
         }
 
         Sym {
             anchors.centerIn: parent
-            visible: !image.visible
+            visible: !brand.visible && !image.visible
             name: root.urgent ? "warning" : root.entry.webOrigin ? "public" : "notifications"
             size: Math.max(Theme.fontCaption, root.iconSize - (root.framed ? 3 : 8))
             fill: root.framed ? 1 : 0

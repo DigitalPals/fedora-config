@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Effects
-import Quickshell
 import "../Common"
 
 // T3 Code chip: the official T3 mark (pingdotgg/t3code, MIT), a live dot while
@@ -69,21 +68,17 @@ BarChip {
             + T3Code.attentionCount + " waiting";
     }
 
-    Image {
+    BrandIcon {
         id: t3Mark
         anchors.verticalCenter: parent.verticalCenter
         // PreserveAspectFit, so the box is a bound rather than a shape: the
         // 5:3 mark draws 15x9 inside it.
         height: 9
         width: 15
-        sourceSize: Qt.size(30, 18)
-        source: Quickshell.shellDir + "/assets/t3.svg"
+        name: "t3"
         opacity: root.live ? 1 : 0.52
-        layer.enabled: true
-        layer.effect: MultiEffect {
-            colorization: 1
-            colorizationColor: Theme.barIcon
-        }
+        colorized: true
+        tint: Theme.barIcon
     }
 
     // Live work: a lit dot with its own bloom, deliberately static. A pulse

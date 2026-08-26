@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
 
 // The composer's model control: a provider rail beside one list.
@@ -23,7 +22,7 @@ Item {
     // "<instanceId>::<slug>" — the composer's joined provider/model value.
     property string value: ""
     property string label: ""
-    property string iconSource: ""
+    property string brand: ""
     property bool expanded: false
     property bool openUpward: true
     property real maxWidth: 1000
@@ -186,7 +185,7 @@ Item {
         text: root.label
         accessibleDescription: "Provider and model"
         maxWidth: root.maxWidth
-        iconSource: root.iconSource
+        brand: root.brand
         tint: T3Theme.textPrimary
         active: root.expanded
         enabled: root.enabled
@@ -311,15 +310,12 @@ Item {
                         Accessible.role: Accessible.Button
                         Accessible.name: railEntry.modelData.tooltip
 
-                        Image {
+                        BrandIcon {
                             visible: railEntry.modelData.icon !== ""
                             anchors.centerIn: parent
                             width: 19
                             height: 19
-                            sourceSize: Qt.size(38, 38)
-                            fillMode: Image.PreserveAspectFit
-                            source: visible ? Quickshell.shellDir + "/assets/"
-                                + railEntry.modelData.icon + ".svg" : ""
+                            name: railEntry.modelData.icon
                         }
 
                         // A driver this shell has no brand mark for still
@@ -588,7 +584,7 @@ Item {
                                     : T3Theme.textSecondary
                             }
 
-                            Image {
+                            BrandIcon {
                                 id: rowMark
                                 visible: !pickerRow.isLegacyHeader
                                     && String(pickerRow.modelData.icon ?? "") !== ""
@@ -598,10 +594,7 @@ Item {
                                 anchors.bottomMargin: 7
                                 width: 12
                                 height: 12
-                                sourceSize: Qt.size(24, 24)
-                                fillMode: Image.PreserveAspectFit
-                                source: visible ? Quickshell.shellDir + "/assets/"
-                                    + pickerRow.modelData.icon + ".svg" : ""
+                                name: String(pickerRow.modelData.icon ?? "")
                             }
 
                             Text {

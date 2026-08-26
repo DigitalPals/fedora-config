@@ -103,12 +103,10 @@ SettingsPage {
                                 border.width: 1
                                 border.color: Theme.hairlineSoft
 
-                                Image {
+                                BrandIcon {
                                     anchors.centerIn: parent
                                     width: 19; height: 19
-                                    source: "../assets/whatsapp.svg"
-                                    sourceSize: Qt.size(19, 19)
-                                    asynchronous: true
+                                    name: "whatsapp"
                                 }
                             }
                             Column {

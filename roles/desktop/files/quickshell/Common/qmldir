@@ -39,6 +39,7 @@ singleton EthernetState EthernetState.qml
 singleton BluetoothState BluetoothState.qml
 singleton Battery Battery.qml
 singleton BatteryHealth BatteryHealth.qml
+singleton BrandIcons BrandIcons.qml
 singleton Media Media.qml
 singleton Tailscale Tailscale.qml
 singleton Updates Updates.qml
@@ -54,6 +55,7 @@ Claim Claim.qml
 AnimatedText AnimatedText.qml
 HSlider HSlider.qml
 Sym Sym.qml
+BrandIcon BrandIcon.qml
 NotifActions NotifActions.qml
 NotifCard NotifCard.qml
 NotifIcon NotifIcon.qml

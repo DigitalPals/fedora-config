@@ -30,8 +30,9 @@ test("T3 adapts the shell palette through one product-theme boundary", () => {
         "T3 must not retain a competing hard-coded blue accent");
     assert.match(popover, /surfaceColor:\s*T3Theme\.canvas/);
     assert.match(popover, /readonly property int pageMaxWidth:\s*page === "inbox" \? 460 : 520/);
-    assert.match(popover, /T3Theme\.dark[\s\S]*?"t3-dark\.svg"/,
-        "the wordmark needs a dark asset on the light T3 canvas");
+    assert.match(popover,
+        /BrandIcon\s*\{[\s\S]{0,220}?name:\s*"t3"[\s\S]{0,220}?colorized:\s*true[\s\S]{0,220}?T3Theme\.textPrimary\s*:\s*T3Theme\.textFaint/,
+        "the one wordmark asset must follow the connected canvas tone");
     assert.match(panel, /property color surfaceColor:\s*Theme\.panelSurface/);
     assert.match(host, /host\.activePanel\.surfaceColor/);
 });
@@ -76,7 +77,7 @@ test("thread header identifies the project and provider without repeating the mo
     assert.ok(metadata, "expected the thread metadata row");
     assert.match(metadata[1], /name:\s*"folder"/);
     assert.match(metadata[1], /T3Code\.threadProviderIcon\(root\.threadId\)/);
-    assert.match(metadata[1], /threadMetadata\.providerGlyph \+ "\.svg"/);
+    assert.match(metadata[1], /BrandIcon\s*\{[\s\S]*?name:\s*threadMetadata\.providerGlyph/);
     assert.doesNotMatch(metadata[1], /threadSelectionLabel|modelSelection/,
         "the compact header must not repeat the selected model");
 });

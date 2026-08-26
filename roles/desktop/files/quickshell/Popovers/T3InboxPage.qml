@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
 
 Column {
@@ -232,13 +231,10 @@ Column {
                 width: 16
                 height: width
 
-                Image {
+                BrandIcon {
                     visible: entry.glyph !== ""
                     anchors.fill: parent
-                    sourceSize: Qt.size(36, 36)
-                    fillMode: Image.PreserveAspectFit
-                    source: entry.glyph !== ""
-                        ? Quickshell.shellDir + "/assets/" + entry.glyph + ".svg" : ""
+                    name: entry.glyph
                     opacity: entry.subdued ? 0.58 : 0.92
                 }
 

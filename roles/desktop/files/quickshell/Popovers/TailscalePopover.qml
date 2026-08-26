@@ -86,12 +86,11 @@ Surface {
                 width: 18
                 height: 18
 
-                Image {
+                BrandIcon {
                     anchors.centerIn: parent
                     width: 13
                     height: 13
-                    sourceSize: Qt.size(26, 26)
-                    source: Quickshell.shellDir + "/assets/tailscale.svg"
+                    name: "tailscale"
                 }
             }
 

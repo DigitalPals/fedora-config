@@ -260,6 +260,17 @@
     - Settings/SettingsSlider.qml
     - Bar/RecordingChip.qml
     - PowerMenu.qml
+    # BrandIcon now applies tint/opacity to one canonical SVG per brand.
+    - assets/claude-dim.svg
+    - assets/claude-white.svg
+    - assets/kimi-dim.svg
+    - assets/kimi-white.svg
+    - assets/openai-dim.svg
+    - assets/openai-white.svg
+    - assets/t3-dark.svg
+    - assets/t3-dim.svg
+    - assets/t3-light-dim.svg
+    - assets/tailscale-dim.svg
   tags: [quickshell]
 
 - name: Configure portal preference without patching Fedora files

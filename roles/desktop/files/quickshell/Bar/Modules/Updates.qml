@@ -29,7 +29,7 @@ BarModule {
         glyphSize: Theme.barIconSize - 1
         glyphWeight: 600
         glyphFill: chip.alert ? 1 : 0
-        // Pinned: the glyph, the ✓ and the progress ring trade places here,
+        // Pinned: the glyph, its completed state and the progress ring trade places here,
         // and the right cluster is right-anchored, so a wobbling column would
         // slide every module beside it.
         glyphWidth: Theme.barIconSize

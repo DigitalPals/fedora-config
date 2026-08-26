@@ -116,6 +116,10 @@ Singleton {
             body: source.body,
             hints: hints
         });
+        const requestedBrand = BrandIcons.has(source.brandIcon)
+            ? BrandIcons.key(source.brandIcon) : "";
+        const derivedBrand = BrandIcons.has(presentation.brandIcon)
+            ? BrandIcons.key(presentation.brandIcon) : "";
         const entry = {
             key: notif ? `${notif.id}-${arrived}` : `shell-${++localSerial}-${arrived}`,
             notif: notif ?? null,
@@ -132,8 +136,7 @@ Singleton {
             displaySummary: presentation.displaySummary,
             displayBody: presentation.displayBody,
             webOrigin: presentation.webOrigin,
-            brandIcon: presentation.brandIcon === "whatsapp"
-                ? Quickshell.shellDir + "/assets/whatsapp.svg" : "",
+            brandIcon: requestedBrand !== "" ? requestedBrand : derivedBrand,
             urgency: source.urgency ?? NotificationUrgency.Normal,
             expireTimeout: source.expireTimeout ?? -1,
             actions: notif ? notif.actions : []
@@ -166,6 +169,7 @@ Singleton {
             appName: options.appName || "Shell",
             appIcon: options.appIcon ?? "",
             desktopEntry: options.desktopEntry ?? "",
+            brandIcon: options.brandIcon ?? "",
             image: options.image ?? "",
             summary: options.summary ?? "",
             body: options.body ?? "",
@@ -243,15 +247,14 @@ Singleton {
         return themed !== "" ? themed : "";
     }
 
-    // Image source for an entry's icon slot. Every step falls through when
-    // it cannot produce something loadable. Once a browser notification has
-    // a web origin, its browser logo is deliberately excluded: a known brand
-    // wins, followed by the site's supplied image and the web glyph fallback.
-    // Native applications use app icon, desktop entry, attached image, glyph.
+    // Image source for the non-brand half of an entry's icon slot; NotifIcon
+    // renders an approved brand name through BrandIcon before calling here.
+    // Every step falls through when it cannot produce something loadable.
+    // Browser notifications exclude the browser logo once an origin is known,
+    // then use the site's image or the web glyph fallback. Native applications
+    // use app icon, desktop entry, attached image, then their glyph fallback.
     function iconSource(entry) {
-        let source = resolvedIcon(entry.brandIcon || "");
-        if (source !== "")
-            return source;
+        let source = "";
         if (entry.webOrigin) {
             source = resolvedIcon(entry.image || "");
             return source;

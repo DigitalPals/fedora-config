@@ -322,7 +322,9 @@ glass and detached panels. What that added, and what it needs:
 
 - **Pinned shell fonts.** `JetBrains Mono` is the default UI face;
   `Google Sans Flex`, `Urbanist`, `OPPO Sans 4.0`, and `IBM Plex Sans` remain
-  optional menu faces, and `Material Symbols Rounded` is every icon. The apps
+  optional menu faces, and `Material Symbols Rounded` supplies every generic
+  interface glyph. Audited product marks go through `Common/BrandIcon.qml`,
+  while application identities come from the desktop icon theme. The apps
   role installs the packaged faces and the remaining fonts come from
   `inventory/group_vars/all.yml`. **Qt reads the font database once at
   startup**, so a freshly installed face needs
