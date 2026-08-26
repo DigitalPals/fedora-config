@@ -1,119 +1,301 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-// Still needed for the PowerProfile/PowerProfiles controls below;
-// the battery reading itself comes from Common/Battery.qml.
+import Quickshell.Io
 import Quickshell.Services.UPower
 import "../Common"
-import "../Common/Format.js" as Format
+import "../Common/BatteryViewHelpers.js" as BatteryView
 
+// The dedicated battery view follows one stable hierarchy: level and state,
+// a blocked charge meter, aggregate telemetry, then the profile radio.
+// The bar module and Control Panel intentionally keep their own compact forms.
 Surface {
     id: root
 
-    function fmtDuration(secs) {
-        if (!secs || secs <= 0)
-            return "";
-        const h = Math.floor(secs / Format.HOUR);
-        const m = Math.round((secs % Format.HOUR) / Format.MINUTE);
-        return h > 0 ? `${h} h ${Format.pad2(m)} min` : `${m} min`;
+    readonly property var displayDevice: UPower.displayDevice
+    readonly property int level: Math.round(Battery.percent)
+    readonly property real chargeFraction: Math.max(0,
+        Math.min(1, Battery.percent / 100))
+    readonly property bool discharging: Battery.state === "discharging"
+    readonly property bool critical: discharging
+        && Battery.percent <= Settings.modOpts.batt.critAt
+    readonly property bool warning: discharging && !critical
+        && Battery.percent <= Settings.modOpts.batt.warnAt
+    readonly property color batteryTone: critical ? Theme.red
+        : warning ? Theme.amber : Theme.accent
+    readonly property string statusText: Battery.full ? "Fully charged"
+        : Battery.charging ? "Charging" : "On battery"
+    readonly property string batteryGlyph: critical ? "battery_alert"
+        : level >= 95 ? "battery_full"
+        : level >= 80 ? "battery_6_bar"
+        : level >= 65 ? "battery_5_bar"
+        : level >= 50 ? "battery_4_bar"
+        : level >= 35 ? "battery_3_bar"
+        : level >= 20 ? "battery_2_bar" : "battery_1_bar"
+    readonly property string estimateLabel: Battery.charging || Battery.full
+        ? "Time to full" : "Time remaining"
+    readonly property real estimateSeconds: !displayDevice ? 0
+        : Battery.charging ? displayDevice.timeToFull
+        : discharging ? displayDevice.timeToEmpty : 0
+    readonly property string rateLabel: discharging ? "Discharge rate" : "Charge rate"
+    readonly property int availableProfileCount:
+        PowerProfiles.hasPerformanceProfile ? 3 : 2
+    readonly property bool knownProfile:
+        PowerProfiles.profile === PowerProfile.PowerSaver
+        || PowerProfiles.profile === PowerProfile.Balanced
+        || (PowerProfiles.hasPerformanceProfile
+            && PowerProfiles.profile === PowerProfile.Performance)
+
+    property string cycleCountText: BatteryView.MISSING
+
+    function pickProfile(index) {
+        const segment = profileRepeater.itemAt(index);
+        if (!segment || !segment.visible)
+            return;
+        PowerProfiles.profile = segment.modelData.profile;
+        segment.forceActiveFocus();
     }
 
-    // Percentage + state
-    Row {
-        width: parent.width
-        leftPadding: 10
-        topPadding: 10
-        bottomPadding: 6
-        spacing: 12
+    component TelemetryPair: Item {
+        id: pair
 
-        // Not a Row. A Row takes its height from the children it lays out, and
-        // the reading was baseline-anchored to the small "%" beside it, which
-        // gives the big text a negative y: the Row measured the 14px unit, the
-        // 28px numerals overhung it by an ascender, and the reading sat above
-        // its own top padding. Size to the numerals and hang the unit off
-        // *their* baseline, so the ink stays inside the box.
-        Item {
+        property string label: ""
+        property string value: BatteryView.MISSING
+
+        width: parent ? parent.width : 0
+        height: Theme.panelRowHeight
+
+        Text {
+            anchors.left: parent.left
+            anchors.right: pairValue.left
+            anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
-            width: reading.implicitWidth + 1 + percent.implicitWidth
-            height: reading.implicitHeight
+            text: pair.label
+            elide: Text.ElideRight
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontMicro
+            font.weight: Theme.weightMedium
+            color: Theme.textLow
+        }
 
-            Text {
-                id: reading
-                anchors.left: parent.left
-                anchors.top: parent.top
-                text: Math.round(Battery.percent)
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.fontDisplay
-                font.weight: Theme.weightSemibold
-                color: Theme.textHi
-            }
+        Text {
+            id: pairValue
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            text: pair.value
+            font.family: Theme.fontMono
+            font.pixelSize: Theme.fontTiny
+            font.weight: Theme.weightSemibold
+            font.features: Theme.tabularNumberFeatures
+            color: Theme.textHi
+        }
+    }
 
-            Text {
-                id: percent
-                anchors.left: reading.right
-                anchors.leftMargin: 1
-                anchors.baseline: reading.baseline
-                text: "%"
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.fontBody
-                color: Theme.textLow
+    // cycle_count is not exposed by UPower. Read each physical pack once when
+    // this view is instantiated; the explicit C-locale sort fixes BAT order.
+    Process {
+        id: cycleCountProcess
+
+        command: ["sh", "-c",
+            "printf '%s\\n' /sys/class/power_supply/BAT*/cycle_count | LC_ALL=C sort | while IFS= read -r file; do [ -e \"$file\" ] || continue; value=; IFS= read -r value < \"$file\"; printf '%s\\n' \"$value\"; done"]
+        running: true
+
+        stdout: StdioCollector {
+            onStreamFinished: root.cycleCountText = BatteryView.parseCycleCounts(text)
+        }
+    }
+
+    // Hero: a level-aware mark, fixed state language, and the primary reading.
+    Item {
+        id: hero
+
+        width: parent.width
+        height: 68
+
+        Item {
+            id: heroGlyphBox
+
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: 62
+            height: 62
+
+            Sym {
+                id: heroGlyph
+
+                anchors.centerIn: parent
+                name: root.batteryGlyph
+                size: Theme.fontHero + 12
+                fill: 1
+                rotation: 90
+                color: root.batteryTone
+
+                Behavior on color {
+                    ColorAnimation { duration: Theme.chipFadeDuration }
+                }
             }
         }
 
         Column {
+            id: heroLabels
+
+            anchors.left: heroGlyphBox.right
+            anchors.leftMargin: 12
+            anchors.right: heroPercentage.left
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
+            spacing: 3
+
+            Text {
+                width: parent.width
+                text: "Battery"
+                elide: Text.ElideRight
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontHeading
+                font.weight: Theme.weightSemibold
+                color: Theme.textHi
+            }
 
             Row {
-                spacing: 6
+                spacing: 5
 
                 Sym {
                     visible: Battery.charging
                     anchors.verticalCenter: parent.verticalCenter
                     name: "bolt"
-                    size: Theme.fontSecondary
+                    size: Theme.iconSmall
+                    fill: 1
                     color: Theme.accent
                 }
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: Battery.full ? "Fully charged" : Battery.charging ? "Charging" : "On battery"
+                    text: root.statusText
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.fontTiny
                     font.weight: Theme.weightMedium
-                    color: Theme.textMid
+                    color: root.critical || root.warning
+                        ? root.batteryTone : Theme.textLow
                 }
+            }
+        }
+
+        Item {
+            id: heroPercentage
+
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            width: heroNumber.implicitWidth + heroUnit.implicitWidth + 1
+            height: heroNumber.implicitHeight
+
+            Text {
+                id: heroNumber
+
+                anchors.left: parent.left
+                anchors.top: parent.top
+                text: root.level
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontHero
+                font.weight: Theme.weightBold
+                font.features: Theme.tabularNumberFeatures
+                color: root.critical || root.warning
+                    ? root.batteryTone : Theme.textHi
             }
 
             Text {
-                visible: text !== ""
-                text: {
-                    if (!Battery.device)
-                        return "";
-                    if (Battery.charging && Battery.device.timeToFull > 0)
-                        return root.fmtDuration(Battery.device.timeToFull) + " until full";
-                    if (!Battery.charging && !Battery.full && Battery.device.timeToEmpty > 0)
-                        return root.fmtDuration(Battery.device.timeToEmpty) + " remaining";
-                    return "";
-                }
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
-                color: Theme.textLow
+                id: heroUnit
+
+                anchors.left: heroNumber.right
+                anchors.leftMargin: 1
+                anchors.baseline: heroNumber.baseline
+                text: "%"
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontBody
+                font.weight: Theme.weightMedium
+                color: root.critical || root.warning
+                    ? root.batteryTone : Theme.textLow
             }
         }
     }
 
-    // Charge bar
-    Item {
-        width: parent.width
-        height: Theme.controlHeight
+    // Match the model-usage meter. Only a discharging battery enters warning
+    // colours; active charging adds a low-amplitude pulse over the accent.
+    BlockMeter {
+        id: chargeMeter
 
-        BlockMeter {
-            x: 12
-            width: parent.width - 24
-            anchors.verticalCenter: parent.verticalCenter
-            height: 10
-            value: Battery.percent / 100
-            fillColor: Battery.percent <= 10 && !Battery.charging ? Theme.red : Battery.percent <= 20 && !Battery.charging ? Theme.amber : Theme.accent
+        width: parent.width
+        height: 10
+        value: root.chargeFraction
+        fillColor: root.batteryTone
+
+        Behavior on value {
+            NumberAnimation {
+                duration: 320
+                easing.type: Easing.OutCubic
+            }
+        }
+
+        Behavior on fillColor {
+            ColorAnimation { duration: Theme.chipFadeDuration }
+        }
+
+        SequentialAnimation on opacity {
+            running: Battery.charging
+            loops: Animation.Infinite
+            NumberAnimation {
+                from: 1
+                to: 0.72
+                duration: 900
+                easing.type: Easing.InOutSine
+            }
+            NumberAnimation {
+                from: 0.72
+                to: 1
+                duration: 900
+                easing.type: Easing.InOutSine
+            }
+        }
+    }
+
+    SectionLabel {
+        text: "BATTERY TELEMETRY"
+    }
+
+    Row {
+        id: telemetryGrid
+
+        width: parent.width
+        spacing: 24
+
+        Column {
+            width: (telemetryGrid.width - telemetryGrid.spacing) / 2
+            spacing: Theme.panelRowSpacing
+
+            TelemetryPair {
+                label: "Capacity"
+                value: BatteryView.formatWh(root.displayDevice
+                    ? root.displayDevice.energyCapacity : undefined)
+            }
+
+            TelemetryPair {
+                label: "Cycles"
+                value: root.cycleCountText
+            }
+        }
+
+        Column {
+            width: (telemetryGrid.width - telemetryGrid.spacing) / 2
+            spacing: Theme.panelRowSpacing
+
+            TelemetryPair {
+                label: root.estimateLabel
+                value: BatteryView.formatDuration(root.estimateSeconds)
+            }
+
+            TelemetryPair {
+                label: root.rateLabel
+                value: BatteryView.formatW(root.displayDevice
+                    ? root.displayDevice.changeRate : undefined)
+            }
         }
     }
 
@@ -121,48 +303,139 @@ Surface {
         text: "POWER PROFILE"
     }
 
-    Row {
+    // A single segmented radio. Saver and Balanced retain their existing
+    // availability; Performance joins them only when the service exposes it.
+    Rectangle {
+        id: profileTrack
+
         width: parent.width
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 2
-        bottomPadding: 10
-        spacing: 4
+        height: Theme.controlHeight
+        radius: Theme.chipRadius
+        color: Theme.chip
 
-        Repeater {
-            model: [
-                { label: "Saver", profile: PowerProfile.PowerSaver, available: true },
-                { label: "Balanced", profile: PowerProfile.Balanced, available: true },
-                { label: "Performance", profile: PowerProfile.Performance, available: PowerProfiles.hasPerformanceProfile }
-            ]
+        Row {
+            id: profileRow
 
-            delegate: Rectangle {
-                required property var modelData
-                readonly property bool current: PowerProfiles.profile === modelData.profile
+            anchors.fill: parent
+            anchors.margins: 3
+            spacing: 4
 
-                visible: modelData.available
-                width: (root.width - 16 - 20 - 8) / 3
-                height: Theme.controlHeight
-                radius: Theme.chipRadius
-                color: current ? Theme.chipHover
-                    : profMouse.containsMouse ? Theme.chip : "transparent"
+            Repeater {
+                id: profileRepeater
 
-                Text {
-                    anchors.centerIn: parent
-                    text: parent.modelData.label
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    font.weight: parent.current ? Theme.weightSemibold : Theme.weightMedium
-                    color: parent.current ? Theme.textHi
-                        : profMouse.containsMouse ? Theme.textHi : Theme.textLow
-                }
+                model: [
+                    { label: "Saver", glyph: "eco", profile: PowerProfile.PowerSaver,
+                        available: true },
+                    { label: "Balanced", glyph: "balance", profile: PowerProfile.Balanced,
+                        available: true },
+                    { label: "Performance", glyph: "speed", profile: PowerProfile.Performance,
+                        available: PowerProfiles.hasPerformanceProfile }
+                ]
 
-                MouseArea {
-                    id: profMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: PowerProfiles.profile = parent.modelData.profile
+                delegate: Rectangle {
+                    id: profileSegment
+
+                    required property var modelData
+                    required property int index
+                    readonly property bool current:
+                        PowerProfiles.profile === modelData.profile
+
+                    visible: modelData.available
+                    width: (profileRow.width
+                        - profileRow.spacing * (root.availableProfileCount - 1))
+                        / root.availableProfileCount
+                    height: profileRow.height
+                    radius: Theme.chipRadius - 2
+                    color: current ? Theme.chipHover
+                        : profileMouse.containsMouse ? Theme.tile : "transparent"
+                    border.width: activeFocus || current ? 1 : 0
+                    border.color: activeFocus ? Theme.accent : Theme.stroke
+                    activeFocusOnTab: visible && (current
+                        || (!root.knownProfile && index === 0))
+
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: modelData.label + " power profile"
+                    Accessible.checked: current
+                    Accessible.onPressAction: {
+                        profileState.pulseCenter();
+                        root.pickProfile(index);
+                    }
+
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.chipFadeDuration }
+                    }
+
+                    Keys.onPressed: event => {
+                        let next = -1;
+                        if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
+                            next = Math.max(0, index - 1);
+                        else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
+                            next = Math.min(root.availableProfileCount - 1, index + 1);
+                        else if (event.key === Qt.Key_Home)
+                            next = 0;
+                        else if (event.key === Qt.Key_End)
+                            next = root.availableProfileCount - 1;
+                        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space) {
+                            profileState.pulseCenter();
+                            PowerProfiles.profile = modelData.profile;
+                            event.accepted = true;
+                            return;
+                        }
+                        if (next >= 0) {
+                            root.pickProfile(next);
+                            event.accepted = true;
+                        }
+                    }
+
+                    StateLayer {
+                        id: profileState
+
+                        anchors.fill: parent
+                        radius: parent.radius
+                        hovered: profileMouse.containsMouse
+                        pressed: profileMouse.pressed
+                        focused: profileSegment.activeFocus
+                        tint: profileSegment.current ? Theme.accent : Theme.textHi
+                        pressPoint: Qt.point(profileMouse.mouseX, profileMouse.mouseY)
+                    }
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Sym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: profileSegment.modelData.glyph
+                            size: Theme.iconMedium
+                            fill: profileSegment.current ? 1 : 0
+                            color: profileSegment.current
+                                ? Theme.textHi : Theme.textLow
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: profileSegment.modelData.label
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontTiny
+                            font.weight: profileSegment.current
+                                ? Theme.weightSemibold : Theme.weightMedium
+                            color: profileSegment.current
+                                ? Theme.textHi : Theme.textLow
+                        }
+                    }
+
+                    MouseArea {
+                        id: profileMouse
+
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            profileState.pulseAt(mouseX, mouseY);
+                            root.pickProfile(profileSegment.index);
+                        }
+                    }
                 }
             }
         }
