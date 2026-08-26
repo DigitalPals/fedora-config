@@ -242,6 +242,7 @@ PanelWindow {
                 iconExtent: 34
                 iconSize: 24
                 framedIcon: true
+                expandTextOnHover: true
 
                 width: parent.width
                 height: contentHeight

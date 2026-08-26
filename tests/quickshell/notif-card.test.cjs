@@ -122,6 +122,26 @@ test("toast geometry and list motion stay compact and edge-aware", () => {
         "the final toast's exit must finish before the layer is unmapped");
 });
 
+test("hover reveals a toast's full text without reflowing notification history", () => {
+    const card = read(CARD);
+    const toast = read("NotificationToasts.qml");
+    const centre = read(path.join("Popovers", "NotifsPopover.qml"));
+
+    assert.match(card, /property bool expandTextOnHover:\s*false/);
+    assert.match(card,
+        /readonly property bool textExpanded:\s*expandTextOnHover && hovered/);
+    assert.equal((card.match(
+        /elide:\s*card\.textExpanded \? Text\.ElideNone : Text\.ElideRight/g
+    ) || []).length, 3,
+    "the app name, summary, and body must all stop eliding while expanded");
+    assert.match(card,
+        /maximumLineCount:\s*card\.textExpanded\s*\n\s*\? 2147483647\s*:\s*Math\.max\(1, card\.style\.bodyLines\)/,
+        "the body line preference is only a collapsed-state limit");
+    assert.match(toast, /expandTextOnHover:\s*true/);
+    assert.doesNotMatch(centre, /expandTextOnHover:\s*true/,
+        "hovering through notification history should keep its layout stable");
+});
+
 function keysSuppliedSource(rel) {
     const source = read(rel);
     const start = source.indexOf("readonly property var cardStyle: ({");

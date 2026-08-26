@@ -37,6 +37,10 @@ Rectangle {
     property int iconExtent: 28
     property int iconSize: 28
     property bool framedIcon: false
+    // Toasts can trade their compact resting height for the complete text
+    // while the pointer is holding their expiry timer. Centre rows leave this
+    // off so moving through notification history does not reflow the panel.
+    property bool expandTextOnHover: false
 
     signal activated
     signal closeRequested
@@ -44,6 +48,7 @@ Rectangle {
     readonly property bool urgent: groupUrgent
         || entry.urgency === NotificationUrgency.Critical
     readonly property bool hovered: cardHover.hovered
+    readonly property bool textExpanded: expandTextOnHover && hovered
     readonly property bool actionable: groupCount > 1 || Notifs.canActivate(entry)
     // Real, not int: a card's height is text metrics plus padding and lands
     // on fractions, and truncating it costs a pixel that then shifts every
@@ -108,7 +113,8 @@ Rectangle {
                         ? Theme.weightMedium : Theme.weightSemibold
                     color: card.style.stackedHeader && card.showApp
                         ? Theme.textMid : Theme.textHi
-                    elide: Text.ElideRight
+                    wrapMode: card.textExpanded ? Text.Wrap : Text.NoWrap
+                    elide: card.textExpanded ? Text.ElideNone : Text.ElideRight
                 }
 
                 Item {
@@ -215,7 +221,8 @@ Rectangle {
                 font.pixelSize: card.style.header
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
-                elide: Text.ElideRight
+                wrapMode: card.textExpanded ? Text.Wrap : Text.NoWrap
+                elide: card.textExpanded ? Text.ElideNone : Text.ElideRight
             }
 
             Text {
@@ -226,8 +233,9 @@ Rectangle {
                 font.pixelSize: card.style.body
                 color: card.urgent ? Theme.textHi : card.style.bodyColor
                 wrapMode: Text.Wrap
-                maximumLineCount: Math.max(1, card.style.bodyLines)
-                elide: Text.ElideRight
+                maximumLineCount: card.textExpanded
+                    ? 2147483647 : Math.max(1, card.style.bodyLines)
+                elide: card.textExpanded ? Text.ElideNone : Text.ElideRight
                 lineHeight: card.style.bodyLeading
             }
 
