@@ -29,8 +29,9 @@ Singleton {
     readonly property bool enabled: Networking.wifiEnabled
 
     // The other networks in range, strongest first and deduplicated by name:
-    // one SSID on several APs is one row to the user. Empty while the radio
-    // is off so a stale scan cannot outlive it.
+    // one SSID on several APs is one row to the user. There is deliberately no
+    // old seven-row cap; the Network view scrolls and groups the full scan.
+    // Empty while the radio is off so a stale scan cannot outlive it.
     readonly property var others: {
         if (!device || !enabled)
             return [];
@@ -43,8 +44,7 @@ Singleton {
                     return false;
                 seen.add(n.name);
                 return true;
-            })
-            .slice(0, 7);
+            });
     }
 
     readonly property bool scanning: device !== null && device.scannerEnabled

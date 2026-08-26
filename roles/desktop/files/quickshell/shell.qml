@@ -180,6 +180,7 @@ ShellRoot {
     }
 
     LauncherWindow {}
+    NetworkOverlayWindow {}
     NotificationToasts {}
     OsdWindow {}
     ShortcutsOverlay {}

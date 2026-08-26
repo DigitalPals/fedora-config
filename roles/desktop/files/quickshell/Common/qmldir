@@ -34,6 +34,8 @@ singleton Wallpaper Wallpaper.qml
 singleton Settings Settings.qml
 singleton Audio Audio.qml
 singleton NetworkStatus NetworkStatus.qml
+singleton NetworkDetails NetworkDetails.qml
+singleton NetworkOverlayState NetworkOverlayState.qml
 singleton WifiState WifiState.qml
 singleton EthernetState EthernetState.qml
 singleton BluetoothState BluetoothState.qml

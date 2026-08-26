@@ -66,7 +66,9 @@ test("the stable wifi popout is a scrollable Ethernet and Wi-Fi Network view", (
     assert.match(source, /Flickable\s*\{/);
     assert.match(source, /ScrollChrome\s*\{/);
     assert.match(source, /checked:\s*WifiState\.enabled/);
-    assert.match(source, /onToggled:\s*value => WifiState\.setEnabled\(value\)/);
+    assert.match(source, /onToggled:\s*value => root\.setWifiEnabled\(value\)/);
+    assert.match(source,
+        /function setWifiEnabled\(value\)[\s\S]{0,100}WifiState\.setEnabled\(value\)/);
     assert.match(source, /text:\s*"Network settings"/);
     assert.match(source, /gnome-control-center network/);
     assert.doesNotMatch(source, /gnome-control-center wifi/);

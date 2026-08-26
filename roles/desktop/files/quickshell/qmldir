@@ -7,5 +7,6 @@
 LauncherView LauncherView.qml
 LauncherWindow LauncherWindow.qml
 NotificationToasts NotificationToasts.qml
+NetworkOverlayWindow NetworkOverlayWindow.qml
 OsdWindow OsdWindow.qml
 ShortcutsOverlay ShortcutsOverlay.qml

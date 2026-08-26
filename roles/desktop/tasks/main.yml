@@ -38,11 +38,6 @@
       - brightnessctl
       - playerctl
       - socat
-      # Runtime dependencies of the Quickshell bar that were only ever
-      # installed transitively: curl fetches the weather, iw reads the Wi-Fi
-      # link rate.
-      - curl
-      - iw
       - tesseract
       - tesseract-langpack-eng
       - hunspell-nl
@@ -57,6 +52,24 @@
       - qt6-qtdeclarative-devel
     state: present
   when: not ansible_check_mode
+
+- name: Install Quickshell runtime helpers
+  ansible.builtin.dnf:
+    # The Network panel keeps system reads and bounded mutations in local
+    # Python helpers. List every command they invoke instead of relying on a
+    # workstation package group to pull it in transitively. curl and iw are
+    # also shared by weather and link telemetry.
+    name:
+      - NetworkManager
+      - python3
+      - curl
+      - iw
+      - qrencode
+      - iproute
+      - iputils
+    state: present
+  when: not ansible_check_mode
+  tags: [quickshell]
 
 - name: Install Fedora fuzzel and matugen rather than COPR variants
   ansible.builtin.dnf:
