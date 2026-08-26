@@ -96,7 +96,7 @@ SettingsPage {
                 width: parent.width
                 leftPadding: page.width < Theme.settingsNarrowWidth
                     ? 0 : Theme.settingsLabelWidth + 10
-                text: "Tint applies while Night light is on in Control Center — "
+                text: "Tint applies while Night light is on in Control Panel — "
                     + (SysInfo.nightLight ? "currently on" : "currently off")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption

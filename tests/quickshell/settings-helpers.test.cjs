@@ -604,7 +604,7 @@ test("schema-11 inserts notifications before the first right-side status widget"
          "usage", "vol", "bt", "batt"]);
 });
 
-test("schema-11 appends notifications on the right when its status group moved", () => {
+test("schema-11 appends notifications on the right when its status widgets moved", () => {
     const raw = H.defaultMods();
     raw.right = raw.right.filter(mod => mod.id !== "notifications");
     const statusIds = ["vol", "wifi", "bt", "batt"];

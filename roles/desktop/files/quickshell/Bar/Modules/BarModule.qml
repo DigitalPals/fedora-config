@@ -22,15 +22,12 @@ Row {
     // between columns, so this is not the panel's default island.
     property string isle: "right"
 
-    // The shared pill this module was placed inside, or null when it draws
-    // its own. A module that owns a panel hangs it under this rather than
-    // under its own glyph, so the panel lines up with the shape that was
-    // clicked.
+    // Optional composite context. Current configurable widgets draw their own
+    // targets, but keeping the typed contract lets a deliberate future
+    // composite redirect a panel anchor without duck typing.
     property Item groupAnchor: null
 
-    // False when the group around this module owns the pointer: the status
-    // pill is a single button, so the modules inside it must not put a second
-    // target on top of one.
+    // False only when an outer composite deliberately owns the pointer.
     property bool interactive: true
     // A neighbouring trigger's hover state. Indicators uses the clock's state
     // for progressive disclosure without making the clock own its panel.

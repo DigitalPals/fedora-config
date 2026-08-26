@@ -80,13 +80,16 @@ ShellRoot {
         }
     }
 
-    // The two shell-wide overlays, so the compositor can bind them directly
-    // rather than the shell having to own a keybind.
+    // Shell-wide session routes. The compatibility `power` call now targets
+    // the focused output's Control Panel; direct actions keep their names.
     IpcHandler {
         target: "session"
 
         function power(): void {
-            Session.toggleMenu();
+            Session.closeKeys();
+            Launcher.close();
+            Popouts.toggle("control", undefined, undefined,
+                Screens.focused ? Screens.focused.name : "");
         }
 
         function keys(): void {
@@ -99,6 +102,8 @@ ShellRoot {
 
         function close(): void {
             Session.closeAll();
+            if (Popouts.open && Popouts.currentName === "control")
+                Popouts.close();
         }
     }
 
@@ -177,7 +182,6 @@ ShellRoot {
     LauncherWindow {}
     NotificationToasts {}
     OsdWindow {}
-    PowerMenu {}
     ShortcutsOverlay {}
 
     // Reading a singleton's property is what constructs it. Notifications

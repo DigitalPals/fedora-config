@@ -69,7 +69,8 @@ test("clock and weather own their targets without covering indicator actions", (
     const weather = read("Bar/Modules/Weather.qml");
     assert.match(clock, /BarChip\s*\{[\s\S]*?panelName:\s*"calendar"/);
     assert.match(weather, /BarChip\s*\{[\s\S]*?panelName:\s*"weather"/);
-    assert.match(cluster, /ownsPointer:\s*kind === "status"/);
+    assert.doesNotMatch(cluster, /ownsPointer|groupPanels|groupMouse/,
+        "layout groups must not cover independently interactive widgets");
     assert.doesNotMatch(cluster, /center:\s*"notifications"/);
     assert.match(indicators, /acceptedButtons:\s*Qt\.LeftButton \| Qt\.MiddleButton/);
 });
@@ -120,7 +121,7 @@ test("all shared toggles use one persisted write path", () => {
     assert.match(control, /onToggled:\s*SysInfo\.toggleIdleInhibited\(\)/);
 });
 
-test("large Control Center states use subdued accent containers", () => {
+test("large Control Panel states use subdued accent containers", () => {
     const theme = read("Common/Theme.qml");
     const control = read("Popovers/ControlCenterPopover.qml");
     const slider = read("Popovers/FillSlider.qml");

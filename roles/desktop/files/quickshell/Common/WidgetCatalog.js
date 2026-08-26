@@ -27,8 +27,8 @@ var WIDGETS = {
     updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true },
     tray: { name: "System tray", short: "Tray", tag: "when populated" },
     notifications: { name: "Notifications", short: "Notifs", detail: true },
-    vol: { name: "Volume", short: "Vol", tag: "status pill", detail: true },
-    wifi: { name: "Network", short: "Network", tag: "status pill" },
+    vol: { name: "Volume", short: "Vol", detail: true },
+    wifi: { name: "Network", short: "Network" },
     bt: { name: "Bluetooth", short: "BT", tag: "when connected" },
     batt: { name: "Battery", short: "Batt", tag: "on laptops", detail: true }
 };

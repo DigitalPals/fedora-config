@@ -4,8 +4,7 @@ import "Modules"
 
 // One configured module in the bar: loads the module's component when the
 // module is enabled and its auto-rule allows it, and hands it the context it
-// needs to draw itself — which column it landed in, and, for a module inside
-// a shared pill, which item the popout should hang under.
+// needs to draw itself — including which column it landed in.
 //
 // Lived inside Bar.qml as an inline component until the bar started grouping
 // modules into pills; Cluster needs the type by name, and an inline component
@@ -17,12 +16,10 @@ Loader {
     required property int index
     required property Bar host
     property string col: "left"
-    // The pill a grouped module sits inside, so its popout hangs under the
-    // shape the pointer actually clicked rather than under the glyph.
+    // Optional composite context retained for modules whose content can be
+    // embedded in another target. Current configurable widgets are interactive
+    // themselves, so Cluster leaves these defaults alone.
     property Item groupAnchor: null
-    // Whether this module draws its own pointer target. Modules inside the
-    // status pill are pure content: the pill owns the click, so a second
-    // target inside it would swallow it.
     property bool interactive: true
     // Trigger hover handed to progressive-disclosure content. The clock uses
     // this to reveal its adjacent Indicators module without sharing a target.

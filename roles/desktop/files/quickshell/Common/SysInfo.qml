@@ -265,7 +265,7 @@ Singleton {
         watchers = Math.max(0, watchers - 1);
     }
 
-    // CPU / RAM sampling for the Control Center stat cards. Idle wakeups
+    // CPU / RAM sampling for the Control Panel stat cards. Idle wakeups
     // are not free on battery, and nothing else displays these values.
     // triggeredOnStart refreshes the cards the moment a watcher arrives.
     Timer {

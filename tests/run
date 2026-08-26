@@ -139,7 +139,7 @@ assert "- quickshell" in tasks
 assert "src: quickshell/" in tasks
 assert 'hl.dsp.global("quickshell:launcherToggle")' in bindings
 assert "noctalia" not in autostart.lower()
-assert "qs-(bar|bar-popout|launcher|notifications|osd|power|shortcuts|wallpaper)" in look
+assert "qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper)" in look
 assert "hyprland-quickshell" in finalize
 assert "noctalia-retired-" in finalize
 assert "/usr/share/wayland-sessions/hyprland-noctalia.desktop" in finalize

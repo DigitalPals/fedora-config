@@ -16,7 +16,7 @@ is manual.
       opens at 900×680 with the labeled sidebar. Below 860px available width,
       the same navigation becomes an icon rail with tooltips and 42px targets.
 - [ ] `qs ipc call settings open modules` lands on the Modules page.
-- [ ] Gear in the Control Center footer opens it (and closes the popout).
+- [ ] Gear in the Control Panel footer opens it (and closes the popout).
 - [ ] Right-click anywhere on the bar slab opens it; left-clicks on modules
       still open their popouts.
 - [ ] `Super+,` opens Settings directly without making the menubar focusable.
@@ -68,9 +68,9 @@ is manual.
 ## Appearance page
 
 - [ ] Dark / Light changes the shell palette; Glass effect switches the bar,
-      popouts, launcher, notifications, OSD, power menu, shortcuts, tooltips,
+      popouts, launcher, notifications, OSD, shortcuts, tooltips,
       and floating menus between blurred translucent and opaque surfaces.
-      Full-screen power/shortcut scrims stay translucent in both modes.
+      The full-screen shortcut scrim stays translucent in both modes.
 - [ ] Glass effect applies without closing Settings or remapping/flickering the
       bar. Toggle it twice quickly, then reload Hyprland and restart Quickshell;
       the final persisted state wins each time.
@@ -128,7 +128,7 @@ is manual.
 ## Modules page
 
 - [ ] Mini preview mirrors order and enablement (disabled = dashed chip),
-      including Idle inhibit and Control Center.
+      including all four independent status widgets.
 - [ ] The cog appears only on configurable modules (Workspaces, Media, Clock,
       Weather, T3 Code, Model usage, Volume, Battery, Notifications) and turns
       accent when that module's options or detail policy left their defaults.
@@ -158,8 +158,9 @@ is manual.
       columns; Claude, Codex, and Kimi remain grouped under Model usage.
 - [ ] Disabling T3 Code or Model usage while its popout is open closes only
       that popout; the other module still opens normally.
-- [ ] Idle inhibit and Control Center can be reordered within or across
-      columns; moving Control Center keeps its popout attached to its module.
+- [ ] Volume, Network, Bluetooth, and Battery can be reordered within or
+      across columns; each dedicated popout follows its widget. The fixed
+      Fedora Control Panel button remains at the right edge.
 - [ ] In a narrow/stacked settings panel, pointer and keyboard drops use the
       correct column-relative index, edge dragging scrolls, and focus returns
       to the dropped row.
@@ -193,6 +194,15 @@ is manual.
 
 ## Regression sweep
 
+- [ ] Volume, Network, Bluetooth, and Battery are distinct transparent-resting
+      buttons. Each opens its own Audio, Network, Bluetooth, or Battery view;
+      with one open, crossing another button switches the panel in place.
+- [ ] The rightmost Fedora logo opens the Control Panel. Its SESSION row shows
+      five equal controls in order: Lock, Suspend, Log out, Restart, and red
+      Shut down. Each closes the panel before running its established action.
+- [ ] The launcher's Power action and `qs ipc call session power` open/toggle
+      the Control Panel on the focused output; `qs ipc call session lock`
+      remains a direct lock action.
 - [ ] All popouts open/close/hover-switch as before at default settings;
       Calendar → Weather and other adjacent-module switches work without a
       second click; with Settings open, hovering a module also switches.

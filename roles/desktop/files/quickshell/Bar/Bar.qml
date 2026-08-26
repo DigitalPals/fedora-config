@@ -252,24 +252,6 @@ PanelWindow {
         return compactIds.indexOf(id) !== -1;
     }
 
-    // What the status pill says when hovered — it stands in for four modules
-    // that no longer have tooltips of their own.
-    readonly property string statusSummary: {
-        const parts = [];
-        for (const device of EthernetState.connectedDevices)
-            parts.push("Ethernet " + (device.connection || device.device));
-        if (WifiState.enabled && WifiState.connected)
-            parts.push("Wi-Fi " + WifiState.name);
-        else if (WifiState.enabled)
-            parts.push("Wi-Fi off-network");
-        if (BluetoothState.connected)
-            parts.push("Bluetooth connected");
-        parts.push("Volume " + Audio.volume + "%" + (Audio.muted ? " (muted)" : ""));
-        if (Battery.isLaptop)
-            parts.push("Battery " + Math.round(Battery.percent) + "%");
-        return parts.join(" · ");
-    }
-
     // ---- fit pass ------------------------------------------------------
     // Live ModuleSlots, keyed by module id. The clusters nest their slots
     // inside group pills, so the fit pass registers them here on the way in
@@ -350,7 +332,7 @@ PanelWindow {
         const tolerance = Theme.chipHeight / 2;
         let bestDistance = Infinity;
         for (const col of ["left", "center", "right"]) {
-            // Stay within the cluster. The launcher and power buttons share a
+            // Stay within the cluster. The launcher and Fedora buttons share a
             // Row with the left and right clusters but are the bar's own
             // furniture, not widgets — dragging off one must not pick up
             // whichever widget happens to sit next to it.
@@ -613,7 +595,7 @@ PanelWindow {
     // place. Hovering a closed bar remains inert; the focus grab closes the
     // session on the next click outside it.
     function hoverPopout(name, isle, item) {
-        if (!Popouts.open)
+        if (!Popouts.open || rearranging)
             return false;
         if (!popoutOpen(name))
             openPopout(name, isle, item);
@@ -918,8 +900,8 @@ PanelWindow {
             onImplicitWidthChanged: barWindow.scheduleFit()
         }
 
-        // RIGHT — configured modules, then power. Recording now lives beside
-        // the clock with the other active quick actions.
+        // RIGHT — configured modules, then the fixed Control Panel trigger.
+        // Recording lives beside the clock with the other active quick actions.
         Row {
             id: rightSection
             anchors.right: parent.right
@@ -935,18 +917,30 @@ PanelWindow {
                 onImplicitWidthChanged: barWindow.scheduleFit()
             }
 
-            BarIcon {
+            BarChip {
+                id: controlButton
+
                 host: barWindow
-                shape: "pill"
-                glyph: "power_settings_new"
-                glyphSize: Theme.barIconSize
-                glyphWeight: 600
+                panelName: "control"
+                isle: "right"
                 hPadding: 5
-                idleColor: Theme.barIcon
-                hoverColor: Theme.barRedText
-                tooltip: "Power"
+                tooltip: "Control Panel"
                 tooltipAlign: 1
-                onClicked: Session.openMenu(barWindow.screen)
+
+                Image {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Theme.barIconSize
+                    height: Theme.barIconSize
+                    sourceSize: Qt.size(32, 32)
+                    source: Quickshell.iconPath("fedora-logo-icon", true)
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    layer.enabled: true
+                    layer.effect: MultiEffect {
+                        colorization: 1
+                        colorizationColor: Theme.barTextHi
+                    }
+                }
             }
         }
     }

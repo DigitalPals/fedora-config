@@ -84,13 +84,13 @@ test("Ethernet loading, absence and read failures are separate UI states", () =>
 
 test("the combined menubar indicator gives wired transport priority", () => {
     const module = read("Bar/Modules/Wifi.qml");
-    const bar = read("Bar/Bar.qml");
     assert.match(module, /moduleId:\s*"wifi"/);
+    assert.match(module, /panelName:\s*"wifi"/);
     assert.match(module, /EthernetState\.connected \? "lan"/);
     assert.match(module, /EthernetState\.connected \|\| WifiState\.connected/);
-    assert.match(bar, /for \(const device of EthernetState\.connectedDevices\)/);
-    assert.match(bar, /"Ethernet " \+ \(device\.connection \|\| device\.device\)/);
-    assert.match(bar, /"Wi-Fi " \+ WifiState\.name/);
+    assert.match(module, /for \(const device of EthernetState\.connectedDevices\)/);
+    assert.match(module, /"Ethernet " \+ \(device\.connection \|\| device\.device\)/);
+    assert.match(module, /"Wi-Fi " \+ WifiState\.name/);
 });
 
 test("wired monitoring is ref-counted by each visible Network consumer", () => {

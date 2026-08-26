@@ -20,18 +20,12 @@ function barSources() {
                 .map(f => fs.readFileSync(path.join(dir, f), "utf8"))].join("\n");
 }
 
-// Every panel name the bar claims: a module's own `panelName: "x"`, plus the
-// Control Center opened by the status-group pill, which is furniture rather
-// than a module.
+// Every panel name the bar claims, whether from a configurable module or from
+// fixed bar furniture such as the Fedora Control Panel button.
 function claimedPanels() {
     const bar = barSources();
-    const groupMap = read("Bar/Cluster.qml")
-        .match(/groupPanels:\s*\(\{([\s\S]*?)\}\)/)?.[1] ?? "";
-    assert.ok(groupMap.trim() !== "", "Cluster.qml no longer maps groups to panels");
-    return new Set([
-        ...[...bar.matchAll(/panelName:\s*"([a-z0-9]+)"/g)].map(m => m[1]),
-        ...[...groupMap.matchAll(/"([a-z0-9]+)"/g)].map(m => m[1])
-    ]);
+    return new Set([...bar.matchAll(/panelName:\s*"([a-z0-9]+)"/g)]
+        .map(match => match[1]));
 }
 
 // The whole point of the registry: these assertions are what used to be a
@@ -129,16 +123,30 @@ test("calendar, weather, and notifications each have one widget and one view", (
     assert.doesNotMatch(read("Popovers/qmldir"), /NotifCenterPopover/);
 });
 
+test("the four status widgets each own exactly one dedicated view", () => {
+    const expected = {
+        vol: ["audio", "Bar/Modules/Volume.qml", "Popovers/AudioPopover.qml"],
+        wifi: ["wifi", "Bar/Modules/Wifi.qml", "Popovers/WifiPopover.qml"],
+        bt: ["bluetooth", "Bar/Modules/Bluetooth.qml", "Popovers/BluetoothPopover.qml"],
+        batt: ["battery", "Bar/Modules/Battery.qml", "Popovers/BatteryPopover.qml"]
+    };
+
+    for (const [moduleId, [name, moduleFile, source]] of Object.entries(expected)) {
+        const owned = R.PANELS.filter(panel => panel.moduleId === moduleId);
+        assert.deepEqual(owned, [{ name, island: "right", moduleId, source }]);
+        assert.match(read(moduleFile), new RegExp(`panelName:\\s*"${name}"`));
+        assert.match(read(moduleFile), /BarChip\s*\{/,
+            `${moduleId} must draw its own transparent-resting chip`);
+    }
+});
+
 test("panels no module owns are exactly the ones the bar sweep must skip", () => {
     // The Tailscale bug in one assertion: an ownerless panel left in the
     // sweep gets closed by any unrelated module change.
-    // `control` is opened by the status pill, which is furniture the status
-    // modules fill in rather than a module of its own. The four detail panels
-    // behind it are reachable from IPC or from inside that panel, so no module
-    // sweep may close them.
+    // `control` is opened by fixed Fedora-button furniture rather than a
+    // configurable module, so module changes must leave it alone.
     assert.deepEqual(R.PANELS.filter(p => R.ownerless(p.name)).map(p => p.name).sort(),
-        ["audio", "battery", "bluetooth", "control", "settings",
-         "tailscale", "wifi"]);
+        ["control", "settings", "tailscale"]);
 });
 
 test("only settings carries the behaviour flags", () => {
@@ -246,7 +254,7 @@ test("menu hover switching is latched behind an open popout", () => {
     // Merely crossing the bar must remain inert. Once a click has opened any
     // popout, entering another owner morphs the existing surface immediately.
     assert.match(host,
-        /function hoverPopout\([^)]*\) \{\s*if \(!Popouts\.open\)\s*return false;/,
+        /function hoverPopout\([^)]*\) \{\s*if \(!Popouts\.open \|\| rearranging\)\s*return false;/,
         "closed-bar hover must not start a menu session");
     assert.match(host,
         /if \(!popoutOpen\(name\)\)\s*openPopout\(name, isle, item\)/,
@@ -258,11 +266,8 @@ test("menu hover switching is latched behind an open popout", () => {
         assert.match(src, /onPositionChanged:[\s\S]{0,180}?host\.hoverPopout\(root\.panelName/,
             `${file} cannot recover an enter lost while mapping a layer surface`);
     }
-    assert.match(cluster,
-        /onEntered:\s*root\.host\.hoverPopout\(group\.panelName, root\.col, pill\)/,
-        "the group-owned status menu must join hover switching");
-    assert.match(cluster,
-        /onPositionChanged:\s*root\.host\.hoverPopout\(group\.panelName, root\.col, pill\)/);
+    assert.doesNotMatch(cluster, /groupPanels|ownsPointer|groupMouse/,
+        "no layout group may own a shared status pointer");
 
     // A newly mapped layer surface can cost every child target its next event;
     // the full-bar handler must independently hit-test the panel registry.

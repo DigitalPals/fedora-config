@@ -1,4 +1,5 @@
 import QtQuick
+import ".."
 import "../../Common"
 
 // Combined Network status, kept under the persisted `wifi` module id. Wired
@@ -13,21 +14,45 @@ BarModule {
     Component.onCompleted: EthernetState.acquire()
     Component.onDestruction: EthernetState.release()
 
-    Sym {
-        anchors.verticalCenter: parent.verticalCenter
-        name: EthernetState.connected ? "lan"
-            : !WifiState.enabled ? "wifi_off"
-            : !WifiState.connected ? "wifi_find"
-            : WifiState.signal >= 66 ? "wifi"
-            : WifiState.signal >= 33 ? "network_wifi_2_bar"
-            : "network_wifi_1_bar"
-        size: Theme.barIconSize
-        fill: 1
-        color: Theme.barIcon
-        opacity: EthernetState.connected || WifiState.connected ? 1 : 0.35
+    readonly property string statusText: {
+        const parts = [];
+        for (const device of EthernetState.connectedDevices)
+            parts.push("Ethernet " + (device.connection || device.device));
+        if (WifiState.enabled && WifiState.connected)
+            parts.push("Wi-Fi " + WifiState.name);
+        else if (WifiState.enabled)
+            parts.push("Wi-Fi off-network");
+        else
+            parts.push("Wi-Fi off");
+        return parts.join(" · ");
+    }
 
-        Behavior on opacity {
-            NumberAnimation { duration: Theme.chipFadeDuration }
+    BarChip {
+        id: chip
+
+        host: root.host
+        panelName: "wifi"
+        isle: root.isle
+        anchorItem: root.groupAnchor ?? chip
+        tooltip: root.statusText
+        tooltipAlign: 1
+
+        Sym {
+            anchors.verticalCenter: parent.verticalCenter
+            name: EthernetState.connected ? "lan"
+                : !WifiState.enabled ? "wifi_off"
+                : !WifiState.connected ? "wifi_find"
+                : WifiState.signal >= 66 ? "wifi"
+                : WifiState.signal >= 33 ? "network_wifi_2_bar"
+                : "network_wifi_1_bar"
+            size: Theme.barIconSize
+            fill: 1
+            color: Theme.barIcon
+            opacity: EthernetState.connected || WifiState.connected ? 1 : 0.35
+
+            Behavior on opacity {
+                NumberAnimation { duration: Theme.chipFadeDuration }
+            }
         }
     }
 }

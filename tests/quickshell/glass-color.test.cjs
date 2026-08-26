@@ -104,16 +104,6 @@ test("glass switches every shell surface through semantic fills", () => {
         assert.match(read(file), new RegExp(`Theme\\.${token}\\b`),
             `${file} does not follow the glass setting`);
 
-    // The power menu is action tiles over a full-screen scrim rather than a
-    // panel, so it has no surface of its own to switch. Its fills are the
-    // bar's alpha chip tokens, which composite over whatever is behind them
-    // and are therefore glass-neutral by construction.
-    const power = read("PowerMenu.qml");
-    assert.match(power, /Theme\.scrim/);
-    assert.match(power, /Theme\.chipHover : Theme\.chip/);
-    assert.doesNotMatch(power, /Theme\.(popBg|barBg|menuBg)\b/,
-        "an opaque reference would ignore the glass setting entirely");
-
     assert.match(read("Popovers/Surface.qml"), /color:\s*root\.surfaceColor\b/,
         "shared surfaces must honor the panel-specific surface contract");
     assert.match(read("Bar/PopoutHost.qml"),
@@ -126,8 +116,6 @@ test("glass switches every shell surface through semantic fills", () => {
         assert.doesNotMatch(fs.readFileSync(file, "utf8"), /Theme\.glass(?:Strong|Menu)?\b/,
             `${path.relative(shellDir, file)} bypasses the semantic glass tokens`);
     }
-    assert.match(read("PowerMenu.qml"), /color:\s*Theme\.scrim/,
-        "turning glass off must not remove the modal safety scrim");
 });
 
 test("menubar content uses its colour-derived palette", () => {
@@ -163,7 +151,7 @@ test("the named Hyprland blur rule persists and applies without remapping surfac
     assert.match(look,
         /quickshell_blur_rule = hl\.layer_rule\(\{[\s\S]*?enabled = persisted_glass_enabled\(\)/);
     assert.match(look,
-        /namespace = \[\[\^qs-\(bar\|bar-popout\|launcher\|notifications\|osd\|power\|shortcuts\)\$\]\]/);
+        /namespace = \[\[\^qs-\(bar\|bar-popout\|launcher\|notifications\|osd\|shortcuts\)\$\]\]/);
     assert.match(settings,
         /"hyprctl", "eval",[\s\S]{0,120}?"quickshell_blur_rule:set_enabled\("/);
     assert.match(settings, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/,
@@ -173,7 +161,7 @@ test("the named Hyprland blur rule persists and applies without remapping surfac
         "a second toggle while hyprctl is busy must be replayed");
 
     for (const file of ["Bar/Bar.qml", "Bar/BarPopoutWindow.qml", "LauncherWindow.qml",
-        "NotificationToasts.qml", "OsdWindow.qml", "PowerMenu.qml", "ShortcutsOverlay.qml"])
+        "NotificationToasts.qml", "OsdWindow.qml", "ShortcutsOverlay.qml"])
         assert.doesNotMatch(read(file), /WlrLayershell\.namespace:\s*Settings\./,
             `${file} must keep a stable namespace when glass changes`);
 });

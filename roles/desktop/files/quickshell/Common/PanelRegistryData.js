@@ -27,10 +27,9 @@
 //                        being laid out inside the standard padding
 
 var PANELS = [
-    // The status pill — the volume/Wi-Fi/Bluetooth/battery glyphs sharing one
-    // rounded background — is what opens the Control Center, so no single
-    // module owns it. It is furniture the status modules fill in, not a
-    // module of its own, which is why this panel is ownerless.
+    // The Fedora button is fixed bar furniture rather than a configurable
+    // module. It still registers the panel's live anchor, but `control` stays
+    // ownerless so module enablement and movement never close it.
     { name: "control", island: "right", moduleId: "", source: "Popovers/ControlCenterPopover.qml" },
 
     // The three glanceable views each belong to the widget that presents
@@ -46,16 +45,14 @@ var PANELS = [
     { name: "github", island: "right", moduleId: "gh", source: "Popovers/GitHubPopover.qml" },
     { name: "updates", island: "right", moduleId: "updates", source: "Popovers/UpdatesPopover.qml" },
 
-    // Reachable from IPC and from inside the Control Center, which is where
-    // the redesign moved audio, Wi-Fi, Bluetooth and battery detail. Kept as
-    // standalone panels so `qs ipc call popouts toggle wifi` still works and
-    // so a keybind can go straight to one.
-    { name: "audio", island: "right", moduleId: "", source: "Popovers/AudioPopover.qml" },
-    { name: "wifi", island: "right", moduleId: "", source: "Popovers/WifiPopover.qml" },
-    { name: "bluetooth", island: "right", moduleId: "", source: "Popovers/BluetoothPopover.qml" },
-    { name: "battery", island: "right", moduleId: "", source: "Popovers/BatteryPopover.qml" },
+    // Each status widget owns its established dedicated view. The names stay
+    // stable for `qs ipc call popouts toggle <name>` and in-panel drill-ins.
+    { name: "audio", island: "right", moduleId: "vol", source: "Popovers/AudioPopover.qml" },
+    { name: "wifi", island: "right", moduleId: "wifi", source: "Popovers/WifiPopover.qml" },
+    { name: "bluetooth", island: "right", moduleId: "bt", source: "Popovers/BluetoothPopover.qml" },
+    { name: "battery", island: "right", moduleId: "batt", source: "Popovers/BatteryPopover.qml" },
 
-    // Opened from the Control Center tile, not from a bar module of its own.
+    // Opened from the Control Panel tile, not from a bar module of its own.
     { name: "tailscale", island: "right", moduleId: "", source: "Popovers/TailscalePopover.qml" },
 
     // Opened from the settings window and from IPC. The only panel carrying
@@ -70,12 +67,11 @@ var PANELS = [
     }
 ];
 
-// Bar modules that own no panel of their own. `ws` has no detail view; `tray`
-// opens each item's own menu; and the four status modules are glyphs inside
-// the pill that opens the Control Center. Listed so the test can insist the
-// module-id space and the panel space account for each other completely,
-// rather than silently tolerating a typo'd moduleId.
-var PANEL_LESS_MODULES = ["ws", "tray", "vol", "wifi", "bt", "batt"];
+// Bar modules that own no panel of their own. `ws` has no detail view and
+// `tray` opens each item's own menu. Listed so the test can insist the module
+// id and panel spaces account for each other completely rather than silently
+// tolerating a typo'd moduleId.
+var PANEL_LESS_MODULES = ["ws", "tray"];
 
 var SETTINGS = "settings";
 

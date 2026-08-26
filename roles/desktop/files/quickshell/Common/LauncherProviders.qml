@@ -283,7 +283,8 @@ Singleton {
             Session.lock();
             break;
         case "power":
-            Session.toggleMenu();
+            Qt.callLater(() => Popouts.toggle("control", undefined, undefined,
+                Screens.focused ? Screens.focused.name : ""));
             break;
         }
     }

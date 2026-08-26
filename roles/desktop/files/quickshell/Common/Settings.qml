@@ -120,7 +120,7 @@ Singleton {
     function showPanel(targetPage, targetScreenName) {
         if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;
-        // Never inherit Control Center's right-side module anchor; this
+        // Never inherit the Control Panel's right-side furniture anchor; this
         // panel is centerAnchored, so it owns no module's position.
         Popouts.openPanel(PanelRegistry.SETTINGS,
             PanelRegistry.island(PanelRegistry.SETTINGS), Qt.rect(0, 0, 0, 0),

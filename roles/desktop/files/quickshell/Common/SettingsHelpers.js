@@ -13,8 +13,8 @@ var PALETTE_MODES = ["wallpaper", "fixed"];
 // Schema 4 (the glass menubar) retired three ids. `bell` was absorbed by the
 // old combined centre pill; schema 11 deliberately introduces the distinct
 // `notifications` id rather than reviving that historical key. `idle` became
-// a Control Center toggle, and `control` became the status pill itself, so a
-// separate trigger for it would open the panel the pill already owns.
+// a Control Panel toggle, and `control` is fixed bar furniture rather than a
+// configurable widget, so neither historical id returns to the schema.
 var MODULE_IDS = [
     "ws", "media", "indicators", "clock", "weather", "updates", "gh", "t3", "usage", "tray",
     "notifications", "vol", "wifi", "bt", "batt"
@@ -65,14 +65,13 @@ var BAR_COLOR_PRESETS = {
 };
 
 // How a module draws itself in the bar, which is also how the bar groups a
-// run of them. `chip` modules share one rounded background and are separated
-// by hairlines; `status` modules are bare glyphs inside the pill that opens
-// the Control Center; `solo` modules bring their own pill.
+// run of them. `chip` modules retain their shared ordering and separator
+// contract; `solo` modules bring their own independent pointer target.
 var MODULE_GROUPS = {
     ws: "solo", media: "solo", indicators: "solo", clock: "solo", weather: "solo",
     updates: "solo", gh: "chip", t3: "chip", usage: "chip", tray: "solo",
     notifications: "solo",
-    vol: "status", wifi: "status", bt: "status", batt: "status"
+    vol: "solo", wifi: "solo", bt: "solo", batt: "solo"
 };
 
 function moduleGroup(id) {

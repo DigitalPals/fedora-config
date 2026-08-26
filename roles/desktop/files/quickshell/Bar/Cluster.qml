@@ -8,8 +8,8 @@ import "../Common/SettingsHelpers.js" as SettingsHelpers
 //
 // Grouping remains behavioral rather than decorative. T3, usage and GitHub
 // retain their shared ordering/anchor contract, while every group rests
-// directly on the single bar slab. Only the status run owns a shared pointer;
-// calendar, weather and notifications each belong to their own widget.
+// directly on the single bar slab. Every interactive widget owns its own
+// pointer target and dedicated view.
 //
 // Grouping follows adjacency in the user's own module order, so dragging a
 // module out of a run in the settings window splits the pill exactly there.
@@ -42,15 +42,6 @@ Item {
                 required property var modelData
                 readonly property string kind: modelData.kind
                 readonly property var items: modelData.items
-                // Status modules are content inside the Control Center target.
-                // Every other interactive widget owns its pointer itself.
-                readonly property bool ownsPointer: kind === "status"
-                readonly property var groupPanels: ({
-                    status: "control"
-                })
-                readonly property string panelName: groupPanels[kind] ?? ""
-                readonly property bool held: panelName !== ""
-                    && root.host.popoutOpen(panelName)
                 // A group whose every module is switched off or ruled out (no
                 // player, no battery, no updates) takes its pill with it.
                 readonly property bool populated: {
@@ -80,64 +71,20 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 onWidthChanged: root.host.scheduleFit()
 
-                // The group owns the panel registration for the pills that
-                // open one; the bare modules inside them register nothing.
-                Component.onCompleted: {
-                    if (panelName !== "")
-                        root.host.registerPanel(panelName, pill);
-                }
-
-                Component.onDestruction: {
-                    if (panelName !== "")
-                        root.host.unregisterPanel(panelName, pill);
-                }
-
-                // Group furniture is transparent at rest. The status group's
-                // hover surface follows its one shared click target.
+                // Group furniture is transparent at rest. Pointer targets
+                // live inside the modules, so adjacent solo widgets remain
+                // independently clickable even when they share a cluster.
                 Rectangle {
                     id: pill
 
                     readonly property string isle: root.col
-                    readonly property real pad: group.kind === "chip" ? 0
-                        : group.kind === "status" ? 6
-                        : 0
+                    readonly property real pad: 0
 
                     width: slotRow.implicitWidth + pad * 2
                     height: Theme.chipHeight
                     radius: Theme.chipRadius
                     anchors.verticalCenter: parent.verticalCenter
-                    color: {
-                        if (!group.ownsPointer)
-                            return "transparent";
-                        if (group.held)
-                            return Theme.barChipHover;
-                        return "transparent";
-                    }
-                    scale: group.ownsPointer && groupMouse.pressed ? 0.96 : 1
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.chipFadeDuration }
-                    }
-
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Theme.pressDuration
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: Theme.springCurve
-                        }
-                    }
-
-                    BarHover {
-                        id: groupHover
-                        anchors.fill: parent
-                        visible: group.ownsPointer
-                        host: root.host
-                        target: pill
-                        radius: pill.radius
-                        pressed: groupMouse.pressed
-                        tint: Theme.barTextHi
-                        pressPoint: Qt.point(groupMouse.mouseX, groupMouse.mouseY)
-                    }
+                    color: "transparent"
 
                     // A module appearing or dropping its detail resizes the
                     // pill around it; the glide is what keeps the neighbours
@@ -160,7 +107,6 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         x: pill.pad
                         spacing: group.kind === "chip" ? 2
-                            : group.kind === "status" ? 7
                             : root.spacing
 
                         Repeater {
@@ -195,38 +141,11 @@ Item {
                                     col: root.col
                                     modelData: entry.modelData.entry
                                     index: entry.modelData.index
-                                    groupAnchor: group.ownsPointer ? pill : null
-                                    interactive: !group.ownsPointer
                                     groupHovered: entry.modelData.entry.id === "indicators"
                                         && root.host.indicatorTriggerHovered
                                 }
                             }
                         }
-                    }
-
-                    MouseArea {
-                        id: groupMouse
-                        z: 1
-                        anchors.fill: parent
-                        // A pill covers several widgets, so mid-drag its hover
-                        // would keep reopening the panel over the gap the drop
-                        // is aiming at. The drag itself holds the grab; this
-                        // only stops the hover transitions behind it.
-                        enabled: group.ownsPointer && !root.host.rearranging
-                        visible: group.ownsPointer
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onEntered: root.host.hoverPopout(group.panelName, root.col, pill)
-                        onPositionChanged: root.host.hoverPopout(group.panelName, root.col, pill)
-                        onClicked: root.host.togglePopout(group.panelName, root.col, pill)
-                    }
-
-                    BarTooltip {
-                        check: groupHover.check
-                        text: group.kind === "status" ? root.host.statusSummary : ""
-                        align: 1
-                        y: pill.height + 8
-                        x: align > 0 ? pill.width - width : (pill.width - width) / 2
                     }
                 }
             }

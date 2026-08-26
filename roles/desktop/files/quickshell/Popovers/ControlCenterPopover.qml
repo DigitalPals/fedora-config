@@ -5,9 +5,9 @@ import Quickshell.Services.UPower
 import "../Common"
 import "../Common/Format.js" as Format
 
-// Control Center: the battery header, one segmented power-profile track, the
+// Control Panel: the battery header, one segmented power-profile track, the
 // two radio rows, one grid of quick actions, the filled sliders, the system
-// stats and the shell-settings footer.
+// stats, session controls and the shell-settings footer.
 //
 // The redesign is about geometry, not new controls. This panel used to stack
 // six different shapes — 34px radio rows, five square toggles with labels
@@ -17,10 +17,9 @@ import "../Common/Format.js" as Format
 // — a full-width row, a grid tile, a segmented track — separated by the
 // SectionLabel the rest of the shell already draws.
 //
-// The battery is the other half of it. This is the panel the status pill
-// opens, and the pill's most-read glyph is the battery, which had no
-// representation here at all; the charge and the profile it drives now open
-// the panel, and BatteryPopover stays the drill-in.
+// The Fedora button opens this dashboard; the four status widgets open their
+// dedicated detail views directly. BatteryPopover remains the battery drill-in
+// from here and from its menubar widget.
 Surface {
     id: root
 
@@ -45,6 +44,17 @@ Surface {
     // A long SSID gets ~300px here against ~240px when it shared the row.
     readonly property int radioRowHeight: 44
     readonly property int statHeight: 34
+    readonly property int sessionSpacing: 6
+    readonly property int sessionActionHeight: 52
+    readonly property real sessionActionWidth:
+        Math.max(0, (contentWidth - 4 * sessionSpacing) / 5)
+    readonly property var sessionActions: [
+        { key: "lock", glyph: "lock", label: "Lock", danger: false },
+        { key: "suspend", glyph: "bedtime", label: "Suspend", danger: false },
+        { key: "logout", glyph: "logout", label: "Log out", danger: false },
+        { key: "restart", glyph: "restart_alt", label: "Restart", danger: false },
+        { key: "shutdown", glyph: "power_settings_new", label: "Shut down", danger: true }
+    ]
 
     // Battery tone. Charging and full are never a warning, however low the
     // reading is, so every threshold below is gated on discharging.
@@ -78,6 +88,19 @@ Surface {
     function run(cmd) {
         Quickshell.execDetached(["sh", "-c", cmd]);
         Popouts.close();
+    }
+
+    function triggerSession(key) {
+        // Release the panel's focus grab before a command locks, suspends or
+        // ends the session. Session owns the command and its final cleanup.
+        Popouts.close();
+        switch (key) {
+        case "lock": Session.lock(); break;
+        case "suspend": Session.suspend(); break;
+        case "logout": Session.logout(); break;
+        case "restart": Session.reboot(); break;
+        case "shutdown": Session.shutdown(); break;
+        }
     }
 
     function fmtDuration(secs) {
@@ -297,6 +320,89 @@ Surface {
                 else
                     tile.toggled();
             }
+        }
+    }
+
+    // One of the five equal session controls. Shut down keeps the red field
+    // from the retired overlay; the other four use the panel's normal chip
+    // ladder so danger remains unmistakable without making every exit loud.
+    component SessionAction: Rectangle {
+        id: action
+
+        property string glyph: ""
+        property string label: ""
+        property bool danger: false
+        signal triggered
+
+        width: root.sessionActionWidth
+        height: root.sessionActionHeight
+        radius: Theme.chipRadius
+        color: danger
+            ? (actionMouse.containsMouse ? Theme.red : Theme.redBg)
+            : actionMouse.containsMouse ? Theme.chipHover : Theme.chip
+        border.width: activeFocus ? 1 : 0
+        border.color: danger ? Theme.red : Theme.accent
+        scale: actionMouse.pressed ? 0.95 : 1
+        activeFocusOnTab: true
+
+        Accessible.role: Accessible.Button
+        Accessible.name: label
+        Accessible.onPressAction: action.triggered()
+
+        Behavior on color {
+            ColorAnimation { duration: Theme.surfaceDuration }
+        }
+
+        Behavior on scale {
+            NumberAnimation {
+                duration: Theme.pressDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
+            }
+        }
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                action.triggered();
+                event.accepted = true;
+            }
+        }
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 4
+
+            Sym {
+                anchors.horizontalCenter: parent.horizontalCenter
+                name: action.glyph
+                size: Theme.iconMedium
+                fill: action.danger ? 1 : 0
+                color: action.danger && actionMouse.containsMouse
+                    ? Theme.textOnAccent
+                    : action.danger ? Theme.redText : Theme.icon
+            }
+
+            Text {
+                width: action.width - 4
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                text: action.label
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontMicro
+                font.weight: Theme.weightMedium
+                color: action.danger && actionMouse.containsMouse
+                    ? Theme.textOnAccent
+                    : action.danger ? Theme.redText : Theme.textLow
+            }
+        }
+
+        MouseArea {
+            id: actionMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: action.triggered()
         }
     }
 
@@ -827,6 +933,34 @@ Surface {
                     : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.textHi
                 barTone: SysInfo.cpuTemp >= 80 ? Theme.red
                     : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.accent
+            }
+        }
+    }
+
+    // ---- Session ---------------------------------------------------------
+    Column {
+        width: parent.width
+        spacing: 0
+
+        SectionLabel {
+            text: "SESSION"
+        }
+
+        Row {
+            width: parent.width
+            spacing: root.sessionSpacing
+
+            Repeater {
+                model: root.sessionActions
+
+                delegate: SessionAction {
+                    required property var modelData
+
+                    glyph: modelData.glyph
+                    label: modelData.label
+                    danger: modelData.danger
+                    onTriggered: root.triggerSession(modelData.key)
+                }
             }
         }
     }

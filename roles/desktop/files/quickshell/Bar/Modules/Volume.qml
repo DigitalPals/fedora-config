@@ -1,8 +1,9 @@
 import QtQuick
+import ".."
 import "../../Common"
 
-// Output volume, inside the status pill. The wheel adjusts it; the pill's own
-// click opens the Control Center, where the slider lives.
+// Output volume: its independent chip opens audio detail, while the wheel
+// keeps adjusting the level without opening the panel.
 BarModule {
     id: root
 
@@ -10,29 +11,42 @@ BarModule {
     spacing: 4
     detailSaving: Settings.modOpts.vol.showPct ? percentLabel.implicitWidth + spacing : 0
 
-    Sym {
-        anchors.verticalCenter: parent.verticalCenter
-        name: Audio.muted || Audio.volume === 0 ? "volume_off"
-            : Audio.volume < 50 ? "volume_down" : "volume_up"
-        size: Theme.barIconSize
-        fill: 1
-        color: Audio.muted ? Theme.barRedText : Theme.barIcon
+    BarChip {
+        id: chip
+
+        host: root.host
+        panelName: "audio"
+        isle: root.isle
+        anchorItem: root.groupAnchor ?? chip
+        spacing: root.spacing
+        tooltip: "Volume " + Audio.volume + "%"
+            + (Audio.muted ? " · muted" : "") + " · wheel to adjust"
+        tooltipAlign: 1
+
+        Sym {
+            anchors.verticalCenter: parent.verticalCenter
+            name: Audio.muted || Audio.volume === 0 ? "volume_off"
+                : Audio.volume < 50 ? "volume_down" : "volume_up"
+            size: Theme.barIconSize
+            fill: 1
+            color: Audio.muted ? Theme.barRedText : Theme.barIcon
+        }
+
+        Text {
+            id: percentLabel
+            visible: Settings.modOpts.vol.showPct && !root.compact
+            anchors.verticalCenter: parent.verticalCenter
+            text: Audio.volume + "%"
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightBold
+            font.features: Theme.tabularNumberFeatures
+            color: Audio.muted ? Theme.barRedText : Theme.barTextMid
+        }
     }
 
-    Text {
-        id: percentLabel
-        visible: Settings.modOpts.vol.showPct && !root.compact
-        anchors.verticalCenter: parent.verticalCenter
-        text: Audio.volume + "%"
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
-        font.weight: Theme.weightBold
-        font.features: Theme.tabularNumberFeatures
-        color: Audio.muted ? Theme.barRedText : Theme.barTextMid
-    }
-
-    // A handler rather than a MouseArea: it takes the wheel without also
-    // taking the click that belongs to the pill this sits inside.
+    // A handler rather than another MouseArea: it takes the wheel without
+    // competing with the chip's click target.
     WheelHandler {
         target: null
         onWheel: event => {

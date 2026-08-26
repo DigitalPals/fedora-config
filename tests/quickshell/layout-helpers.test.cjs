@@ -5,7 +5,7 @@ const { load } = require("./shell.cjs");
 const H = load("LayoutHelpers.js");
 const SettingsHelpers = load("SettingsHelpers.js");
 
-test("calendar, weather, and notifications remain separate pills", () => {
+test("calendar, weather, notifications, and status widgets remain separate pills", () => {
     const defaults = SettingsHelpers.defaultMods();
     const center = H.groupModules(defaults.center,
         id => SettingsHelpers.moduleGroup(id));
@@ -18,9 +18,13 @@ test("calendar, weather, and notifications remain separate pills", () => {
     const notificationGroup = right.find(group =>
         group.items.some(item => item.entry.id === "notifications"));
     assert.equal(notificationGroup.kind, "solo");
-    assert.deepEqual(right.at(-1).items.map(item => item.entry.id),
-        ["vol", "wifi", "bt", "batt"],
-        "only the adjacent status widgets share a pointer target");
+    for (const id of ["vol", "wifi", "bt", "batt"]) {
+        const group = right.find(candidate =>
+            candidate.items.some(item => item.entry.id === id));
+        assert.equal(group.kind, "solo", `${id} must own its pointer target`);
+        assert.deepEqual(group.items.map(item => item.entry.id), [id],
+            `${id} must not merge with an adjacent status widget`);
+    }
 });
 
 test("stacked drops subtract each column origin before finding the row", () => {

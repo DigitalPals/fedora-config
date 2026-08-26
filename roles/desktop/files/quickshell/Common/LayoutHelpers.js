@@ -6,11 +6,10 @@
 var COMPACT_ORDER = ["media", "updates", "notifications", "t3", "usage", "gh",
     "weather", "clock", "vol", "batt"];
 
-// Consecutive modules that draw the same way share one rounded background:
-// the T3/usage/GitHub chips sit in a single group pill, and the volume,
-// Wi-Fi, Bluetooth and battery glyphs sit in the status pill that opens the
-// Control Center. "solo" modules bring their own pill and never merge, so two
-// of them in a row stay two pills.
+// Consecutive modules that draw the same way share one layout group: the
+// T3/usage/GitHub chips retain their ordering and separator contract. "solo"
+// modules bring their own pill and never merge, so two of them in a row stay
+// two independent pointer targets.
 //
 // Grouping is by adjacency, not by kind: moving a module between others in
 // the settings window splits or joins the pill exactly where it was dropped,

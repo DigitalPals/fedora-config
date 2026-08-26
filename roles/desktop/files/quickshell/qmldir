@@ -8,5 +8,4 @@ LauncherView LauncherView.qml
 LauncherWindow LauncherWindow.qml
 NotificationToasts NotificationToasts.qml
 OsdWindow OsdWindow.qml
-PowerMenu PowerMenu.qml
 ShortcutsOverlay ShortcutsOverlay.qml

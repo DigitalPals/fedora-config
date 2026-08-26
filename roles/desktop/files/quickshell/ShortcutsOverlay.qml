@@ -5,7 +5,7 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import "Common"
 
-// The keyboard cheatsheet, from the Control Center or Super+K.
+// The keyboard cheatsheet, from the Control Panel or Super+K.
 //
 // The bindings themselves live in Common/Session.qml, next to the actions they
 // document — a cheatsheet that drifts from what the keys actually do is worse

@@ -4,7 +4,7 @@ import QtQuick
 // true, and gives up the claim on teardown even if `active` never went false.
 //
 // This exists because lifecycle hooks are the wrong signal. `IslandPopout`
-// latches the Control Center (its `warmNames`), so that panel is constructed
+// latches the Control Panel (its `warmNames`), so that panel is constructed
 // once and never destroyed — an acquire in `Component.onCompleted` with a
 // release in `Component.onDestruction` would leave its pollers running for
 // the rest of the session, which is worse than the `Popouts.open` gate it

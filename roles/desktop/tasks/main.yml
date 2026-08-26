@@ -239,7 +239,7 @@
   when: quickshell_config is changed
   tags: [quickshell]
 
-- name: Remove retired generic Quickshell launcher components
+- name: Remove retired Quickshell components
   ansible.builtin.file:
     path: "{{ primary_home }}/.config/quickshell/{{ item }}"
     state: absent
@@ -259,6 +259,8 @@
     - Settings/SettingsSwitch.qml
     - Settings/SettingsSlider.qml
     - Bar/RecordingChip.qml
+    - PowerMenu.qml
+  tags: [quickshell]
 
 - name: Configure portal preference without patching Fedora files
   become: true

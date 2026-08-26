@@ -145,7 +145,7 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
 - **Quickshell emits no `exited` at all when a binary cannot be launched** —
   only the falling edge of `running`. Anything reading exit status must handle
   a never-started process; `Common/ProcHelpers.js` has the sentinel.
-- **Popout lifetime**: `PopoutHost` latches the Control Center, so it is
+- **Popout lifetime**: `PopoutHost` latches the Control Panel, so it is
   constructed once and never destroyed. Anything refcounted must key on
   `visible` via `Common/Claim.qml`, not on construction or destruction.
 - **Idle CPU is not measurable with `top` on a machine in use** — sampling the

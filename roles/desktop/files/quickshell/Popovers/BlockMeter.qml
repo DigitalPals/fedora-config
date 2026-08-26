@@ -22,7 +22,7 @@ Item {
     // One rectangle per block, coloured by the side of the fill boundary it
     // sits on, plus a single rectangle for the block the boundary bisects.
     // The strip used to be built twice — a track row under a clipped fill row
-    // — which cost 2N items for the same pixels; the Control Center alone
+    // — which cost 2N items for the same pixels; the Control Panel alone
     // instantiated ~380 of them on every open.
     readonly property int pitch: Math.max(1, root.blockWidth + root.gap)
     readonly property int blocks: Math.max(0, Math.ceil(root.width / root.pitch))

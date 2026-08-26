@@ -43,7 +43,7 @@ test("the current output sorts first inside its own group", () => {
     ], airplay)[0], airplay);
 });
 
-test("Control Center exposes audio detail and the picker has no arbitrary sink cap", () => {
+test("Control Panel exposes audio detail and the picker has no arbitrary sink cap", () => {
     const control = fs.readFileSync(path.join(shellDir,
         "Popovers/ControlCenterPopover.qml"), "utf8");
     const picker = fs.readFileSync(path.join(shellDir,

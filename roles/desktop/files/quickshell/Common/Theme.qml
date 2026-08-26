@@ -65,7 +65,7 @@ Singleton {
     readonly property color surfaceStrong: Settings.glassEnabled ? glassStrong : popBg
     readonly property color surfaceMenu: Settings.glassEnabled ? glassMenu : menuBg
     readonly property color panelSurface: Settings.glassEnabled ? glassPanel : background
-    // Full-screen scrims behind the power menu / shortcut sheet.
+    // Full-screen scrim behind the shortcut sheet.
     readonly property color scrim: dark
         ? Qt.rgba(10 / 255, 8 / 255, 22 / 255, 0.42)
         : Qt.rgba(236 / 255, 236 / 255, 244 / 255, 0.5)

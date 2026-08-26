@@ -2,47 +2,20 @@ pragma Singleton
 import QtQuick
 import Quickshell
 
-// The two full-screen overlays the bar can raise, and the session actions
-// behind them: the power menu the power button opens, and the keyboard
-// cheatsheet reachable from the Control Center or Super+K.
-//
-// Only one of the two is ever up — they are both modal scrims, and stacking
-// them would leave the one underneath unreachable but still lit.
+// Session actions used by the Control Panel and the keyboard cheatsheet
+// reachable from its footer or Super+K.
 Singleton {
     id: root
 
-    property bool powerOpen: false
     property bool keysOpen: false
     property var screen: null
-
-    readonly property bool anyOpen: powerOpen || keysOpen
 
     readonly property string lockCommand:
         "hyprlock --config " + Quickshell.env("HOME")
         + "/.config/hypr/hyprlock.conf --immediate-render --no-fade-in"
 
-    function openMenu(targetScreen) {
-        keysOpen = false;
-        Popouts.close();
-        Launcher.close();
-        screen = targetScreen ?? Screens.focused;
-        powerOpen = true;
-    }
-
-    function closeMenu() {
-        powerOpen = false;
-    }
-
-    function toggleMenu(targetScreen) {
-        if (powerOpen)
-            closeMenu();
-        else
-            openMenu(targetScreen);
-    }
-
     function openKeys(targetScreen) {
         const popoutScreen = Screens.byName(Popouts.hostScreenName);
-        powerOpen = false;
         screen = targetScreen ?? popoutScreen ?? Screens.focused;
         Popouts.close();
         Launcher.close();
@@ -61,7 +34,6 @@ Singleton {
     }
 
     function closeAll() {
-        powerOpen = false;
         keysOpen = false;
     }
 
@@ -93,7 +65,7 @@ Singleton {
     }
 
     // The rows the cheatsheet draws. Kept here rather than in the overlay so
-    // the list is data the Control Center could also summarise, and so it
+    // the list is data the Control Panel could also summarise, and so it
     // stays next to the actions it documents.
     readonly property var shortcutGroups: [
         {
@@ -101,7 +73,7 @@ Singleton {
             rows: [
                 { label: "Launcher", keys: ["Super", "Space"] },
                 { label: "Notifications", keys: ["Super", "N"] },
-                { label: "Control center", keys: ["Super", "A"] },
+                { label: "Control Panel", keys: ["Super", "A"] },
                 { label: "Shell settings", keys: ["Super", ","] },
                 { label: "T3 Code", keys: ["Super", "T"] },
                 { label: "Lock", keys: ["Super", "L"] },

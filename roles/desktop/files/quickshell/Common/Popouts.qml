@@ -28,7 +28,7 @@ Singleton {
 
     // Island a popout opens on when the caller does not say (IPC, bar
     // modules). Panels opened from inside another popout may override —
-    // e.g. the Control Center morphs to Wi-Fi details on the right island.
+    // e.g. the Control Panel morphs to Wi-Fi details on the right island.
     // Derived, not hand-maintained: see Common/PanelRegistryData.js.
     readonly property var defaultIsland: PanelRegistry.islandMap()
 

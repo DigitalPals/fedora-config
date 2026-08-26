@@ -258,7 +258,7 @@ test("only the classic floating bar and internal glows draw shadows", () => {
                         ...qmlFiles("Settings"),
                         ...["LauncherWindow.qml", "LauncherView.qml",
                             "NotificationToasts.qml", "OsdWindow.qml",
-                            "PowerMenu.qml", "ShortcutsOverlay.qml"]
+                            "ShortcutsOverlay.qml"]
                             .map(name => path.join(shellDir, name))]) {
         const label = path.relative(shellDir, file);
         if (insideASurface.includes(label))
@@ -280,7 +280,7 @@ test("views paint semantic surfaces rather than their opaque variants", () => {
     for (const file of [...qmlFiles("Bar"), ...qmlFiles("Popovers"),
                         ...["LauncherWindow.qml", "LauncherView.qml",
                             "NotificationToasts.qml", "OsdWindow.qml",
-                            "PowerMenu.qml", "ShortcutsOverlay.qml"]
+                            "ShortcutsOverlay.qml"]
                             .map(name => path.join(shellDir, name))]) {
         const label = path.relative(shellDir, file);
         fs.readFileSync(file, "utf8").split("\n").forEach((line, index) => {

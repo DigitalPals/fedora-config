@@ -73,7 +73,7 @@ function qmlFiles() {
 }
 
 // Where an icon name can come from, and nowhere else: a `name:` inside a Sym
-// block, a `glyph:` on a BarIcon or a Control Center tile, a `symbol:` on an
+// block, a `glyph:` on a BarIcon or a Control Panel tile, a `symbol:` on an
 // IconButton, and the two helpers that pick one by hand. Deliberately narrow —
 // a broad "any lowercase string" sweep collects enum values and format strings
 // and stops meaning anything.

@@ -87,6 +87,8 @@ test("every module family uses the shared bar hover surface", () => {
     const clock = read("Bar/Modules/Clock.qml");
     const weather = read("Bar/Modules/Weather.qml");
     const workspaces = read("Bar/Workspaces.qml");
+    const statusModules = ["Volume", "Wifi", "Bluetooth", "Battery"]
+        .map(name => [name, read(`Bar/Modules/${name}.qml`)]);
 
     assert.match(hover, /^import[\s\S]*StateLayer\s*\{/,
         "the bar hover primitive must retain the shared Material state layer");
@@ -109,15 +111,14 @@ test("every module family uses the shared bar hover surface", () => {
 
     assert.match(bar, /HoverHandler\s*\{[\s\S]{0,180}?blocking:\s*false/,
         "the bar-wide pointer observer must not take a module click");
-    assert.match(cluster,
-        /BarHover\s*\{[\s\S]{0,180}?visible:\s*group\.ownsPointer[\s\S]{0,100}?target:\s*pill/,
-        "the combined status click target needs one matching hover surface");
-    assert.match(cluster, /ownsPointer:\s*kind === "status"/);
     assert.match(cluster, /groupHovered:[\s\S]{0,120}?indicatorTriggerHovered/);
     assert.match(clock, /BarChip\s*\{/);
     assert.match(weather, /BarChip\s*\{/);
-    assert.doesNotMatch(cluster, /sharedHoverLayer|slotLoader\.mod,[\s\S]{0,80}?tooltipPointerPosition/,
-        "status content must not grow independent affordances beneath one click target");
+    for (const [name, source] of statusModules)
+        assert.match(source, /BarChip\s*\{/,
+            `${name} must reach the shared hover surface through its own chip`);
+    assert.doesNotMatch(cluster, /BarHover|BarTooltip|groupMouse|ownsPointer/,
+        "the layout group must not draw a second hover target around its widgets");
 
     for (const [name, source] of [
         ["tray", tray], ["usage", usage], ["indicators", indicators],
@@ -141,8 +142,11 @@ test("resting menubar icons share one tone while weather keeps its palette", () 
     const usage = read("Bar/UsageChips.qml");
     const weather = read("Bar/Modules/Weather.qml");
 
-    assert.equal((bar.match(/idleColor:\s*Theme\.barIcon/g) || []).length, 2,
-        "launcher and power must use the shared resting icon tone");
+    assert.equal((bar.match(/idleColor:\s*Theme\.barIcon/g) || []).length, 1,
+        "the launcher keeps the shared resting icon tone");
+    assert.match(bar,
+        /BarChip\s*\{[\s\S]{0,220}?panelName:\s*"control"[\s\S]{0,420}?Quickshell\.iconPath\("fedora-logo-icon", true\)/,
+        "the fixed Control Panel trigger must use Fedora's themed logo");
     assert.match(updates, /idleColor:\s*Theme\.barIcon/);
     assert.match(media, /name:\s*root\.playing[\s\S]{0,180}?color:\s*Theme\.barIcon/);
     assert.match(tray, /Theme\.barTextHi : Theme\.barIcon/);
