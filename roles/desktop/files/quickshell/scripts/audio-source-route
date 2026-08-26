@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Change the session default and move recording applications that are already
+# active. A source switch should affect an open recorder, not only clients
+# created after the metadata default changes.
+set -uo pipefail
+
+target=${1:-}
+[[ -n $target ]] || {
+  echo 'Usage: audio-source-route <source-name>' >&2
+  exit 2
+}
+
+pactl set-default-source "$target" || exit 1
+
+while IFS= read -r output; do
+  [[ -n $output ]] || continue
+  pactl move-source-output "$output" "$target" >/dev/null 2>&1 || true
+done < <(pactl list short source-outputs 2>/dev/null | awk '{ print $1 }')

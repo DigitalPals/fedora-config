@@ -70,7 +70,12 @@ Singleton {
 
     function toggleMuted() {
         if (ready)
-            sinkAudio.muted = !sinkAudio.muted;
+            setMuted(!sinkAudio.muted);
+    }
+
+    function setMuted(muted) {
+        if (ready)
+            sinkAudio.muted = muted;
     }
 
     // Pipewire remembers this as a preference, so it survives the node
@@ -85,6 +90,17 @@ Singleton {
         Quickshell.execDetached(["bash", Quickshell.shellDir + "/scripts/audio-route", node.name]);
     }
 
+    // As with outputs, the PipeWire preference controls future clients while
+    // the PulseAudio-compatible helper moves recording streams that already
+    // exist. This keeps an open recorder on the input selected in the panel.
+    function setDefaultSource(node) {
+        if (!node || !node.name)
+            return;
+        Pipewire.preferredDefaultAudioSource = node;
+        Quickshell.execDetached(["bash",
+            Quickshell.shellDir + "/scripts/audio-source-route", node.name]);
+    }
+
     function setSourceVolume(fraction) {
         if (!sourceReady)
             return;
@@ -93,10 +109,20 @@ Singleton {
 
     function toggleSourceMuted() {
         if (sourceReady)
-            sourceAudio.muted = !sourceAudio.muted;
+            setSourceMuted(!sourceAudio.muted);
+    }
+
+    function setSourceMuted(muted) {
+        if (sourceReady)
+            sourceAudio.muted = muted;
+    }
+
+    function setAllMuted(muted) {
+        setMuted(muted);
+        setSourceMuted(muted);
     }
 
     PwObjectTracker {
-        objects: [root.outputSink, root.sink, Pipewire.defaultAudioSource]
+        objects: [root.outputSink, root.sink, root.source]
     }
 }
