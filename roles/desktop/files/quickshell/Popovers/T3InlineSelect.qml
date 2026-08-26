@@ -25,6 +25,9 @@ Item {
     property bool openUpward: true
     property int menuRows: 8
     property int menuWidth: 200
+    readonly property int popupHeight:
+        Math.min(menuRows, options.length) * Theme.pickerRowHeight + 8
+    readonly property Item popupItem: menu
     // The bar is a fixed width the prompt above it does not have to respect,
     // so the longest label yields first instead of pushing the send action off
     // the end.
@@ -143,7 +146,7 @@ Item {
         x: 0
         y: root.openUpward ? -height - 6 : root.height + 6
         width: Math.max(root.menuWidth, root.width)
-        height: Math.min(root.menuRows, root.options.length) * Theme.pickerRowHeight + 8
+        height: root.popupHeight
         radius: T3Theme.panelRadius
         color: T3Theme.overlay
         border.width: 1

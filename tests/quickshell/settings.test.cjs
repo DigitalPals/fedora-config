@@ -117,7 +117,7 @@ test("the panel card grows out of its trigger and never out of thin air", () => 
     assert.match(host, /bodyTop:\s*barBottom \+ Theme\.popGap/,
         "the card hangs a fixed gap below the bar");
     // The mask has to come from real geometry, not from the animating card.
-    const mask = host.match(/Item \{\s*id: hitRegion[\s\S]*?\n    \}/)?.[0] ?? "";
+    const mask = host.match(/Item \{\s*id: cardHitRegion[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.ok(mask !== "", "the popout host must still publish an input region");
     assert.doesNotMatch(mask, /transform|scale:/);
 });
@@ -214,8 +214,28 @@ test("popout height cannot feed back into its own required envelope", () => {
         "the host must not retain a dead visual-mask contract");
     // The input mask holds still too — it binds to the morph's target, so the
     // compositor hears about it once per switch instead of once per frame.
-    assert.match(host, /id: hitRegion[\s\S]{0,80}?x: host\.targetX/,
+    assert.match(host, /id: cardHitRegion[\s\S]{0,80}?x: host\.targetX/,
         "the input region must not follow the animating rendered geometry");
+});
+
+test("declared overflow paints and receives input outside the panel card", () => {
+    const contract = read("Popovers/PopoutPanel.qml");
+    const host = read("Bar/PopoutHost.qml");
+    const window = read("Bar/BarPopoutWindow.qml");
+
+    assert.match(contract, /property real detachedOverflowHeight:\s*0/);
+    assert.match(contract, /property Item detachedOverflowItem:\s*null/);
+    assert.match(host,
+        /cardH:\s*contentH - overflowH[\s\S]*?targetCardH = geometry\.cardH/,
+        "native extent and painted-card height must be separate geometry");
+    assert.match(host,
+        /id:\s*surface[\s\S]*?height:\s*Math\.max\(1, host\.renderedCardH\)/,
+        "the shared background must stop before the transparent overflow tail");
+    assert.match(host,
+        /id:\s*cardHitRegion[\s\S]*?height:\s*Math\.max\(0, host\.targetCardH\)/);
+    assert.match(window,
+        /mask:\s*Region\s*\{[\s\S]*?item:\s*popout\.cardMaskItem[\s\S]*?item:\s*popout\.overflowMaskItem/,
+        "the input mask is the union of the card and detached control");
 });
 
 test("the tray and the updates chip use the reorderable widget pipeline", () => {

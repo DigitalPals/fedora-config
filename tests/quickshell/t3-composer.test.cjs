@@ -47,6 +47,72 @@ test("the composer bar names the run in place and each part is its own menu", ()
         "the bar shows live controls, not a read-only summary of them");
 });
 
+// New Thread is content-sized: opening below the composer should make the page
+// and layer-shell window taller. Existing threads already have a transcript
+// above the composer, so their menus can overlay that space instead.
+test("new-thread bar menus grow the page while thread menus open upward", () => {
+    const bar = composer.match(/Item\s*\{\s*id:\s*actionRow\b([\s\S]*?)\n\s{12}\}/);
+    const newPage = fs.readFileSync(
+        path.join(shellDir, "Popovers/T3NewThreadPage.qml"), "utf8");
+
+    assert.ok(bar, "expected to find the composer action bar");
+    for (const id of ["modelSelect", "effortSelect", "accessSelect"])
+        assert.match(bar[1], new RegExp(
+            `id:\\s*${id}\\b[\\s\\S]*?openUpward:\\s*!root\\.newThread`),
+        `${id} should open into newly reserved space only on New Thread`);
+    assert.match(composer,
+        /readonly property real barPickerReserve:[\s\S]*?modelSelect\.popupHeight[\s\S]*?effortSelect\.popupHeight[\s\S]*?accessSelect\.popupHeight/);
+    assert.match(composer,
+        /id:\s*barPickerSpace[\s\S]*?height:\s*root\.barPickerReserve/,
+        "the floating menu must contribute its height to the composer's Column");
+    assert.match(newPage,
+        /onBarPickerReserveChanged:[\s\S]*?flick\.contentHeight - flick\.height/,
+        "a height-capped page must scroll the newly reserved menu into view");
+    assert.match(newPage,
+        /readonly property real detachedOverflowHeight:[\s\S]*?viewport\.height - baseViewportHeight/,
+        "only real page growth belongs outside the normal card");
+
+    const popover = fs.readFileSync(
+        path.join(shellDir, "Popovers/T3CodePopover.qml"), "utf8");
+    assert.match(popover,
+        /detachedOverflowHeight:\s*loadedNewThreadPage[\s\S]*?loadedNewThreadPage\.detachedOverflowHeight/);
+    assert.match(popover,
+        /detachedOverflowItem:\s*loadedNewThreadPage[\s\S]*?loadedNewThreadPage\.detachedOverflowItem/);
+
+    for (const host of ["Popovers/T3InlineSelect.qml", "Popovers/T3ModelPicker.qml"])
+        for (const property of ["popupHeight", "popupItem"])
+            assert.match(fs.readFileSync(path.join(shellDir, host), "utf8"),
+                new RegExp(`readonly property (?:int|Item) ${property}:`),
+                `${host} must publish the popup geometry its parent reserves`);
+});
+
+test("the New Thread project menu floats beyond the normal card", () => {
+    const newPage = fs.readFileSync(
+        path.join(shellDir, "Popovers/T3NewThreadPage.qml"), "utf8");
+    const picker = fs.readFileSync(
+        path.join(shellDir, "Popovers/T3Picker.qml"), "utf8");
+
+    for (const property of ["popupHeight", "popupItem"])
+        assert.match(picker, new RegExp(`readonly property (?:int|Item) ${property}:`),
+            `the Project picker must publish its ${property}`);
+    assert.match(picker, /height:\s*root\.popupHeight/,
+        "the published height and the painted menu must remain identical");
+    assert.match(newPage,
+        /id:\s*projectShoulder[\s\S]*?z:\s*projectPicker\.expanded \? 200 : 0/,
+        "the Project menu must paint above the composer that follows it");
+    assert.match(newPage,
+        /readonly property real projectPickerLayoutHeight:[\s\S]*?projectPickerNeededHeight/);
+    assert.match(newPage,
+        /id:\s*projectPickerSpace[\s\S]*?root\.projectPickerLayoutHeight - form\.spacing/,
+        "only the part extending below the normal form should grow the surface");
+    assert.match(newPage,
+        /readonly property Item activePopupItem:\s*projectPicker\.expanded[\s\S]*?projectPicker\.popupItem/,
+        "the detached input mask must follow the Project menu while it is open");
+    assert.match(newPage,
+        /onExpandedChanged:[\s\S]*?root\.projectPopupBottom - flick\.height/,
+        "a height-capped view must scroll just enough to reveal the menu");
+});
+
 // The bar is a fixed width the prompt above it never has to respect, so
 // something has to give when the model name is long. It must not be the send
 // action, which would leave the turn with no way to start or stop.

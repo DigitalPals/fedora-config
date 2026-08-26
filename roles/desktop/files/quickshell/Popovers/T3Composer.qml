@@ -36,6 +36,19 @@ Column {
     readonly property bool sending: T3Code.actionPending(actionKind, actionThreadId, "")
     readonly property bool stopping: T3Code.actionPending("interrupt", actionThreadId, "")
     readonly property bool stopMode: stoppable && !newThread
+    // A New Thread page sizes itself from this Column. Its bar menus open below
+    // the composer and reserve their full panel height, so the page — and in
+    // turn the layer-shell window — grows instead of clipping the menu. Thread
+    // pages have a transcript above the composer and keep overlaying it there.
+    readonly property real barPickerReserve: !newThread ? 0
+        : modelSelect.expanded ? modelSelect.popupHeight
+        : effortSelect.expanded ? effortSelect.popupHeight
+        : accessSelect.expanded ? accessSelect.popupHeight : 0
+    readonly property real barPickerLayoutHeight:
+        barPickerReserve > 0 ? barPickerReserve + spacing : 0
+    readonly property Item activeBarPopupItem: modelSelect.expanded ? modelSelect.popupItem
+        : effortSelect.expanded ? effortSelect.popupItem
+        : accessSelect.expanded ? accessSelect.popupItem : null
 
     // One primary action, two meanings. Both the pointer and the keyboard
     // path route through here so they cannot drift apart.
@@ -796,6 +809,16 @@ Column {
                 color: T3Theme.red
             }
         }
+    }
+
+    // Floating menus do not contribute to a positioner's implicit size. This
+    // transparent tail makes the New Thread page account for the menu drawn
+    // below the shell; it disappears with the menu and is absent on threads.
+    Item {
+        id: barPickerSpace
+        visible: root.barPickerReserve > 0
+        width: parent.width
+        height: root.barPickerReserve
     }
 
     // Updating a draft replaces the singleton's map and emits its change

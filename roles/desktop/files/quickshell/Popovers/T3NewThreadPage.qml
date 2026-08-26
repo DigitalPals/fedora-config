@@ -12,6 +12,39 @@ Item {
     readonly property var projects: T3Code.sortedProjects().map(project => ({
         id: project.id, label: project.title
     }))
+    readonly property real projectPopupBottom: projectShoulder.y + projectPicker.y
+        + projectPicker.popupItem.y + projectPicker.popupHeight
+    readonly property real baseFormBottom: {
+        if (pendingText.visible)
+            return pendingText.y + pendingText.height;
+        if (actionErrorText.visible)
+            return actionErrorText.y + actionErrorText.height;
+        return composer.y + composer.height;
+    }
+    readonly property real projectPickerNeededHeight: projectPicker.expanded
+        ? Math.max(0, projectPopupBottom - baseFormBottom) : 0
+    // A visible Column child also contributes the gap before it. Include that
+    // gap in the declared growth so the card/background split stays exact.
+    readonly property real projectPickerLayoutHeight: projectPickerNeededHeight > 0
+        ? Math.max(form.spacing, projectPickerNeededHeight) : 0
+    readonly property real activePickerLayoutHeight: projectPicker.expanded
+        ? projectPickerLayoutHeight : composer.barPickerLayoutHeight
+    readonly property Item activePopupItem: projectPicker.expanded
+        ? projectPicker.popupItem : composer.activeBarPopupItem
+    // Only the part by which the viewport actually grew is outside the normal
+    // card. On a height-capped output the remainder stays inside the scrolling
+    // page, so it must not be subtracted from the card background.
+    readonly property real detachedOverflowHeight: {
+        const overflow = root.activePickerLayoutHeight;
+        if (overflow <= 0)
+            return 0;
+        const limit = root.maxHeight - header.height - 6;
+        const baseFormHeight = Math.max(0, form.implicitHeight - overflow);
+        const baseViewportHeight = Math.max(150, Math.min(limit, baseFormHeight));
+        return Math.max(0, viewport.height - baseViewportHeight);
+    }
+    readonly property Item detachedOverflowItem: detachedOverflowHeight > 0
+        ? root.activePopupItem : null
 
     implicitHeight: header.height + 6 + viewport.height
 
@@ -97,12 +130,14 @@ Item {
                     id: projectShoulder
                     width: parent.width
                     height: 44
+                    z: projectPicker.expanded ? 200 : 0
                     radius: T3Theme.panelRadius
                     color: T3Theme.surfaceRaised
                     border.width: 1
                     border.color: T3Theme.border
 
                     T3Picker {
+                        id: projectPicker
                         anchors.fill: parent
                         anchors.margins: 5
                         label: "Project"
@@ -112,6 +147,13 @@ Item {
                         enabled: T3Code.hasReadyProvider && root.draft.projectFixed !== true
                             && !T3Code.actionPending("new", "", "")
                         onSelected: value => T3Code.setNewProject(value)
+                        onExpandedChanged: Qt.callLater(() => {
+                            if (expanded)
+                                flick.contentY = Math.max(0,
+                                    root.projectPopupBottom - flick.height);
+                            else
+                                flick.returnToBounds();
+                        })
                     }
                 }
 
@@ -135,9 +177,16 @@ Item {
                     sendEnabled: editable && root.draft.projectId !== ""
                     sendLabel: "Start"
                     onSendRequested: T3Code.submitNewThread()
+                    onBarPickerReserveChanged: Qt.callLater(() => {
+                        if (barPickerReserve > 0)
+                            flick.contentY = Math.max(0, flick.contentHeight - flick.height);
+                        else
+                            flick.returnToBounds();
+                    })
                 }
 
                 Text {
+                    id: actionErrorText
                     visible: T3Code.actionError("new", "", "") !== ""
                     width: parent.width
                     text: T3Code.actionError("new", "", "")
@@ -151,6 +200,7 @@ Item {
                 }
 
                 Text {
+                    id: pendingText
                     visible: T3Code.actionPending("new", "", "")
                     width: parent.width
                     text: T3Code.pendingNewThreadId !== ""
@@ -158,6 +208,17 @@ Item {
                     font.family: T3Theme.fontUi
                     font.pixelSize: Theme.fontCaption
                     color: T3Theme.textFaint
+                }
+
+                // Like the composer's bar-menu spacer, this is geometry only:
+                // the host leaves the added tail transparent while the Project
+                // menu paints over it and remains part of the input mask.
+                Item {
+                    id: projectPickerSpace
+                    visible: root.projectPickerLayoutHeight > 0
+                    width: parent.width
+                    height: Math.max(0,
+                        root.projectPickerLayoutHeight - form.spacing)
                 }
             }
         }

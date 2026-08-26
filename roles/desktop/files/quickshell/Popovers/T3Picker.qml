@@ -2,8 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
-// Small keyboard-friendly picker used by the T3 composer. Its menu opens
-// upward so the fixed composer does not grow beyond the bounded popover.
+// Small keyboard-friendly picker used by the T3 composer and New Thread form.
 Item {
     id: root
 
@@ -14,6 +13,9 @@ Item {
     property bool expanded: false
     property bool openUpward: true
     property int menuRows: 7
+    readonly property int popupHeight:
+        Math.min(menuRows, options.length) * Theme.pickerRowHeight + 8
+    readonly property Item popupItem: menu
     signal selected(string value)
 
     implicitHeight: 34
@@ -185,7 +187,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         y: root.openUpward ? -height - 4 : root.height + 4
-        height: Math.min(root.menuRows, root.options.length) * 30 + 8
+        height: root.popupHeight
         radius: T3Theme.panelRadius
         // This panel floats over the rest of the composer. A recessed tile
         // fill is intentionally very translucent and lets the controls below

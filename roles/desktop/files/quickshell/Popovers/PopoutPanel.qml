@@ -35,6 +35,13 @@ FocusScope {
     property real availableWidth: 0
     property real availableHeight: 0
 
+    // Some controls need native surface room beyond the panel's own card. The
+    // host keeps this trailing extent transparent and adds the supplied item
+    // to its input region, so a floating menu can sit outside the card without
+    // turning that room into a second full-width slab.
+    property real detachedOverflowHeight: 0
+    property Item detachedOverflowItem: null
+
     // Escape inside a panel. Return true if the panel consumed it — going back
     // a page, closing a sub-view, clearing a search — and false to let the
     // host dismiss the popout, which is what this default does.

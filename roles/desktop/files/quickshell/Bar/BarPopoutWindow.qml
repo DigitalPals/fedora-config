@@ -29,7 +29,10 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
 
-    mask: Region { item: popout.maskItem }
+    mask: Region {
+        Region { item: popout.cardMaskItem }
+        Region { item: popout.overflowMaskItem }
+    }
     // Do not set HyprlandWindow.visibleMask here. In Quickshell 0.2.1 the
     // region is applied in the wrong coordinate space on scaled outputs,
     // clipping the detached card along its sides and bottom at 2x scale.

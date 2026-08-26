@@ -41,6 +41,13 @@ Surface {
     // last word on the smallest outputs.
     readonly property int threadMaxHeight: Math.min(root.maxPageHeight,
         Math.max(520, Math.round(root.availableHeight / 2)))
+    readonly property T3NewThreadPage loadedNewThreadPage: root.page === "new"
+        ? pageLoader.item as T3NewThreadPage : null
+
+    detachedOverflowHeight: loadedNewThreadPage
+        ? loadedNewThreadPage.detachedOverflowHeight : 0
+    detachedOverflowItem: loadedNewThreadPage
+        ? loadedNewThreadPage.detachedOverflowItem : null
 
     property string page: "inbox"
     property string selectedThreadId: ""

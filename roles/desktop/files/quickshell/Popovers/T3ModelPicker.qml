@@ -58,6 +58,8 @@ Item {
             + root.rail.length * (railWidth - 4) - 4;
         return Math.max(searching ? 0 : rail, Math.min(300, list));
     }
+    readonly property int popupHeight: panelHeight
+    readonly property Item popupItem: panel
 
     function currentInstanceId() {
         const at = value.indexOf(T3Code.selectionSeparator);

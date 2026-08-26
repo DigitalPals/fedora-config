@@ -73,9 +73,11 @@ Item {
     property real targetX: 0
     property real targetW: Theme.popWidth
     property real targetH: 0
+    property real targetCardH: 0
     property real renderedX: 0
     property real renderedW: Theme.popWidth
     property real renderedH: 0
+    property real renderedCardH: 0
     property real openProgress: 0
     property real surfaceOpacity: 0
 
@@ -94,7 +96,9 @@ Item {
     property real surfaceH: 0
     readonly property real requiredHeight: presented
         ? bodyTop + Math.max(1, surfaceH) + shadowBudget : 0
-    readonly property alias maskItem: hitRegion
+    readonly property alias cardMaskItem: cardHitRegion
+    readonly property Item overflowMaskItem: activePanel
+        ? activePanel.detachedOverflowItem : null
 
     function clamp(value, low, high) {
         return Math.max(low, Math.min(high, value));
@@ -141,8 +145,11 @@ Item {
 
     function geometryFor(item) {
         const anchor = effectiveAnchor;
+        const panel = item as PopoutPanel;
         const contentW = item && item.implicitWidth > 0 ? item.implicitWidth : Theme.popWidth;
         const contentH = item && item.implicitHeight > 0 ? item.implicitHeight : 1;
+        const overflowH = panel ? Math.max(0,
+            Math.min(contentH - 1, panel.detachedOverflowHeight)) : 0;
         const maxW = Math.max(1, host.width - 2 * edgeMargin);
         const bodyW = Math.round(Math.min(contentW, maxW));
 
@@ -158,6 +165,7 @@ Item {
             bodyX: bodyX,
             bodyW: bodyW,
             bodyH: contentH,
+            cardH: contentH - overflowH,
             // Kept in the card's own coordinates and clamped away from the
             // corners: a scale origin sitting outside the shape reads as the
             // card sliding rather than growing.
@@ -190,6 +198,7 @@ Item {
         targetX = geometry.bodyX;
         targetW = geometry.bodyW;
         targetH = geometry.bodyH;
+        targetCardH = geometry.cardH;
         originX = geometry.originX;
         surfaceH = Math.max(surfaceH, geometry.bodyH);
     }
@@ -201,6 +210,7 @@ Item {
         renderedX = geometry.bodyX;
         renderedW = geometry.bodyW;
         renderedH = geometry.bodyH;
+        renderedCardH = geometry.cardH;
         surfaceH = geometry.bodyH;
     }
 
@@ -210,6 +220,7 @@ Item {
         renderedX = targetX;
         renderedW = targetW;
         renderedH = targetH;
+        renderedCardH = targetCardH;
         openProgress = 1;
         surfaceOpacity = 1;
     }
@@ -370,6 +381,7 @@ Item {
             renderedX = targetX;
             renderedW = targetW;
             renderedH = targetH;
+            renderedCardH = targetCardH;
             geometryAnimations = true;
         }
         animateToTargets();
@@ -555,6 +567,15 @@ Item {
         }
     }
 
+    Behavior on renderedCardH {
+        enabled: host.geometryAnimations && host.openProgress > 0.01
+        NumberAnimation {
+            duration: Theme.popoutMorphDuration
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.popoutMorphCurve
+        }
+    }
+
     // ---- the card -------------------------------------------------------
     Item {
         id: card
@@ -590,17 +611,27 @@ Item {
 
         Rectangle {
             id: surface
-            anchors.fill: parent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: Math.max(1, host.renderedCardH)
             radius: Theme.popRadius
             color: host.activePanel ? host.activePanel.surfaceColor : Theme.panelSurface
             border.width: 1
             border.color: host.activePanel
                 ? host.activePanel.surfaceBorderColor : Theme.stroke
-            clip: true
 
             Behavior on color {
                 ColorAnimation { duration: Theme.surfaceDuration }
             }
+        }
+
+        // The content still clips to the native extent while panels morph, but
+        // it is no longer clipped to the shorter background card. A declared
+        // overflow can therefore paint into the transparent tail below it.
+        Item {
+            anchors.fill: parent
+            clip: true
 
             FocusScope {
                 anchors.fill: parent
@@ -678,13 +709,13 @@ Item {
     // the compositor is told about it once per switch instead of every frame.
     // It stays tight so the desktop around the panel keeps its clicks.
     Item {
-        id: hitRegion
+        id: cardHitRegion
         x: host.targetX
         y: host.bottomBar
             ? host.height - host.bodyTop - Math.max(0, host.targetH)
             : host.bodyTop
         width: Math.max(1, host.targetW)
-        height: Math.max(0, host.targetH)
+        height: Math.max(0, host.targetCardH)
         visible: host.presented && host.openProgress > 0.5 && height > 0.5
     }
 }
