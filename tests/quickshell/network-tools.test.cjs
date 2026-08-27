@@ -271,7 +271,10 @@ if any("api.fast.com" in value for value in a):
 with open(os.environ["STUB_LOG"], "a") as stream: stream.write(json.dumps(a)+"\\n")
 counter="tx_bytes" if "POST" in a else "rx_bytes"
 target=pathlib.Path(os.environ["NETWORK_SPEEDTEST_COUNTER_ROOT"])/"eth0"/"statistics"/counter
-for _ in range(12):
+# Keep every mocked transfer active beyond the complete 350 ms phase. A short
+# burst can finish before later samples on a loaded CI runner, which correctly
+# looks like stalled traffic to the production sustained-throughput check.
+for _ in range(40):
     value=int(target.read_text().strip() or 0)
     temporary=target.with_name(target.name+"."+str(os.getpid()))
     temporary.write_text(str(value+250000))
