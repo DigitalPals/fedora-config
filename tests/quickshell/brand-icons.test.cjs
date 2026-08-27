@@ -68,7 +68,10 @@ test("product marks render through BrandIcon rather than ad-hoc asset paths", ()
     }
 
     const icon = read("Common/BrandIcon.qml");
-    assert.match(icon, /source:\s*BrandIcons\.source\(root\.name\)/);
+    assert.match(icon, /property bool normalizeTintSource:\s*false/);
+    assert.match(icon,
+        /source:\s*root\.normalizeTintSource\s*\?\s*BrandIcons\.highlightSource\(root\.name\)\s*:\s*BrandIcons\.source\(root\.name\)/,
+        "flat contextual tinting must start from geometry-matched white paint");
     assert.match(icon, /source:\s*BrandIcons\.highlightSource\(root\.name\)/);
     assert.match(icon, /property bool colorized:\s*false/);
     assert.match(icon, /property real tintAmount:\s*colorized \? 1 : 0/);

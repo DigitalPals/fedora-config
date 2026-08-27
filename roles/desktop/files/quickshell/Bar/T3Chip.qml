@@ -5,7 +5,7 @@ import "../Common"
 // T3 Code chip: the official T3 mark (pingdotgg/t3code, MIT), a live dot while
 // agents are working, and a status word. Sessions needing approval or input
 // win (amber), then running/background-monitoring work, then a quiet idle
-// mark. The mark uses the shared bar-icon tone while connected and dims only
+// mark. The mark follows the shared menubar ink while connected and dims only
 // while off or connecting.
 BarChip {
     id: root
@@ -68,7 +68,7 @@ BarChip {
             + T3Code.attentionCount + " waiting";
     }
 
-    BrandIcon {
+    BarBrandIcon {
         id: t3Mark
         anchors.verticalCenter: parent.verticalCenter
         // PreserveAspectFit, so the box is a bound rather than a shape: the
@@ -77,8 +77,6 @@ BarChip {
         width: 15
         name: "t3"
         opacity: highlighted || root.live ? 1 : 0.52
-        colorized: true
-        tint: Theme.barIcon
         highlighted: root.held || root.hovered
     }
 

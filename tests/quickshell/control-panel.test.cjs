@@ -17,11 +17,10 @@ test("the fixed Fedora button owns the ownerless Control Panel anchor", () => {
     assert.match(button, /BarChip|host:\s*barWindow/);
     assert.match(button, /panelName:\s*"control"/);
     assert.match(button, /tooltip:\s*"Control Panel"/);
-    assert.match(button, /BrandIcon\s*\{/);
+    assert.match(button, /BarBrandIcon\s*\{/);
     assert.match(button, /name:\s*"fedora"/);
     assert.match(button, /width:\s*Theme\.barIconSize/);
     assert.match(button, /height:\s*Theme\.barIconSize/);
-    assert.match(button, /tint:\s*Theme\.barIcon/);
     assert.match(button,
         /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/,
         "the Fedora mark must switch to its exact white SVG on hover");

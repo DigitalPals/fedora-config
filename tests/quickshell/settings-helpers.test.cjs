@@ -163,6 +163,18 @@ test("the automatic menubar palette keeps copy at AA contrast", () => {
     assert.equal(H.foregroundFor("#ffffff"), "#000000");
 });
 
+test("the automatic menubar palette keeps the shared icon brightness", () => {
+    const dark = H.barPalette("#131419");
+    const light = H.barPalette("#ffffff");
+
+    assert.equal(dark.icon, "#c2c6d1",
+        "the default dark bar must use the bright shared silver");
+    assert.equal(light.icon, "#3a3850",
+        "light bars need the established deep-ink counterpart");
+    assert.ok(H.contrastRatio(dark.icon, dark.background) >= 10.5);
+    assert.ok(H.contrastRatio(light.icon, light.background) >= 10.5);
+});
+
 test("normalizeModOpts drops unknown modules and keys", () => {
     const next = H.normalizeModOpts({
         flux: { on: true },

@@ -94,6 +94,7 @@ Singleton {
     readonly property color barTextLow: barPalette.textLow
     readonly property color barTextDim: barPalette.textDim
     readonly property color barTextFaint: barPalette.textFaint
+    // Bright, cool resting ink shared by generic and product bar marks.
     readonly property color barIcon: barPalette.icon
     // The screenshot's workspace strip is the bar's clearest accent: a pale
     // blue current chip, quiet occupied labels, then tiny empty dots. Keep

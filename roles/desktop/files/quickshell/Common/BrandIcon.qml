@@ -5,8 +5,9 @@ import QtQuick.Effects
 // One approved identity mark. BrandIcons owns name-to-file resolution; this
 // component owns sampling and optional contextual tinting/highlighting.
 //
-// Leave colorized false where product identity matters. Menubar and control
-// marks set it true so the canonical SVG follows their shared resting tone.
+// Leave colorized false where product identity is content. BarBrandIcon owns
+// the menubar's monochrome presentation; other surrounding surfaces may set
+// it when they need the identity rendered as contextual ink.
 // Interactive white uses a source SVG with identical geometry: a mask or
 // effect can alter antialiased edges and make small marks look heavier.
 Item {
@@ -15,6 +16,10 @@ Item {
     property string name: ""
     property bool colorized: false
     property color tint: Theme.icon
+    // MultiEffect colourization preserves the source paint's luminance. Use
+    // the geometry-matched white variant when the requested tint must be the
+    // literal rendered colour rather than a luminance-scaled version of it.
+    property bool normalizeTintSource: false
     property real tintAmount: colorized ? 1 : 0
     property bool highlighted: false
     property real highlightAmount: highlighted ? 1 : 0
@@ -38,7 +43,9 @@ Item {
     Image {
         id: sourceImage
         anchors.fill: parent
-        source: BrandIcons.source(root.name)
+        source: root.normalizeTintSource
+            ? BrandIcons.highlightSource(root.name)
+            : BrandIcons.source(root.name)
         sourceSize: Qt.size(Math.max(1, Math.round(root.width * 2)),
             Math.max(1, Math.round(root.height * 2)))
         fillMode: Image.PreserveAspectFit

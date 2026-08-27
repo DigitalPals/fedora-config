@@ -130,14 +130,12 @@ Item {
                 anchors.centerIn: parent
                 spacing: 4
 
-                BrandIcon {
+                BarBrandIcon {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 12
                     height: 12
                     name: "claude"
                     opacity: highlighted ? 1 : 0.52
-                    colorized: true
-                    tint: Theme.barIcon
                     highlighted: root.held || emptyHover.over
                 }
 
@@ -223,14 +221,12 @@ Item {
                     anchors.centerIn: parent
                     spacing: 4
 
-                    BrandIcon {
+                    BarBrandIcon {
                         anchors.verticalCenter: parent.verticalCenter
                         width: chip.modelData === "codex" ? 13 : 12
                         height: width
                         name: Usage.meta[chip.modelData].icon
                         opacity: highlighted || chip.status !== "error" ? 1 : 0.52
-                        colorized: true
-                        tint: Theme.barIcon
                         highlighted: chip.current || chipHover.over
                     }
 

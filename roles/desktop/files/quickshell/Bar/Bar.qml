@@ -927,13 +927,11 @@ PanelWindow {
                 tooltip: "Control Panel"
                 tooltipAlign: 1
 
-                BrandIcon {
+                BarBrandIcon {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Theme.barIconSize
                     height: Theme.barIconSize
                     name: "fedora"
-                    colorized: true
-                    tint: Theme.barIcon
                     highlighted: controlButton.held || controlButton.hovered
                 }
             }

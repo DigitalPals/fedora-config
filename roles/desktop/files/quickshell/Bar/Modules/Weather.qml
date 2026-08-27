@@ -37,7 +37,9 @@ BarModule {
             // Weather.code is -1 until a forecast lands, and barGlyphColor()
             // already answers that with the "no data" resting tone.
             color: chip.fg
-            opacity: chip.held || chip.hovered ? 1 : 0.68
+            // A current condition keeps the full-strength colour used in the
+            // desktop reference. Only stale/offline data is deliberately dim.
+            opacity: chip.held || chip.hovered || !Weather.offline ? 1 : 0.52
 
             Behavior on opacity {
                 NumberAnimation { duration: Theme.chipFadeDuration }

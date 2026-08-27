@@ -128,7 +128,7 @@ test("every module family uses the shared bar hover surface", () => {
             `${name} bypasses the shared hover surface`);
 });
 
-test("menubar icons share one resting-to-hover foreground ladder", () => {
+test("menubar icons keep bright system ink and shared monochrome brands", () => {
     const bar = read("Bar/Bar.qml");
     const chip = read("Bar/BarChip.qml");
     const icon = read("Bar/BarIcon.qml");
@@ -143,6 +143,7 @@ test("menubar icons share one resting-to-hover foreground ladder", () => {
     const t3 = read("Bar/T3Chip.qml");
     const usage = read("Bar/UsageChips.qml");
     const weather = read("Bar/Modules/Weather.qml");
+    const brand = read("Bar/BarBrandIcon.qml");
 
     assert.match(chip, /property color idleColor:\s*Theme\.barIcon/);
     assert.match(chip, /property color hoverColor:\s*Theme\.barTextHi/);
@@ -151,12 +152,18 @@ test("menubar icons share one resting-to-hover foreground ladder", () => {
         "content chips must expose the same hover foreground as glyph chips");
     assert.match(icon,
         /held \|\| root\.hovered \? hoverColor : idleColor/);
+    assert.match(brand, /BrandIcon\s*\{/);
+    assert.match(brand, /colorized:\s*true/);
+    assert.match(brand, /tint:\s*Theme\.barIcon/);
+    assert.match(brand, /normalizeTintSource:\s*true/,
+        "bar brands must not inherit luminance from canonical source paint");
 
     assert.equal((bar.match(/idleColor:\s*Theme\.barIcon/g) || []).length, 1,
         "the launcher keeps the shared resting icon tone");
     assert.match(bar,
         /BarChip\s*\{[\s\S]{0,220}?panelName:\s*"control"[\s\S]{0,700}?name:\s*"fedora"/,
         "the fixed Control Panel trigger must use Fedora's bundled vector");
+    assert.match(bar, /BarBrandIcon\s*\{[\s\S]{0,180}?name:\s*"fedora"/);
     assert.match(bar,
         /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/);
     assert.match(updates, /idleColor:\s*Theme\.barIcon/);
@@ -171,17 +178,21 @@ test("menubar icons share one resting-to-hover foreground ladder", () => {
     assert.match(bluetooth, /color:\s*chip\.fg/);
     assert.match(battery, /Battery\.pluggedIn \? Theme\.barAccent : Theme\.barIcon/);
     assert.match(battery, /color:\s*chip\.fg/);
+    assert.match(github, /BarBrandIcon\s*\{[\s\S]{0,180}?name:\s*"github"/);
     assert.match(github, /highlighted:\s*ghChip\.held \|\| ghChip\.hovered/);
     assert.match(t3, /opacity:\s*highlighted \|\| root\.live \? 1 : 0\.52/);
     assert.match(t3,
-        /BrandIcon\s*\{[\s\S]{0,500}?highlighted:\s*root\.held \|\| root\.hovered/);
+        /BarBrandIcon\s*\{[\s\S]{0,500}?highlighted:\s*root\.held \|\| root\.hovered/);
     assert.match(usage,
         /opacity:\s*highlighted \|\| chip\.status !== "error" \? 1 : 0\.52/);
+    assert.equal((usage.match(/BarBrandIcon\s*\{/g) || []).length, 2,
+        "model providers must use the shared monochrome bar presentation");
     assert.match(usage, /highlighted:\s*root\.held \|\| emptyHover\.over/);
     assert.match(usage, /highlighted:\s*chip\.current \|\| chipHover\.over/);
     assert.match(weather, /idleColor:\s*Weather\.barGlyphColor\(Weather\.code, Weather\.isDay\)/);
     assert.match(weather, /color:\s*chip\.fg/);
-    assert.match(weather, /opacity:\s*chip\.held \|\| chip\.hovered \? 1 : 0\.68/);
+    assert.match(weather,
+        /opacity:\s*chip\.held \|\| chip\.hovered \|\| !Weather\.offline \? 1 : 0\.52/);
     assert.doesNotMatch(weather, /color:\s*Theme\.barIcon/,
         "weather must retain its condition palette at rest");
 });

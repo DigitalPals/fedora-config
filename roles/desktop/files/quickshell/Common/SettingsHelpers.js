@@ -314,6 +314,12 @@ function ensureContrast(value, background, target) {
 function barPalette(background) {
     var bg = hexIn(background, "#161424").toLowerCase();
     var foreground = foregroundFor(bg);
+    // Small status glyphs need stronger ink than the adjacent secondary copy.
+    // The dark anchor matches the bright silver that already reads correctly
+    // on the GitHub mark; light bars use its established deep-ink counterpart.
+    // Pull either toward the selected foreground only when a custom bar colour
+    // needs more contrast.
+    var iconBase = foreground === "#ffffff" ? "#c2c6d1" : "#3a3850";
     return {
         background: bg,
         foreground: foreground,
@@ -322,7 +328,7 @@ function barPalette(background) {
         textLow: contrastTone(bg, foreground, 5.5),
         textDim: contrastTone(bg, foreground, 4.8),
         textFaint: contrastTone(bg, foreground, 4.5),
-        icon: contrastTone(bg, foreground, 6.0)
+        icon: ensureContrast(iconBase, bg, 10.5)
     };
 }
 

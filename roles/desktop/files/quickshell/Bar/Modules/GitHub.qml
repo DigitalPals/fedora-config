@@ -45,14 +45,12 @@ BarModule {
             width: Theme.barIconSize
             height: Theme.barIconSize
 
-            BrandIcon {
+            BarBrandIcon {
                 id: mark
                 anchors.centerIn: parent
                 width: Theme.barIconSize
                 height: Theme.barIconSize
                 name: "github"
-                colorized: true
-                tint: Theme.barIcon
                 highlighted: ghChip.held || ghChip.hovered
             }
 
