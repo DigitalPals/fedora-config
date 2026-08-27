@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 12;
+var VERSION = 13;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -107,7 +107,10 @@ function defaultModOpts() {
         },
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
         t3: { showLabel: true },
-        usage: { claude: true, codex: true, kimi: true, warnAt: 25, critAt: 10 },
+        usage: {
+            claude: true, claudeAutoRefresh: true, codex: true, kimi: true,
+            warnAt: 25, critAt: 10
+        },
         gh: {
             badge: "dot", repos: 8, pollMins: 5, ciActivity: true,
             toasts: true, watch: []
@@ -494,6 +497,7 @@ var MOD_OPT_CHECKS = {
     t3: { showLabel: boolIn },
     usage: {
         claude: boolIn,
+        claudeAutoRefresh: boolIn,
         codex: boolIn,
         kimi: boolIn,
         warnAt: function(v, d) { return intIn(v, 10, 50, 5, d); },

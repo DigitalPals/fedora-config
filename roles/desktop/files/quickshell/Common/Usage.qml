@@ -11,7 +11,7 @@ Singleton {
 
     readonly property var providerKeys: ["claude", "codex", "kimi"]
     readonly property var meta: ({
-            claude: { name: "Claude", title: "Claude Code", icon: "claude", cmd: "claude /login" },
+            claude: { name: "Claude", title: "Claude Code", icon: "claude", cmd: "claude auth login" },
             codex: { name: "Codex", title: "Codex CLI", icon: "openai", cmd: "codex login" },
             kimi: { name: "Kimi", title: "Kimi Code", icon: "kimi", cmd: "kimi login" }
         })
@@ -91,7 +91,7 @@ Singleton {
         return Math.round(Math.min(...p.windows.map(w => 100 - w.used)));
     }
 
-    // "ok" | "warn" | "crit" | "error" | "none"
+    // "ok" | "warn" | "crit" | "stale" | "error" | "none"
     function chipStatus(key) {
         const p = provider(key);
         if (!p)
@@ -101,6 +101,8 @@ Singleton {
         const rem = minRemaining(key);
         if (rem < 0)
             return "none";
+        if (p.stale === true)
+            return "stale";
         if (rem <= Settings.modOpts.usage.critAt)
             return "crit";
         if (rem <= Settings.modOpts.usage.warnAt)
@@ -108,11 +110,12 @@ Singleton {
         return "ok";
     }
 
-    // Start a fetch, replacing one already in flight.
+    // One run may invoke Claude Code to rotate its saved OAuth token. Never
+    // cancel that credential transaction or overlap it with another fetch.
     function start() {
+        if (fetchProc.running)
+            return;
         loading = true;
-        fetchProc.staleRuns += fetchProc.running ? 1 : 0;
-        fetchProc.running = false;
         fetchProc.running = true;
     }
 
@@ -152,6 +155,10 @@ Singleton {
         return Qt.formatDateTime(d, "MMM d, HH:mm");
     }
 
+    function formatCountdown(seconds) {
+        return Format.mmss(seconds);
+    }
+
     // Everything a finished run has to say, in one place. `loading` clears
     // here whatever happened, including the case where python3 itself could
     // not be launched (ProcHelpers.NOT_STARTED) and no output ever arrived.
@@ -185,15 +192,15 @@ Singleton {
         // before exited(), and the falling edge of `running` is the only
         // signal that arrives when the binary cannot be launched at all.
         //
-        // Runs killed by start() have yet to report in: their exit lands as a
-        // crash some time after the replacement started, and is not news.
-        property int staleRuns: 0
         property string body: ""
         property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py"]
+        command: Settings.modOpts.usage.claudeAutoRefresh
+            ? ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py",
+                "--refresh-claude"]
+            : ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py"]
 
         stdout: StdioCollector {
             onStreamFinished: fetchProc.body = text
@@ -211,8 +218,6 @@ Singleton {
                 errText = "";
                 exitSeen = false;
                 lastExit = 0;
-            } else if (staleRuns > 0) {
-                staleRuns--;
             } else {
                 root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
             }

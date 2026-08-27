@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
-import "../Common/Format.js" as Format
 
 // Per-provider usage view: brand header with mini provider tabs, blocked-bar
 // window blocks with absolute reset times, and credits.
@@ -29,6 +28,8 @@ Surface {
     readonly property string sel: Usage.selected
     readonly property var p: Usage.provider(sel)
     readonly property var info: Usage.meta[sel]
+    readonly property double readingAt: p && p.observedAt
+        ? p.observedAt * 1000 : Usage.updatedAt
 
     readonly property real cardW: (width - 2 * padding - Theme.panelSectionSpacing) / 2
     readonly property int cardPadding: 12
@@ -70,6 +71,10 @@ Surface {
             return name + " token expired";
         case "rate":
             return name + " is rate limited";
+        case "refresh":
+            return name + " refresh failed";
+        case "wait":
+            return name + " update pending";
         default:
             return name + " fetch failed";
         }
@@ -84,9 +89,33 @@ Surface {
             return `The stored token has expired. Run <font color="${Theme.textMid}" face="${Theme.fontMono}">${cmd}</font> in a terminal, then press Refresh.`;
         case "rate":
             return "The usage endpoint is rate limiting requests. Polling will retry automatically.";
+        case "refresh":
+            return `${prov.message || "Claude Code could not refresh the saved login."} Run <font color="${Theme.textMid}" face="${Theme.fontMono}">${cmd}</font> if it does not recover automatically.`;
+        case "wait":
+            return "The previous quota period has reset. Its old reading was hidden; polling will fetch the new period when the five-minute endpoint interval allows it.";
         default:
             return prov.message || "The usage endpoint returned an unexpected response.";
         }
+    }
+
+    function staleBody(prov, nowMs) {
+        let message = "The endpoint could not be updated, so these are the last valid readings.";
+        switch (prov.staleKind) {
+        case "rate":
+            message = "The usage endpoint is rate limited. These are the last valid readings.";
+            break;
+        case "expired":
+            message = Settings.modOpts.usage.claudeAutoRefresh
+                ? "Claude's login could not be refreshed. These are the last valid readings."
+                : "Claude auto-refresh is off. These are the last valid readings.";
+            break;
+        case "refresh":
+            message = "Claude Code could not refresh its login. These are the last valid readings.";
+            break;
+        }
+        if (prov.retryAt && prov.retryAt > nowMs / 1000)
+            message += " Retrying in " + Usage.formatReset(prov.retryAt) + ".";
+        return message;
     }
 
     // ---- Header: brand mark, meta, mini tabs, refresh ------------------
@@ -252,6 +281,55 @@ Surface {
                     width: parent.width
                     textFormat: Text.RichText
                     text: root.p ? root.errorBody(root.p) : ""
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    color: Theme.textLow
+                    wrapMode: Text.Wrap
+                    lineHeight: Theme.proseLineHeight
+                }
+            }
+        }
+    }
+
+    // ---- Stale-data warning --------------------------------------------
+    Rectangle {
+        visible: root.p !== null && root.p.status === "ok" && root.p.stale === true
+        width: parent.width
+        height: staleRow.implicitHeight + 24
+        radius: Theme.chipRadius
+        color: Theme.amberBgSoft
+
+        Row {
+            id: staleRow
+            x: 12
+            y: 12
+            width: parent.width - 24
+            spacing: 10
+
+            Sym {
+                width: 18
+                horizontalAlignment: Text.AlignHCenter
+                name: "schedule"
+                size: Theme.fontBody
+                color: Theme.amber
+            }
+
+            Column {
+                width: parent.width - 28
+                spacing: 3
+
+                Text {
+                    width: parent.width
+                    text: "Showing last known usage"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightMedium
+                    color: Theme.textHi
+                }
+
+                Text {
+                    width: parent.width
+                    text: root.p ? root.staleBody(root.p, Usage.countdownNow) : ""
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontSecondary
                     color: Theme.textLow
@@ -531,8 +609,8 @@ Surface {
             textFormat: Usage.fetchError !== "" ? Text.PlainText : Text.RichText
             text: Usage.fetchError !== ""
                 ? Usage.fetchError
-                : Usage.updatedAt > 0
-                    ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Usage.updatedAt), "HH:mm:ss")}</font>`
+                : root.readingAt > 0
+                    ? `${root.p && root.p.stale === true ? "last live" : "updated"} <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(root.readingAt), "HH:mm:ss")}</font>`
                     : "Loading…"
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontMicro
@@ -545,7 +623,10 @@ Surface {
             anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.RichText
-            text: `next poll <font color="${Theme.textLow}" face="${Theme.fontMono}">${Format.mmss(Usage.nextPollSecs)}</font>`
+            text: root.p && root.p.retryAt
+                    && root.p.retryAt > Usage.countdownNow / 1000
+                ? `retry in <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatReset(root.p.retryAt)}</font>`
+                : `next poll <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatCountdown(Usage.nextPollSecs)}</font>`
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontMicro
             color: Theme.textFaint

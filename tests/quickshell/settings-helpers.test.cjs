@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 12);
+    assert.equal(H.VERSION, 13);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, false);
     assert.equal(d.barColorMode, "default");
@@ -81,6 +81,7 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.modOpts.t3, { showLabel: true });
     assert.equal(d.modOpts.usage.warnAt, 25);
     assert.equal(d.modOpts.usage.critAt, 10);
+    assert.equal(d.modOpts.usage.claudeAutoRefresh, true);
     assert.equal(d.modOpts.vol.step, 5);
     assert.equal(d.modOpts.vol.middleClick, "mute");
     assert.deepEqual(d.modOpts.batt, { showPct: true, warnAt: 20, critAt: 10 });
@@ -199,7 +200,9 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
         indicators: { mode: "sometimes" },
         clock: { showEvents: "yes", daysAhead: 99, pollMins: 7 },
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
-        usage: { warnAt: 8, critAt: 60, claude: "yes" },
+        usage: {
+            warnAt: 8, critAt: 60, claude: "yes", claudeAutoRefresh: false
+        },
         gh: {
             badge: "flag", repos: 99, pollMins: 0,
             ciActivity: "sure", toasts: "sure"
@@ -233,6 +236,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.usage.warnAt, 10);
     assert.equal(next.usage.critAt, 25);
     assert.equal(next.usage.claude, true, "non-boolean falls back to default");
+    assert.equal(next.usage.claudeAutoRefresh, false);
     assert.equal(next.vol.step, 1);
     assert.equal(next.vol.middleClick, "mute");
     assert.equal(next.batt.warnAt, 35, "snaps to step 5");

@@ -394,6 +394,16 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
+                label: "Keep Claude signed in"
+                description: "Let Claude Code refresh its saved login for usage checks"
+                checked: view.opts.claudeAutoRefresh
+                dirty: view.optDirty("claudeAutoRefresh")
+                onToggled: value => view.setOpt("claudeAutoRefresh", value)
+                onResetRequested: view.resetOpt("claudeAutoRefresh")
+            }
+
+            SwitchRow {
+                width: parent.width
                 label: "Codex"
                 checked: view.opts.codex
                 dirty: view.optDirty("codex")

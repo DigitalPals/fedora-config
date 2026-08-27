@@ -399,13 +399,14 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema twelve keeps the classic menubar and adds the system calendar", () => {
+test("schema thirteen keeps the classic menubar and enables Claude usage refresh", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 12/);
+    assert.match(helpers, /var VERSION = 13/);
     assert.match(helpers, /"media", "indicators", "clock"/);
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibited:\s*true/);
     assert.match(helpers, /"updates", "gh", "t3", "usage", "tray"/);
+    assert.match(helpers, /claudeAutoRefresh:\s*true/);
     assert.match(helpers, /mod\("tray", true\), mod\("notifications", true\), mod\("vol", true\)/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);

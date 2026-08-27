@@ -184,12 +184,9 @@ Item {
                 height: Theme.chipInnerHeight
                 width: chipRow.implicitWidth + 14
                 radius: Theme.chipRadius
-                // A quota in trouble keeps its semantic state fill; ordinary
-                // providers rest directly on the shared bar slab.
-                color: status === "crit" ? Theme.barRedBg
-                    : status === "warn" ? Theme.barAmberBg
-                    : current ? Theme.barChipHover
-                    : "transparent"
+                // Quota state belongs to the percentage text. Keep the bar
+                // slab quiet instead of adding warning/critical tile fills.
+                color: current ? Theme.barChipHover : "transparent"
                 anchors.verticalCenter: parent.verticalCenter
                 scale: chipMouse.pressed ? 0.95 : 1
 
@@ -242,6 +239,7 @@ Item {
                         font.features: Theme.tabularNumberFeatures
                         color: chip.status === "crit" ? Theme.barRedText
                             : chip.status === "warn" ? Theme.barAmber
+                            : chip.status === "stale" ? Theme.barTextFaint
                             : chip.status === "error" ? Theme.barRedText
                             : Theme.barTextMid
                     }
