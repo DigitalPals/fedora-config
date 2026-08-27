@@ -453,12 +453,17 @@ worker() {
 
   write_status running packages "Updating system packages and Flatpaks" 0
   printf 'XPS update %s started at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
+  # Keep run state and logs private, but do not pass that 0077 umask through
+  # sudo. DNF5 rewrites its shared system-state TOML files using the process
+  # umask; making them root-only breaks every later unprivileged dnf query.
+  local -a privileged_package=(sudo -n sh -c \
+    'umask 022; exec "$@"' xps-update-package)
   tagged_command dnf "$run_dir/dnf.log" "$run_dir/dnf.rc" \
-    sudo -n dnf -y upgrade --refresh &
+    "${privileged_package[@]}" dnf -y upgrade --refresh &
   local dnf_pid=$! flatpak_pid=""
   if [[ $with_flatpak == true ]]; then
     tagged_command flatpak "$run_dir/flatpak.log" "$run_dir/flatpak.rc" \
-      sudo -n flatpak update --system --noninteractive &
+      "${privileged_package[@]}" flatpak update --system --noninteractive &
     flatpak_pid=$!
   else
     printf '0\n' > "$run_dir/flatpak.rc"; flatpak_done=true
