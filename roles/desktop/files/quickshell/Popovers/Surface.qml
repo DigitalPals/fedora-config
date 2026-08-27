@@ -1,4 +1,6 @@
+pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import "../Common"
 
 // Shared popover surface: semantic width, the bar's own corner, a hairline
@@ -13,6 +15,12 @@ PopoutPanel {
     id: root
 
     property int padding: Theme.panelPadding
+    property alias backdrop: backdropLayer.data
+    // The corner the backdrop is clipped to is the panel's own. A panel whose
+    // field also has to end somewhere paints that falloff into the same mask,
+    // rather than stacking a second masked layer inside it.
+    property alias backdropMaskGradient: backdropMask.gradient
+    readonly property Item backdropMaskItem: backdropMask
     property alias spacing: column.spacing
     default property alias content: column.data
 
@@ -31,6 +39,31 @@ PopoutPanel {
         Behavior on color {
             ColorAnimation { duration: Theme.surfaceDuration }
         }
+    }
+
+    // A field painted behind every section, for the one panel that wants its
+    // content to sit on something other than the flat surface — the media
+    // view's artwork wash. It is a sibling of the column rather than its first
+    // item, so it spans the whole panel instead of taking a slot in the
+    // layout, and the panel's own corner is what clips it.
+    Item {
+        id: backdropLayer
+        anchors.fill: parent
+        visible: backdropLayer.children.length > 0
+        layer.enabled: backdropLayer.visible
+        layer.effect: MultiEffect {
+            maskEnabled: true
+            maskSource: root.backdropMaskItem
+        }
+    }
+
+    Rectangle {
+        id: backdropMask
+        anchors.fill: parent
+        radius: Theme.panelRadius
+        color: "white"
+        visible: false
+        layer.enabled: backdropLayer.visible
     }
 
     Column {
