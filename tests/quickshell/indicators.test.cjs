@@ -124,6 +124,7 @@ test("all shared toggles use one persisted write path", () => {
 test("large Control Panel states use subdued accent containers", () => {
     const theme = read("Common/Theme.qml");
     const control = read("Popovers/ControlCenterPopover.qml");
+    const battery = read("Popovers/BatteryPopover.qml");
     const slider = read("Popovers/FillSlider.qml");
     const radioRow = control.slice(
         control.indexOf("component RadioRow:"),
@@ -148,15 +149,21 @@ test("large Control Panel states use subdued accent containers", () => {
     // which is exactly where the accent is supposed to survive.
     const quickTile = control.slice(
         control.indexOf("component QuickTile:"),
-        control.indexOf("component StatColumn:"));
+        control.indexOf("component SessionAction:"));
     assert.match(quickTile, /tile\.on \? Theme\.accentContainer/);
     assert.doesNotMatch(quickTile, /tile\.on \? Theme\.accent\b/);
     // A running capture is the one state that owns a field of its own, and it
-    // is the error colour, not the accent.
-    assert.match(quickTile, /tile\.alert \? Theme\.redBg/);
-    assert.doesNotMatch(control, /current \? Theme\.accent\b/,
-        "the power profile is a segmented control; it lights the held chip");
-    assert.match(control, /current \? Theme\.chipHover/);
+    // is the error colour, not the accent. It moved out of the grid with the
+    // other two capture actions, so the rule is asserted on the track.
+    assert.match(control, /capture\.recording \? Theme\.redBg/);
+    // The power profile is a segmented control: its held segment takes the
+    // chip, never an accent field. (Accent survives on that segment's ripple
+    // tint, which is a mark.) It lives only in BatteryPopover now — the
+    // Control Panel stopped carrying a second copy of the battery's controls.
+    assert.match(battery, /color: current \? Theme\.chipHover/);
+    assert.doesNotMatch(battery, /color: current \? Theme\.accent\b/);
+    assert.doesNotMatch(control, /PowerProfiles/,
+        "the profile track lives in BatteryPopover, not in the dashboard");
     assert.match(slider,
         /GradientStop \{ position: 1; color: Theme\.accentSoft \}/);
 });

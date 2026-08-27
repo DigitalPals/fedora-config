@@ -1,25 +1,26 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
-import Quickshell.Services.UPower
 import "../Common"
-import "../Common/Format.js" as Format
 
-// Control Panel: the battery header, one segmented power-profile track, the
-// two radio rows, one grid of quick actions, the filled sliders, the system
-// stats, session controls and the shell-settings footer.
+// Control Panel: the machine's three readings, the filled sliders, the two
+// radio rows, one grid of quick toggles over a capture track, session
+// controls and the shell-settings footer.
 //
-// The redesign is about geometry, not new controls. This panel used to stack
-// six different shapes — 34px radio rows, five square toggles with labels
-// under them, a 16px-tall profile pill inside a 26px box, a 34px slider beside
-// a 26px chevron, 26px action chips, and three floating stat stacks — on one
-// flat 12px rhythm with no section marks anywhere. There are three shapes now
-// — a full-width row, a grid tile, a segmented track — separated by the
-// SectionLabel the rest of the shell already draws.
+// The panel is ordered by what you open it for. CPU, RAM and temperature lead
+// as three cards rather than a hairline strip at the foot, and brightness and
+// volume — the two controls reached most often — sit above the radios.
+//
+// Three things this panel used to carry live elsewhere now. The battery
+// reading belongs to its own menubar widget and BatteryPopover, which also
+// owns the power profile; Tailscale keeps its detail view, reachable from
+// `qs ipc call popouts toggle tailscale`, but no longer holds a cell here.
+// What is left is one shape per idea: a card, a full-width row, a grid tile,
+// a segmented track, separated by the SectionLabel the rest of the shell
+// already draws.
 //
 // The Fedora button opens this dashboard; the four status widgets open their
-// dedicated detail views directly. BatteryPopover remains the battery drill-in
-// from here and from its menubar widget.
+// dedicated detail views directly.
 Surface {
     id: root
 
@@ -43,7 +44,13 @@ Surface {
     // two lines of copy, which is what moves the status off the right edge.
     // A long SSID gets ~300px here against ~240px when it shared the row.
     readonly property int radioRowHeight: 44
-    readonly property int statHeight: 34
+    // The three machine readings, as cards across one row. The strip these
+    // replace shared hairlines at the foot of the panel; a card carries the
+    // same label, reading and meter where the panel opens.
+    readonly property int cardSpacing: 8
+    readonly property real cardWidth:
+        Math.max(0, (contentWidth - 2 * cardSpacing) / 3)
+    readonly property int cardHeight: 68
     readonly property int sessionSpacing: 6
     readonly property int sessionActionHeight: 52
     readonly property real sessionActionWidth:
@@ -56,31 +63,17 @@ Surface {
         { key: "shutdown", glyph: "power_settings_new", label: "Shut down", danger: true }
     ]
 
-    // Battery tone. Charging and full are never a warning, however low the
-    // reading is, so every threshold below is gated on discharging.
-    readonly property bool onBattery:
-        Battery.isLaptop && !Battery.charging && !Battery.full
-    readonly property bool battCritical: onBattery && Battery.percent <= 10
-    readonly property bool battLow: onBattery && Battery.percent <= 20
-    readonly property bool battWarn: battCritical || battLow
-    readonly property color battTone: battCritical ? Theme.redText
-        : battLow ? Theme.amber : Theme.textHi
-    readonly property color battFill: battCritical ? Theme.red
-        : battLow ? Theme.amber : Theme.accent
-
-    // The stat cards and the Tailscale tile are live only while this panel
-    // is on screen, so it says so rather than the singletons guessing from
-    // Popouts. Keyed on `visible`, not construction: this panel is latched.
+    // The stat cards are live only while this panel is on screen, so it says
+    // so rather than the singletons guessing from Popouts. Keyed on
+    // `visible`, not construction: this panel is latched.
     Claim {
         active: root.visible
         onClaimed: {
             SysInfo.acquire();
-            Tailscale.acquire();
             EthernetState.acquire();
         }
         onReleased: {
             SysInfo.release();
-            Tailscale.release();
             EthernetState.release();
         }
     }
@@ -88,6 +81,19 @@ Surface {
     function run(cmd) {
         Quickshell.execDetached(["sh", "-c", cmd]);
         Popouts.close();
+    }
+
+    // The capture track's three actions. One-shot every one of them, so the
+    // track never holds a selection the way the profile track it replaces did.
+    function runCapture(key) {
+        switch (key) {
+        case "shot": root.run(root.binDir + "screenshot region"); break;
+        case "ocr": root.run(root.binDir + "screen-ocr"); break;
+        case "record":
+            Recorder.toggle();
+            Popouts.close();
+            break;
+        }
     }
 
     function triggerSession(key) {
@@ -101,14 +107,6 @@ Surface {
         case "restart": Session.reboot(); break;
         case "shutdown": Session.shutdown(); break;
         }
-    }
-
-    function fmtDuration(secs) {
-        if (!secs || secs <= 0)
-            return "";
-        const h = Math.floor(secs / Format.HOUR);
-        const m = Math.round((secs % Format.HOUR) / Format.MINUTE);
-        return h > 0 ? `${h} h ${Format.pad2(m)} min` : `${m} min`;
     }
 
     // Radio row: mark, name, live status underneath, and the chevron into the
@@ -218,40 +216,33 @@ Surface {
         }
     }
 
-    // One quick action: its mark over its label, in a grid cell. A toggle
-    // lights on the accent container and a one-shot action never does, which
-    // is the whole rule for reading this grid.
+    // One quick toggle: its mark over its label, in a grid cell. The cell
+    // lights on the accent container when the toggle is on, which is the
+    // whole rule for reading this grid — and the reason the three capture
+    // actions moved out of it, since a one-shot action never lights.
     component QuickTile: Rectangle {
         id: tile
 
         property string glyph: ""
-        property string brand: ""
         property string title
         property bool on: false
-        // A running capture, which owns the red field rather than the accent.
-        property bool alert: false
-        property bool detail: false
-        // Defaults to the shell's icon tint; the recorder overrides it so its
-        // dot stays red at rest.
-        property color restMark: tileMouse.containsMouse ? Theme.textHi : Theme.icon
-        readonly property color mark: tile.alert ? Theme.redText
-            : tile.on ? Theme.accentContainerFg : tile.restMark
-        readonly property color copy: tile.alert ? Theme.redText
-            : tile.on ? Theme.accentContainerFg
+        readonly property color mark: tile.on
+            ? Theme.accentContainerFg
+            : tileMouse.containsMouse ? Theme.textHi : Theme.icon
+        readonly property color copy: tile.on ? Theme.accentContainerFg
             : tileMouse.containsMouse ? Theme.textMid : Theme.textFaint
         signal toggled
-        signal expanded
 
         width: root.tileWidth
         height: root.tileHeight
         radius: Theme.chipRadius
-        color: tile.alert ? Theme.redBg
-            : tile.on ? Theme.accentContainer
+        color: tile.on ? Theme.accentContainer
             : tileMouse.containsMouse ? Theme.chipHover : Theme.chip
         scale: tileMouse.pressed ? 0.95 : 1
 
-        Accessible.role: Accessible.Button
+        Accessible.role: Accessible.CheckBox
         Accessible.name: tile.title
+        Accessible.checked: tile.on
         Accessible.onPressAction: tile.toggled()
 
         Behavior on color {
@@ -276,22 +267,11 @@ Surface {
                 height: Theme.iconLarge
 
                 Sym {
-                    visible: tile.glyph !== ""
                     anchors.centerIn: parent
                     name: tile.glyph
                     size: Theme.iconLarge
-                    fill: tile.on || tile.alert ? 1 : 0
+                    fill: tile.on ? 1 : 0
                     color: tile.mark
-                }
-
-                BrandIcon {
-                    visible: tile.brand !== ""
-                    anchors.centerIn: parent
-                    width: Theme.iconLarge
-                    height: Theme.iconLarge
-                    name: tile.brand
-                    colorized: true
-                    tint: tile.mark
                 }
             }
 
@@ -313,14 +293,8 @@ Surface {
             id: tileMouse
             anchors.fill: parent
             hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: Qt.PointingHandCursor
-            onClicked: mouse => {
-                if (mouse.button === Qt.RightButton && tile.detail)
-                    tile.expanded();
-                else
-                    tile.toggled();
-            }
+            onClicked: tile.toggled()
         }
     }
 
@@ -407,26 +381,34 @@ Surface {
         }
     }
 
-    // One column of the CPU / RAM / TEMP strip: the reading on the label's own
-    // line rather than under it, which halves the height and lets the three
-    // columns share hairlines instead of floating in 16px gutters.
-    component StatColumn: Item {
-        id: stat
+    // One machine reading as a card: the label, the reading on its own line
+    // beneath it, and the meter along the bottom. The strip this replaces put
+    // three columns behind shared hairlines in a 34px band at the foot of the
+    // panel, where a number you opened the panel to read was the last thing
+    // you reached.
+    component StatCard: Rectangle {
+        id: card
 
         property string label
         property string display
         property real fraction: 0
         property color tone: Theme.textHi
         property color barTone: Theme.accent
-        property real padLeft: 0
-        property real padRight: 0
 
-        height: root.statHeight
+        width: root.cardWidth
+        height: root.cardHeight
+        radius: Theme.chipRadius
+        color: Theme.chip
+
+        Accessible.role: Accessible.ProgressBar
+        Accessible.name: card.label
+        Accessible.description: card.display
 
         Text {
-            id: statLabel
-            x: stat.padLeft
-            text: stat.label
+            id: cardLabel
+            x: 10
+            y: 9
+            text: card.label
             font.family: Theme.fontMenu
             font.pixelSize: Theme.fontMicro
             font.weight: Theme.weightSemibold
@@ -435,347 +417,67 @@ Surface {
         }
 
         Text {
-            anchors.right: parent.right
-            anchors.rightMargin: stat.padRight
-            anchors.baseline: statLabel.baseline
-            text: stat.display
+            anchors.left: cardLabel.left
+            anchors.top: cardLabel.bottom
+            anchors.topMargin: 1
+            text: card.display
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.fontProminent
             font.weight: Theme.weightSemibold
             font.features: Theme.tabularNumberFeatures
-            color: stat.tone
+            color: card.tone
         }
 
         BlockMeter {
-            x: stat.padLeft
-            width: Math.max(0, stat.width - stat.padLeft - stat.padRight)
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.right: parent.right
+            anchors.rightMargin: 10
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 6
+            anchors.bottomMargin: 9
             height: 6
             blockWidth: 3
             gap: 2
-            value: stat.fraction
-            fillColor: stat.barTone
+            value: card.fraction
+            fillColor: card.barTone
         }
     }
 
-    // ---- Battery and power profile ---------------------------------------
-    Column {
-        width: parent.width
-        spacing: 12
-        visible: Battery.isLaptop || PowerProfiles.hasPerformanceProfile
-
-        Item {
-            visible: Battery.isLaptop
-            width: parent.width
-            // The reading's own text box is ~37 at this size, so 40 left it
-            // 1.5px of air either side and the panel's top padding did all the
-            // work. This is the one row whose type is big enough to need room.
-            height: 46
-
-            // Not a Row. A Row takes its height from the children it lays out,
-            // and the reading was baseline-anchored to the small "%" beside
-            // it, which gives the big text a negative y: the Row measured the
-            // 14px unit, the 28px numerals overhung it by an ascender, and the
-            // reading sat hard against the panel's top padding no matter what
-            // the group was anchored to. Sizing to the numerals and hanging
-            // the unit off *their* baseline puts the ink back inside the box.
-            Item {
-                id: battValue
-                x: 2
-                anchors.verticalCenter: parent.verticalCenter
-                width: battNumber.implicitWidth + 1 + battUnit.implicitWidth
-                height: battNumber.implicitHeight
-
-                Text {
-                    id: battNumber
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    text: Math.round(Battery.percent)
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontDisplay
-                    font.weight: Theme.weightSemibold
-                    font.features: Theme.tabularNumberFeatures
-                    color: root.battTone
-                }
-
-                Text {
-                    id: battUnit
-                    anchors.left: battNumber.right
-                    anchors.leftMargin: 1
-                    anchors.baseline: battNumber.baseline
-                    text: "%"
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontBody
-                    font.weight: Theme.weightMedium
-                    color: root.battWarn ? root.battTone : Theme.textLow
-                }
-            }
-
-            Column {
-                anchors.left: battValue.right
-                anchors.leftMargin: 12
-                anchors.right: parent.right
-                anchors.rightMargin: 2
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
-
-                Row {
-                    anchors.right: parent.right
-                    spacing: 5
-
-                    Sym {
-                        visible: Battery.charging
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "bolt"
-                        size: Theme.fontSecondary
-                        fill: 1
-                        color: Theme.accent
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Battery.full ? "Fully charged"
-                            : Battery.charging ? "Charging" : "On battery"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontTiny
-                        font.weight: Theme.weightMedium
-                        color: root.battWarn ? root.battTone : Theme.textMid
-                    }
-                }
-
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignRight
-                    elide: Text.ElideRight
-                    visible: text !== ""
-                    text: {
-                        if (!Battery.device)
-                            return "";
-                        if (Battery.charging && Battery.device.timeToFull > 0)
-                            return root.fmtDuration(Battery.device.timeToFull) + " until full";
-                        if (!Battery.charging && !Battery.full && Battery.device.timeToEmpty > 0)
-                            return root.fmtDuration(Battery.device.timeToEmpty) + " remaining";
-                        return "";
-                    }
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
-                    color: Theme.textDim
-                }
-            }
-        }
-
-        BlockMeter {
-            visible: Battery.isLaptop
-            width: parent.width
-            height: 8
-            blockWidth: 4
-            gap: 2
-            value: Battery.percent / 100
-            fillColor: root.battFill
-        }
-
-        // Only where there is a profile daemon to talk to: on a machine
-        // without power-profiles-daemon this row would be three buttons that
-        // do nothing. The track is the fix — the segments used to sit in a
-        // 26px Item behind a 5px inset, which left them 16px tall with 15px
-        // marks overflowing them and nothing to say they were one control.
-        Rectangle {
-            visible: PowerProfiles.hasPerformanceProfile
-            width: parent.width
-            height: Theme.listRowHeight
-            radius: Theme.chipRadius
-            color: Theme.chip
-
-            Row {
-                id: modeRow
-                anchors.fill: parent
-                anchors.margins: 3
-                spacing: 4
-
-                Repeater {
-                    model: [
-                        { profile: PowerProfile.PowerSaver, glyph: "eco", label: "Saver" },
-                        { profile: PowerProfile.Balanced, glyph: "balance", label: "Balanced" },
-                        { profile: PowerProfile.Performance, glyph: "speed", label: "Performance" }
-                    ]
-
-                    delegate: Rectangle {
-                        id: mode
-
-                        required property var modelData
-                        readonly property bool current: PowerProfiles.profile === modelData.profile
-
-                        width: (modeRow.width - modeRow.spacing * 2) / 3
-                        height: modeRow.height
-                        radius: Theme.chipRadius - 2
-                        color: mode.current ? Theme.chipHover
-                            : modeMouse.containsMouse ? Theme.tile : "transparent"
-                        border.width: mode.current ? 1 : 0
-                        border.color: Theme.stroke
-
-                        Accessible.role: Accessible.RadioButton
-                        Accessible.name: mode.modelData.label
-                        Accessible.checked: mode.current
-                        Accessible.onPressAction: PowerProfiles.profile = mode.modelData.profile
-
-                        Behavior on color {
-                            ColorAnimation { duration: Theme.chipFadeDuration }
-                        }
-
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 6
-
-                            Sym {
-                                anchors.verticalCenter: parent.verticalCenter
-                                name: mode.modelData.glyph
-                                size: Theme.iconSmall + 2
-                                fill: mode.current ? 1 : 0
-                                color: mode.current ? Theme.textHi : Theme.textLow
-                            }
-
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: mode.modelData.label
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontMicro
-                                font.weight: mode.current ? Theme.weightSemibold : Theme.weightMedium
-                                font.letterSpacing: 0.2
-                                color: mode.current ? Theme.textHi : Theme.textLow
-                            }
-                        }
-
-                        MouseArea {
-                            id: modeMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: PowerProfiles.profile = mode.modelData.profile
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ---- Radios ----------------------------------------------------------
+    // ---- Machine ---------------------------------------------------------
+    // What the panel opens on. Three readings across one row, each carrying
+    // its own label, value and meter.
     Column {
         width: parent.width
         spacing: 0
 
         SectionLabel {
-            text: "CONNECTIVITY"
+            text: "MACHINE"
         }
 
-        Column {
+        Row {
             width: parent.width
-            spacing: Theme.panelRowSpacing
+            spacing: root.cardSpacing
 
-            RadioRow {
-                glyph: EthernetState.connected ? "lan"
-                    : WifiState.enabled ? "wifi" : "wifi_off"
-                title: "Internet"
-                sub: EthernetState.connected && WifiState.connected ? "Ethernet + Wi-Fi"
-                    : EthernetState.connected ? "Ethernet"
-                    : WifiState.connected ? WifiState.name
-                    : WifiState.enabled ? "No connection" : "Offline"
-                on: EthernetState.connected || WifiState.connected
-                onActivated: Popouts.openPanel("wifi", "right")
+            StatCard {
+                label: "CPU"
+                display: Math.round(SysInfo.cpuUsage) + "%"
+                fraction: SysInfo.cpuUsage / 100
             }
 
-            RadioRow {
-                glyph: "bluetooth"
-                title: "Bluetooth"
-                sub: {
-                    if (!BluetoothState.enabled)
-                        return "Off";
-                    if (root.btConnected.length === 0)
-                        return "On";
-                    return root.btConnected[0].deviceName
-                        + (root.btConnected.length > 1 ? " +" + (root.btConnected.length - 1) : "");
-                }
-                on: BluetoothState.enabled
-                onActivated: Popouts.openPanel("bluetooth", "right")
-            }
-        }
-    }
-
-    // ---- Quick actions ---------------------------------------------------
-    // The five toggles and the three capture chips were two ragged rows of
-    // different widths and different anatomy. They are eight cells of one
-    // grid now: state lights the cell, a one-shot action never does.
-    Column {
-        width: parent.width
-        spacing: 0
-
-        SectionLabel {
-            text: "QUICK ACTIONS"
-        }
-
-        Grid {
-            width: parent.width
-            columns: 4
-            spacing: root.tileSpacing
-
-            QuickTile {
-                glyph: "dark_mode"
-                title: "Dark mode"
-                on: Theme.dark
-                onToggled: Settings.themeMode = Theme.dark ? "light" : "dark"
+            StatCard {
+                label: "RAM"
+                display: Math.round(SysInfo.memUsage) + "%"
+                fraction: SysInfo.memUsage / 100
             }
 
-            QuickTile {
-                glyph: "do_not_disturb_on"
-                title: "Focus"
-                on: Notifs.dnd
-                onToggled: Notifs.setDnd(!Notifs.dnd)
-            }
-
-            QuickTile {
-                glyph: "nightlight"
-                title: "Night light"
-                on: SysInfo.nightLight
-                onToggled: SysInfo.toggleNightLight()
-            }
-
-            QuickTile {
-                glyph: "coffee"
-                title: "Idle inhibit"
-                on: SysInfo.idleInhibited
-                onToggled: SysInfo.toggleIdleInhibited()
-            }
-
-            QuickTile {
-                brand: "tailscale"
-                title: "Tailscale"
-                on: Tailscale.running
-                detail: true
-                onToggled: Tailscale.toggle()
-                onExpanded: Popouts.openPanel("tailscale", "right")
-            }
-
-            QuickTile {
-                glyph: "photo_camera"
-                title: "Screenshot"
-                onToggled: root.run(root.binDir + "screenshot region")
-            }
-
-            QuickTile {
-                glyph: Recorder.active ? "stop_circle" : "radio_button_checked"
-                title: Recorder.active ? "Stop" : "Record"
-                alert: Recorder.active
-                restMark: Theme.red
-                onToggled: {
-                    Recorder.toggle();
-                    Popouts.close();
-                }
-            }
-
-            QuickTile {
-                glyph: "document_scanner"
-                title: "OCR"
-                onToggled: root.run(root.binDir + "screen-ocr")
+            StatCard {
+                label: "TEMP"
+                display: SysInfo.cpuTemp + "\u00b0"
+                fraction: SysInfo.cpuTemp / 100
+                tone: SysInfo.cpuTemp >= 80 ? Theme.redText
+                    : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.textHi
+                barTone: SysInfo.cpuTemp >= 80 ? Theme.red
+                    : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.accent
             }
         }
     }
@@ -872,68 +574,189 @@ Surface {
         }
     }
 
-    // ---- System stats ----------------------------------------------------
+    // ---- Radios ----------------------------------------------------------
     Column {
         width: parent.width
         spacing: 0
 
         SectionLabel {
-            text: "SYSTEM"
+            text: "CONNECTIVITY"
         }
 
-        Row {
-            id: statsRow
-
+        Column {
             width: parent.width
-            spacing: 0
-            // The three meters read against one 0..100 scale, so they must be
-            // the same length. Equal column widths would not do it: the middle
-            // column pays a gutter on both sides and the outer two only on
-            // their inner side. So the meters are equal and the middle column
-            // is the wider one. Two of the width belongs to the hairlines.
-            readonly property real gutter: 14
-            readonly property real meterWidth:
-                Math.max(0, (width - 2 - 4 * gutter) / 3)
+            spacing: Theme.panelRowSpacing
 
-            StatColumn {
-                width: statsRow.meterWidth + statsRow.gutter
-                padRight: statsRow.gutter
-                label: "CPU"
-                display: Math.round(SysInfo.cpuUsage) + "%"
-                fraction: SysInfo.cpuUsage / 100
+            RadioRow {
+                glyph: EthernetState.connected ? "lan"
+                    : WifiState.enabled ? "wifi" : "wifi_off"
+                title: "Internet"
+                sub: EthernetState.connected && WifiState.connected ? "Ethernet + Wi-Fi"
+                    : EthernetState.connected ? "Ethernet"
+                    : WifiState.connected ? WifiState.name
+                    : WifiState.enabled ? "No connection" : "Offline"
+                on: EthernetState.connected || WifiState.connected
+                onActivated: Popouts.openPanel("wifi", "right")
             }
 
+            RadioRow {
+                glyph: "bluetooth"
+                title: "Bluetooth"
+                sub: {
+                    if (!BluetoothState.enabled)
+                        return "Off";
+                    if (root.btConnected.length === 0)
+                        return "On";
+                    return root.btConnected[0].deviceName
+                        + (root.btConnected.length > 1 ? " +" + (root.btConnected.length - 1) : "");
+                }
+                on: BluetoothState.enabled
+                onActivated: Popouts.openPanel("bluetooth", "right")
+            }
+        }
+    }
+
+    // ---- Quick actions ---------------------------------------------------
+    // Four toggles in one row, and the three capture actions as a segmented
+    // track beneath them. All seven shared an eight-cell grid until Tailscale
+    // left it — but a grid whose reading rule is "state lights the cell" was
+    // always the wrong home for three actions that can never light, and the
+    // hole Tailscale left is what made that worth fixing.
+    Column {
+        width: parent.width
+        spacing: 0
+
+        SectionLabel {
+            text: "QUICK ACTIONS"
+        }
+
+        Column {
+            width: parent.width
+            spacing: 8
+
+            Grid {
+                width: parent.width
+                columns: 4
+                spacing: root.tileSpacing
+
+                QuickTile {
+                    glyph: "dark_mode"
+                    title: "Dark mode"
+                    on: Theme.dark
+                    onToggled: Settings.themeMode = Theme.dark ? "light" : "dark"
+                }
+
+                QuickTile {
+                    glyph: "do_not_disturb_on"
+                    title: "Focus"
+                    on: Notifs.dnd
+                    onToggled: Notifs.setDnd(!Notifs.dnd)
+                }
+
+                QuickTile {
+                    glyph: "nightlight"
+                    title: "Night light"
+                    on: SysInfo.nightLight
+                    onToggled: SysInfo.toggleNightLight()
+                }
+
+                QuickTile {
+                    glyph: "coffee"
+                    title: "Idle inhibit"
+                    on: SysInfo.idleInhibited
+                    onToggled: SysInfo.toggleIdleInhibited()
+                }
+            }
+
+            // One control, equal segments, a 3px inset — the shape the power
+            // profile used to draw in this panel, now that the profile itself
+            // lives in BatteryPopover. Nothing is ever selected here.
             Rectangle {
-                width: 1
-                height: root.statHeight
-                color: Theme.hairlineSoft
-            }
+                width: parent.width
+                height: Theme.listRowHeight
+                radius: Theme.chipRadius
+                color: Theme.chip
 
-            StatColumn {
-                width: statsRow.meterWidth + 2 * statsRow.gutter
-                padLeft: statsRow.gutter
-                padRight: statsRow.gutter
-                label: "RAM"
-                display: Math.round(SysInfo.memUsage) + "%"
-                fraction: SysInfo.memUsage / 100
-            }
+                Row {
+                    id: captureRow
+                    anchors.fill: parent
+                    anchors.margins: 3
+                    spacing: 4
 
-            Rectangle {
-                width: 1
-                height: root.statHeight
-                color: Theme.hairlineSoft
-            }
+                    Repeater {
+                        model: [
+                            { key: "shot", glyph: "photo_camera", label: "Screenshot" },
+                            { key: "record", glyph: "", label: "" },
+                            { key: "ocr", glyph: "document_scanner", label: "OCR" }
+                        ]
 
-            StatColumn {
-                width: statsRow.meterWidth + statsRow.gutter
-                padLeft: statsRow.gutter
-                label: "TEMP"
-                display: SysInfo.cpuTemp + "°"
-                fraction: SysInfo.cpuTemp / 100
-                tone: SysInfo.cpuTemp >= 80 ? Theme.redText
-                    : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.textHi
-                barTone: SysInfo.cpuTemp >= 80 ? Theme.red
-                    : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.accent
+                        delegate: Rectangle {
+                            id: capture
+
+                            required property var modelData
+                            readonly property bool isRecord: capture.modelData.key === "record"
+                            readonly property bool recording: capture.isRecord && Recorder.active
+                            readonly property string glyph: capture.isRecord
+                                ? (Recorder.active ? "stop_circle" : "radio_button_checked")
+                                : capture.modelData.glyph
+                            readonly property string label: capture.isRecord
+                                ? (Recorder.active ? "Stop" : "Record")
+                                : capture.modelData.label
+                            readonly property color copy: capture.recording ? Theme.redText
+                                : captureMouse.containsMouse ? Theme.textHi : Theme.textLow
+                            // A running capture owns the red field. At rest the
+                            // record dot stays red where the other two marks
+                            // take the panel's normal copy tone.
+                            readonly property color mark: capture.recording ? Theme.redText
+                                : capture.isRecord ? Theme.red : capture.copy
+
+                            width: (captureRow.width - captureRow.spacing * 2) / 3
+                            height: captureRow.height
+                            radius: Theme.chipRadius - 2
+                            color: capture.recording ? Theme.redBg
+                                : captureMouse.containsMouse ? Theme.tile : "transparent"
+
+                            Accessible.role: Accessible.Button
+                            Accessible.name: capture.label
+                            Accessible.onPressAction: root.runCapture(capture.modelData.key)
+
+                            Behavior on color {
+                                ColorAnimation { duration: Theme.chipFadeDuration }
+                            }
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                Sym {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: capture.glyph
+                                    size: Theme.iconSmall + 2
+                                    fill: capture.recording ? 1 : 0
+                                    color: capture.mark
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: capture.label
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontMicro
+                                    font.weight: Theme.weightMedium
+                                    font.letterSpacing: 0.2
+                                    color: capture.copy
+                                }
+                            }
+
+                            MouseArea {
+                                id: captureMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.runCapture(capture.modelData.key)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
