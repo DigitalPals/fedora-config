@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# Isolated contract test for the durable updater backend. All state, user-unit
+# queries, and transient-unit launches are confined to a temporary fixture.
+
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+backend="$repo_root/assets/scripts/xps-update-run"
+fixture=$(mktemp -d)
+trap 'rm -rf -- "$fixture"' EXIT
+
+mock_bin="$fixture/bin"
+active_dir="$fixture/active"
+mkdir -p -- "$mock_bin" "$active_dir" "$fixture/home" "$fixture/state" \
+  "$fixture/runtime"
+
+apply_mock() {
+  local target=$1
+  shift
+  printf '%s\n' '#!/usr/bin/env bash' "$@" >"$mock_bin/$target"
+  chmod 0755 "$mock_bin/$target"
+}
+
+apply_mock systemctl \
+  'set -euo pipefail' \
+  'unit=""' \
+  'for arg in "$@"; do [[ $arg == *.service ]] && unit=$arg; done' \
+  'if [[ " $* " == *" show "* ]]; then' \
+  '  [[ -z ${MOCK_SHOW_FAIL:-} ]] || exit 1' \
+  '  state=inactive' \
+  '  [[ -n $unit && -e $MOCK_ACTIVE_DIR/$unit ]] && state=active' \
+  '  if [[ -n ${MOCK_SHOW_GATE:-} && ! -e $MOCK_SHOW_GATE.used ]]; then' \
+  '    : >"$MOCK_SHOW_GATE.used"; : >"$MOCK_SHOW_GATE.entered"' \
+  '    while [[ ! -e $MOCK_SHOW_GATE.release ]]; do sleep 0.01; done' \
+  '  fi' \
+  '  printf "%s\n" "$state"' \
+  'elif [[ " $* " == *" stop "* ]]; then' \
+  '  [[ -z ${MOCK_STOP_FAIL:-} ]] || exit 1' \
+  '  [[ -z $unit ]] || rm -f -- "$MOCK_ACTIVE_DIR/$unit"' \
+  'fi'
+
+apply_mock systemd-run \
+  'set -euo pipefail' \
+  'unit=""' \
+  'for arg in "$@"; do [[ $arg == --unit=* ]] && unit=${arg#--unit=}; done' \
+  '[[ -n $unit ]]' \
+  'if [[ -n ${MOCK_BLOCK_GATE:-} ]]; then' \
+  '  : >"$MOCK_BLOCK_GATE.entered"' \
+  '  while [[ ! -e $MOCK_BLOCK_GATE.release ]]; do sleep 0.01; done' \
+  'fi' \
+  ': >"$MOCK_ACTIVE_DIR/$unit"' \
+  'printf "%s\n" "$unit" >>"$MOCK_SYSTEMD_LOG"'
+
+apply_mock sudo \
+  'printf "unexpected package command: %s\n" "$*" >>"$MOCK_PACKAGE_LOG"' \
+  'exit 99'
+
+export HOME="$fixture/home"
+export XDG_STATE_HOME="$fixture/state"
+export XDG_RUNTIME_DIR="$fixture/runtime"
+export MOCK_ACTIVE_DIR="$active_dir"
+export MOCK_SYSTEMD_LOG="$fixture/systemd.log"
+export MOCK_PACKAGE_LOG="$fixture/package.log"
+export PATH="$mock_bin:$PATH"
+
+idle=$($backend status --json)
+[[ $(jq -r .state <<<"$idle") == idle ]]
+
+# Hold the first launch inside mocked systemd-run. The run is published before
+# registration, so a second start must resolve it immediately instead of
+# blocking behind the lock and launching a redundant transaction afterward.
+export MOCK_BLOCK_GATE="$fixture/launch"
+$backend start --json --no-flatpak >"$fixture/first.json" &
+first_pid=$!
+for _ in {1..200}; do
+  [[ -e $MOCK_BLOCK_GATE.entered ]] && break
+  sleep 0.01
+done
+[[ -e $MOCK_BLOCK_GATE.entered ]]
+
+set +e
+timeout 1 "$backend" start --json --no-flatpak \
+  >"$fixture/second.json" 2>"$fixture/second.err"
+second_rc=$?
+set -e
+[[ $second_rc -eq 3 ]]
+first_id=$(jq -er .id "$fixture/second.json")
+[[ $(jq -r .existing "$fixture/second.json") == true ]]
+
+# Force registration to win after cancellation has already observed an
+# inactive unit. The intent marker must still make the eventual worker exit
+# before any package command, and the cancelling process must not overwrite a
+# newer worker result with a synthetic state.
+export MOCK_SHOW_GATE="$fixture/show"
+$backend cancel "$first_id" >"$fixture/cancel-race.out" \
+  2>"$fixture/cancel-race.err" &
+cancel_pid=$!
+for _ in {1..200}; do
+  [[ -e $MOCK_SHOW_GATE.entered ]] && break
+  sleep 0.01
+done
+[[ -e $MOCK_SHOW_GATE.entered ]]
+[[ -e $XDG_STATE_HOME/xps-update/logs/$first_id/cancel.requested ]]
+: >"$MOCK_BLOCK_GATE.release"
+wait "$first_pid"
+[[ $(jq -r .existing "$fixture/first.json") == false ]]
+[[ $(wc -l <"$MOCK_SYSTEMD_LOG") -eq 1 ]]
+set +e
+$backend _worker "$first_id" --no-flatpak >"$fixture/cancelled-worker.out" \
+  2>"$fixture/cancelled-worker.err"
+cancelled_worker_rc=$?
+set -e
+: >"$MOCK_SHOW_GATE.release"
+wait "$cancel_pid"
+[[ $cancelled_worker_rc -eq 130 ]]
+[[ $(jq -r .state <<<"$($backend status --json "$first_id")") == cancelled ]]
+[[ ! -s $MOCK_PACKAGE_LOG ]]
+rm -f -- "$active_dir/xps-update-$first_id.service"
+unset MOCK_SHOW_GATE
+
+# A just-published unit gets a short registration grace. Once the same record
+# is old, an absent unit is atomically converted to an abandoned failure and
+# no longer blocks future updates.
+unset MOCK_BLOCK_GATE
+stale_run=$($backend start --json --no-flatpak)
+stale_id=$(jq -er .id <<<"$stale_run")
+unit=$(jq -er .unit <<<"$stale_run")
+rm -f -- "$active_dir/$unit"
+grace=$($backend status --json "$stale_id")
+[[ $(jq -r .state <<<"$grace") == queued ]]
+status_file="$XDG_STATE_HOME/xps-update/logs/$stale_id/status.json"
+jq '.startedAt = 0' "$status_file" >"$status_file.old"
+mv -f -- "$status_file.old" "$status_file"
+stale=$($backend status --json "$stale_id")
+[[ $(jq -r .state <<<"$stale") == failed ]]
+[[ $(jq -r .phase <<<"$stale") == abandoned ]]
+[[ $(jq -r .exitCode <<<"$stale") -eq 125 ]]
+
+next=$($backend start --json --no-flatpak)
+next_id=$(jq -er .id <<<"$next")
+[[ $next_id != "$stale_id" ]]
+next_dir=$(jq -er .logDir <<<"$next")
+next_unit=$(jq -er .unit <<<"$next")
+
+# A registered worker whose stop fails must remain visibly active. Claiming a
+# synthetic cancellation here would let package work continue behind a terminal
+# UI state. Once stop succeeds and the unit is proven inactive, cancellation is
+# safe even if the mock worker never ran a TERM trap.
+next_status="$next_dir/status.json"
+jq '.state = "running" | .phase = "packages"' "$next_status" >"$next_status.new"
+mv -f -- "$next_status.new" "$next_status"
+
+# A transient DBus/user-manager query failure is not evidence that the worker
+# died. Status reads must preserve the active record instead of publishing a
+# false abandoned terminal state while package work may still be running.
+export MOCK_SHOW_FAIL=1
+$backend status --json "$next_id" >"$fixture/show-failed.json" \
+  2>"$fixture/show-failed.err"
+[[ $(jq -r .state "$fixture/show-failed.json") == running ]]
+[[ -e $active_dir/$next_unit ]]
+grep -q 'preserving running status' "$fixture/show-failed.err"
+set +e
+$backend cancel "$next_id" >"$fixture/cancel-inspect-failed.out" \
+  2>"$fixture/cancel-inspect-failed.err"
+cancel_inspect_failed_rc=$?
+set -e
+[[ $cancel_inspect_failed_rc -ne 0 ]]
+[[ $(jq -r .state "$next_status") == running ]]
+[[ -e $next_dir/cancel.requested ]]
+grep -q 'outcome is not yet verified' "$fixture/cancel-inspect-failed.err"
+unset MOCK_SHOW_FAIL
+
+export MOCK_STOP_FAIL=1
+set +e
+$backend cancel "$next_id" >"$fixture/cancel-failed.out" \
+  2>"$fixture/cancel-failed.err"
+cancel_failed_rc=$?
+set -e
+[[ $cancel_failed_rc -ne 0 ]]
+[[ -e $active_dir/$next_unit ]]
+[[ $(jq -r .state "$next_status") == running ]]
+[[ ! -s $fixture/cancel-failed.out ]]
+grep -q 'update remains active' "$fixture/cancel-failed.err"
+unset MOCK_STOP_FAIL
+$backend cancel "$next_id" >/dev/null
+[[ ! -e $active_dir/$next_unit ]]
+[[ $(jq -r .state "$next_status") == cancelled ]]
+
+printf 'abcdefghi' >"$next_dir/dnf.log"
+[[ $($backend read-log "$next_id" dnf 2 4) == cdef ]]
+[[ $($backend read-log "$next_id" dnf 2) == cdefghi ]]
+window_status=$($backend status --json "$next_id")
+[[ $(jq -r .dnfBytes <<<"$window_status") -eq 9 ]]
+
+! grep -q 'set +e;.*set -e' "$backend"
+
+printf 'Durable updater serializes starts, closes cancellation races, preserves uncertain state, and reads exact log windows\n'

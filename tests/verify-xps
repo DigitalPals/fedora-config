@@ -2,11 +2,81 @@
 set -uo pipefail
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=tests/lib/quickshell-live
+source "$repo_root/tests/lib/quickshell-live"
 
 require_hyprland=false
 [[ ${1:-} == --require-hyprland ]] && require_hyprland=true
 failures=0
 warnings=0
+quickshell_live_safe=false
+verify_scratch_dirs=()
+
+cleanup_verify() {
+  local directory
+  if $quickshell_live_safe; then
+    qs_live_end >/dev/null 2>&1 || true
+    quickshell_live_safe=false
+  fi
+  for directory in "${verify_scratch_dirs[@]}"; do
+    [[ $directory == "${TMPDIR:-/tmp}"/fedora-config-manifest.* ]] &&
+      rm -rf -- "$directory"
+  done
+}
+trap cleanup_verify EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+inventory_host=${XPS_INVENTORY_HOST:-xps}
+if ! command -v ansible-inventory >/dev/null 2>&1; then
+  printf 'FAIL  ansible-inventory is required to read the machine contract (dnf install ansible-core)\n' >&2
+  exit 2
+fi
+if ! command -v jq >/dev/null 2>&1; then
+  printf 'FAIL  jq is required to read the machine contract\n' >&2
+  exit 2
+fi
+if ! inventory_json=$(ansible-inventory -i "$repo_root/inventory/hosts.yml" --host "$inventory_host"); then
+  printf 'FAIL  could not resolve inventory host %q from inventory/hosts.yml\n' "$inventory_host" >&2
+  exit 2
+fi
+if ! jq -e '
+  (.fedora_release | type == "string") and
+  (.machine_hostname | type == "string") and
+  (.machine_timezone | type == "string") and
+  (.primary_user | type == "string") and
+  (.primary_home | type == "string") and
+  (.gdm_autologin | type == "boolean") and
+  (.rust_toolchain | type == "string") and
+  (.claude_code_version | type == "string") and
+  (.opencode_version | type == "string") and
+  (.distrobox_images | type == "array") and
+  (.firewall_zone | type == "string") and
+  (.firewall_ports | type == "array") and
+  (.features | type == "object") and
+  (.expected_hardware.sys_vendor | type == "string") and
+  (.expected_hardware.product_name_regex | type == "string") and
+  (.expected_hardware.cpu_regex | type == "string")
+' >/dev/null <<<"$inventory_json"; then
+  printf 'FAIL  inventory host %q lacks one or more verifier contract fields\n' "$inventory_host" >&2
+  exit 2
+fi
+
+fedora_release=$(jq -r .fedora_release <<<"$inventory_json")
+machine_hostname=$(jq -r .machine_hostname <<<"$inventory_json")
+machine_timezone=$(jq -r .machine_timezone <<<"$inventory_json")
+primary_user=$(jq -r .primary_user <<<"$inventory_json")
+primary_home=$(jq -r .primary_home <<<"$inventory_json")
+rust_toolchain=$(jq -r .rust_toolchain <<<"$inventory_json")
+claude_code_version=$(jq -r .claude_code_version <<<"$inventory_json")
+opencode_version=$(jq -r .opencode_version <<<"$inventory_json")
+distrobox_images_json=$(jq -c .distrobox_images <<<"$inventory_json")
+firewall_zone=$(jq -r .firewall_zone <<<"$inventory_json")
+expected_vendor=$(jq -r .expected_hardware.sys_vendor <<<"$inventory_json")
+expected_product_regex=$(jq -r .expected_hardware.product_name_regex <<<"$inventory_json")
+expected_cpu_regex=$(jq -r .expected_hardware.cpu_regex <<<"$inventory_json")
+gdm_autologin=$(jq -r .gdm_autologin <<<"$inventory_json")
+feature_enabled() { jq -e --arg name "$1" '.features[$name] == true' >/dev/null <<<"$inventory_json"; }
 
 pass() { printf '\033[32mPASS\033[0m  %s\n' "$*"; }
 fail() { printf '\033[31mFAIL\033[0m  %s\n' "$*"; failures=$((failures + 1)); }
@@ -31,27 +101,122 @@ unit_enabled() { systemctl is-enabled --quiet "$1"; }
 unit_active() { systemctl is-active --quiet "$1"; }
 user_unit_active() { systemctl --user is-active --quiet "$1"; }
 
-printf '%s\n' 'Fedora XPS automated verification'
-check 'Fedora 44' bash -c '. /etc/os-release; [[ $ID == fedora && $VERSION_ID == 44 ]]'
-check 'hostname is xps' test "$(hostnamectl --static 2>/dev/null)" = xps
-check 'timezone is Europe/Amsterdam' test "$(timedatectl show -p Timezone --value 2>/dev/null)" = Europe/Amsterdam
-check 'Dell system vendor' grep -qi dell /sys/class/dmi/id/sys_vendor
-check 'XPS/DA14260 product identity' grep -Eqi 'XPS|DA14260' /sys/class/dmi/id/product_name
-check 'Intel Panther Lake/Core Ultra CPU' grep -Eqi 'Intel.*(Ultra|X7)|Panther Lake' /proc/cpuinfo
-check 'SELinux is enforcing' test "$(getenforce 2>/dev/null)" = Enforcing
-check 'Fish is john login shell' bash -c '[[ $(getent passwd john | cut -d: -f7) == /usr/bin/fish ]]'
-check 'Fish prompt resolves the Fedora OS icon' fish -lic 'test "$POSH_OS_ICON" = ""'
-check 'john is in required groups' bash -c 'g=$(id -nG john); for x in wheel video input docker; do grep -qw "$x" <<<"$g" || exit 1; done'
-check 'user lingering is enabled' test -e /var/lib/systemd/linger/john
+root_evidence_available=true
+root_command=()
+if ((EUID != 0)); then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    root_command=(sudo -n)
+  elif [[ -t 0 && -t 2 ]] && command -v sudo >/dev/null 2>&1 && sudo -v; then
+    root_command=(sudo)
+  else
+    root_evidence_available=false
+    warn 'root-only evidence is unavailable; authenticate with sudo or run as root for those checks'
+  fi
+fi
+run_as_root() { "${root_command[@]}" "$@"; }
+check_root() {
+  local label=$1
+  shift
+  if ! $root_evidence_available; then
+    warn "$label (root-only evidence not readable)"
+  elif run_as_root "$@" >/dev/null 2>&1; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
 
-for unit in NetworkManager firewalld bluetooth avahi-daemon cups docker thermald; do
+check_managed_quickshell_tree() {
+  local deployed="$primary_home/.config/quickshell" scratch expected actual
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-manifest.XXXXXX") || return 1
+  verify_scratch_dirs+=("$scratch")
+  expected="$scratch/expected"
+  actual="$scratch/actual"
+  # Match the role's source manifest: cached and intentional untracked files,
+  # including symlinks, while respecting ignored generated artifacts.
+  git -C "$repo_root" ls-files -z --cached --others --exclude-standard -- \
+      roles/desktop/files/quickshell |
+    while IFS= read -r -d '' source_path; do
+      if [[ -f "$repo_root/$source_path" || -L "$repo_root/$source_path" ]]; then
+        printf '%s\n' "${source_path#roles/desktop/files/quickshell/}"
+      fi
+    done | LC_ALL=C sort >"$expected" || {
+      rm -rf -- "$scratch"
+      return 1
+    }
+  [[ -s $expected ]] || {
+    printf 'source manifest unexpectedly contains no files\n' >&2
+    rm -rf -- "$scratch"
+    return 1
+  }
+  if [[ -d $deployed ]]; then
+    find "$deployed" \( -type f -o -type l \) -printf '%P\n' | LC_ALL=C sort >"$actual"
+  else
+    printf 'deployed directory is missing: %s\n' "$deployed" >&2
+    rm -rf -- "$scratch"
+    return 1
+  fi
+  if cmp -s "$expected" "$actual"; then
+    rm -rf -- "$scratch"
+    return 0
+  fi
+  printf 'source-only managed files:\n' >&2
+  comm -23 "$expected" "$actual" | sed 's/^/  /' >&2
+  printf 'stale or unmanaged deployed files:\n' >&2
+  comm -13 "$expected" "$actual" | sed 's/^/  /' >&2
+  rm -rf -- "$scratch"
+  return 1
+}
+
+printf '%s\n' 'Fedora XPS automated verification'
+printf 'Contract: inventory host %s (%s, Fedora %s, user %s)\n' \
+  "$inventory_host" "$machine_hostname" "$fedora_release" "$primary_user"
+check "verifier runs as $primary_user" test "$(id -un)" = "$primary_user"
+check "HOME is $primary_home" test "$HOME" = "$primary_home"
+check "Fedora $fedora_release" bash -c '. /etc/os-release; [[ $ID == fedora && $VERSION_ID == "$1" ]]' _ "$fedora_release"
+check "hostname is $machine_hostname" test "$(hostnamectl --static 2>/dev/null)" = "$machine_hostname"
+check "timezone is $machine_timezone" test "$(timedatectl show -p Timezone --value 2>/dev/null)" = "$machine_timezone"
+check "system vendor is $expected_vendor" grep -Fqix "$expected_vendor" /sys/class/dmi/id/sys_vendor
+check 'product identity matches inventory' grep -Pqi "$expected_product_regex" /sys/class/dmi/id/product_name
+check 'CPU identity matches inventory' grep -Pqi "$expected_cpu_regex" /proc/cpuinfo
+check 'SELinux is enforcing' test "$(getenforce 2>/dev/null)" = Enforcing
+check "Fish is $primary_user login shell" bash -c '[[ $(getent passwd "$1" | cut -d: -f7) == /usr/bin/fish ]]' _ "$primary_user"
+check 'Fish prompt resolves the Fedora OS icon' fish -lic 'test "$POSH_OS_ICON" = ""'
+required_groups=(wheel video input)
+feature_enabled docker && required_groups+=(docker)
+check "$primary_user is in required groups (${required_groups[*]})" bash -c '
+  groups=$(id -nG "$1") || exit
+  shift
+  for group in "$@"; do grep -qw "$group" <<<"$groups" || exit 1; done
+' _ "$primary_user" "${required_groups[@]}"
+check 'user lingering is enabled' test -e "/var/lib/systemd/linger/$primary_user"
+
+for unit in NetworkManager firewalld bluetooth avahi-daemon cups thermald; do
   check "$unit is enabled" unit_enabled "$unit.service"
 done
+if feature_enabled docker; then
+  check 'docker is enabled' unit_enabled docker.service
+else
+  check 'docker is disabled while the feature is off' bash -c '! systemctl is-enabled --quiet docker.service'
+fi
+if feature_enabled tailscale; then
+  check 'Tailscale package is installed' rpm -q tailscale
+  check 'tailscaled is enabled' unit_enabled tailscaled.service
+  check 'tailscaled is active' unit_active tailscaled.service
+else
+  check 'Tailscale package is absent while disabled' bash -c '! rpm -q tailscale'
+  check 'tailscaled is disabled while the feature is off' bash -c '! systemctl is-enabled --quiet tailscaled.service'
+  check 'tailscaled is inactive while the feature is off' bash -c '! systemctl is-active --quiet tailscaled.service'
+fi
 check 'NetworkManager-wait-online is disabled' bash -c '! systemctl is-enabled --quiet NetworkManager-wait-online.service'
 check 'SSH server is disabled' bash -c '! systemctl is-enabled --quiet sshd.service'
 check 'SSH server is inactive' bash -c '! systemctl is-active --quiet sshd.service'
 check 'weekly TRIM is enabled' unit_enabled fstrim.timer
-check 'weekly Btrfs scrub is enabled' unit_enabled xps-btrfs-scrub.timer
+if [[ $(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) == btrfs ]]; then
+  check 'weekly Btrfs scrub is enabled' unit_enabled xps-btrfs-scrub.timer
+else
+  check 'Btrfs scrub is disabled on a non-Btrfs root' bash -c '! systemctl is-enabled --quiet xps-btrfs-scrub.timer'
+fi
 check 'zram is active' bash -c 'swapon --show=NAME | grep -q zram'
 
 declare -A expected_sysctl=(
@@ -75,19 +240,32 @@ swappiness=$(sysctl -n vm.swappiness 2>/dev/null || true)
 
 if command_exists firewall-cmd && unit_active firewalld.service; then
   zone=$(firewall-cmd --get-default-zone 2>/dev/null || true)
-  [[ $zone == xps ]] && pass 'xps is the default firewall zone' || fail "default firewall zone is ${zone:-missing}"
-  ports=$(firewall-cmd --permanent --zone=xps --list-ports 2>/dev/null | tr ' ' '\n' | sort | tr '\n' ' ')
-  expected=$(printf '%s\n' 10400-10401/udp 27015/tcp 27015/udp 27031-27036/udp 27036-27037/tcp 53317/tcp 53317/udp 5353/udp | sort | tr '\n' ' ')
+  [[ $zone == "$firewall_zone" ]] && pass "$firewall_zone is the default firewall zone" || fail "default firewall zone is ${zone:-missing}, expected $firewall_zone"
+  ports=$(firewall-cmd --permanent --zone="$firewall_zone" --list-ports 2>/dev/null | tr ' ' '\n' | sort | tr '\n' ' ')
+  expected=$(jq -r '
+    . as $root
+    | if $root.features.local_network_services then
+        $root.firewall_ports[]
+        | select((.feature == null) or ($root.features[.feature] == true))
+        | "\(.port)/\(.protocol)"
+      else empty end
+  ' <<<"$inventory_json" | sort | tr '\n' ' ')
   [[ $ports == "$expected" ]] && pass 'firewall exposes only declared ports' || fail "firewall ports differ: $ports"
-  services=$(firewall-cmd --permanent --zone=xps --list-services 2>/dev/null || true)
+  services=$(firewall-cmd --permanent --zone="$firewall_zone" --list-services 2>/dev/null || true)
   [[ -z $services ]] && pass 'firewall has no broad service exceptions' || fail "unexpected firewall services: $services"
-  interfaces=$(firewall-cmd --permanent --zone=xps --list-interfaces 2>/dev/null || true)
-  grep -qw tailscale0 <<<"$interfaces" && pass 'tailscale0 is trusted in xps zone' || fail 'tailscale0 is absent from xps zone'
+  interfaces=$(firewall-cmd --permanent --zone="$firewall_zone" --list-interfaces 2>/dev/null || true)
+  if feature_enabled tailscale; then
+    grep -qw tailscale0 <<<"$interfaces" && pass "tailscale0 is trusted in $firewall_zone zone" || fail "tailscale0 is absent from $firewall_zone zone"
+  elif grep -qw tailscale0 <<<"$interfaces"; then
+    fail "tailscale0 is present despite features.tailscale=false"
+  else
+    pass 'tailscale0 is absent while Tailscale is disabled'
+  fi
   while IFS=: read -r device type state; do
     case "$type:$state" in
       ethernet:connected|wifi:connected)
         assigned=$(firewall-cmd --get-zone-of-interface="$device" 2>/dev/null || true)
-        [[ $assigned == xps ]] && pass "$device is bound to xps zone" || fail "$device is bound to ${assigned:-no zone}"
+        [[ $assigned == "$firewall_zone" ]] && pass "$device is bound to $firewall_zone zone" || fail "$device is bound to ${assigned:-no zone}"
         ;;
     esac
   done < <(LC_ALL=C nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null)
@@ -95,7 +273,7 @@ if command_exists firewall-cmd && unit_active firewalld.service; then
     case "$type" in
       802-3-ethernet|802-11-wireless)
         assigned=$(nmcli -g connection.zone connection show "$uuid" 2>/dev/null || true)
-        [[ $assigned == xps ]] && pass "$uuid profile is bound to xps zone" \
+        [[ $assigned == "$firewall_zone" ]] && pass "$uuid profile is bound to $firewall_zone zone" \
           || fail "$uuid profile is bound to ${assigned:-no zone}"
         ;;
     esac
@@ -123,10 +301,10 @@ done
 product_sku=$(tr -d '[:space:]' </sys/class/dmi/id/product_sku 2>/dev/null || true)
 product_name=$(tr -d '\n' </sys/class/dmi/id/product_name 2>/dev/null || true)
 xps_2026=false
-if [[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == 'Dell Inc.' ]] &&
+if [[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == "$expected_vendor" ]] &&
    [[ $product_sku == 0DB9 || $product_sku == 0DBA ]] &&
-   [[ $product_name =~ XPS[[:space:]](14|16)|DA(14|16)260 ]] &&
-   grep -Eqi 'Intel.*(Ultra|X7)|Panther Lake' /proc/cpuinfo; then
+   grep -Pqi "$expected_product_regex" /sys/class/dmi/id/product_name &&
+   grep -Pqi "$expected_cpu_regex" /proc/cpuinfo; then
   xps_2026=true
 fi
 
@@ -155,10 +333,12 @@ if $xps_2026; then
     grep -q '/usr/local/libexec/xps-speaker-tuning control' "$HOME/.config/hypr/bindings.lua"
 
   if [[ -e /sys/bus/i2c/devices/i2c-VEN_06CB:00 ]]; then
-    check 'XPS touchpad is visible to libinput' bash -c "sudo -n libinput list-devices | grep -Eqi 'Touchpad|06CB'"
+    check_root 'XPS touchpad is visible to libinput' bash -c \
+      "libinput list-devices | grep -Eqi 'Touchpad|06CB'"
     check 'XPS haptic touchpad service is enabled' unit_enabled xps-haptic-touchpad.service
     check 'XPS haptic touchpad service is active' unit_active xps-haptic-touchpad.service
-    check 'XPS haptic configuration/readback probe' sudo -n /usr/local/libexec/xps-haptic-touchpad --check
+    check_root 'XPS haptic configuration/readback probe' \
+      /usr/local/libexec/xps-haptic-touchpad --check
     check 'XPS haptic controller power rules retained' \
       grep -q 'i2c_designware[.]0.*power/control.*on' /etc/udev/rules.d/80-xps-haptic-touchpad.rules
   else
@@ -170,7 +350,7 @@ if $xps_2026; then
     pass "physical fingerprint-reader gate ($fingerprint_device)"
     check 'Fedora fingerprint support RPMs' rpm -q libfprint fprintd fprintd-pam
     check_diagnostic 'libfprint-supported device and Fedora PAM integration' \
-      /usr/local/libexec/xps-fingerprint-check john
+      /usr/local/libexec/xps-fingerprint-check "$primary_user"
   else
     if lsusb -d 06cb:0701 2>/dev/null | grep -q .; then
       pass 'Synaptics SVP7500 camera bridge is not treated as a fingerprint reader'
@@ -181,9 +361,19 @@ if $xps_2026; then
   has_ovti08f4=false
   [[ -e /sys/bus/acpi/devices/OVTI08F4:00 || -e /sys/bus/acpi/devices/OVTI08F4:01 ]] && has_ovti08f4=true
   has_ipu7=false
-  lspci -Dn -d 8086:b05d 2>/dev/null | grep -q '8086:b05d' && has_ipu7=true
+  ipu7_bdf=$(lspci -Dn -d 8086:b05d 2>/dev/null | awk 'NR == 1 {print $1}')
+  [[ -n $ipu7_bdf ]] && has_ipu7=true
   if $has_ovti08f4 && $has_ipu7; then
     check 'local IPU7 userspace/DKMS RPM installed' rpm -q xps-ipu7-camera-stack
+    camera_manifest=$(run_as_root cat /usr/share/xps-ipu7-camera-stack/input-manifest 2>/dev/null || true)
+    camera_rpm_version=$(rpm -q --qf '%{VERSION}' xps-ipu7-camera-stack 2>/dev/null || true)
+    if [[ $camera_manifest =~ ^[[:xdigit:]]{64}$ && -n $camera_rpm_version ]]; then
+      camera_dkms_version="$camera_rpm_version.input${camera_manifest:0:16}"
+      pass 'camera input manifest selects an exact DKMS package identity'
+    else
+      camera_dkms_version=invalid-camera-input-manifest
+      fail 'camera RPM has no valid input-derived DKMS identity'
+    fi
     check 'unused generic camera relay generator trigger is absent' bash -c \
       '[[ ! -e /etc/v4l2-relayd.d/icamerasrc.conf && ! -L /etc/v4l2-relayd.d/icamerasrc.conf ]]'
     check 'unused generic camera relay instance is not failed' bash -c \
@@ -194,15 +384,21 @@ if $xps_2026; then
       grep -q 'systemctl --no-block restart xps-ipu7-camera-resume.service' \
       /usr/lib/systemd/system-sleep/xps-ipu7-camera
     check 'IPU7 PSYS DKMS built for the running kernel' bash -c \
-      'dkms status -m ipu7-drivers -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"'
+      'dkms status -m ipu7-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
     check 'Intel CVS DKMS built for the running kernel' bash -c \
-      'dkms status -m vision-drivers -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"'
+      'dkms status -m vision-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
     camera_reboot_pending=false
     if [[ -r /var/lib/xps-hardware/ipu7/reboot-required ]] &&
        grep -q "^boot_id=$(cat /proc/sys/kernel/random/boot_id) " \
          /var/lib/xps-hardware/ipu7/reboot-required; then
       camera_reboot_pending=true
       pass 'camera DKMS upgrade is safely awaiting one normal reboot'
+      check 'camera transaction remains uncommitted until post-reboot validation' \
+        test -r /var/lib/xps-hardware/ipu7/transaction.in-progress
+      check 'pending camera relay remains hidden' \
+        test ! -e /etc/v4l2-relayd.d/ipu7.conf
+      check 'pending camera service remains disabled' bash -c \
+        '! systemctl is-enabled --quiet xps-ipu7-camera.service && ! systemctl is-active --quiet xps-ipu7-camera.service'
       check_diagnostic 'stock IPU7 ABI guard before pending reboot' \
         /usr/local/libexec/xps-ipu7-abi-check "$(uname -r)"
       check_diagnostic 'installed IPU75XA userspace dependency closure' \
@@ -211,7 +407,7 @@ if $xps_2026; then
       check_diagnostic 'HAL camera integration and endpoint health' /usr/local/libexec/xps-ipu7-camera-check
     fi
     check 'WirePlumber suppresses only the duplicate IPU7 paths' bash -c \
-      'grep -q "monitor.libcamera.*disabled" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf && grep -q "pci-0000:00:05.0" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf'
+      'grep -q "monitor.libcamera.*disabled" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf && grep -Fq "pci-$1" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf' _ "$ipu7_bdf"
     check 'Brave enables PipeWire camera capture' bash -c \
       'grep -q "PipeWireCamera" "$HOME/.config/hypr/bindings.lua" && grep -q "PipeWireCamera" "$HOME/.local/share/applications/brave-browser.desktop"'
 
@@ -246,8 +442,8 @@ else
 fi
 
 check 'Cybex Plymouth theme is selected' test "$(plymouth-set-default-theme 2>/dev/null)" = cybex
-check 'Cybex theme is embedded in the running-kernel initramfs' bash -c \
-  'sudo -n lsinitrd "/boot/initramfs-$(uname -r).img" | grep -q "usr/share/plymouth/themes/cybex/cybex.script"'
+check_root 'Cybex theme is embedded in the running-kernel initramfs' bash -c \
+  'lsinitrd "/boot/initramfs-$(uname -r).img" | grep -q "usr/share/plymouth/themes/cybex/cybex.script"'
 check 'GDM retains GNOME session' bash -c 'compgen -G "/usr/share/wayland-sessions/*gnome*.desktop" >/dev/null'
 check 'Hyprland Quickshell GDM session exists' test -r /usr/share/wayland-sessions/hyprland-quickshell.desktop
 check 'Hyprland session launcher uses start-hyprland' grep -q '^start-hyprland --' /usr/local/bin/hyprland-quickshell
@@ -257,20 +453,30 @@ check 'retired Noctalia session is absent' bash -c \
   '[[ ! -e /usr/local/bin/hyprland-noctalia && ! -e /usr/share/wayland-sessions/hyprland-noctalia.desktop ]]'
 check 'retired Noctalia configuration is inactive' bash -c \
   '[[ ! -e $HOME/.config/noctalia && ! -e $HOME/.local/state/noctalia ]]'
-if grep -Eq '^AutomaticLoginEnable=True$' /etc/gdm/custom.conf 2>/dev/null; then
-  check 'GDM autologin Session selects Hyprland Quickshell' \
-    sudo -n grep -qx 'Session=hyprland-quickshell' /var/lib/AccountsService/users/john
-  check 'GDM autologin XSession selects Hyprland Quickshell' \
-    sudo -n grep -qx 'XSession=hyprland-quickshell' /var/lib/AccountsService/users/john
+if [[ $gdm_autologin == true ]]; then
+  check 'GDM autologin is enabled by the inventory contract' \
+    grep -Eq '^AutomaticLoginEnable=True$' /etc/gdm/custom.conf
+  check_root 'GDM autologin Session selects Hyprland Quickshell' \
+    grep -qx 'Session=hyprland-quickshell' "/var/lib/AccountsService/users/$primary_user"
+  check_root 'GDM autologin XSession selects Hyprland Quickshell' \
+    grep -qx 'XSession=hyprland-quickshell' "/var/lib/AccountsService/users/$primary_user"
+else
+  check 'GDM autologin is disabled by the inventory contract' bash -c \
+    '! grep -Eq "^AutomaticLoginEnable=True$" /etc/gdm/custom.conf'
 fi
 check 'no Hyprland git packages are installed' bash -c "! rpm -qa | grep -Eq '^(hyprland|hypridle|hyprlock|hyprpicker|hyprpolkitagent).*[-.]git([-.]|$)'"
 check 'portal preference exists' test -r "$HOME/.config/xdg-desktop-portal/hyprland-portals.conf"
 check 'Hyprland Lua entry point is a regular file' bash -c '[[ -f $HOME/.config/hypr/hyprland.lua && ! -L $HOME/.config/hypr/hyprland.lua ]]'
+check_diagnostic 'deployed Quickshell tree exactly matches tracked source files' check_managed_quickshell_tree
 
-for command in Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
-  wayfreeze awww voxtype localsend lazygit lazydocker mdview bun balena t3code-update \
-  git gh gcc g++ cmake rustup mold sccache node npm python3 distrobox docker podman \
-  kitty nvim fish zoxide fzf eza jq rg fd dust bat btop glow fastfetch duf ffmpeg mpv yt-dlp imv brave-browser; do
+required_commands=(Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
+  voxtype localsend lazygit lazydocker mdview bun balena t3code-update \
+  git gh gcc g++ cmake rustup mold sccache node npm python3 claude opencode oh-my-posh \
+  kitty nvim fish zoxide fzf eza jq rg fd dust bat btop glow fastfetch duf ffmpeg mpv yt-dlp imv brave-browser)
+feature_enabled docker && required_commands+=(docker)
+feature_enabled podman && required_commands+=(podman distrobox)
+feature_enabled source_builds && required_commands+=(wayfreeze awww)
+for command in "${required_commands[@]}"; do
   command_exists "$command" && pass "command: $command" || fail "missing command: $command"
 done
 check 'Walker command is absent' bash -c '! command -v walker'
@@ -287,7 +493,13 @@ if command_exists node; then
   major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || true)
   [[ $major == 24 ]] && pass 'Node.js 24' || fail "Node.js major is ${major:-unknown}, expected 24"
 fi
-check 'nightly Rust toolchain with rustfmt/rust-analyzer' bash -c 'rustup toolchain list | grep -q "nightly" && rustup component list --toolchain nightly | grep -q "rustfmt.*installed" && rustup component list --toolchain nightly | grep -q "rust-analyzer.*installed"'
+check 'pinned nightly Rust toolchain with rustfmt/rust-analyzer' bash -c 'toolchain=$1; rustup toolchain list | grep -q "$toolchain" && rustup component list --toolchain "$toolchain" | grep -q "rustfmt.*installed" && rustup component list --toolchain "$toolchain" | grep -q "rust-analyzer.*installed"' _ "$rust_toolchain"
+check 'inventory-pinned Claude Code' bash -c \
+  'actual=$(claude --version 2>/dev/null); [[ ${actual%% *} == "$1" ]]' \
+  _ "$claude_code_version"
+check 'inventory-pinned OpenCode' bash -c \
+  'actual=$(opencode --version 2>/dev/null); [[ ${actual%% *} == "$1" ]]' \
+  _ "$opencode_version"
 check 'Android sdkmanager' test -x "$HOME/Android/Sdk/cmdline-tools/latest/bin/sdkmanager"
 check 'Android platform-tools' test -x "$HOME/Android/Sdk/platform-tools/adb"
 
@@ -328,13 +540,27 @@ else
   warn 'Firefox profile is not present yet (no legacy backup was restored)'
 fi
 
-check 'Docker daemon responds as john' sg docker -c 'docker info'
-check 'rootless Podman responds' podman info
-check 'Steam 32-bit Mesa is installed' rpm -q mesa-dri-drivers.i686 mesa-vulkan-drivers.i686
-for launcher in fedora arch debian; do
-  check "Distrobox $launcher launcher syntax" bash -n "$HOME/.local/bin/dev-$launcher-shell"
-done
-
+if feature_enabled docker; then
+  check "Docker daemon responds as $primary_user" sg docker -c 'docker info'
+else
+  check 'Docker is absent while disabled' bash -c '! command -v docker && ! systemctl is-enabled --quiet docker.service'
+fi
+if feature_enabled podman; then
+  check 'rootless Podman responds' podman info
+  while IFS=$'\t' read -r launcher image; do
+    check "Distrobox $launcher launcher syntax" bash -n "$HOME/.local/bin/dev-$launcher-shell"
+    check "Distrobox $launcher launcher uses reviewed manifest digest" \
+      grep -Fq -- "$image" "$HOME/.local/bin/dev-$launcher-shell"
+  done < <(jq -r '.[] | [.name, .image] | @tsv' <<<"$distrobox_images_json")
+else
+  check 'Podman is absent while disabled' bash -c '! command -v podman'
+  check 'Distrobox is absent while Podman is disabled' bash -c '! command -v distrobox'
+fi
+if feature_enabled steam; then
+  check 'Steam 32-bit Mesa is installed' rpm -q mesa-dri-drivers.i686 mesa-vulkan-drivers.i686
+else
+  check 'Steam is absent while disabled' bash -c '! command -v steam'
+fi
 if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyprctl monitors >/dev/null 2>&1; then
   errors=$(hyprctl configerrors 2>/dev/null || true)
   [[ -z $errors || $errors == 'no errors' ]] && pass 'Hyprland has no config errors' || fail "Hyprland config errors: $errors"
@@ -342,15 +568,19 @@ if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyp
   for unit in quickshell hypridle hyprpolkitagent voxtype external-monitor-toggle; do
     check "user unit active: $unit" user_unit_active "$unit.service"
   done
-  quickshell_invocation=$(systemctl --user show -p InvocationID --value quickshell.service 2>/dev/null || true)
-  quickshell_log=$(journalctl --user "_SYSTEMD_INVOCATION_ID=$quickshell_invocation" --no-pager 2>/dev/null || true)
-  if [[ -n $quickshell_invocation ]] && grep -Eqi 'Failed to load|Syntax error|Cannot open|Binding loop|invalid (width|height|size)|larger than the maximum texture size|requested buffer size is too big|oversized' <<<"$quickshell_log"; then
-    fail 'Quickshell loaded its configuration without errors'
+  if quickshell_live_diagnostic=$(qs_live_begin 2>&1); then
+    quickshell_live_safe=true
+    pass 'managed Quickshell MainPID is the sole qs process at test start'
   else
-    pass 'Quickshell loaded its configuration without errors'
+    fail 'managed Quickshell process invariant at test start'
+    sed 's/^/      /' <<<"$quickshell_live_diagnostic"
   fi
-  check 'Quickshell launcher IPC responds' qs ipc call launcher close
-  check 'Quickshell settings IPC responds' qs ipc call settings close
+  if $quickshell_live_safe; then
+    check 'Quickshell launcher IPC responds' qs_live_wait_ipc "$QS_LIVE_TIMEOUT" launcher close
+    check 'Quickshell settings IPC responds' qs_live_wait_ipc "$QS_LIVE_TIMEOUT" settings close
+  else
+    fail 'Quickshell IPC checks skipped because live process ownership is ambiguous'
+  fi
   check 'portal service active' user_unit_active xdg-desktop-portal.service
   check 'Hyprland portal active' user_unit_active xdg-desktop-portal-hyprland.service
   check 'Quickshell notification service owns the desktop bus name' \
@@ -362,6 +592,10 @@ if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyp
   monitors=$(hyprctl monitors -j 2>/dev/null || echo '[]')
   jq -e '.[] | select(.name == "eDP-1") | .refreshRate >= 119' <<<"$monitors" >/dev/null \
     && pass 'internal panel is running at 120 Hz' || warn 'internal panel is not currently visible at 120 Hz'
+  if $quickshell_live_safe; then
+    check_diagnostic 'managed Quickshell is sole, active, and journal-clean at test end' qs_live_end
+    quickshell_live_safe=false
+  fi
 else
   $require_hyprland && fail 'verification must be run inside a Hyprland session' \
     || warn 'Hyprland runtime checks skipped outside a Hyprland session'

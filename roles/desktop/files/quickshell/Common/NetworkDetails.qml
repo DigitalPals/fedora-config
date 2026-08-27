@@ -14,6 +14,9 @@ Singleton {
     readonly property string helper: Quickshell.shellDir + "/scripts/network-tool.py"
     readonly property int pingHistoryWindow: 24
     readonly property int pingAverageWindow: 5
+    readonly property int pollIntervalMs: 1500
+    readonly property string pollCadenceText:
+        "Updated live every " + (pollIntervalMs / 1000).toFixed(1) + " seconds"
 
     property int watchers: 0
     readonly property bool acquired: watchers > 0
@@ -300,7 +303,7 @@ Singleton {
 
     Timer {
         id: detailsPoll
-        interval: 1500
+        interval: root.pollIntervalMs
         repeat: true
         running: root.acquired
         onTriggered: root.refresh()

@@ -16,6 +16,14 @@ import "SettingsHelpers.js" as SettingsHelpers
 Singleton {
     id: root
 
+    // Qt does not currently expose the platform's reduced-motion preference
+    // through QStyleHints. Honour an explicit service/session override instead
+    // and route every shared motion token through it.
+    readonly property string reducedMotionValue:
+        (Quickshell.env("QS_REDUCED_MOTION") || "").trim().toLowerCase()
+    readonly property bool reducedMotion:
+        ["1", "true", "yes", "on"].includes(reducedMotionValue)
+
     readonly property bool dark: Settings.themeMode !== "light"
     readonly property bool paletteActive:
         Settings.paletteMode === "wallpaper" && Common.Palette.ready
@@ -506,36 +514,36 @@ Singleton {
     readonly property var easeInCurve: [0.4, 0.0, 1.0, 1.0, 1.0, 1.0]
 
     // Hover tint and other pure colour cross-fades.
-    readonly property int chipFadeDuration: 200
+    readonly property int chipFadeDuration: reducedMotion ? 0 : 200
     // A control acknowledging a press (scale down and back).
-    readonly property int pressDuration: 250
+    readonly property int pressDuration: reducedMotion ? 0 : 250
     // Something growing or sliding inside the bar: a revealed tray, a
     // widening workspace pip, the media transport unfolding.
-    readonly property int expandDuration: 450
+    readonly property int expandDuration: reducedMotion ? 0 : 450
     // Surface-level colour changes — theme switch, accent change.
-    readonly property int surfaceDuration: 450
+    readonly property int surfaceDuration: reducedMotion ? 0 : 450
     // A panel entering: the transform springs while opacity eases, so the
     // shape arrives a beat after the content becomes legible.
-    readonly property int panelMotionDuration: 550
-    readonly property int panelFadeDuration: 320
-    readonly property int panelCloseDuration: 260
+    readonly property int panelMotionDuration: reducedMotion ? 0 : 550
+    readonly property int panelFadeDuration: reducedMotion ? 0 : 320
+    readonly property int panelCloseDuration: reducedMotion ? 0 : 260
     // Cross-fade when one panel morphs into another in the same surface.
-    readonly property int popoutContentFadeDuration: 150
-    readonly property int popoutContentRevealDelay: 30
+    readonly property int popoutContentFadeDuration: reducedMotion ? 0 : 150
+    readonly property int popoutContentRevealDelay: reducedMotion ? 0 : 30
     // A row entering a list: the per-item stagger and its cap.
-    readonly property int staggerStep: 26
+    readonly property int staggerStep: reducedMotion ? 0 : 26
     readonly property int staggerMax: 8
 
     // Bar popouts answer more quickly than modal surfaces. Opening and closing
     // are directional; only an already-open card morphing between triggers
     // keeps a small amount of overshoot.
-    readonly property int popoutOpenDuration: 250
-    readonly property int popoutCloseDuration: 165
-    readonly property int popoutMorphDuration: 320
-    readonly property int popoutFadeInDuration: 170
-    readonly property int popoutFadeOutDuration: 120
-    readonly property real popoutInitialScale: 0.975
-    readonly property int popoutTravel: 10
+    readonly property int popoutOpenDuration: reducedMotion ? 0 : 250
+    readonly property int popoutCloseDuration: reducedMotion ? 0 : 165
+    readonly property int popoutMorphDuration: reducedMotion ? 0 : 320
+    readonly property int popoutFadeInDuration: reducedMotion ? 0 : 170
+    readonly property int popoutFadeOutDuration: reducedMotion ? 0 : 120
+    readonly property real popoutInitialScale: reducedMotion ? 1 : 0.975
+    readonly property int popoutTravel: reducedMotion ? 0 : 10
     readonly property var popoutEnterCurve: [0.05, 0.7, 0.1, 1.0, 1.0, 1.0]
     readonly property var popoutExitCurve: easeInCurve
     readonly property var popoutMorphCurve: [0.34, 1.18, 0.28, 1.0, 1.0, 1.0]
@@ -543,13 +551,13 @@ Singleton {
     // The launcher is keyboard-critical and its warm content is usable while
     // the card enters. Keep its visual acknowledgment brisk and free of the
     // slower modal spring or per-result stagger.
-    readonly property int launcherOpenDuration: 180
-    readonly property int launcherCloseDuration: 120
-    readonly property int launcherFadeInDuration: 110
-    readonly property int launcherFadeOutDuration: 80
-    readonly property int launcherResizeDuration: 140
-    readonly property real launcherInitialScale: 0.985
-    readonly property int launcherTravel: 8
+    readonly property int launcherOpenDuration: reducedMotion ? 0 : 180
+    readonly property int launcherCloseDuration: reducedMotion ? 0 : 120
+    readonly property int launcherFadeInDuration: reducedMotion ? 0 : 110
+    readonly property int launcherFadeOutDuration: reducedMotion ? 0 : 80
+    readonly property int launcherResizeDuration: reducedMotion ? 0 : 140
+    readonly property real launcherInitialScale: reducedMotion ? 1 : 0.985
+    readonly property int launcherTravel: reducedMotion ? 0 : 8
     readonly property var launcherEnterCurve: popoutEnterCurve
     readonly property var launcherExitCurve: popoutExitCurve
 

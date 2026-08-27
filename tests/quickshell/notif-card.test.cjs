@@ -102,8 +102,9 @@ test("the toast countdown stays inside the rounded notification card", () => {
 test("toast geometry and list motion stay compact and edge-aware", () => {
     const toast = read("NotificationToasts.qml");
 
-    assert.match(toast, /readonly property int cardWidth:\s*Math\.min\(380,/,
-        "toast cards must not regress to the old 420px banner width");
+    assert.match(toast,
+        /readonly property int cardWidth:\s*Math\.max\(1, Math\.min\(380,/,
+        "toast cards must stay compact and clamp on unusually narrow outputs");
     assert.match(toast, /edgeMargin:\s*Math\.max\(10, Theme\.barSideMargin\)/,
         "attached bars still need a screen-edge gutter");
     assert.match(toast, /ListView\s*\{\s*id:\s*toastList/);

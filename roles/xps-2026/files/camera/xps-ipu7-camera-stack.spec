@@ -3,7 +3,7 @@
 
 Name:           xps-ipu7-camera-stack
 Version:        @BUNDLE_VERSION@
-Release:        1%{?dist}
+Release:        1.xps@INPUT_RELEASE@%{?dist}
 Summary:        Pinned Panther Lake IPU7 PSYS/CVS and camera userspace extension
 License:        GPL-2.0-only AND Apache-2.0 AND LGPL-2.1-or-later AND LicenseRef-Intel-Binary
 URL:            https://github.com/DigitalPals/fedora-config
@@ -38,8 +38,9 @@ tar -xzf %{SOURCE0} -C %{buildroot}
 /usr/lib64/libia_*-ipu75xa.so*
 /usr/lib64/libgsticamerainterface-1.0.so*
 /usr/lib64/gstreamer-1.0/libgsticamerasrc.so*
-/usr/src/ipu7-drivers-@BUNDLE_VERSION@
-/usr/src/vision-drivers-@BUNDLE_VERSION@
+/usr/src/ipu7-drivers-@DKMS_VERSION@
+/usr/src/vision-drivers-@DKMS_VERSION@
+/usr/share/xps-ipu7-camera-stack/input-manifest
 %license /usr/share/licenses/xps-ipu7-camera-stack
 
 %changelog

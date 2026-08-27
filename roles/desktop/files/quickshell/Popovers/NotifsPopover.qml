@@ -12,8 +12,48 @@ import "../Common/Format.js" as Format
 Surface {
     id: root
 
-    implicitWidth: Theme.popWideWidth
+    implicitWidth: availableWidth > 0
+        ? Math.min(Theme.popWideWidth, availableWidth) : Theme.popWideWidth
     spacing: 10
+    focus: visible
+
+    property Item initialCard: null
+    property string announcement: ""
+    property bool announcementReady: false
+
+    Keys.onEscapePressed: Popouts.close()
+
+    function focusInitial() {
+        if (!visible)
+            return;
+        Qt.callLater(() => {
+            const target = root.initialCard && root.initialCard.visible
+                    && root.initialCard.activeFocusOnTab
+                ? root.initialCard : clearAll.enabled ? clearAll : dndToggle;
+            if (target)
+                target.forceActiveFocus();
+        });
+    }
+
+    function moveFocus(item, forward) {
+        const next = item.nextItemInFocusChain(forward);
+        if (next)
+            next.forceActiveFocus();
+    }
+
+    onVisibleChanged: focusInitial()
+
+    Connections {
+        target: Notifs
+
+        function onCountChanged() {
+            if (!root.announcementReady)
+                return;
+            root.announcement = Notifs.count === 0 ? "No notifications"
+                : Notifs.count + (Notifs.count === 1
+                    ? " notification" : " notifications");
+        }
+    }
 
     SystemClock {
         id: relativeClock
@@ -89,6 +129,7 @@ Surface {
         style: root.cardStyle
         nowMs: root.nowMs
         allowTextExpansion: true
+        keyboardEnabled: true
         showIcon: centre.showApp
         padH: centre.nested ? 10 : 12
         padV: centre.nested ? 8 : 12
@@ -98,6 +139,17 @@ Surface {
             : centre.nested ? "transparent" : Theme.cardFill
         border.width: centre.nested ? 0 : 1
         border.color: centre.urgent ? Theme.redBorder : Theme.hairlineSoft
+
+        Component.onCompleted: {
+            if (!centre.nested && root.initialCard === null) {
+                root.initialCard = centre;
+                root.focusInitial();
+            }
+        }
+        Component.onDestruction: {
+            if (root.initialCard === centre)
+                root.initialCard = null;
+        }
 
         Rectangle {
             visible: centre.nested
@@ -158,6 +210,33 @@ Surface {
                     id: groupHeader
                     width: parent.width
                     height: 44
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Collapse notifications from " + block.group.app
+                    Accessible.description: block.group.items.length + " notifications"
+                    Accessible.onPressAction: root.toggleApp(block.group.app)
+
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space) {
+                            root.toggleApp(block.group.app);
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                            root.moveFocus(groupHeader, true);
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                            root.moveFocus(groupHeader, false);
+                            event.accepted = true;
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Theme.chipRadius
+                        color: "transparent"
+                        border.width: groupHeader.activeFocus ? 1 : 0
+                        border.color: Theme.accent
+                    }
 
                     HoverHandler {
                         id: groupHeaderHover
@@ -167,7 +246,10 @@ Surface {
                         anchors.fill: parent
                         anchors.rightMargin: 34
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.toggleApp(block.group.app)
+                        onClicked: {
+                            groupHeader.forceActiveFocus();
+                            root.toggleApp(block.group.app);
+                        }
                     }
 
                     NotifIcon {
@@ -216,22 +298,46 @@ Surface {
                     }
 
                     Sym {
+                        id: groupCloseButton
                         anchors.right: parent.right
                         anchors.rightMargin: 13
                         anchors.verticalCenter: parent.verticalCenter
-                        name: groupHeaderHover.hovered ? "close" : "expand_less"
-                        size: groupHeaderHover.hovered
+                        name: groupHeaderHover.hovered || activeFocus ? "close" : "expand_less"
+                        size: groupHeaderHover.hovered || activeFocus
                             ? Theme.iconMedium : Theme.iconSmall
-                        color: groupCloseMouse.containsMouse ? Theme.textHi : Theme.textDim
+                        color: groupCloseMouse.containsMouse || activeFocus
+                            ? Theme.textHi : Theme.textDim
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Dismiss all notifications from " + block.group.app
+                        Accessible.onPressAction: root.clearGroup(block.group)
+
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Space
+                                    || event.key === Qt.Key_Delete) {
+                                root.clearGroup(block.group);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                                root.moveFocus(groupCloseButton, true);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                                root.moveFocus(groupCloseButton, false);
+                                event.accepted = true;
+                            }
+                        }
 
                         MouseArea {
                             id: groupCloseMouse
                             anchors.fill: parent
                             anchors.margins: -6
-                            enabled: groupHeaderHover.hovered
+                            enabled: groupHeaderHover.hovered || groupCloseButton.activeFocus
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.clearGroup(block.group)
+                            onClicked: {
+                                groupCloseButton.forceActiveFocus();
+                                root.clearGroup(block.group);
+                            }
                         }
                     }
                 }
@@ -304,6 +410,8 @@ Surface {
             anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             text: "Clear all"
+            enabled: Notifs.count > 0
+            opacity: enabled ? 1 : 0.45
             onClicked: Notifs.clearAll()
         }
 
@@ -397,6 +505,7 @@ Surface {
         }
 
         Toggle {
+            id: dndToggle
             anchors.right: parent.right
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
@@ -404,5 +513,18 @@ Surface {
             accessibleName: "Do Not Disturb"
             onToggled: value => Notifs.setDnd(value)
         }
+    }
+
+    Item {
+        width: 1
+        height: 1
+        opacity: 0
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: root.announcement
+    }
+
+    Component.onCompleted: {
+        announcementReady = true;
+        focusInitial();
     }
 }

@@ -24,9 +24,31 @@ import "../Common"
 Surface {
     id: root
 
-    implicitWidth: Theme.popWidth
+    implicitWidth: availableWidth > 0
+        ? Math.min(Theme.popWidth, availableWidth) : Theme.popWidth
     padding: Theme.surfacePadding
     spacing: Theme.panelSectionSpacing
+    focus: visible
+
+    Keys.onEscapePressed: Popouts.close()
+
+    function moveFocus(item, forward) {
+        const next = item.nextItemInFocusChain(forward);
+        if (next)
+            next.forceActiveFocus();
+    }
+
+    function focusInitial() {
+        if (visible) {
+            Qt.callLater(() => {
+                const target = brightnessSlider.ready ? brightnessSlider : outputButton;
+                target.forceActiveFocus();
+            });
+        }
+    }
+
+    Component.onCompleted: focusInitial()
+    onVisibleChanged: focusInitial()
 
     readonly property string binDir: Quickshell.env("HOME") + "/.local/bin/"
     readonly property var btConnected: BluetoothState.devices.filter(d => d.connected)
@@ -128,13 +150,30 @@ Surface {
         width: parent ? parent.width : 0
         height: root.radioRowHeight
         radius: Theme.chipRadius
-        color: radioMouse.containsMouse ? Theme.chip : "transparent"
+        color: radioMouse.containsMouse || activeFocus ? Theme.chip : "transparent"
         scale: radioMouse.pressed ? 0.99 : 1
+        activeFocusOnTab: true
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
 
         Accessible.role: Accessible.Button
         Accessible.name: radio.title
         Accessible.description: radio.sub
         Accessible.onPressAction: radio.activated()
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                radio.activated();
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                root.moveFocus(radio, true);
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                root.moveFocus(radio, false);
+                event.accepted = true;
+            }
+        }
 
         Behavior on color {
             ColorAnimation { duration: Theme.surfaceDuration }
@@ -212,7 +251,10 @@ Surface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: radio.activated()
+            onClicked: {
+                radio.forceActiveFocus();
+                radio.activated();
+            }
         }
     }
 
@@ -225,25 +267,56 @@ Surface {
 
         property string glyph: ""
         property string title
+        // `on` is persisted intent. Process-backed toggles provide the
+        // separately observed state so the tile never claims success merely
+        // because the preference was written.
         property bool on: false
-        readonly property color mark: tile.on
+        property bool effective: on
+        property bool pending: false
+        property string error: ""
+        property bool showStatus: false
+        readonly property string statusLabel: error !== "" ? "Error"
+            : pending ? (on ? "Starting…" : "Stopping…")
+            : effective ? "Active" : on ? "Not active" : "Off"
+        readonly property string statusDescription: error !== "" ? error
+            : title + " is " + statusLabel.toLowerCase()
+        readonly property color mark: tile.effective
             ? Theme.accentFg
-            : tileMouse.containsMouse ? Theme.textHi : Theme.icon
-        readonly property color copy: tile.on ? Theme.accentFg
-            : tileMouse.containsMouse ? Theme.textMid : Theme.textFaint
+            : tileMouse.containsMouse || tile.activeFocus ? Theme.textHi : Theme.icon
+        readonly property color copy: tile.effective ? Theme.accentFg
+            : tileMouse.containsMouse || tile.activeFocus ? Theme.textMid : Theme.textFaint
         signal toggled
 
         width: root.tileWidth
         height: root.tileHeight
         radius: Theme.chipRadius
-        color: tile.on ? Theme.accent
-            : tileMouse.containsMouse ? Theme.chipHover : Theme.chip
+        color: tile.effective ? Theme.accent
+            : tileMouse.containsMouse || activeFocus ? Theme.chipHover : Theme.chip
         scale: tileMouse.pressed ? 0.95 : 1
+        activeFocusOnTab: true
+        border.width: activeFocus || pending || error !== "" ? 1 : 0
+        border.color: error !== "" ? Theme.red
+            : pending ? Theme.amber : tile.effective ? Theme.accentFg : Theme.accent
 
         Accessible.role: Accessible.CheckBox
         Accessible.name: tile.title
-        Accessible.checked: tile.on
+        Accessible.description: tile.statusDescription
+        Accessible.checked: tile.effective
         Accessible.onPressAction: tile.toggled()
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                tile.toggled();
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                root.moveFocus(tile, true);
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                root.moveFocus(tile, false);
+                event.accepted = true;
+            }
+        }
 
         Behavior on color {
             ColorAnimation { duration: Theme.surfaceDuration }
@@ -259,7 +332,7 @@ Surface {
 
         Column {
             anchors.centerIn: parent
-            spacing: 7
+            spacing: tile.showStatus ? 2 : 7
 
             Item {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -270,7 +343,7 @@ Surface {
                     anchors.centerIn: parent
                     name: tile.glyph
                     size: Theme.iconLarge
-                    fill: tile.on ? 1 : 0
+                    fill: tile.effective ? 1 : 0
                     color: tile.mark
                 }
             }
@@ -287,6 +360,20 @@ Surface {
                 font.weight: Theme.weightMedium
                 color: tile.copy
             }
+
+            Text {
+                visible: tile.showStatus
+                width: Math.max(0, tile.width - 6)
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                text: tile.statusLabel
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontTiny
+                color: tile.error !== "" ? Theme.redText
+                    : tile.pending ? Theme.amber : tile.copy
+                Accessible.role: Accessible.StaticText
+                Accessible.name: tile.statusDescription
+            }
         }
 
         MouseArea {
@@ -294,7 +381,10 @@ Surface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: tile.toggled()
+            onClicked: {
+                tile.forceActiveFocus();
+                tile.toggled();
+            }
         }
     }
 
@@ -337,6 +427,12 @@ Surface {
                     || event.key === Qt.Key_Space) {
                 action.triggered();
                 event.accepted = true;
+            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                root.moveFocus(action, true);
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                root.moveFocus(action, false);
+                event.accepted = true;
             }
         }
 
@@ -369,7 +465,10 @@ Surface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: action.triggered()
+            onClicked: {
+                action.forceActiveFocus();
+                action.triggered();
+            }
         }
     }
 
@@ -488,6 +587,7 @@ Surface {
             spacing: 6
 
             FillSlider {
+                id: brightnessSlider
                 width: parent.width
                 glyph: "sunny"
                 accessibleName: "Brightness"
@@ -506,6 +606,7 @@ Surface {
                     glyph: Audio.muted || Audio.level === 0 ? "volume_off"
                         : Audio.level < 0.5 ? "volume_down" : "volume_up"
                     glyphIsButton: true
+                    glyphAccessibleName: Audio.muted ? "Unmute volume" : "Mute volume"
                     accessibleName: "Volume"
                     value: Audio.muted ? 0 : Audio.level
                     ready: Audio.ready
@@ -559,7 +660,10 @@ Surface {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: Popouts.openPanel("audio", "right")
+                        onClicked: {
+                            outputButton.forceActiveFocus();
+                            Popouts.openPanel("audio", "right");
+                        }
                     }
                 }
             }
@@ -649,6 +753,10 @@ Surface {
                     glyph: "nightlight"
                     title: "Night light"
                     on: SysInfo.nightLight
+                    effective: SysInfo.nightLightEffective
+                    pending: SysInfo.nightLightPending
+                    error: SysInfo.nightLightError
+                    showStatus: true
                     onToggled: SysInfo.toggleNightLight()
                 }
 
@@ -656,8 +764,30 @@ Surface {
                     glyph: "coffee"
                     title: "Idle inhibit"
                     on: SysInfo.idleInhibited
+                    effective: SysInfo.idleInhibitEffective
+                    pending: SysInfo.idleInhibitPending
+                    error: SysInfo.idleInhibitError
+                    showStatus: true
                     onToggled: SysInfo.toggleIdleInhibited()
                 }
+            }
+
+            Text {
+                visible: SysInfo.nightLightError !== ""
+                    || SysInfo.idleInhibitError !== ""
+                width: parent.width
+                text: (SysInfo.nightLightError !== ""
+                        ? "Night light: " + SysInfo.nightLightError : "")
+                    + (SysInfo.nightLightError !== "" && SysInfo.idleInhibitError !== ""
+                        ? "\n" : "")
+                    + (SysInfo.idleInhibitError !== ""
+                        ? "Idle inhibit: " + SysInfo.idleInhibitError : "")
+                wrapMode: Text.WordWrap
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontTiny
+                color: Theme.redText
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
             }
 
             // One control, equal segments, a 3px inset — the shape the power
@@ -706,11 +836,28 @@ Surface {
                             height: captureRow.height
                             radius: Theme.chipRadius - 2
                             color: capture.recording ? Theme.redBg
-                                : captureMouse.containsMouse ? Theme.tile : "transparent"
+                                : captureMouse.containsMouse || activeFocus ? Theme.tile : "transparent"
+                            activeFocusOnTab: true
+                            border.width: activeFocus ? 1 : 0
+                            border.color: Theme.accent
 
                             Accessible.role: Accessible.Button
                             Accessible.name: capture.label
                             Accessible.onPressAction: root.runCapture(capture.modelData.key)
+
+                            Keys.onPressed: event => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                        || event.key === Qt.Key_Space) {
+                                    root.runCapture(capture.modelData.key);
+                                    event.accepted = true;
+                                } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                                    root.moveFocus(capture, true);
+                                    event.accepted = true;
+                                } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                                    root.moveFocus(capture, false);
+                                    event.accepted = true;
+                                }
+                            }
 
                             Behavior on color {
                                 ColorAnimation { duration: Theme.chipFadeDuration }
@@ -744,7 +891,10 @@ Surface {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.runCapture(capture.modelData.key)
+                                onClicked: {
+                                    capture.forceActiveFocus();
+                                    root.runCapture(capture.modelData.key);
+                                }
                             }
                         }
                     }
@@ -787,11 +937,26 @@ Surface {
         height: Theme.chipHeight
 
         Rectangle {
+            id: settingsButton
             anchors.top: parent.top
             width: settingsLabel.x + settingsLabel.implicitWidth + 9
             height: Theme.chipHeight
             radius: Theme.chipRadius
-            color: settingsMouse.containsMouse ? Theme.chip : "transparent"
+            color: settingsMouse.containsMouse || activeFocus ? Theme.chip : "transparent"
+            activeFocusOnTab: true
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accent
+            Accessible.role: Accessible.Button
+            Accessible.name: "Open shell settings"
+            Accessible.onPressAction: Settings.showPanel()
+
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    Settings.showPanel();
+                    event.accepted = true;
+                }
+            }
 
             Behavior on color {
                 ColorAnimation { duration: Theme.chipFadeDuration }
@@ -824,20 +989,35 @@ Surface {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: Settings.showPanel()
+                onClicked: {
+                    settingsButton.forceActiveFocus();
+                    Settings.showPanel();
+                }
             }
         }
 
         Rectangle {
+            id: shortcutsButton
             anchors.right: parent.right
             width: Theme.chipHeight
             height: Theme.chipHeight
             radius: Theme.chipRadius
-            color: keysMouse.containsMouse ? Theme.chip : "transparent"
+            color: keysMouse.containsMouse || activeFocus ? Theme.chip : "transparent"
+            activeFocusOnTab: true
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accent
 
             Accessible.role: Accessible.Button
             Accessible.name: "Keyboard shortcuts"
             Accessible.onPressAction: Session.openKeys()
+
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    Session.openKeys();
+                    event.accepted = true;
+                }
+            }
 
             Behavior on color {
                 ColorAnimation { duration: Theme.chipFadeDuration }
@@ -855,7 +1035,10 @@ Surface {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: Session.openKeys()
+                onClicked: {
+                    shortcutsButton.forceActiveFocus();
+                    Session.openKeys();
+                }
             }
         }
     }

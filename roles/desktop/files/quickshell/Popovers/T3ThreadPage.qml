@@ -74,6 +74,10 @@ Column {
         : gitSuccessVisible ? git.summary : ""
     readonly property bool gitFeedbackFailed: !gitPending
         && (git.error !== "" || T3Code.detailVcs.error !== "")
+    readonly property bool fullDiffCopyPending:
+        T3Code.actionPending("diff-copy", threadId, "")
+    readonly property string fullDiffCopyError:
+        T3Code.actionError("diff-copy", threadId, "")
     // Rebound whenever the projection refreshes because `thread` is a dep.
     readonly property string copyPath: thread !== null ? T3Code.threadPath(threadId) : ""
     readonly property string copyBranch: thread !== null && thread.branch ? thread.branch : ""
@@ -121,9 +125,7 @@ Column {
     }
 
     function openMessageLink(link) {
-        const url = String(link ?? "");
-        if (/^https?:\/\//i.test(url))
-            Quickshell.execDetached(["xdg-open", url]);
+        T3Code.openExternalUrl(link);
     }
 
     function themedMarkdown(markdown) {
@@ -521,8 +523,8 @@ Column {
                     accessibleName: "Open in browser"
                     tint: T3Theme.accent
                     onTriggered: {
-                        Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
-                        Popouts.close();
+                        if (T3Code.openExternalUrl(T3Code.threadUrl(root.threadId)))
+                            Popouts.close();
                     }
                 }
 
@@ -601,8 +603,8 @@ Column {
                     tint: T3Theme.accent
                     onTriggered: {
                         root.menuOpen = false;
-                        Quickshell.execDetached(["xdg-open", root.prUrl]);
-                        Popouts.close();
+                        if (T3Code.openExternalUrl(root.prUrl))
+                            Popouts.close();
                     }
                 }
 
@@ -863,7 +865,7 @@ Column {
                             // The arc only reads as activity while it turns;
                             // parked, it is an ambiguous half-ring.
                             RotationAnimation on rotation {
-                                running: root.working
+                                running: root.working && !Theme.reducedMotion
                                 from: 0
                                 to: 360
                                 duration: 1100
@@ -1046,8 +1048,8 @@ Column {
 
                         Action {
                             visible: T3Code.detailDiff.text !== ""
-                            label: "Copy patch"
-                            onTriggered: Quickshell.clipboardText = T3Code.detailDiff.fullText
+                            label: T3Code.detailDiff.truncated ? "Copy preview" : "Copy patch"
+                            onTriggered: Quickshell.clipboardText = T3Code.detailDiff.text
                         }
 
                         Action {
@@ -1067,13 +1069,32 @@ Column {
 
                         Action {
                             visible: T3Code.detailDiff.truncated
+                            enabled: !root.fullDiffCopyPending
+                            label: root.fullDiffCopyPending ? "Copying full patch…" : "Copy full patch"
+                            tint: T3Theme.accent
+                            onTriggered: T3Code.copyFullThreadDiff(root.threadId, root.checkpoint)
+                        }
+
+                        Action {
+                            visible: T3Code.detailDiff.truncated
                             label: "Open T3 Code"
                             tint: T3Theme.accent
                             onTriggered: {
-                                Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
-                                Popouts.close();
+                                if (T3Code.openExternalUrl(T3Code.threadUrl(root.threadId)))
+                                    Popouts.close();
                             }
                         }
+                    }
+
+                    Text {
+                        visible: root.fullDiffCopyError !== ""
+                        width: parent.width
+                        text: root.fullDiffCopyError
+                        wrapMode: Text.WordWrap
+                        lineHeight: Theme.proseLineHeight
+                        font.family: T3Theme.fontUi
+                        font.pixelSize: Theme.fontCaption
+                        color: T3Theme.red
                     }
 
                     Text {
@@ -1123,6 +1144,7 @@ Column {
             // a process, and spinning it would say the wrong thing.
             RotationAnimation on rotation {
                 running: backgroundBanner.visible && !root.monitoring
+                    && !Theme.reducedMotion
                 from: 0
                 to: 360
                 duration: 1100
@@ -1319,8 +1341,8 @@ Column {
                         label: "Open T3 Code"
                         tint: T3Theme.accent
                         onTriggered: {
-                            Quickshell.execDetached(["xdg-open", T3Code.threadUrl(root.threadId)]);
-                            Popouts.close();
+                            if (T3Code.openExternalUrl(T3Code.threadUrl(root.threadId)))
+                                Popouts.close();
                         }
                     }
                 }

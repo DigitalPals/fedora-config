@@ -1,7 +1,20 @@
 ---
-- name: Resolve packages available for Fedora 44
+- name: Record the feature-dependent Fedora package contract
+  ansible.builtin.set_fact:
+    apps_desired_required_fedora_packages: >-
+      {{ apps_required_fedora_packages
+         + (features.podman | bool | ternary(apps_podman_packages, []))
+         + (features.steam | bool | ternary(apps_steam_packages, [])) }}
+
+- name: Install the required Fedora and RPM Fusion application packages
+  ansible.builtin.dnf:
+    name: "{{ apps_desired_required_fedora_packages }}"
+    state: present
+    allowerasing: true
+
+- name: Resolve optional packages available for Fedora 44
   ansible.builtin.command:
-    argv: "{{ ['dnf', '-q', 'repoquery', '--available', '--qf', '%{name}\\n'] + apps_fedora_packages }}"
+    argv: "{{ ['dnf', '-q', 'repoquery', '--available', '--qf', '%{name}\\n'] + apps_optional_fedora_packages }}"
   register: apps_available_package_query
   changed_when: false
   check_mode: false
@@ -9,19 +22,95 @@
 - name: Record available and unavailable package names
   ansible.builtin.set_fact:
     apps_available_fedora_packages: "{{ apps_available_package_query.stdout_lines | unique | list }}"
-    apps_unavailable_fedora_packages: "{{ apps_fedora_packages | difference(apps_available_package_query.stdout_lines) }}"
+    apps_unavailable_optional_fedora_packages: >-
+      {{ apps_optional_fedora_packages
+         | difference(apps_available_package_query.stdout_lines) }}
 
 - name: Report optional packages absent from enabled repositories
   ansible.builtin.debug:
-    msg: "Unavailable Fedora package (upstream installer or Mason may cover it): {{ item }}"
-  loop: "{{ apps_unavailable_fedora_packages }}"
+    msg: "Optional Fedora package is unavailable and was skipped: {{ item }}"
+  loop: "{{ apps_unavailable_optional_fedora_packages }}"
 
-- name: Install Fedora and RPM Fusion application packages
+- name: Install available optional Fedora packages
   ansible.builtin.dnf:
-    name: "{{ apps_available_fedora_packages }}"
+    name: "{{ apps_optional_fedora_packages | intersect(apps_available_fedora_packages) }}"
     state: present
     allowerasing: true
-  when: apps_available_fedora_packages | length > 0
+  when: apps_optional_fedora_packages | intersect(apps_available_fedora_packages) | length > 0
+
+- name: Disable system Podman activation when Podman is disabled
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  failed_when: false
+  loop:
+    - podman.socket
+    - podman-auto-update.timer
+  when:
+    - not features.podman | bool
+    - not ansible_check_mode
+
+- name: Stop system Podman services when Podman is disabled
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+  failed_when: false
+  loop:
+    - podman.service
+    - podman-restart.service
+  when:
+    - not features.podman | bool
+    - not ansible_check_mode
+
+- name: Disable user Podman activation when Podman is disabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  failed_when: false
+  loop:
+    - podman.socket
+    - podman-auto-update.timer
+  when:
+    - not features.podman | bool
+    - not ansible_check_mode
+
+- name: Stop user Podman services when Podman is disabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  failed_when: false
+  loop:
+    - podman.service
+    - podman-restart.service
+  when:
+    - not features.podman | bool
+    - not ansible_check_mode
+
+- name: Remove disabled Podman and Steam package families
+  ansible.builtin.dnf:
+    name: "{{ item.packages }}"
+    state: absent
+  loop:
+    - { enabled: "{{ features.podman }}", packages: "{{ apps_podman_packages }}", label: Podman }
+    - { enabled: "{{ features.steam }}", packages: "{{ apps_steam_packages }}", label: Steam }
+  loop_control:
+    label: "{{ item.label }}"
+  when: not item.enabled | bool
+  notify:
+    - Reload systemd after application package removal
+    - Reload user systemd after application package removal
 
 - name: Install Steam 32-bit graphics userspace
   ansible.builtin.dnf:
@@ -32,16 +121,40 @@
     state: present
   when: features.steam | bool and not ansible_check_mode
 
+- name: Remove Steam 32-bit graphics userspace when Steam is disabled
+  ansible.builtin.dnf:
+    name:
+      - mesa-dri-drivers.i686
+      - mesa-vulkan-drivers.i686
+      - vulkan-loader.i686
+    state: absent
+  when: not features.steam | bool
+
 - name: Install signed vendor applications
   ansible.builtin.dnf:
     name:
       - brave-browser
       - 1password
       - 1password-cli
-      - tailscale
     state: present
   when: not ansible_check_mode
   tags: [browser]
+
+- name: Stop and disable Tailscale before removing it
+  ansible.builtin.systemd_service:
+    name: tailscaled.service
+    enabled: false
+    state: stopped
+  failed_when: false
+  when:
+    - not features.tailscale | bool
+    - not ansible_check_mode
+
+- name: Converge the Tailscale package
+  ansible.builtin.dnf:
+    name: tailscale
+    state: "{{ features.tailscale | bool | ternary('present', 'absent') }}"
+  when: not ansible_check_mode
 
 - name: Remove retired Google Chrome package
   ansible.builtin.dnf:

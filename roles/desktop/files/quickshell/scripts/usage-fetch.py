@@ -18,6 +18,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 TIMEOUT = 20
@@ -403,13 +404,27 @@ def fetch_kimi():
             "source": "kimi-oauth", "windows": windows, "credits": credits}
 
 
-def main():
+PROVIDERS = (("claude", fetch_claude), ("codex", fetch_codex), ("kimi", fetch_kimi))
+
+
+def fetch_all(providers=PROVIDERS):
+    """Fetch independent providers concurrently, preserving output order."""
+    selected = tuple(providers)
+    if not selected:
+        return {}
     result = {}
-    for name, fn in (("claude", fetch_claude), ("codex", fetch_codex), ("kimi", fetch_kimi)):
-        try:
-            result[name] = fn()
-        except Exception as e:
-            result[name] = err("parse", str(e))
+    with ThreadPoolExecutor(max_workers=len(selected), thread_name_prefix="usage") as pool:
+        futures = [(name, pool.submit(fn)) for name, fn in selected]
+        for name, future in futures:
+            try:
+                result[name] = future.result()
+            except Exception as error:
+                result[name] = err("parse", str(error))
+    return result
+
+
+def main():
+    result = fetch_all()
     json.dump(result, sys.stdout)
 
 

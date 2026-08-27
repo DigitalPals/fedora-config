@@ -37,6 +37,7 @@ Singleton {
     property var clipboardEntries: []
     property bool clipboardLoading: false
     property string clipboardError: ""
+    property int clipboardRefreshGeneration: 0
     property var emojiEntries: []
     property bool emojiLoading: true
     property string emojiError: ""
@@ -299,10 +300,18 @@ Singleton {
     }
 
     function refreshClipboard(): void {
-        clipboardListProc.running = false;
-        clipboardListProc.buffer = [];
+        clipboardRefreshGeneration++;
         root.clipboardError = "";
         root.clipboardLoading = true;
+        if (clipboardListProc.running)
+            return;
+        root.startClipboardRefresh();
+    }
+
+    function startClipboardRefresh(): void {
+        clipboardListProc.generation = clipboardRefreshGeneration;
+        clipboardListProc.buffer = [];
+        clipboardListProc.errText = "";
         clipboardListProc.running = true;
     }
 
@@ -393,16 +402,22 @@ Singleton {
 
     Process {
         id: clipboardListProc
+        property int generation: -1
         property var buffer: []
+        property string errText: ""
         command: ["sh", "-c", "command -v cliphist >/dev/null 2>&1"
             + " || exit 127; exec cliphist list"]
         stdout: SplitParser {
             onRead: line => clipboardListProc.buffer.push(line)
         }
         stderr: StdioCollector {
-            onStreamFinished: root.clipboardError = text.trim()
+            onStreamFinished: clipboardListProc.errText = text.trim()
         }
         onExited: (exitCode, exitStatus) => {
+            if (generation !== root.clipboardRefreshGeneration) {
+                clipboardRefreshRestart.restart();
+                return;
+            }
             root.clipboardLoading = false;
             if (exitCode === 0) {
                 root.clipboardEntries = clipboardListProc.buffer.slice();
@@ -410,9 +425,22 @@ Singleton {
             } else if (exitCode === 127) {
                 root.clipboardEntries = [];
                 root.clipboardError = "cliphist is not installed";
-            } else if (root.clipboardError === "") {
-                root.clipboardError = `Clipboard history exited with status ${exitCode}`;
+            } else {
+                root.clipboardError = clipboardListProc.errText !== ""
+                    ? clipboardListProc.errText
+                    : `Clipboard history exited with status ${exitCode}`;
             }
+        }
+    }
+
+    Timer {
+        id: clipboardRefreshRestart
+        interval: 0
+        onTriggered: {
+            if (!clipboardListProc.running)
+                root.startClipboardRefresh();
+            else
+                restart();
         }
     }
 
@@ -428,7 +456,8 @@ Singleton {
         command: ["sh", "-c", "command -v cliphist >/dev/null 2>&1"
             + " && command -v wl-paste >/dev/null 2>&1"
             + " || exec sleep infinity;"
-            + " exec wl-paste --type text --watch cliphist store"]
+            + " exec wl-paste --type text --watch "
+            + Quickshell.env("HOME") + "/.local/bin/clipboard-history-store"]
         running: true
     }
 
@@ -436,7 +465,8 @@ Singleton {
         command: ["sh", "-c", "command -v cliphist >/dev/null 2>&1"
             + " && command -v wl-paste >/dev/null 2>&1"
             + " || exec sleep infinity;"
-            + " exec wl-paste --type image --watch cliphist store"]
+            + " exec wl-paste --type image --watch "
+            + Quickshell.env("HOME") + "/.local/bin/clipboard-history-store"]
         running: true
     }
 

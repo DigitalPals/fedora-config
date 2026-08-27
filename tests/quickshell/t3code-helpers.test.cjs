@@ -677,6 +677,13 @@ test("diff rendering stops at both the character and line limits", () => {
     const byChars = H.truncateDiff("x".repeat(110000));
     assert.equal(byChars.truncated, true);
     assert.equal(byChars.text.length, 100000);
+    assert.equal(byChars.totalLines, null);
+    assert.doesNotMatch(H.truncateDiff.toString(), /[.]split\(/,
+        "the preview parser must not allocate an array for the full response");
+    const exact = H.truncateDiff("one\ntwo", 100, 10);
+    assert.deepEqual(exact, {
+        text: "one\ntwo", truncated: false, totalChars: 7, totalLines: 2,
+    });
 });
 
 test("thread cwd prefers the worktree and falls back to the project root", () => {

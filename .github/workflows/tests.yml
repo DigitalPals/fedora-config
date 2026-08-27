@@ -1,0 +1,69 @@
+name: Repository checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fedora-44:
+    name: Fedora 44 source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: fedora:44
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_BACKEND: software
+
+    steps:
+      - name: Install source-test dependencies
+        run: |
+          dnf install -y \
+            ansible-core \
+            curl \
+            dbus-daemon \
+            dnf5-plugins \
+            findutils \
+            git \
+            gnupg2 \
+            jq \
+            luajit \
+            nodejs24 \
+            python3 \
+            qt6-qtdeclarative-devel \
+            qt6-qtwebsockets-devel \
+            ripgrep
+
+      # actions/checkout v4.4.0; pin the reviewed action code, not its moving
+      # major tag. Dependabot/manual review can advance this commit explicitly.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Configure the fingerprint-verified Hyprland COPR
+        run: |
+          curl --fail --location --retry 3 \
+            --output /tmp/hyprland-copr.gpg \
+            https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
+          echo '581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  /tmp/hyprland-copr.gpg' \
+            | sha256sum --check
+          test "$(gpg --show-keys --with-colons /tmp/hyprland-copr.gpg \
+            | awk -F: '$1 == "fpr" { print $10; exit }')" \
+            = 64BBBF013D1CA5E4BE5B0552C043104207862204
+          install -m 0644 /tmp/hyprland-copr.gpg \
+            /etc/pki/rpm-gpg/XPS-sdegler-hyprland-copr.gpg
+          install -m 0644 roles/desktop/templates/hyprland-copr.repo.j2 \
+            '/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo'
+          dnf install -y quickshell
+
+      - name: Assert the requested Fedora release
+        run: |
+          . /etc/os-release
+          test "$ID" = fedora
+          test "$VERSION_ID" = 44
+
+      - name: Run every required source check
+        run: ./tests/run

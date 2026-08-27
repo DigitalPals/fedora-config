@@ -4,6 +4,42 @@
   gather_facts: true
   become: true
   pre_tasks:
+    - name: Validate the feature contract
+      ansible.builtin.assert:
+        that:
+          - features[item] is defined
+          - features[item] is boolean
+        fail_msg: "features.{{ item }} must be an explicit boolean in inventory/group_vars/all.yml"
+      loop:
+        - tailscale
+        - docker
+        - podman
+        - steam
+        - private_hooks
+        - apple_display
+        - source_builds
+        - local_network_services
+      tags: [always]
+
+    - name: Validate feature dependencies
+      ansible.builtin.assert:
+        that:
+          - not features.source_builds | bool or features.podman | bool
+          - not features.apple_display | bool or features.private_hooks | bool
+        fail_msg: >-
+          source_builds requires podman, and apple_display requires
+          private_hooks; make the inventory feature state internally consistent.
+      tags: [always]
+
+    - name: Validate explicit security trade-offs
+      ansible.builtin.assert:
+        that:
+          - allow_insecure_sccache_transport is boolean
+        fail_msg: >-
+          allow_insecure_sccache_transport must be an explicit boolean; HTTP
+          distributed compilation is never enabled implicitly.
+      tags: [always]
+
     - name: Refuse unsupported operating systems
       ansible.builtin.assert:
         that:
@@ -41,6 +77,7 @@
     # v4l2-relayd packages; all hardware actions remain precisely DMI-gated.
     - { role: xps-2026, tags: [xps-2026, hardware] }
     - { role: dotfiles, tags: [dotfiles] }
-    - { role: private-hooks, tags: [private-hooks], when: features.private_hooks | bool }
+    # The role also removes its managed privileges/artifacts when disabled.
+    - { role: private-hooks, tags: [private-hooks] }
     - { role: boot, tags: [boot] }
     - { role: finalize, tags: [finalize] }

@@ -179,8 +179,8 @@ Item {
     // implicit size.
     function envelope() {
         return {
-            availableWidth: Math.max(320, host.width - 2 * (edgeMargin + 8)),
-            availableHeight: Math.max(280, host.outputAvailableHeight
+            availableWidth: Math.max(1, host.width - 2 * (edgeMargin + 8)),
+            availableHeight: Math.max(1, host.outputAvailableHeight
                 - host.bodyTop - host.shadowBudget)
         };
     }

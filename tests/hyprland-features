@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+FEDORA_BINDINGS_CONFIG=roles/desktop/files/bindings.lua luajit <<'LUA'
+local config = assert(os.getenv("FEDORA_BINDINGS_CONFIG"))
+local active = {}
+
+local function dispatcher(value)
+  return value or true
+end
+
+hl = {
+  dsp = {
+    exec_cmd = dispatcher,
+    global = dispatcher,
+    send_key_state = dispatcher,
+    layout = dispatcher,
+    focus = dispatcher,
+    exit = dispatcher,
+    window = {
+      close = dispatcher,
+      float = dispatcher,
+      move = dispatcher,
+      set_prop = dispatcher,
+      drag = dispatcher,
+      resize = dispatcher,
+    },
+  },
+}
+
+function hl.unbind(keys)
+  active[keys] = nil
+end
+
+function hl.bind(keys, dispatcher_value, options)
+  local binding = { keys = keys, removed = false }
+  function binding:remove()
+    self.removed = true
+    active[self.keys] = nil
+  end
+  active[keys] = binding
+  return binding
+end
+
+local optional = {
+  "SUPER + SHIFT + F",
+  "SUPER + SHIFT + A",
+  "SUPER + SHIFT + D",
+}
+
+package.preload.features = function() return { podman = true } end
+dofile(config)
+local first_generation = _G.__fedora_hypr_binds
+for _, keys in ipairs(optional) do
+  assert(active[keys], "enabled Podman feature omitted " .. keys)
+end
+
+package.loaded.features = nil
+package.preload.features = function() return { podman = false } end
+dofile(config)
+for _, keys in ipairs(optional) do
+  assert(active[keys] == nil, "disabled Podman feature retained " .. keys)
+end
+for _, binding in ipairs(first_generation) do
+  assert(binding.removed, "config reload did not retire a previous binding")
+end
+assert(active["SUPER + Return"], "feature gating removed an unrelated binding")
+
+print("Hyprland optional-feature binding fixtures passed")
+LUA
+
+# Hyprland autoreloads after every watched Lua write, so validate the exact
+# provider -> leaf modules -> entrypoint protocol at every observable boundary.
+# The upgrade scenario starts from the previous generation, where bindings did
+# not import features; the fresh scenario withholds the activating entrypoint
+# until its complete dependency closure exists.
+deployment_scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-hyprland.XXXXXX")
+cleanup() {
+  if [[ -n ${deployment_scratch:-} && -d $deployment_scratch ]]; then
+    rm -rf -- "$deployment_scratch"
+  fi
+}
+trap cleanup EXIT
+
+assert_hypr_tree_loadable() {
+  local scenario_root=$1 boundary=$2
+  FEDORA_HYPR_BOUNDARY=$boundary \
+  HOME="$scenario_root/home" \
+  XDG_CONFIG_HOME="$scenario_root/config" \
+    luajit <<'LUA'
+local boundary = assert(os.getenv("FEDORA_HYPR_BOUNDARY"))
+local config_home = assert(os.getenv("XDG_CONFIG_HOME"))
+local active = {}
+
+local function dispatcher(value)
+  return value or true
+end
+
+local function removable()
+  local object = {}
+  function object:remove() self.removed = true end
+  function object:set_enabled(value) self.enabled = value end
+  function object:unbind() self.removed = true end
+  return object
+end
+
+hl = {
+  dsp = {
+    exec_cmd = dispatcher,
+    global = dispatcher,
+    send_key_state = dispatcher,
+    layout = dispatcher,
+    focus = dispatcher,
+    exit = dispatcher,
+    window = {
+      close = dispatcher,
+      float = dispatcher,
+      move = dispatcher,
+      set_prop = dispatcher,
+      drag = dispatcher,
+      resize = dispatcher,
+    },
+  },
+  monitor = function() return removable() end,
+  get_monitors = function() return {} end,
+  workspace_rule = function() return removable() end,
+  layer_rule = function() return removable() end,
+  window_rule = function() return removable() end,
+  on = function() return removable() end,
+  env = function() end,
+  config = function() end,
+  curve = function() end,
+  animation = function() end,
+  exec_cmd = dispatcher,
+}
+
+function hl.unbind(keys)
+  active[keys] = nil
+end
+
+function hl.bind(keys)
+  local binding = removable()
+  binding.keys = keys
+  function binding:remove()
+    self.removed = true
+    active[self.keys] = nil
+  end
+  active[keys] = binding
+  return binding
+end
+
+local entrypoint = config_home .. "/hypr/hyprland.lua"
+local ok, failure = pcall(dofile, entrypoint)
+assert(ok, boundary .. " exposed an unloadable Hyprland tree: " .. tostring(failure))
+LUA
+}
+
+install_feature_provider() {
+  local destination=$1
+  printf '%s\n' \
+    '-- Rendered feature fixture.' \
+    'return { podman = true }' > "$destination/features.lua"
+}
+
+install_leaf_modules() {
+  local destination=$1 scenario_root=$2 module
+  for module in monitors.lua input.lua looknfeel.lua bindings.lua autostart.lua; do
+    install -m 0644 "roles/desktop/files/$module" "$destination/$module"
+    if [[ -f $destination/hyprland.lua ]]; then
+      assert_hypr_tree_loadable "$scenario_root" "after $module"
+    fi
+  done
+}
+
+upgrade_root=$deployment_scratch/upgrade
+upgrade_config=$upgrade_root/config/hypr
+install -d "$upgrade_config" "$upgrade_root/home"
+for module in monitors.lua input.lua looknfeel.lua autostart.lua; do
+  install -m 0644 "roles/desktop/files/$module" "$upgrade_config/$module"
+done
+printf '%s\n' 'return true' > "$upgrade_config/bindings.lua"
+printf '%s\n' \
+  'local config_dir = os.getenv("XDG_CONFIG_HOME") .. "/hypr"' \
+  'package.path = config_dir .. "/?.lua;" .. package.path' \
+  'for _, module in ipairs({ "monitors", "input", "bindings", "looknfeel", "autostart" }) do' \
+  '  package.loaded[module] = nil' \
+  '  require(module)' \
+  'end' > "$upgrade_config/hyprland.lua"
+assert_hypr_tree_loadable "$upgrade_root" 'previous generation'
+install_feature_provider "$upgrade_config"
+assert_hypr_tree_loadable "$upgrade_root" 'after features.lua'
+install_leaf_modules "$upgrade_config" "$upgrade_root"
+install -m 0644 roles/desktop/files/hyprland.lua "$upgrade_config/hyprland.lua"
+assert_hypr_tree_loadable "$upgrade_root" 'after activating upgraded entrypoint'
+
+fresh_root=$deployment_scratch/fresh
+fresh_config=$fresh_root/config/hypr
+install -d "$fresh_config" "$fresh_root/home"
+install_feature_provider "$fresh_config"
+install_leaf_modules "$fresh_config" "$fresh_root"
+[[ ! -e $fresh_config/hyprland.lua ]]
+install -m 0644 roles/desktop/files/hyprland.lua "$fresh_config/hyprland.lua"
+assert_hypr_tree_loadable "$fresh_root" 'after activating fresh entrypoint'
+
+printf '%s\n' 'Hyprland Lua deployment remains loadable at every activation boundary'

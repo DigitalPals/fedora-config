@@ -16,9 +16,18 @@
   failed_when: false
   when: not ansible_check_mode
 
-- name: Report Android SDK update failure while retaining installed tools
+- name: Report Android SDK update failure after verified retention
   ansible.builtin.debug:
     msg: "Android SDK update failed; installed SDK retained: {{ apps_android_update.stderr | default('unknown failure') }}"
   when:
     - not ansible_check_mode
-    - apps_android_update.rc | default(0) != 0
+    - apps_android_update.rc | default(0) | int == 75
+
+- name: Refuse an Android SDK failure without verified retention
+  ansible.builtin.fail:
+    msg: >-
+      Android SDK installation or rollback failed without a verified complete
+      SDK to retain: {{ apps_android_update.stderr | default('unknown failure') }}
+  when:
+    - not ansible_check_mode
+    - apps_android_update.rc | default(0) | int not in [0, 75]

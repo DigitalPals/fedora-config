@@ -1511,19 +1511,39 @@ function historyPage(messages, visibleCount) {
 
 function truncateDiff(rawDiff, maxChars, maxLines) {
     var source = typeof rawDiff === "string" ? rawDiff : "";
-    var charLimit = typeof maxChars === "number" ? maxChars : MAX_DIFF_CHARS;
-    var lineLimit = typeof maxLines === "number" ? maxLines : MAX_DIFF_LINES;
-    var lines = source.split("\n");
-    var lineTruncated = lines.length > lineLimit;
-    var text = lineTruncated ? lines.slice(0, lineLimit).join("\n") : source;
-    var charTruncated = text.length > charLimit;
-    if (charTruncated)
-        text = text.slice(0, charLimit);
+    var charLimit = Math.max(0, Math.floor(
+        typeof maxChars === "number" ? maxChars : MAX_DIFF_CHARS));
+    var lineLimit = Math.max(1, Math.floor(
+        typeof maxLines === "number" ? maxLines : MAX_DIFF_LINES));
+    // Never split the untrusted response into an array proportional to its
+    // total size. Scan at most the preview budget and stop as soon as either
+    // bound is reached.
+    var scanLimit = Math.min(source.length, charLimit);
+    var cut = scanLimit;
+    var newlineCount = 0;
+    var cursor = 0;
+    var lineTruncated = false;
+    while (cursor < scanLimit && newlineCount < lineLimit) {
+        var newline = source.indexOf("\n", cursor);
+        if (newline < 0 || newline >= scanLimit)
+            break;
+        newlineCount++;
+        if (newlineCount === lineLimit) {
+            cut = newline;
+            lineTruncated = newline < source.length;
+            break;
+        }
+        cursor = newline + 1;
+    }
+    var charTruncated = source.length > charLimit && cut === scanLimit;
+    var text = source.slice(0, cut);
+    var truncated = lineTruncated || charTruncated || source.length > text.length;
     return {
         text: text,
-        truncated: lineTruncated || charTruncated || source.length > text.length,
+        truncated: truncated,
         totalChars: source.length,
-        totalLines: lines.length
+        // Exact counting beyond the preview would defeat the bounded parser.
+        totalLines: truncated ? null : newlineCount + 1
     };
 }
 

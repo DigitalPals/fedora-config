@@ -69,7 +69,7 @@ PanelWindow {
     // to unusually narrow outputs.
     readonly property int edgeMargin: Math.max(10, Theme.barSideMargin)
     readonly property int windowPad: 12
-    readonly property int cardWidth: Math.min(380, Math.max(280,
+    readonly property int cardWidth: Math.max(1, Math.min(380,
         root.screen ? root.screen.width - edgeMargin - windowPad : 380))
     implicitWidth: cardWidth + edgeMargin + windowPad
     // Keep the old height just long enough for ListView's exit transition.
@@ -138,14 +138,14 @@ PanelWindow {
                     property: "opacity"
                     from: 0
                     to: 1
-                    duration: 160
+                    duration: Theme.reducedMotion ? 0 : 160
                     easing.type: Easing.OutCubic
                 }
                 NumberAnimation {
                     property: "x"
                     from: root.onLeft ? -18 : 18
                     to: 0
-                    duration: 220
+                    duration: Theme.reducedMotion ? 0 : 220
                     easing.type: Easing.BezierSpline
                     easing.bezierCurve: Theme.easeOutCurve
                 }
@@ -155,7 +155,7 @@ PanelWindow {
         addDisplaced: Transition {
             NumberAnimation {
                 property: "y"
-                duration: 240
+                duration: Theme.reducedMotion ? 0 : 240
                 easing.type: Easing.BezierSpline
                 easing.bezierCurve: Theme.springCurve
             }
@@ -166,13 +166,13 @@ PanelWindow {
                 NumberAnimation {
                     property: "opacity"
                     to: 0
-                    duration: 120
+                    duration: Theme.reducedMotion ? 0 : 120
                     easing.type: Easing.InCubic
                 }
                 NumberAnimation {
                     property: "x"
                     to: root.onLeft ? -18 : 18
-                    duration: 165
+                    duration: Theme.reducedMotion ? 0 : 165
                     easing.type: Easing.BezierSpline
                     easing.bezierCurve: Theme.easeInCurve
                 }
@@ -182,7 +182,7 @@ PanelWindow {
         removeDisplaced: Transition {
             NumberAnimation {
                 property: "y"
-                duration: 240
+                duration: Theme.reducedMotion ? 0 : 240
                 easing.type: Easing.BezierSpline
                 easing.bezierCurve: Theme.springCurve
             }

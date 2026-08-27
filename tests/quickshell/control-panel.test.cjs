@@ -94,6 +94,8 @@ test("the full-screen power overlay is retired from source and deployment", () =
 
     const tasks = fs.readFileSync(path.resolve(shellDir,
         "../../../desktop/tasks/main.yml"), "utf8");
-    assert.match(tasks, /- PowerMenu\.qml/,
-        "deploys must remove the stale file left by earlier copies");
+    assert.match(tasks, /Remove files and links that are stale or unsafe copy destinations/,
+        "deploys must remove every stale destination-only file");
+    assert.match(tasks, /--exclude-standard/,
+        "the manifest must include intended new source files but exclude ignored caches");
 });

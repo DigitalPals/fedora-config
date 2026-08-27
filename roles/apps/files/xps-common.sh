@@ -20,11 +20,17 @@ gh_api_fetch() {
     echo "GitHub API request failed for $url. Set GH_TOKEN if the anonymous limit was reached." >&2
     return 1
   }
-  if [[ $code == 200 && -s $body.new ]]; then
+  if [[ $code == 200 && -s $body.new ]] && jq -e . "$body.new" >/dev/null 2>&1; then
     mv -f "$body.new" "$body"
     if [[ -s $etag.new ]]; then mv -f "$etag.new" "$etag"; else rm -f "$etag.new" "$etag"; fi
   elif [[ $code == 304 ]]; then
     rm -f "$body.new" "$etag.new"
+    if ! jq -e . "$body" >/dev/null 2>&1; then
+      # A truncated cached response must not make every subsequent 304 fail.
+      rm -f "$body" "$etag"
+      gh_api_fetch "$url" "$cache_dir" "$out"
+      return
+    fi
   else
     rm -f "$body.new" "$etag.new"
     echo "GitHub API returned HTTP $code for $url. Set GH_TOKEN if the anonymous limit was reached." >&2
@@ -39,6 +45,31 @@ atomic_current_swap() {
   local root=$1 target=$2
   ln -sfn "$target" "$root/current.new"
   mv -Tf "$root/current.new" "$root/current"
+}
+
+# prune_version_dirs <root> [keep]
+# Keep the active deployment plus the newest inactive versions. The helper is
+# deliberately constrained to an install root's versions/ child.
+prune_version_dirs() {
+  local root=$1 keep=${2:-3} current path inactive_limit retained_inactive=0
+  [[ $keep =~ ^[1-9][0-9]*$ && -d $root/versions ]] || return 0
+  current=$(readlink -f "$root/current" 2>/dev/null || true)
+  inactive_limit=$keep
+  if [[ -n $current && $current == "$root/versions/"* && -d $current ]]; then
+    inactive_limit=$((keep - 1))
+  fi
+  while IFS= read -r path; do
+    if [[ $(readlink -f "$path") == "$current" ]]; then
+      continue
+    fi
+    if (( retained_inactive < inactive_limit )); then
+      ((retained_inactive += 1))
+      continue
+    fi
+    [[ $path == "$root/versions/"* && $path != "$root/versions" ]] || return 1
+    rm -rf -- "$path"
+  done < <(find "$root/versions" -mindepth 1 -maxdepth 1 -type d \
+    -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
 }
 
 # verify_sha256 <file> <expected_hex>

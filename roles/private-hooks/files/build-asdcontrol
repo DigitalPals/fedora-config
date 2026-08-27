@@ -3,11 +3,13 @@ set -euo pipefail
 source_dir=/var/cache/xps-upstream/asdcontrol/source
 expected=0ee8bd576d4e93513027d713e688988cb0d827ef
 state=/var/lib/xps-upstream/asdcontrol
+recipe=$(sha256sum "$0" | awk '{print $1}')
 [[ $(git -C "$source_dir" rev-parse HEAD) == "$expected" ]] || {
   echo "asdcontrol source revision mismatch" >&2
   exit 1
 }
-if [[ -r $state/revision && $(<"$state/revision") == "$expected" && -x /usr/local/bin/asdcontrol ]]; then
+manifest="revision=$expected recipe=$recipe"
+if [[ -r $state/manifest && $(<"$state/manifest") == "$manifest" && -x /usr/local/bin/asdcontrol ]]; then
   echo "UNCHANGED: asdcontrol $expected"
   exit 0
 fi
@@ -39,6 +41,8 @@ g++ -O2 "$work/asdcontrol.cpp" -o "$work/asdcontrol"
 install -m 0755 "$work/asdcontrol" /usr/local/bin/asdcontrol.new
 mv -f /usr/local/bin/asdcontrol.new /usr/local/bin/asdcontrol
 mkdir -p "$state"
-printf '%s\n' "$expected" > "$state/revision"
+printf '%s\n' "$manifest" > "$state/manifest.new"
+mv -f "$state/manifest.new" "$state/manifest"
+[[ ! -e $state/revision ]] || unlink "$state/revision"
 restorecon -F /usr/local/bin/asdcontrol 2>/dev/null || true
 echo "CHANGED: asdcontrol $expected"

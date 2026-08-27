@@ -71,7 +71,8 @@ Surface {
         spacing: 9
 
         readonly property real rightWidth: root.mode === "running"
-            ? hideButton.width : Theme.chipHeight
+            ? cancelButton.width + hideButton.width + parent.spacing
+            : Theme.chipHeight
 
         // The state is in the mark, not in a filled square behind it: the bar
         // says "T3 • 1 running" the same way.
@@ -91,7 +92,7 @@ Surface {
                     : root.mode === "failed" ? Theme.redText : Theme.accent
 
                 RotationAnimation on rotation {
-                    running: root.mode === "running"
+                    running: root.mode === "running" && !Theme.reducedMotion
                     from: 0
                     to: 360
                     duration: 1400
@@ -187,6 +188,15 @@ Surface {
                     Updates.check();
                 }
             }
+        }
+
+        ActionButton {
+            id: cancelButton
+            visible: root.mode === "running"
+            anchors.verticalCenter: parent.verticalCenter
+            label: "Cancel"
+            revealed: visible
+            onTriggered: Updates.cancelRun()
         }
 
         ActionButton {
@@ -453,6 +463,7 @@ Surface {
 
                     RotationAnimation on rotation {
                         running: !stepLine.finished && root.mode === "running"
+                            && !Theme.reducedMotion
                         from: 0
                         to: 360
                         duration: 1400
@@ -732,7 +743,7 @@ Surface {
                         color: Theme.ok
 
                         SequentialAnimation on opacity {
-                            running: liveBadge.visible
+                            running: liveBadge.visible && !Theme.reducedMotion
                             loops: Animation.Infinite
                             alwaysRunToEnd: false
 

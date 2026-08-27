@@ -240,7 +240,7 @@ Surface {
 
         Behavior on value {
             NumberAnimation {
-                duration: 320
+                duration: Theme.reducedMotion ? 0 : 320
                 easing.type: Easing.OutCubic
             }
         }
@@ -250,7 +250,7 @@ Surface {
         }
 
         SequentialAnimation on opacity {
-            running: Battery.charging
+            running: Battery.charging && !Theme.reducedMotion
             loops: Animation.Infinite
             NumberAnimation {
                 from: 1

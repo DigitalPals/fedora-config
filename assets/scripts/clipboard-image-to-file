@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
 # Convert clipboard image to file path and auto-paste
 set -euo pipefail
+umask 077
 
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/clipboard-images"
 mkdir -p "$cache_dir"
+chmod 0700 "$cache_dir"
+
+prune_cache() {
+  find "$cache_dir" -maxdepth 1 -type f -name 'clipboard-*' -mtime +7 -delete
+  local files=() excess index
+  mapfile -d '' -t files < <(find "$cache_dir" -maxdepth 1 -type f \
+    -name 'clipboard-*' -printf '%f\0' | sort -z)
+  excess=$((${#files[@]} - 100))
+  for ((index = 0; index < excess; index++)); do
+    rm -f -- "$cache_dir/${files[index]}"
+  done
+}
+
+prune_cache
 
 mime="$(wl-paste --list-types | grep -E '^image/' | head -n 1 || true)"
 if [[ -z "$mime" ]]; then
@@ -21,14 +36,17 @@ case "$mime" in
   *) ext="bin" ;;
 esac
 
-ts="$(date +%Y%m%d-%H%M%S)"
+ts="$(date +%Y%m%d-%H%M%S-%N)"
 outfile="${cache_dir}/clipboard-${ts}.${ext}"
 
 # Save image to file
 wl-paste --type "$mime" --no-newline > "$outfile"
 
 # Write path to 'latest' file for CLI tools that need it
-echo "$outfile" > "${cache_dir}/latest"
+latest_tmp="$cache_dir/latest.tmp.$$"
+printf '%s\n' "$outfile" >"$latest_tmp"
+mv -f -- "$latest_tmp" "${cache_dir}/latest"
+prune_cache
 
 # Copy plain file path to clipboard (for terminal apps like Claude Code)
 printf '%s' "$outfile" | wl-copy --type text/plain

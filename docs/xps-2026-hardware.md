@@ -115,6 +115,43 @@ leaving the stock modules and normal kernel update path untouched.
 It also refuses DKMS if a future Fedora kernel starts shipping PSYS or CVS
 itself, preventing the optional bundle from shadowing a new native companion.
 
+The complete build-input hash is embedded in the RPM release, its installed
+manifest, and both DKMS package versions. Consequently, changing a source pin,
+patch, ABI guard, spec, or build recipe while retaining the human bundle
+version still creates fresh PSYS/CVS registrations and forces real module
+builds. Before replacing a healthy stack, the builder retains one checksum-
+verified copy of the exact installed RPM. Immediately before any DNF operation
+that would change NEVRA, the role re-verifies that snapshot against the healthy
+installed identity. This is a hard precondition: an interrupted rerun with a new
+cached RPM and an old installed RPM may use the already durable snapshot, but it
+cannot proceed when that snapshot is absent or mismatched.
+
+The role then writes and syncs `/var/lib/xps-hardware/ipu7/transaction.in-progress`
+before removing the relay trigger and stopping/disabling camera exposure. Both
+the init unit and relay refuse to run while that marker exists. A successful new
+stack is validated against its exact manifest before the committed identity is
+written and synced; only then is the in-progress marker removed. If older IPU
+modules are already loaded, the target remains uncommitted, hidden, and disabled
+through one normal reboot. Rerunning the camera tag after that reboot proves the
+new on-disk modules are now the boot boundary, then commits and exposes them. A
+failed userspace, akmods, or DKMS refresh reinstalls the snapshot, force-builds
+both prior DKMS modules, and performs the same exact validation before clearing
+the marker. The init helper also compares the installed identity with
+`committed-identity`, so interruption, marker corruption, or an unprovable
+rollback leaves the relay hidden and camera service stopped rather than exposing
+a mixed stack.
+
+On a later Ansible invocation, the role recovers the prior identity, target
+identity, target NEVRA, and exact prior NEVRA from the checksummed marker and
+rollback snapshot; it does not infer them from whether systemd remains enabled.
+The builder refuses changed input hashes while that transaction is unresolved
+and never rotates its recorded rollback RPM. This permits an exact rollback
+after interruption at the exposure, DNF, or DKMS boundary without letting a
+missing snapshot reopen package installation. Historic target NEVRAs are
+validated against the role-owned package/release shape and their recorded
+manifest prefix, not the repository's current bundle version, so a legitimate
+bundle bump cannot make an interrupted prior transaction unrecoverable.
+
 The local RPM is also validated before packaging. Every staged `libcamhal`, HAL
 plugin, `libgsticamerasrc`, private icamerasrc interface, and included IPU75XA
 binary library is inspected with `readelf` and `ldd`. Missing dependencies fail
@@ -140,8 +177,9 @@ sudo mokutil --import /etc/pki/akmods/certs/public_key.der
 Choose a temporary password, reboot, and use the firmware MOK manager to enroll
 the key. Then rerun `./update --full --tags xps-2026`. The role does not disable
 Secure Boot. A DKMS update made while old camera modules are loaded is not
-force-unloaded: the camera stops, stays enabled, and starts with the new signed
-modules after one normal reboot.
+force-unloaded: the camera and relay stay disabled behind the transaction marker.
+Reboot normally, then rerun `./update --full --tags xps-2026`; that post-reboot
+pass validates, commits, and starts the new signed modules.
 
 `kernel-devel-matched` keeps builds tied to Fedora's installed kernel. Diagnose
 the complete path with:

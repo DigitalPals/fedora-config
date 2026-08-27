@@ -733,7 +733,7 @@ Surface {
                 color: row.network.connected ? Theme.accent : Theme.textMid
 
                 RotationAnimation on rotation {
-                    running: row.working
+                    running: row.working && !Theme.reducedMotion
                     from: 0
                     to: 360
                     duration: 950
@@ -1488,7 +1488,7 @@ Surface {
                         x: 2
                         anchors.verticalCenter: parent.verticalCenter
                         text: NetworkDetails.known && NetworkDetails.error === ""
-                            ? "Updated live every 1.5 seconds" : ""
+                            ? NetworkDetails.pollCadenceText : ""
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontMicro
                         color: Theme.textDim

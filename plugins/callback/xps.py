@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 
 from ansible import constants as C
 from ansible.plugins.callback.default import CallbackModule as DefaultCallback
@@ -37,30 +38,58 @@ class CallbackModule(DefaultCallback):
 
     @property
     def _xps_verbose(self):
-        return self._display.verbosity > 0
+        # Callback event objects intentionally expose some implementation
+        # attributes, but keep their use behind tolerant adapters so a minor
+        # ansible-core change degrades to compact output instead of crashing.
+        return getattr(getattr(self, "_display", None), "verbosity", 0) > 0
+
+    @staticmethod
+    def _xps_payload(result):
+        payload = getattr(result, "_result", None)
+        return payload if isinstance(payload, Mapping) else {}
+
+    @staticmethod
+    def _xps_task(result):
+        return getattr(result, "_task", None)
+
+    @staticmethod
+    def _xps_role_name(task):
+        role = getattr(task, "_role", None)
+        get_name = getattr(role, "get_name", None)
+        if not callable(get_name):
+            return None
+        try:
+            name = get_name()
+        except (AttributeError, TypeError):
+            return None
+        return str(name) if name else None
 
     def _xps_note_role(self, task):
-        role = task._role.get_name() if task._role else None
+        role = self._xps_role_name(task)
         if role and role != self._xps_role:
             self._xps_role = role
             self._display.display("  %s" % role, color=C.COLOR_DEBUG)
 
     def _xps_task_label(self, result, item=False):
-        task = result._task
-        label = task.get_name()
-        if task._role:
-            prefix = "%s : " % task._role.get_name()
+        task = self._xps_task(result)
+        get_name = getattr(task, "get_name", None)
+        label = get_name() if callable(get_name) else "unnamed task"
+        role = self._xps_role_name(task)
+        if role:
+            prefix = "%s : " % role
             if label.startswith(prefix):
                 label = label[len(prefix):]
         if item:
-            item_label = self._get_item_label(result._result)
+            item_label = self._get_item_label(self._xps_payload(result))
             if isinstance(item_label, (str, int, float)) and str(item_label).strip():
                 label = "%s (%s)" % (label, item_label)
         return label
 
     def _xps_report_ok(self, result, item=False):
-        r = result._result
-        if result._task.action.rsplit(".", 1)[-1] == "debug":
+        r = self._xps_payload(result)
+        task = self._xps_task(result)
+        action = str(getattr(task, "action", ""))
+        if action.rsplit(".", 1)[-1] == "debug":
             msg = r.get("msg", "")
             if msg:
                 self._display.display("    ! %s" % msg, color="yellow")
@@ -78,7 +107,7 @@ class CallbackModule(DefaultCallback):
             )
 
     def _xps_report_failed(self, result, item=False, ignored=False):
-        r = result._result
+        r = self._xps_payload(result)
         detail = r.get("msg") or r.get("stderr") or r.get("stdout") or ""
         detail = detail.strip().splitlines()
         prefix = "!" if ignored else "✗"
@@ -123,7 +152,7 @@ class CallbackModule(DefaultCallback):
     def v2_runner_on_ok(self, result):
         if self._xps_verbose:
             return super().v2_runner_on_ok(result)
-        if "results" in result._result:
+        if "results" in self._xps_payload(result):
             return  # loop aggregate; items were reported individually
         self._xps_report_ok(result)
 
@@ -135,7 +164,7 @@ class CallbackModule(DefaultCallback):
     def v2_runner_on_failed(self, result, ignore_errors=False):
         if self._xps_verbose:
             return super().v2_runner_on_failed(result, ignore_errors=ignore_errors)
-        if "results" in result._result:
+        if "results" in self._xps_payload(result):
             return
         self._xps_report_failed(result, ignored=ignore_errors)
 
@@ -175,10 +204,10 @@ class CallbackModule(DefaultCallback):
         ok = changed = failed = unreachable = ignored = 0
         for host in stats.processed:
             s = stats.summarize(host)
-            ok += s["ok"]
-            changed += s["changed"]
-            failed += s["failures"]
-            unreachable += s["unreachable"]
+            ok += s.get("ok", 0)
+            changed += s.get("changed", 0)
+            failed += s.get("failures", 0)
+            unreachable += s.get("unreachable", 0)
             ignored += s.get("ignored", 0)
         failed += unreachable
         if failed:

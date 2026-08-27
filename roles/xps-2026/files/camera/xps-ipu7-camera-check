@@ -31,6 +31,13 @@ check_diagnostic 'Fedora stock IPU7 private ABI matches reviewed PSYS layout' \
   /usr/local/libexec/xps-ipu7-abi-check "$(uname -r)"
 check_diagnostic 'minimal IPU75XA ELF/config dependency closure' \
   /usr/local/libexec/xps-ipu7-userspace-check
+check_diagnostic 'camera package transaction is exactly committed' bash -c '
+  test ! -e /var/lib/xps-hardware/ipu7/transaction.in-progress
+  test -r /var/lib/xps-hardware/ipu7/committed-identity
+  committed=$(cat /var/lib/xps-hardware/ipu7/committed-identity)
+  actual=$(/usr/local/libexec/xps-ipu7-build installed-identity)
+  test "$actual" = "$committed"
+'
 for module in intel_ipu7 intel_ipu7_isys intel_ipu7_psys intel_cvs ov08x40 v4l2loopback; do
   check "module loaded: $module" bash -c "grep -q '^${module} ' /proc/modules"
 done

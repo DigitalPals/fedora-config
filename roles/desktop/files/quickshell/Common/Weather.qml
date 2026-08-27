@@ -15,6 +15,9 @@ Singleton {
     readonly property string place: Settings.modOpts.weather.place
 
     readonly property int pollIntervalSecs: Settings.modOpts.weather.pollMins * 60
+    property int consecutiveFailures: 0
+    readonly property int retryIntervalSecs: Math.min(pollIntervalSecs,
+        Math.min(15 * 60, 30 * Math.pow(2, Math.max(0, consecutiveFailures - 1))))
 
     // Three states, and consumers need all three apart. `ready` stays true
     // once a forecast has ever landed, so it is "there is something to
@@ -54,14 +57,14 @@ Singleton {
 
         function onUnitChanged() {
             if (NetworkStatus.online)
-                root.refresh();
+                root.refresh(true);
         }
 
         // Any modOpts write lands here; only refetch when it moved the
         // request (location change), not on unrelated module options.
         function onModOptsChanged() {
             if (NetworkStatus.online && root.url !== root.fetchedUrl)
-                root.refresh();
+                root.refresh(true);
         }
     }
 
@@ -69,8 +72,10 @@ Singleton {
         target: NetworkStatus
 
         function onOnlineChanged() {
-            if (NetworkStatus.online)
-                root.refresh();
+            if (NetworkStatus.online) {
+                root.consecutiveFailures = 0;
+                root.refresh(true);
+            }
         }
     }
 
@@ -216,10 +221,17 @@ Singleton {
 
     property string fetchedUrl: ""
 
-    function refresh() {
+    function refresh(replaceRunning) {
+        // Poll/retry timers do not cancel useful in-flight I/O. A changed
+        // location, unit or network generation does, because its response is
+        // no longer the request the UI is waiting for.
+        if (fetchProc.running && replaceRunning !== true)
+            return;
         fetchedUrl = url;
-        fetchProc.staleRuns += fetchProc.running ? 1 : 0;
-        fetchProc.running = false;
+        if (fetchProc.running) {
+            fetchProc.staleRuns++;
+            fetchProc.running = false;
+        }
         fetchProc.running = true;
     }
 
@@ -228,6 +240,7 @@ Singleton {
     function settle(exitCode, body, errText) {
         if (exitCode === 0 && apply(body)) {
             fetchError = "";
+            consecutiveFailures = 0;
             return;
         }
         const reason = exitCode === 0
@@ -238,6 +251,7 @@ Singleton {
         if (fetchError !== reason)
             console.warn("weather unavailable:", reason);
         fetchError = reason;
+        consecutiveFailures++;
     }
 
     Process {
@@ -288,10 +302,10 @@ Singleton {
         onTriggered: root.refresh()
     }
 
-    // Retry quickly until the first fetch lands (Wi-Fi may still be
-    // associating at session start).
+    // Retry quickly while Wi-Fi is settling, then back off exponentially to
+    // avoid hammering a failing endpoint. The normal poll remains the ceiling.
     Timer {
-        interval: 30000
+        interval: root.retryIntervalSecs * 1000
         running: NetworkStatus.online && (!root.ready || root.fetchError !== "")
         repeat: true
         onTriggered: root.refresh()

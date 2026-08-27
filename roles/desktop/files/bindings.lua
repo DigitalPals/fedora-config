@@ -2,6 +2,7 @@ local mainMod = "SUPER"
 local terminal = "kitty"
 local browser = "brave-browser-stable --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --restore-last-session --hide-crash-restore-bubble"
 local home = os.getenv("HOME")
+local features = require("features")
 
 local previous = rawget(_G, "__fedora_hypr_binds") or {}
 for _, keybind in ipairs(previous) do
@@ -23,9 +24,11 @@ local function send_shortcut_once(mods, key)
 end
 
 bind(mainMod .. " + Return", hl.dsp.exec_cmd(terminal))
-bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-fedora-shell"))
-bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-arch-shell"))
-bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-debian-shell"))
+if features.podman then
+  bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-fedora-shell"))
+  bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-arch-shell"))
+  bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-debian-shell"))
+end
 bind(mainMod .. " + SPACE", hl.dsp.global("quickshell:launcherToggle"))
 bind(mainMod .. " + comma", hl.dsp.exec_cmd("qs ipc call settings toggle"))
 -- Shell surfaces the menubar also opens by click. Documented in the shell's

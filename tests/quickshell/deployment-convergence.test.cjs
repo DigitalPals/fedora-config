@@ -1,0 +1,203 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const { shellDir } = require("./shell.cjs");
+
+const repo = path.resolve(shellDir, "../../../..");
+const read = relative => fs.readFileSync(path.join(repo, relative), "utf8");
+
+test("Cybex deployment prunes files outside its source-plus-override manifest", () => {
+    const tasks = read("roles/boot/tasks/main.yml");
+    const defaults = read("roles/boot/defaults/main.yml");
+    const pruneAt = tasks.indexOf("Remove files outside the current Cybex source and override manifest");
+    const upstreamCopyAt = tasks.indexOf("Install non-overridden Cybex Plymouth theme files");
+    const overrideCopyAt = tasks.indexOf("Install custom Cybex theme files");
+
+    assert.ok(pruneAt > 0 && pruneAt < upstreamCopyAt && upstreamCopyAt < overrideCopyAt,
+        "stale paths must be removed before the source and deliberate overrides are installed");
+    assert.match(tasks,
+        /boot_cybex_installed_files\.stdout_lines \| default\(\[\]\)[\s\S]{0,220}?difference\(\(boot_cybex_source_files\.stdout_lines \| default\(\[\]\)\) \+ boot_cybex_override_files\)/);
+    assert.match(tasks,
+        /boot_cybex_installed_directories\.stdout_lines \| default\(\[\]\)[\s\S]{0,220}?reject\('in', \(boot_cybex_source_directories\.stdout_lines \| default\(\[\]\)\) \+ boot_cybex_override_directories\)/,
+        "directories removed upstream must not linger in the installed tree");
+    assert.match(tasks,
+        /Inspect the installed Cybex directory tree[\s\S]{0,300}?- -depth/,
+        "stale directories must be enumerated child-first before removal");
+    assert.match(tasks,
+        /dest:\s*\/var\/lib\/xps-upstream\/omarchy-cybex\/installed-theme\.manifest/,
+        "the manifest must live outside the tree it reconciles");
+    assert.match(tasks,
+        /boot_cybex_source_files\.stdout_lines[\s\S]{0,180}?difference\(boot_cybex_override_files\)/,
+        "the upstream copy must not overwrite files managed by the local override layer");
+    assert.doesNotMatch(tasks,
+        /src:\s*\/var\/cache\/xps-upstream\/omarchy-cybex\/config\/plymouth\/themes\/cybex\/$/m,
+        "a recursive source-tree copy would make every customized file change twice on each run");
+    for (const manifestTask of ["Inspect the pinned Cybex source manifest",
+        "Inspect the pinned Cybex source directory manifest", "Inspect the installed Cybex theme tree",
+        "Inspect the installed Cybex directory tree"]) {
+        const start = tasks.indexOf(`- name: ${manifestTask}`);
+        const end = tasks.indexOf("\n- name:", start + 1);
+        assert.match(tasks.slice(start, end), /check_mode:\s*false/,
+            `${manifestTask} must remain a read-only fact source during check mode`);
+    }
+    const upstreamTask = tasks.slice(upstreamCopyAt, tasks.indexOf("\n- name:", upstreamCopyAt + 1));
+    assert.doesNotMatch(upstreamTask, /not ansible_check_mode/,
+        "check mode must detect drift in cached non-override source files");
+    for (const override of ["logo.png", "entry.png", "bullet.png", "progress_bar.png",
+        "progress_box.png", "cybex.script", "cybex.plymouth"])
+        assert.match(defaults, new RegExp(`- ${override.replace(".", "\\.")}`));
+    assert.match(tasks,
+        /Remove files outside[\s\S]{0,900}?notify:\s*Rebuild Fedora initramfs/,
+        "removing an upstream file must rebuild the initramfs too");
+});
+
+test("Podman inventory controls packages, helpers, keybindings, and desktop entries", () => {
+    const inventory = read("inventory/group_vars/all.yml");
+    const featureTemplate = read("roles/desktop/templates/features.lua.j2");
+    const desktopTasks = read("roles/desktop/tasks/main.yml");
+    const dotfileTasks = read("roles/dotfiles/tasks/main.yml");
+    const hyprland = read("roles/desktop/files/hyprland.lua");
+    const bindings = read("roles/desktop/files/bindings.lua");
+    const packages = read("roles/apps/tasks/packages.yml");
+
+    assert.match(inventory, /^\s{2}podman:\s*(?:true|false)$/m);
+    assert.match(featureTemplate, /features\.podman \| bool/);
+    const featureInstallAt = desktopTasks.indexOf(
+        "Install rendered Hyprland Lua dependencies before their consumers");
+    const luaConsumersAt = desktopTasks.indexOf("Install Hyprland Lua configuration");
+    assert.ok(featureInstallAt > 0 && featureInstallAt < luaConsumersAt,
+        "the rendered feature module must exist before a live reload can evaluate bindings");
+    assert.match(desktopTasks.slice(featureInstallAt, luaConsumersAt),
+        /src:\s*features\.lua\.j2[\s\S]{0,200}?dest:\s*"\{\{ primary_home \}\}\/\.config\/hypr\/features\.lua"[\s\S]{0,200}?tags:\s*\[browser\]/,
+        "partial browser/config deploys must install the feature dependency first");
+    const luaInstallBlock = desktopTasks.slice(luaConsumersAt,
+        desktopTasks.indexOf("Install ordered Hyprland session starter", luaConsumersAt));
+    assert.ok(luaInstallBlock.indexOf("- bindings.lua")
+        < luaInstallBlock.indexOf("- hyprland.lua"),
+    "the activating entrypoint must land after the modules it requires");
+    assert.match(luaInstallBlock,
+        /- monitors\.lua\s+- input\.lua\s+- looknfeel\.lua\s+- bindings\.lua\s+- autostart\.lua[\s\S]{0,240}?- hyprland\.lua/,
+        "all imported leaf modules must precede the activating entrypoint");
+    assert.match(hyprland, /\{ "features", "monitors", "input", "bindings"/,
+        "a config reload must evict the rendered feature module before reloading bindings");
+    assert.match(bindings, /local features = require\("features"\)/);
+    const optionalBinds = bindings.slice(bindings.indexOf("if features.podman then"),
+        bindings.indexOf("end", bindings.indexOf("if features.podman then")) + 3);
+    for (const distro of ["fedora", "arch", "debian"])
+        assert.match(optionalBinds, new RegExp(`dev-${distro}-shell`));
+
+    const commonLaunchers = dotfileTasks.slice(
+        dotfileTasks.indexOf("Install MIME defaults and desktop launchers"),
+        dotfileTasks.indexOf("Install Distrobox desktop launchers when Podman is enabled"));
+    assert.doesNotMatch(commonLaunchers, /dev-(?:fedora|arch|debian)\.desktop/);
+    assert.match(dotfileTasks,
+        /Install Distrobox desktop launchers when Podman is enabled[\s\S]{0,700}?when: features\.podman \| bool/);
+    assert.match(dotfileTasks,
+        /Remove managed Distrobox desktop launchers when Podman is disabled[\s\S]{0,700}?when: not features\.podman \| bool/);
+    for (const unit of ["podman.socket", "podman.service", "podman-auto-update.timer"])
+        assert.ok(packages.includes(`- ${unit}`), `disabled Podman must retire ${unit}`);
+    assert.match(packages,
+        /Disable user Podman activation when Podman is disabled[\s\S]{0,600}?scope: user/);
+    assert.match(packages,
+        /Remove disabled Podman and Steam package families[\s\S]{0,600}?Reload systemd after application package removal/);
+});
+
+test("disabled Docker and Tailscale retire activation and imported trust", () => {
+    const base = read("roles/base/tasks/main.yml");
+    const repos = read("roles/apps/tasks/repos.yml");
+
+    assert.match(base,
+        /Stop and disable Docker socket activation[\s\S]{0,400}?- docker\.socket[\s\S]{0,100}?- docker\.service/);
+    assert.match(repos,
+        /Remove the imported Tailscale package key when disabled[\s\S]{0,500}?ansible\.builtin\.rpm_key:[\s\S]{0,300}?state: absent/);
+    assert.match(repos,
+        /Remove the imported Tailscale package key when disabled[\s\S]{0,700}?not features\.tailscale \| bool/);
+});
+
+test("Voxtype probes as the desktop user but activates its system backend as root", () => {
+    const tasks = read("roles/apps/tasks/devtools.yml");
+    const handlers = read("roles/apps/handlers/main.yml");
+    const config = read("roles/dotfiles/files/voxtype.toml");
+    const statusBlock = tasks.slice(tasks.indexOf("Read Voxtype backend status"),
+        tasks.indexOf("Select Voxtype GPU backend"));
+    const activationBlock = tasks.slice(tasks.indexOf("Select Voxtype GPU backend"),
+        tasks.indexOf("Verify the selected Voxtype GPU backend"));
+    const verificationBlock = tasks.slice(tasks.indexOf("Verify the selected Voxtype GPU backend"),
+        tasks.indexOf("Download Voxtype base English model"));
+
+    assert.match(statusBlock, /become_user:\s*"\{\{ primary_user \}\}"/,
+        "status should reflect the desktop user's active backend");
+    assert.match(activationBlock, /become:\s*true/);
+    assert.doesNotMatch(activationBlock, /become_user:/,
+        "backend activation replaces the root-owned /usr/bin/voxtype selector");
+    assert.match(activationBlock, /setup gpu --enable/);
+    assert.match(tasks,
+        /Refuse an unreadable Voxtype backend state[\s\S]{0,500}?apps_voxtype_status\.rc/);
+    assert.match(verificationBlock, /Active backend: GPU/,
+        "successful activation must be checked through the normal user selector");
+    assert.match(verificationBlock, /become_user:\s*"\{\{ primary_user \}\}"/);
+    assert.match(handlers,
+        /Restart Voxtype after updates[\s\S]{0,400}?--machine=\{\{ primary_user \}\}@\.host/);
+    const restartBlock = handlers.slice(handlers.indexOf("Restart Voxtype after updates"),
+        handlers.indexOf("Reload systemd after application package removal"));
+    assert.doesNotMatch(restartBlock, /getent_passwd|XDG_RUNTIME_DIR|become_user/,
+        "the restart handler must work even when --start-at-task skipped passwd facts");
+    assert.match(config, /\[osd\]\s+enabled\s*=\s*false/,
+        "the managed Quickshell indicator replaces Voxtype's optional OSD process");
+});
+
+test("the deployed Quickshell manifest excludes tracked paths deleted on disk", () => {
+    const tasks = read("roles/desktop/tasks/main.yml");
+    const verifier = read("tests/verify-xps");
+    const deletedPairingHelper = "roles/desktop/files/quickshell/scripts/t3-pair.py";
+
+    assert.equal(fs.existsSync(path.join(repo, deletedPairingHelper)), false,
+        "the obsolete credential-pairing helper is intentionally absent");
+    assert.match(tasks,
+        /git -C "\$repo" ls-files -z --cached --others --exclude-standard[\s\S]{0,500}?\[\[ -f "\$repo\/\$source_path" \|\| -L "\$repo\/\$source_path" \]\]/,
+        "deployment must filter the index through actual file/symlink existence");
+    assert.match(verifier,
+        /git -C "\$repo_root" ls-files -z --cached --others --exclude-standard[\s\S]{0,400}?\[\[ -f "\$repo_root\/\$source_path" \|\| -L "\$repo_root\/\$source_path" \]\]/,
+        "installed-state verification must calculate the identical manifest");
+    assert.ok(tasks.indexOf("Build the tracked Quickshell source manifest")
+        < tasks.indexOf("Install tracked Quickshell menubar files"),
+    "the allowlist must exist before any shell source is copied");
+    assert.match(tasks,
+        /Install tracked Quickshell menubar files[\s\S]{0,500}?src: "quickshell\/\{\{ item \}\}"[\s\S]{0,300}?loop: "\{\{ quickshell_managed_manifest \}\}"/,
+        "copy input must be the tracked allowlist, not the whole source directory");
+    assert.doesNotMatch(tasks,
+        /Install (?:tracked )?Quickshell menubar (?:configuration|files)[\s\S]{0,250}?src: quickshell\//,
+        "recursive copy would transiently deploy ignored caches and developer files");
+    assert.match(tasks,
+        /Remove directories not present in the tracked Quickshell manifest[\s\S]{0,600}?quickshell_relative_directory not in quickshell_managed_directories/,
+        "directories removed upstream must not linger in the deployed tree");
+    const rootStatAt = tasks.indexOf("Inspect the managed Quickshell root without following links");
+    const rootRemoveAt = tasks.indexOf("Remove a non-directory or linked Quickshell root safely");
+    const preflightAt = tasks.indexOf("Inspect the deployed Quickshell tree before writing through any child path");
+    const removeFilesAt = tasks.indexOf("Remove files and links that are stale or unsafe copy destinations");
+    const removeDirectoriesAt = tasks.indexOf("Remove directories not present in the tracked Quickshell manifest");
+    const createDirectoriesAt = tasks.indexOf("Create tracked Quickshell directories");
+    const copyAt = tasks.indexOf("Install tracked Quickshell menubar files");
+    assert.ok(rootStatAt < rootRemoveAt && rootRemoveAt < preflightAt
+        && preflightAt < removeFilesAt && removeFilesAt < removeDirectoriesAt
+        && removeDirectoriesAt < createDirectoriesAt && createDirectoriesAt < copyAt,
+    "root and child path types must be normalized before any managed child is written");
+    assert.match(tasks,
+        /Inspect the managed Quickshell root without following links[\s\S]{0,220}?follow: false/);
+    assert.match(tasks,
+        /Remove files and links that are stale or unsafe copy destinations[\s\S]{0,750}?or item\.islnk \| default\(false\)/,
+        "even a symlink at an otherwise managed file path must be removed before copy");
+    assert.match(tasks,
+        /Record deferred path normalization during check mode[\s\S]{0,500}?quickshell_removed_files\.changed \| default\(false\)[\s\S]{0,180}?quickshell_removed_directories\.changed \| default\(false\)/,
+        "check mode must defer writes whose prerequisite removals are only simulated");
+    for (const taskName of ["Create tracked Quickshell directories",
+        "Install tracked Quickshell menubar files"]) {
+        const block = tasks.slice(tasks.indexOf(taskName),
+            tasks.indexOf("\n- name:", tasks.indexOf(taskName) + 1));
+        assert.match(block, /follow: false/,
+            `${taskName} must fail closed if a destination link races the preflight`);
+        assert.match(block, /when: not quickshell_path_normalization_pending \| bool/,
+            `${taskName} must be deferred behind check-mode path normalization`);
+    }
+});

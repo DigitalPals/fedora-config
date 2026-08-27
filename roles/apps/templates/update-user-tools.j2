@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# Install inventory-authorized user CLIs without replacing a working version
+# until the requested version has been downloaded and validated.
+set -uo pipefail
+
+claude_pin={{ claude_code_version | quote }}
+opencode_pin={{ opencode_version | quote }}
+changed=0
+failed=0
+cleanup_paths=()
+mkdir -p "$HOME/.local/bin" "$HOME/.npm-global"
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+
+cleanup() {
+  local path
+  for path in "${cleanup_paths[@]}"; do
+    case $path in
+      "${TMPDIR:-/tmp}"/xps-user-tools.*|"$HOME/.local/share/xps-user-tools/opencode"/.stage.*)
+        [[ ! -e $path ]] || rm -rf -- "$path"
+        ;;
+    esac
+  done
+}
+trap cleanup EXIT
+
+semver() {
+  local value=${1%% *}
+  [[ $value =~ ^[0-9]+[.][0-9]+[.][0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || return 1
+  printf '%s\n' "$value"
+}
+
+claude_version() {
+  command -v claude >/dev/null 2>&1 || return 1
+  semver "$(claude --version 2>/dev/null)"
+}
+
+restore_claude() {
+  local previous_path=$1 temporary
+  [[ -x $previous_path && $previous_path == "$HOME/.local/share/claude/versions/"* ]] \
+    || return 0
+  temporary="$HOME/.local/bin/.claude.restore.$$"
+  ln -s -- "$previous_path" "$temporary" && mv -Tf -- "$temporary" "$HOME/.local/bin/claude"
+}
+
+before=$(claude_version || true)
+initial_claude=$before
+if [[ $before != "$claude_pin" ]]; then
+  before_path=$(command -v claude 2>/dev/null || true)
+  [[ -z $before_path ]] || before_path=$(readlink -f -- "$before_path")
+  if [[ -n $before ]]; then
+    if ! claude install "$claude_pin" >/dev/null 2>&1; then
+      restore_claude "$before_path"
+      echo "Claude Code $claude_pin install failed; existing $before retained" >&2
+      failed=1
+    fi
+  else
+    if installer=$(mktemp "${TMPDIR:-/tmp}/xps-user-tools.XXXXXX"); then
+      cleanup_paths+=("$installer")
+      if curl --fail --silent --show-error --location https://claude.ai/install.sh -o "$installer"; then
+        # The official bootstrap accepts an exact VERSION argument, downloads a
+        # manifest, and verifies the selected native artifact before installing.
+        bash "$installer" "$claude_pin" >/dev/null 2>&1 \
+          || { echo "Claude Code $claude_pin install failed" >&2; failed=1; }
+      else
+        echo "Claude Code bootstrap download failed" >&2
+        failed=1
+      fi
+      rm -f -- "$installer"
+    else
+      echo "Could not allocate a Claude Code installer staging file" >&2
+      failed=1
+    fi
+  fi
+  after=$(claude_version || true)
+  if [[ $after == "$claude_pin" ]]; then
+    [[ $before == "$after" ]] || changed=1
+  else
+    restore_claude "$before_path"
+    echo "Claude Code pin is $claude_pin but installed version is ${after:-absent}" >&2
+    failed=1
+  fi
+fi
+
+opencode_version() {
+  local binary=$1
+  [[ -x $binary ]] || return 1
+  semver "$("$binary" --version 2>/dev/null)"
+}
+
+install_opencode() {
+  local root versions stage key target temporary after path retained
+  root="$HOME/.local/share/xps-user-tools/opencode"
+  versions="$root/versions"
+  mkdir -p "$versions"
+  stage=$(mktemp -d "$root/.stage.XXXXXX") || return 1
+  cleanup_paths+=("$stage")
+  if ! npm --prefix "$stage" install --no-audit --no-fund --save-exact \
+      "opencode-ai@$opencode_pin" >/dev/null; then
+    rm -rf -- "$stage"
+    return 1
+  fi
+  after=$(opencode_version "$stage/node_modules/.bin/opencode" || true)
+  if [[ $after != "$opencode_pin" ]]; then
+    echo "Downloaded OpenCode reports ${after:-no valid version}, expected $opencode_pin" >&2
+    rm -rf -- "$stage"
+    return 1
+  fi
+
+  key="$opencode_pin-$(date +%Y%m%d%H%M%S)-$$"
+  target="$versions/$key"
+  mv -- "$stage" "$target" || { rm -rf -- "$stage"; return 1; }
+  temporary="$root/.current.$$"
+  ln -s -- "versions/$key" "$temporary" \
+    && mv -Tf -- "$temporary" "$root/current" \
+    || return 1
+  temporary="$HOME/.local/bin/.opencode.$$"
+  ln -s -- "$root/current/node_modules/.bin/opencode" "$temporary" \
+    && mv -Tf -- "$temporary" "$HOME/.local/bin/opencode" \
+    || return 1
+
+  retained=0
+  while IFS= read -r path; do
+    if (( retained < 3 )); then
+      ((retained += 1))
+      continue
+    fi
+    [[ $path == "$versions/"* && $path != "$target" ]] || return 1
+    if ! rm -rf -- "$path"; then
+      echo "Could not prune retained OpenCode version $path" >&2
+      break
+    fi
+  done < <(find "$versions" -mindepth 1 -maxdepth 1 -type d \
+    -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+}
+
+before=$(opencode_version "$HOME/.local/bin/opencode" || true)
+if [[ -z $before ]]; then
+  before=$(npm --prefix "$HOME/.npm-global" list -g --depth=0 opencode-ai --json \
+    2>/dev/null | jq -r '.dependencies["opencode-ai"].version // empty')
+fi
+initial_opencode=$before
+if [[ $before != "$opencode_pin" ]]; then
+  if install_opencode; then
+    changed=1
+  else
+    echo "OpenCode $opencode_pin install failed; existing ${before:-installation} retained" >&2
+    failed=1
+  fi
+fi
+
+after_claude=$(claude_version || true)
+after_opencode=$(opencode_version "$HOME/.local/bin/opencode" || true)
+if [[ -z $after_opencode ]]; then
+  after_opencode=$(npm --prefix "$HOME/.npm-global" list -g --depth=0 opencode-ai --json \
+    2>/dev/null | jq -r '.dependencies["opencode-ai"].version // empty')
+fi
+missing=()
+first_install_failure=0
+[[ $after_claude == "$claude_pin" ]] || missing+=("claude=$claude_pin")
+[[ $after_opencode == "$opencode_pin" ]] || missing+=("opencode-ai=$opencode_pin")
+[[ $after_claude == "$claude_pin" || -n $initial_claude ]] || first_install_failure=1
+[[ $after_opencode == "$opencode_pin" || -n $initial_opencode ]] || first_install_failure=1
+if [[ -n ${missing[0]:-} ]]; then
+  printf 'Required user-managed CLI pins are not installed: %s\n' "${missing[*]}" >&2
+  (( first_install_failure == 0 && failed == 1 )) && exit 75
+  exit 1
+fi
+if (( failed )); then
+  exit 75
+fi
+if (( changed )); then
+  echo "CHANGED: user-managed CLI update"
+else
+  echo "UNCHANGED: user-managed CLI pins"
+fi

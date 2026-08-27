@@ -21,7 +21,12 @@ import { promises as fs } from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+
+const require = createRequire(import.meta.url);
+const { safeHttpUrl } = require("../Common/ExternalUrl.js");
 
 export const CLOUD_CONFIG = Object.freeze({
     clerkUrl: process.env.T3CODE_CLERK_URL?.trim() || "https://clerk.t3.codes",
@@ -58,9 +63,21 @@ export const STATE_PATHS = Object.freeze({
     clerkClient: path.join(privateStateDir, "clerk-client.json"),
     browserLogin: path.join(privateStateDir, "browser-login.json"),
     dpopKey: path.join(privateStateDir, "dpop-key.json"),
+    sessionEpoch: path.join(privateStateDir, "session-epoch.json"),
+    stateLock: path.join(privateStateDir, ".state.lock"),
+    browserLoginLock: path.join(privateStateDir, ".browser-login.lock"),
     connection: process.env.T3CODE_PANEL_STATE_PATH
         || path.join(stateRoot, "t3code-bar.json"),
 });
+
+const sessionEpochContext = new AsyncLocalStorage();
+
+class SessionChangedError extends Error {
+    constructor() {
+        super("T3 Connect session changed while this request was running.");
+        this.name = "SessionChangedError";
+    }
+}
 
 class HttpError extends Error {
     constructor(message, status) {
@@ -96,7 +113,7 @@ async function readJson(filePath) {
     }
 }
 
-async function writePrivateJson(filePath, value) {
+async function writePrivateJsonRaw(filePath, value) {
     const directory = path.dirname(filePath);
     await fs.mkdir(directory, { recursive: true, mode: 0o700 });
     await fs.chmod(directory, 0o700);
@@ -112,6 +129,145 @@ async function writePrivateJson(filePath, value) {
     } finally {
         await fs.rm(temporary, { force: true }).catch(() => undefined);
     }
+}
+
+async function readSessionEpochRaw() {
+    const stored = await readJson(STATE_PATHS.sessionEpoch);
+    const value = Number(stored?.value);
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+async function acquireKernelLock(filePath, options = {}) {
+    await fs.mkdir(privateStateDir, { recursive: true, mode: 0o700 });
+    await fs.chmod(privateStateDir, 0o700);
+    // util-linux flock keeps the exclusion in the kernel, so process death,
+    // reboot, PID reuse, and competing stale-lock cleanup cannot strand or
+    // accidentally unlink ownership. The constant child command reports when
+    // the lock is held and then waits for this process to close its stdin.
+    const nonblocking = options.nonblocking === true;
+    const conflictMessage = options.conflictMessage
+        || "Timed out waiting for the T3 Connect state lock.";
+    const lockArguments = [
+        "--exclusive",
+        ...(nonblocking
+            ? ["--nonblock"]
+            : ["--wait", String(REQUEST_TIMEOUT_MS / 1000)]),
+        "--conflict-exit-code",
+        "75",
+        filePath,
+        "bash",
+        "-c",
+        'printf "acquired\\n"; cat >/dev/null',
+    ];
+    const child = spawn("flock", lockArguments, { stdio: ["pipe", "pipe", "pipe"] });
+    child.stdin.on("error", () => undefined);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    let stdout = "";
+    let stderr = "";
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+            if (settled)
+                return;
+            settled = true;
+            child.kill("SIGKILL");
+            reject(new Error(nonblocking
+                ? "Timed out starting the T3 Connect browser-login lock."
+                : conflictMessage));
+        }, nonblocking ? 2000 : REQUEST_TIMEOUT_MS + 1000);
+        const fail = error => {
+            if (settled)
+                return;
+            settled = true;
+            clearTimeout(timer);
+            child.kill("SIGKILL");
+            reject(error);
+        };
+        child.stderr.on("data", chunk => stderr += chunk);
+        child.once("error", fail);
+        child.once("close", code => fail(code === 75
+            ? new Error(conflictMessage)
+            : new Error(
+                `Could not acquire the T3 Connect state lock (status ${code}`
+                + `${stderr.trim() ? `: ${stderr.trim()}` : ""}).`,
+            )));
+        child.stdout.on("data", chunk => {
+            stdout += chunk;
+            if (!settled && stdout.includes("acquired\n")) {
+                settled = true;
+                clearTimeout(timer);
+                resolve(child);
+            }
+        });
+    });
+}
+
+async function acquireStateLock() {
+    return acquireKernelLock(STATE_PATHS.stateLock);
+}
+
+async function acquireBrowserLoginLock() {
+    return acquireKernelLock(STATE_PATHS.browserLoginLock, {
+        nonblocking: true,
+        conflictMessage: "A T3 Connect sign-in is already in progress.",
+    });
+}
+
+async function releaseKernelLock(child) {
+    if (child.exitCode !== null)
+        return;
+    await new Promise(resolve => {
+        const timer = setTimeout(() => child.kill("SIGKILL"), 1000);
+        child.once("close", () => {
+            clearTimeout(timer);
+            resolve();
+        });
+        child.stdin.end();
+    });
+}
+
+async function withStateLock(action) {
+    const child = await acquireStateLock();
+    try {
+        return await action();
+    } finally {
+        await releaseKernelLock(child);
+    }
+}
+
+async function writePrivateJson(filePath, value) {
+    const expectedEpoch = sessionEpochContext.getStore();
+    if (expectedEpoch === undefined || filePath === STATE_PATHS.sessionEpoch)
+        return writePrivateJsonRaw(filePath, value);
+    return withStateLock(async () => {
+        if (await readSessionEpochRaw() !== expectedEpoch)
+            throw new SessionChangedError();
+        await writePrivateJsonRaw(filePath, value);
+    });
+}
+
+async function removePrivatePath(filePath) {
+    const expectedEpoch = sessionEpochContext.getStore();
+    if (expectedEpoch === undefined)
+        return fs.rm(filePath, { force: true });
+    return withStateLock(async () => {
+        if (await readSessionEpochRaw() !== expectedEpoch)
+            throw new SessionChangedError();
+        await fs.rm(filePath, { force: true });
+    });
+}
+
+async function removeOwnedBrowserLogin(operationId) {
+    const expectedEpoch = sessionEpochContext.getStore();
+    return withStateLock(async () => {
+        if (expectedEpoch !== undefined
+                && await readSessionEpochRaw() !== expectedEpoch)
+            throw new SessionChangedError();
+        const pending = await readJson(STATE_PATHS.browserLogin);
+        if (pending?.operationId === operationId)
+            await fs.rm(STATE_PATHS.browserLogin, { force: true });
+    });
 }
 
 function validateServiceOrigin(raw, label) {
@@ -242,7 +398,7 @@ async function currentClerkClient() {
     } catch (error) {
         if (!(error instanceof HttpError) || ![401, 403].includes(error.status))
             throw error;
-        await fs.rm(STATE_PATHS.clerkClient, { force: true });
+        await removePrivatePath(STATE_PATHS.clerkClient);
         return initializeClerkClient();
     }
 }
@@ -309,7 +465,12 @@ function runCommand(command, args, action) {
 
 function openBrowser(url) {
     return new Promise((resolve, reject) => {
-        const child = spawn(CLOUD_CONFIG.browserCommand, [url], {
+        const safeUrl = safeHttpUrl(url);
+        if (safeUrl === "") {
+            reject(new Error("Refusing to open an unsupported browser URL."));
+            return;
+        }
+        const child = spawn(CLOUD_CONFIG.browserCommand, [safeUrl], {
             detached: true,
             stdio: "ignore",
         });
@@ -366,6 +527,16 @@ function readSmallBody(request, maximum = 4096) {
 }
 
 async function browserSignIn() {
+    const operationId = randomUUID();
+    const operationLock = await acquireBrowserLoginLock();
+    try {
+        return await runOwnedBrowserSignIn(operationId);
+    } finally {
+        await releaseKernelLock(operationLock);
+    }
+}
+
+async function runOwnedBrowserSignIn(operationId) {
     const initial = await currentClerkClient();
     let clientToken = initial.clientToken;
     let signInId = "";
@@ -376,6 +547,10 @@ async function browserSignIn() {
         finishResolve = resolve;
         finishReject = reject;
     });
+    // A generation watcher can reject this before control reaches `await
+    // finished` (for example while xdg-mime is running). Attach a handler now
+    // so Node never treats that intentional cancellation as unhandled.
+    void finished.catch(() => undefined);
     const settle = (error = null) => {
         if (settled)
             return;
@@ -502,12 +677,27 @@ async function browserSignIn() {
         server.listen(0, "127.0.0.1", resolve);
     });
     const port = server.address().port;
+    const expectedEpoch = sessionEpochContext.getStore();
+    let epochCheckRunning = false;
+    const epochWatch = expectedEpoch === undefined ? null : setInterval(() => {
+        if (epochCheckRunning)
+            return;
+        epochCheckRunning = true;
+        void readSessionEpochRaw().then(currentEpoch => {
+            if (currentEpoch !== expectedEpoch)
+                settle(new SessionChangedError());
+        }).catch(error => settle(error instanceof Error ? error
+            : new Error("Could not verify the T3 Connect session.")))
+            .finally(() => epochCheckRunning = false);
+    }, 100);
+    epochWatch?.unref();
     const timeout = setTimeout(() => settle(new Error(
         "T3 Connect sign-in timed out. Try again from the panel.",
     )), LOGIN_TIMEOUT_MS);
     try {
         await writePrivateJson(STATE_PATHS.browserLogin, {
             version: 1,
+            operationId,
             port,
             callbackSecret,
             expiresAtEpochMs: Date.now() + LOGIN_TIMEOUT_MS,
@@ -521,16 +711,21 @@ async function browserSignIn() {
         await finished;
     } finally {
         clearTimeout(timeout);
-        await fs.rm(STATE_PATHS.browserLogin, { force: true });
-        await new Promise(resolve => {
-            // Chrome may leave a speculative localhost socket waiting for its
-            // first request. server.close() waits for Node's 60-second header
-            // timeout on that socket, even though OAuth is already complete.
-            // Callback settlement happens only after response.end() flushes,
-            // so every remaining connection is safe to close immediately.
-            server.close(resolve);
-            server.closeAllConnections();
-        });
+        if (epochWatch !== null)
+            clearInterval(epochWatch);
+        try {
+            await removeOwnedBrowserLogin(operationId);
+        } finally {
+            await new Promise(resolve => {
+                // Chrome may leave a speculative localhost socket waiting for its
+                // first request. server.close() waits for Node's 60-second header
+                // timeout on that socket, even though OAuth is already complete.
+                // Callback settlement happens only after response.end() flushes,
+                // so every remaining connection is safe to close immediately.
+                server.close(resolve);
+                server.closeAllConnections();
+            });
+        }
     }
 }
 
@@ -913,13 +1108,20 @@ async function cloudStatus() {
 }
 
 async function removeCloudState() {
-    await Promise.all([
-        fs.rm(STATE_PATHS.legacyCredentials, { force: true }),
-        fs.rm(STATE_PATHS.clerkClient, { force: true }),
-        fs.rm(STATE_PATHS.browserLogin, { force: true }),
-        fs.rm(STATE_PATHS.dpopKey, { force: true }),
-        fs.rm(STATE_PATHS.connection, { force: true }),
-    ]);
+    await withStateLock(async () => {
+        const nextEpoch = await readSessionEpochRaw() + 1;
+        // Publish invalidation before deleting credentials. Any older helper
+        // waiting on the lock then fails its guarded write instead of
+        // recreating connection state after logout.
+        await writePrivateJsonRaw(STATE_PATHS.sessionEpoch, { value: nextEpoch });
+        await Promise.all([
+            fs.rm(STATE_PATHS.legacyCredentials, { force: true }),
+            fs.rm(STATE_PATHS.clerkClient, { force: true }),
+            fs.rm(STATE_PATHS.browserLogin, { force: true }),
+            fs.rm(STATE_PATHS.dpopKey, { force: true }),
+            fs.rm(STATE_PATHS.connection, { force: true }),
+        ]);
+    });
 }
 
 async function loginAndConnect() {
@@ -937,6 +1139,29 @@ async function loginAndConnect() {
         // failures so the result never disappears behind it.
         activatePanel();
     }
+}
+
+function writeStdout(value) {
+    return new Promise((resolve, reject) => {
+        process.stdout.write(value, error => error ? reject(error) : resolve());
+    });
+}
+
+async function publishCommandResult(result) {
+    const line = JSON.stringify(result) + "\n";
+    const expectedEpoch = sessionEpochContext.getStore();
+    if (expectedEpoch === undefined) {
+        await writeStdout(line);
+        return;
+    }
+    // The check and pipe write share logout's kernel lock. Therefore either the
+    // result reaches its caller before logout publishes invalidation, or logout
+    // wins and this stale command emits no credential-bearing result at all.
+    await withStateLock(async () => {
+        if (await readSessionEpochRaw() !== expectedEpoch)
+            throw new SessionChangedError();
+        await writeStdout(line);
+    });
 }
 
 async function main(argv) {
@@ -965,11 +1190,15 @@ async function main(argv) {
     } else {
         throw new Error("Usage: t3-cloud.mjs [login|connect|ticket|status|logout|oauth-callback]");
     }
-    process.stdout.write(JSON.stringify(result) + "\n");
+    await publishCommandResult(result);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    main(process.argv).catch(error => {
+    const commandEpoch = process.argv[2] === "logout"
+        ? Promise.resolve(undefined) : readSessionEpochRaw();
+    commandEpoch.then(epoch => epoch === undefined
+        ? main(process.argv)
+        : sessionEpochContext.run(epoch, () => main(process.argv))).catch(error => {
         process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
         process.exitCode = 1;
     });

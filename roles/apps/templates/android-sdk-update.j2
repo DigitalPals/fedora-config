@@ -7,14 +7,113 @@ cache=${XDG_CACHE_HOME:-$HOME/.cache}/android-sdk
 metadata=$cache/repository2-1.xml
 metadata_state=$sdk/.metadata-sha
 mkdir -p "$sdk/cmdline-tools" "$cache"
+sdk_healthy() {
+  local platform build_tools
+  [[ -x $sdk/cmdline-tools/latest/bin/sdkmanager \
+     && -x $sdk/platform-tools/adb ]] || return 1
+  platform=$(find "$sdk/platforms" -mindepth 2 -maxdepth 2 -type f -name android.jar -print -quit 2>/dev/null)
+  build_tools=$(find "$sdk/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt2 -perm /111 -print -quit 2>/dev/null)
+  [[ -n $platform && -n $build_tools ]]
+}
+
+managed_command_tools_layout() {
+  local current_target latest_target
+  [[ -L $sdk/cmdline-tools/current && -L $sdk/cmdline-tools/latest ]] || return 1
+  current_target=$(readlink "$sdk/cmdline-tools/current") || return 1
+  latest_target=$(readlink "$sdk/cmdline-tools/latest") || return 1
+  [[ $current_target =~ ^versions/[^/]+$ \
+     && $latest_target == current \
+     && -x $sdk/cmdline-tools/current/bin/sdkmanager ]]
+}
+
+had_healthy_existing=false
+sdk_healthy && had_healthy_existing=true
+stage=""
+rollback_command_tools=false
+command_tools_changed=false
+activated_version_dir=""
+previous_current_target=""
+previous_latest_kind=absent
+previous_latest_target=""
+previous_version_present=false
+previous_version=""
+previous_versions_present=false
+legacy_latest=""
+cleanup() {
+  local rc=$? rollback_ok=true
+  trap - EXIT
+  set +e
+  [[ -z $stage || ! -d $stage ]] || rm -rf -- "$stage"
+  if (( rc != 0 )) && [[ $rollback_command_tools == true ]]; then
+    if [[ -n $previous_current_target ]]; then
+      ln -sfn "$previous_current_target" "$sdk/cmdline-tools/current.new" \
+        && mv -Tf "$sdk/cmdline-tools/current.new" "$sdk/cmdline-tools/current" \
+        || rollback_ok=false
+    else
+      rm -f "$sdk/cmdline-tools/current" "$sdk/cmdline-tools/current.new" \
+        || rollback_ok=false
+    fi
+    case "$previous_latest_kind" in
+      symlink)
+        ln -sfn "$previous_latest_target" "$sdk/cmdline-tools/latest.new" \
+          && mv -Tf "$sdk/cmdline-tools/latest.new" "$sdk/cmdline-tools/latest" \
+          || rollback_ok=false
+        ;;
+      path)
+        rm -f "$sdk/cmdline-tools/latest" \
+          && [[ -n $legacy_latest && -e $legacy_latest ]] \
+          && mv "$legacy_latest" "$sdk/cmdline-tools/latest" \
+          || rollback_ok=false
+        ;;
+      absent)
+        rm -f "$sdk/cmdline-tools/latest" "$sdk/cmdline-tools/latest.new" \
+          || rollback_ok=false
+        ;;
+    esac
+    if [[ $previous_version_present == true ]]; then
+      printf '%s\n' "$previous_version" > "$sdk/cmdline-tools/.version.rollback" \
+        && mv -f "$sdk/cmdline-tools/.version.rollback" "$sdk/cmdline-tools/.version" \
+        || rollback_ok=false
+    else
+      rm -f "$sdk/cmdline-tools/.version" "$sdk/cmdline-tools/.version.rollback" \
+        || rollback_ok=false
+    fi
+    if [[ $rollback_ok == true && -n $activated_version_dir && -d $activated_version_dir ]]; then
+      rm -rf -- "$activated_version_dir" || rollback_ok=false
+    fi
+    if [[ $rollback_ok == true && $previous_versions_present == false \
+       && -d $sdk/cmdline-tools/versions ]]; then
+      rmdir "$sdk/cmdline-tools/versions" || rollback_ok=false
+    fi
+    if [[ $rollback_ok == true ]] && { [[ $had_healthy_existing == false ]] || sdk_healthy; }; then
+      echo "Previous Android command-line tools restored after update failure" >&2
+    else
+      echo "Android command-line tools rollback failed validation; staged deployment retained at ${activated_version_dir:-unknown}" >&2
+      exit "$rc"
+    fi
+  fi
+  if (( rc != 0 )) && [[ $had_healthy_existing == true ]] && sdk_healthy; then
+    echo "Existing complete Android SDK retained after update failure" >&2
+    exit 75
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT
+
 curl --fail --silent --show-error --location \
-  https://dl.google.com/android/repository/repository2-1.xml -o "$metadata"
+  https://dl.google.com/android/repository/repository2-1.xml -o "$metadata.new"
+python3 - "$metadata.new" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+ET.parse(sys.argv[1])
+PY
+mv -f "$metadata.new" "$metadata"
 
 # Google's repository metadata drives everything below; if it is unchanged and
 # the SDK is intact, skip the slow sdkmanager invocations entirely.
 metadata_sha=$(sha256sum "$metadata" | awk '{print $1}')
 if [[ -r $metadata_state && $(<"$metadata_state") == "$metadata_sha" ]] \
-  && [[ -x $sdk/cmdline-tools/latest/bin/sdkmanager && -x $sdk/platform-tools/adb ]]; then
+   && sdk_healthy && managed_command_tools_layout; then
   emit_unchanged "Android SDK (repository metadata unchanged)"
   exit 0
 fi
@@ -46,22 +145,62 @@ version=${release[0]}
 url=${release[1]}
 checksum=${release[2]}
 
-if [[ ! -r $sdk/cmdline-tools/.version || $(<"$sdk/cmdline-tools/.version") != "$version" ]]; then
+if [[ ! -r $sdk/cmdline-tools/.version \
+   || $(<"$sdk/cmdline-tools/.version") != "$version" ]] \
+   || ! managed_command_tools_layout; then
+  previous_current_target=$(readlink "$sdk/cmdline-tools/current" 2>/dev/null || true)
+  if [[ -L $sdk/cmdline-tools/latest ]]; then
+    previous_latest_kind=symlink
+    previous_latest_target=$(readlink "$sdk/cmdline-tools/latest")
+  elif [[ -e $sdk/cmdline-tools/latest ]]; then
+    previous_latest_kind=path
+  fi
+  if [[ -r $sdk/cmdline-tools/.version ]]; then
+    previous_version_present=true
+    previous_version=$(<"$sdk/cmdline-tools/.version")
+  fi
   archive="$cache/commandlinetools-$version.zip"
-  [[ -f $archive ]] || curl --fail --location --retry 3 \
-    --output "$archive.partial" "https://dl.google.com/android/repository/$url"
-  [[ -f $archive ]] || mv "$archive.partial" "$archive"
+  if [[ -f $archive ]] && [[ $(sha1sum "$archive" | awk '{print $1}') != "$checksum" ]]; then
+    unlink "$archive"
+  fi
+  if [[ ! -f $archive ]]; then
+    curl --fail --location --retry 3 \
+      --output "$archive.partial" "https://dl.google.com/android/repository/$url"
+    mv "$archive.partial" "$archive"
+  fi
   actual=$(sha1sum "$archive" | awk '{print $1}')
-  [[ $actual == "$checksum" ]] || { echo "Android command-line tools checksum mismatch" >&2; exit 1; }
+  if [[ $actual != "$checksum" ]]; then
+    unlink "$archive"
+    echo "Android command-line tools checksum mismatch after a clean download" >&2
+    exit 1
+  fi
   stage=$(mktemp -d "$sdk/cmdline-tools/.stage.XXXXXX")
-  trap 'rm -rf "$stage"' EXIT
   unzip -q "$archive" -d "$stage"
-  rm -rf "$sdk/cmdline-tools/latest.new"
-  mv "$stage/cmdline-tools" "$sdk/cmdline-tools/latest.new"
-  rm -rf "$sdk/cmdline-tools/latest"
-  mv "$sdk/cmdline-tools/latest.new" "$sdk/cmdline-tools/latest"
-  printf '%s\n' "$version" > "$sdk/cmdline-tools/.version"
-  emit_changed "Android command-line tools $version"
+  [[ -x $stage/cmdline-tools/bin/sdkmanager ]] || {
+    echo "Android command-line tools archive has no sdkmanager" >&2
+    exit 1
+  }
+  version_key="${version}-${checksum:0:12}"
+  version_dir="$sdk/cmdline-tools/versions/$version_key"
+  [[ -d $sdk/cmdline-tools/versions ]] && previous_versions_present=true
+  mkdir -p "$sdk/cmdline-tools/versions"
+  if [[ -e $version_dir ]]; then
+    version_key="${version_key}.repair-$(date +%s)"
+    version_dir="$sdk/cmdline-tools/versions/$version_key"
+  fi
+  mv "$stage/cmdline-tools" "$version_dir"
+  if [[ -d $sdk/cmdline-tools/latest && ! -L $sdk/cmdline-tools/latest ]]; then
+    legacy_latest="$sdk/cmdline-tools/versions/legacy-$(date +%s)"
+    mv "$sdk/cmdline-tools/latest" "$legacy_latest"
+  fi
+  activated_version_dir=$version_dir
+  rollback_command_tools=true
+  atomic_current_swap "$sdk/cmdline-tools" "versions/$version_key"
+  ln -sfn current "$sdk/cmdline-tools/latest.new"
+  mv -Tf "$sdk/cmdline-tools/latest.new" "$sdk/cmdline-tools/latest"
+  printf '%s\n' "$version" > "$sdk/cmdline-tools/.version.new"
+  mv -f "$sdk/cmdline-tools/.version.new" "$sdk/cmdline-tools/.version"
+  command_tools_changed=true
 fi
 
 android_cli="$sdk/cmdline-tools/latest/bin/android"
@@ -92,8 +231,16 @@ else
   }
   yes | "$sdkmanager" --sdk_root="$sdk" --licenses >/dev/null || true
   "$sdkmanager" --sdk_root="$sdk" \
-    "platform-tools" "cmdline-tools;latest" "${selected[0]}" "${selected[1]}"
+    "platform-tools" "${selected[0]}" "${selected[1]}"
   after=$("$sdkmanager" --sdk_root="$sdk" --list_installed 2>/dev/null || true)
 fi
-printf '%s\n' "$metadata_sha" > "$metadata_state"
+sdk_healthy || { echo "Android SDK package installation is incomplete" >&2; exit 1; }
+printf '%s\n' "$metadata_sha" > "$metadata_state.new"
+mv -f "$metadata_state.new" "$metadata_state"
+rollback_command_tools=false
+if [[ $command_tools_changed == true ]]; then
+  emit_changed "Android command-line tools $version"
+  prune_version_dirs "$sdk/cmdline-tools" 3 \
+    || echo "Android SDK updated, but older command-line tools could not be pruned" >&2
+fi
 [[ $before == "$after" ]] || emit_changed "Android SDK packages"

@@ -15,3 +15,32 @@
     XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
   changed_when: true
   failed_when: false
+
+- name: Restart Voxtype after updates
+  become: true
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - "--machine={{ primary_user }}@.host"
+      - try-restart
+      - voxtype.service
+  changed_when: true
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Reload systemd after application package removal
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Reload user systemd after application package removal
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  failed_when: false
+  when: not ansible_check_mode

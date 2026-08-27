@@ -25,7 +25,38 @@
     disable_gpg_check: false
   register: apps_rpmfusion_nonfree
 
-- name: Install signed vendor repository definitions
+- name: Download checksum-pinned vendor repository keys
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "/etc/pki/rpm-gpg/XPS-{{ item.name }}.asc"
+    checksum: "{{ item.checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ apps_vendor_repo_keys }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - item.enabled | bool
+    - not ansible_check_mode
+  register: apps_vendor_repo_key_downloads
+  tags: [browser]
+
+- name: Import fingerprint-verified vendor package keys
+  ansible.builtin.rpm_key:
+    key: "/etc/pki/rpm-gpg/XPS-{{ item.name }}.asc"
+    fingerprint:
+      - "{{ item.fingerprint }}"
+    state: present
+  loop: "{{ apps_vendor_repo_keys }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - item.enabled | bool
+    - not ansible_check_mode
+  tags: [browser]
+
+- name: Install enabled signed vendor repository definitions
   ansible.builtin.copy:
     src: "{{ item }}.repo"
     dest: "/etc/yum.repos.d/{{ item }}.repo"
@@ -35,9 +66,39 @@
   loop:
     - brave-browser
     - 1password
-    - tailscale
   register: apps_vendor_repos
   tags: [browser]
+
+- name: Converge the optional Tailscale repository definition
+  ansible.builtin.copy:
+    src: tailscale.repo
+    dest: /etc/yum.repos.d/tailscale.repo
+    owner: root
+    group: root
+    mode: "0644"
+  when: features.tailscale | bool
+  register: apps_tailscale_repo
+
+- name: Remove the imported Tailscale package key when disabled
+  ansible.builtin.rpm_key:
+    key: "{{ apps_vendor_repo_keys
+      | selectattr('name', 'equalto', 'tailscale')
+      | map(attribute='fingerprint') | first }}"
+    state: absent
+  when:
+    - not features.tailscale | bool
+    - not ansible_check_mode
+  register: apps_retired_tailscale_rpm_key
+
+- name: Remove the Tailscale repository and pinned key when disabled
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/yum.repos.d/tailscale.repo
+    - /etc/pki/rpm-gpg/XPS-tailscale.asc
+  when: not features.tailscale | bool
+  register: apps_retired_tailscale_repo
 
 - name: Remove retired Google Chrome repository definition
   ansible.builtin.file:
@@ -54,5 +115,8 @@
     - (apps_rpmfusion_free is defined and apps_rpmfusion_free is changed)
       or (apps_rpmfusion_nonfree is defined and apps_rpmfusion_nonfree is changed)
       or (apps_vendor_repos is defined and apps_vendor_repos is changed)
+      or (apps_tailscale_repo is defined and apps_tailscale_repo is changed)
+      or (apps_retired_tailscale_rpm_key is defined and apps_retired_tailscale_rpm_key is changed)
+      or (apps_retired_tailscale_repo is defined and apps_retired_tailscale_repo is changed)
       or (apps_retired_vendor_repos is defined and apps_retired_vendor_repos is changed)
   tags: [browser]

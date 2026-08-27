@@ -54,6 +54,7 @@
     - screen-ocr
     - clipboard-copy-image
     - clipboard-image-to-file
+    - clipboard-history-store
     - localsend
     - localsend-share
 
@@ -66,7 +67,6 @@
     mode: "0755"
   loop:
     - brightness-control
-    - external-monitor-toggle
     - portal-launcher
     - t3code-update
     - t3code-desktop
@@ -75,6 +75,15 @@
     - fastfetch-link-speed
   tags: [browser]
 
+- name: Install the external monitor policy helper
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: external-monitor-toggle.j2
+    dest: "{{ primary_home }}/.local/bin/external-monitor-toggle"
+    mode: "0755"
+  notify: Restart external monitor watcher after helper updates
+
 - name: Install Distrobox container initialization hook
   become: true
   become_user: "{{ primary_user }}"
@@ -82,6 +91,7 @@
     src: dev-distrobox-init
     dest: "{{ primary_home }}/.local/bin/dev-distrobox-init"
     mode: "0755"
+  when: features.podman | bool
 
 - name: Install or update T3Code nightly
   become: true
@@ -94,12 +104,21 @@
     GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
   when: not ansible_check_mode
 
-- name: Report a failed T3Code nightly update without removing the installed nightly
+- name: Report a failed T3Code nightly update after verified retention
   ansible.builtin.debug:
     msg: "T3Code update failed; installed nightly retained: {{ dotfiles_t3code_update.stderr | default('unknown failure') }}"
   when:
     - not ansible_check_mode
-    - dotfiles_t3code_update.rc | default(0) != 0
+    - dotfiles_t3code_update.rc | default(0) | int == 75
+
+- name: Refuse a T3Code nightly failure without verified retention
+  ansible.builtin.fail:
+    msg: >-
+      T3Code nightly installation or rollback failed without a verified prior
+      AppImage to retain: {{ dotfiles_t3code_update.stderr | default('unknown failure') }}
+  when:
+    - not ansible_check_mode
+    - dotfiles_t3code_update.rc | default(0) | int not in [0, 75]
 
 - name: Keep browser-backup compatibility command
   become: true
@@ -117,6 +136,21 @@
     mode: "0644"
     content: |
       container_init_hook="{{ primary_home }}/.local/bin/dev-distrobox-init"
+  when: features.podman | bool
+
+- name: Validate immutable Distrobox image authorization
+  ansible.builtin.assert:
+    that:
+      - item.name is regex('^[a-z0-9-]+$')
+      - item.source_tag | string | length > 0
+      - item.image is regex('^[^\s@]+@sha256:[0-9a-fA-F]{64}$')
+    fail_msg: >-
+      Distrobox {{ item.name | default('entry') }} requires a fully qualified,
+      digest-pinned image and the reviewed source tag used to resolve it.
+  loop: "{{ distrobox_images }}"
+  loop_control:
+    label: "{{ item.name | default('invalid entry') }}"
+  when: features.podman | bool
 
 - name: Install Distrobox lazy launchers
   become: true
@@ -125,10 +159,24 @@
     src: distrobox-shell.j2
     dest: "{{ primary_home }}/.local/bin/dev-{{ item.name }}-shell"
     mode: "0755"
+  loop: "{{ distrobox_images }}"
+  loop_control:
+    label: "{{ item.name }} from {{ item.source_tag }}"
+  when: features.podman | bool
+
+- name: Remove managed Distrobox launchers and hooks when Podman is disabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
   loop:
-    - { name: fedora, image: "registry.fedoraproject.org/fedora-toolbox:latest" }
-    - { name: arch, image: "docker.io/library/archlinux:latest" }
-    - { name: debian, image: "docker.io/library/debian:latest" }
+    - "{{ primary_home }}/.local/bin/dev-distrobox-init"
+    - "{{ primary_home }}/.local/bin/dev-fedora-shell"
+    - "{{ primary_home }}/.local/bin/dev-arch-shell"
+    - "{{ primary_home }}/.local/bin/dev-debian-shell"
+    - "{{ primary_home }}/.config/distrobox/distrobox.conf"
+  when: not features.podman | bool
 
 - name: Install Nautilus LocalSend extension
   become: true
@@ -149,7 +197,15 @@
     - { src: fish-config.fish, dest: .config/fish/config.fish }
     - { src: kitty.conf, dest: .config/kitty/kitty.conf }
     - { src: fastfetch.jsonc, dest: .config/fastfetch/config.jsonc }
-    - { src: voxtype.toml, dest: .config/voxtype/config.toml }
+
+- name: Install Voxtype configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: voxtype.toml
+    dest: "{{ primary_home }}/.config/voxtype/config.toml"
+    mode: "0644"
+  notify: Restart Voxtype after configuration updates
 
 - name: Install Oh My Posh theme from the active configuration
   become: true
@@ -232,14 +288,38 @@
     - mimeapps.list
     - nvim-kitty.desktop
     - t3code-nightly.desktop
-    - dev-fedora.desktop
-    - dev-arch.desktop
-    - dev-debian.desktop
     - brave-browser.desktop
     - 1password.desktop
     - localsend-share-clipboard.desktop
     - localsend-share-file.desktop
     - localsend-share-folder.desktop
+  tags: [browser]
+
+- name: Install Distrobox desktop launchers when Podman is enabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ primary_home }}/.local/share/applications/{{ item }}"
+    mode: "0644"
+  loop:
+    - dev-fedora.desktop
+    - dev-arch.desktop
+    - dev-debian.desktop
+  when: features.podman | bool
+  tags: [browser]
+
+- name: Remove managed Distrobox desktop launchers when Podman is disabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/share/applications/{{ item }}"
+    state: absent
+  loop:
+    - dev-fedora.desktop
+    - dev-arch.desktop
+    - dev-debian.desktop
+  when: not features.podman | bool
   tags: [browser]
 
 - name: Remove retired Google Chrome desktop launcher
@@ -362,14 +442,19 @@
     path: "{{ primary_home }}/.config/nvim"
   register: dotfiles_neovim_config
 
+- name: Validate the LazyVim starter pin
+  ansible.builtin.assert:
+    that: lazyvim_starter_commit is regex('^[0-9a-fA-F]{40}$')
+    fail_msg: lazyvim_starter_commit must be a full immutable Git commit
+  when: not dotfiles_neovim_config.stat.exists
+
 - name: Install LazyVim starter only when Neovim configuration is absent
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.git:
     repo: https://github.com/LazyVim/starter
     dest: "{{ primary_home }}/.config/nvim"
-    version: main
-    depth: 1
+    version: "{{ lazyvim_starter_commit }}"
   when: not dotfiles_neovim_config.stat.exists
 
 - name: Restore SELinux user-home labels

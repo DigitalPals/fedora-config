@@ -24,11 +24,10 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 shell_src="$repo/roles/desktop/files/quickshell"
 deployed="${QS_CONFIG_DIR:-$HOME/.config/quickshell}"
-# Long enough for a full reload plus connect plus the shell subscription to
-# land. 16 was marginal once the tree grew; a short settle shows up as
-# "Target not found" (the reload had not finished) or as empty thread
-# counts. Raise it with T3_SNAPSHOT_SETTLE if a run looks half-loaded.
-settle=${T3_SNAPSHOT_SETTLE:-24}
+snapshot_timeout=${T3_SNAPSHOT_TIMEOUT:-30}
+
+# shellcheck source=tests/lib/quickshell-live
+source "$repo/tests/lib/quickshell-live"
 
 if ! command -v qs >/dev/null; then
   echo "qs not on PATH — is quickshell installed?" >&2
@@ -66,6 +65,15 @@ probe=$(cat <<EOF
     IpcHandler {
         target: "t3contract"
 
+        function ready(): string {
+            // An offline shell is settled immediately. A connected shell is
+            // only meaningful after its initial subscription has populated
+            // T3Threads; polling this contract avoids a fixed startup sleep.
+            return T3Code.state !== "connecting"
+                && (T3Code.state !== "connected" || T3Code.shellReady)
+                ? "ready" : "waiting";
+        }
+
         function snapshot(): string {
             const out = {};
             for (const name of [$(json_list "${props[@]}")]) {
@@ -94,13 +102,34 @@ EOF
 )
 
 # The deployed tree is disposable (the Ansible role is the source of truth), so
-# the probe goes there and is rsynced away again on the way out.
-restore() {
-  rsync -a --delete "$shell_src/" "$deployed/"
-}
-trap restore EXIT
+# the probe goes there and is rsynced away again on the way out. The shared
+# harness proves that this test never creates a second shell and that the
+# restored managed instance is healthy before returning.
+qs_live_begin
 
-rsync -a --delete "$shell_src/" "$deployed/"
+cleanup() {
+  local rc=$? restore_rc=0 live_rc=0
+  trap - EXIT INT TERM
+  set +e
+  rsync -a --delete --delete-excluded \
+    --exclude='__pycache__/' --exclude='*.py[co]' \
+    "$shell_src/" "$deployed/" || restore_rc=$?
+  if ((restore_rc == 0)); then
+    qs_live_wait_ipc "$snapshot_timeout" popouts close >/dev/null || restore_rc=$?
+  fi
+  qs_live_end || live_rc=$?
+  if ((rc == 0 && (restore_rc != 0 || live_rc != 0))); then
+    rc=1
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+rsync -a --delete --delete-excluded \
+  --exclude='__pycache__/' --exclude='*.py[co]' \
+  "$shell_src/" "$deployed/"
 python3 - "$deployed/shell.qml" <<PY
 import io, sys
 path = sys.argv[1]
@@ -110,7 +139,7 @@ assert anchor in s, "shell.qml has no popouts IpcHandler to anchor against"
 io.open(path, "w", encoding="utf-8").write(s.replace(anchor, """$probe""" + anchor, 1))
 PY
 
-# Quickshell reloads on file change; the connection then has to reach the
-# server and finish its subscribe before the thread counts mean anything.
-sleep "$settle"
+# Quickshell reloads on file change; wait for both the IPC registration and,
+# when connected, the initial T3 subscription rather than guessing a delay.
+qs_live_wait_value "$snapshot_timeout" t3contract ready ready >/dev/null
 qs ipc call t3contract snapshot

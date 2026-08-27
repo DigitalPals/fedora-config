@@ -23,6 +23,20 @@ const KEYS = Object.keys(load("SettingsHelpers.js").defaults());
 // setting is user-facing and belongs to one page.
 const NOT_USER_FACING = [];
 
+function functionBody(name) {
+    const start = SETTINGS.indexOf(`function ${name}`);
+    assert.notEqual(start, -1, `${name}() must exist`);
+    const opening = SETTINGS.indexOf("{", start);
+    let depth = 0;
+    for (let index = opening; index < SETTINGS.length; index++) {
+        if (SETTINGS[index] === "{")
+            depth++;
+        else if (SETTINGS[index] === "}" && --depth === 0)
+            return SETTINGS.slice(start, index + 1);
+    }
+    assert.fail(`${name}() has an unterminated body`);
+}
+
 function sectionKeys() {
     const start = SETTINGS.indexOf("readonly property var sectionKeys: ({");
     assert.notEqual(start, -1, "sectionKeys must exist");
@@ -62,8 +76,7 @@ test("saving and loading enumerate the schema rather than restating it", () => {
     assert.ok(snapshot.split("\n").length < 15,
         "snapshot() has grown a hand-written list again");
 
-    const apply = SETTINGS.slice(SETTINGS.indexOf("function applyLoaded"));
-    const body = apply.slice(0, apply.indexOf("ready = true;"));
+    const body = functionBody("applyLoaded(rawText)");
     assert.match(body, /for \(const key of Object\.keys\(root\.defaults\)\)\s*\n\s*root\[key\] = merged\[key\];/,
         "applyLoaded() must loop the schema");
     // modOpts is the one key that is not a straight copy, and it has to be

@@ -14,6 +14,7 @@ Text {
     // strings at caption size; a few pixels of overhang makes them reliably
     // clickable without moving anything.
     property real hitMargin: 4
+    property string accessibleName: text
 
     signal clicked()
 
@@ -21,6 +22,19 @@ Text {
     font.pixelSize: Theme.fontSecondary
     font.weight: Theme.weightMedium
     color: linkMouse.containsMouse ? Theme.accentHover : Theme.accent
+    font.underline: activeFocus
+    activeFocusOnTab: enabled && visible
+    Accessible.role: Accessible.Button
+    Accessible.name: accessibleName
+    Accessible.onPressAction: root.clicked()
+
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.clicked();
+            event.accepted = true;
+        }
+    }
 
     MouseArea {
         id: linkMouse
@@ -28,6 +42,9 @@ Text {
         anchors.margins: -root.hitMargin
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.clicked()
+        onClicked: {
+            root.forceActiveFocus();
+            root.clicked();
+        }
     }
 }

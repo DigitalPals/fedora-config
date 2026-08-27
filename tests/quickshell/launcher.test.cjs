@@ -79,6 +79,24 @@ test("the view is provider-driven and owns no search subprocesses", () => {
         assert.match(providers, new RegExp(`id:\\s*${process}`));
 });
 
+test("clipboard refreshes are generation-safe and password-aware", () => {
+    const providers = read("Common/LauncherProviders.qml");
+    const store = fs.readFileSync(path.resolve(__dirname,
+        "../../assets/scripts/clipboard-history-store"), "utf8");
+
+    assert.doesNotMatch(providers,
+        /function refreshClipboard\(\)[\s\S]{0,180}clipboardListProc\.running = false/,
+        "refreshing must not overlap a cancelled process with its replacement");
+    assert.match(providers,
+        /clipboardListProc\.generation = clipboardRefreshGeneration/);
+    assert.match(providers,
+        /if \(generation !== root\.clipboardRefreshGeneration\)[\s\S]*clipboardRefreshRestart\.restart\(\)/);
+    assert.match(providers, /clipboard-history-store/);
+    assert.match(store, /passwordmanagerhint\|x-kde-secret\|keepassxc\|concealed/i);
+    assert.match(store, /cliphist -max-items 500 store/,
+        "the continuously running history must retain a bounded number of entries");
+});
+
 test("the launcher uses the compact single-line geometry", () => {
     const view = read("LauncherView.qml");
     const window = read("LauncherWindow.qml");
@@ -156,8 +174,10 @@ test("clipboard, emoji, and action providers have installed data sources", () =>
         "../../../apps/defaults/main.yml"), "utf8");
     const actions = JSON.parse(read("launcher-actions.json"));
 
-    assert.match(providers, /wl-paste --type text --watch cliphist store/);
-    assert.match(providers, /wl-paste --type image --watch cliphist store/);
+    assert.match(providers,
+        /wl-paste --type text --watch [\s\S]{0,100}?clipboard-history-store/);
+    assert.match(providers,
+        /wl-paste --type image --watch [\s\S]{0,100}?clipboard-history-store/);
     assert.match(providers, /\/usr\/share\/unicode\/emoji\/emoji-test\.txt/);
     assert.match(providers, /watchChanges:\s*true/);
     assert.match(packages, /^\s+- cliphist$/m);
@@ -190,9 +210,10 @@ test("launcher-only motion stays brief and cannot gate input", () => {
         launcherResizeDuration: 140,
         launcherTravel: 8
     })) {
-        assert.match(theme, new RegExp(`property (?:int|real) ${token}: ${value}\\b`));
+        assert.match(theme, new RegExp(
+            `property (?:int|real) ${token}: reducedMotion \\? 0 : ${value}\\b`));
         assert.match(window, new RegExp(`Theme\\.${token}`));
     }
-    assert.match(theme, /launcherInitialScale:\s*0\.985/);
+    assert.match(theme, /launcherInitialScale:\s*reducedMotion \? 1 : 0\.985/);
     assert.match(window, /Theme\.launcherInitialScale/);
 });

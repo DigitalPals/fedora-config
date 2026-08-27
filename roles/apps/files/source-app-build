@@ -5,28 +5,72 @@ source /usr/local/libexec/xps-common.sh
 name=${1:?name required}
 repo=${2:?repository URL required}
 IFS=, read -r -a binaries <<<"${3:?comma separated binaries required}"
+tag=${4:?authorized source tag required}
+revision=${5:?authorized source commit required}
+build_image=${6:?immutable build container image required}
 root="/opt/xps-builds/$name"
 mkdir -p "$root/versions" "$root/logs"
+[[ $build_image =~ ^.+@sha256:[[:xdigit:]]{64}$ ]] || {
+  echo "Source build image must be pinned by sha256 digest" >&2
+  exit 1
+}
 
-# Unpeeled + peeled tag listing: resolves the winning tag's commit without cloning.
-ls_remote=$(git ls-remote --tags "$repo")
-tag=$(awk -F/ '{print $NF}' <<<"$ls_remote" \
-  | sed 's/\^{}$//' \
-  | grep -E '^v?[0-9]+([.][0-9]+){1,3}$' \
-  | sort -uV | tail -n1 || true)
-[[ -n $tag ]] || { echo "No stable tag found for $repo" >&2; exit 1; }
-revision=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<<"$ls_remote")
-[[ -n $revision ]] || revision=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<<"$ls_remote")
-[[ -n $revision ]] || { echo "Unable to resolve commit for $repo tag $tag" >&2; exit 1; }
+had_existing=false
+[[ ! -L $root/current ]] || had_existing=true
+work=""
+deploy_stage=""
+committed=false
+change_description=""
+new_command_links=()
+cleanup() {
+  local rc=$?
+  trap - EXIT
+  set +e
+  [[ -z $work || ! -d $work ]] || rm -rf -- "$work"
+  [[ -z $deploy_stage || ! -d $deploy_stage ]] || rm -rf -- "$deploy_stage"
+  if (( rc != 0 )) && [[ $committed == false ]]; then
+    for command_link in "${new_command_links[@]}"; do
+      [[ -L $command_link ]] && rm -f -- "$command_link"
+    done
+  fi
+  if (( rc != 0 )) && [[ $committed == true ]]; then
+    echo "New $name source build is active, but post-install finalization failed" >&2
+    [[ -z $change_description ]] || emit_changed "$change_description"
+    exit 0
+  fi
+  if (( rc != 0 )) && [[ $had_existing == true ]]; then
+    echo "Existing $name source build retained after update failure" >&2
+    exit 75
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT
 
-if [[ -L $root/current && $(basename "$(readlink -f "$root/current")") == "$revision" ]]; then
-  emit_unchanged "$name $tag ($revision)"
-  exit 0
+# Resolve only the inventory-authorized tag and reject a moved tag before clone.
+[[ $revision =~ ^[[:xdigit:]]{40}$ ]] || { echo "Authorized source commit is not a full SHA-1" >&2; exit 1; }
+ls_remote=$(git ls-remote --tags "$repo" "refs/tags/$tag" "refs/tags/$tag^{}")
+resolved=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<<"$ls_remote")
+[[ -n $resolved ]] || resolved=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<<"$ls_remote")
+[[ $resolved == "$revision" ]] || {
+  echo "Authorized $repo tag $tag resolved to ${resolved:-nothing}, expected $revision" >&2
+  exit 1
+}
+
+recipe=$(sha256sum "$0" | awk '{print $1}')
+manifest="revision=$revision image=$build_image recipe=$recipe"
+if [[ -L $root/current && -r $root/current/.xps-build ]] \
+  && [[ $(<"$root/current/.xps-build") == "$manifest" ]]; then
+  healthy=true
+  for binary in "${binaries[@]}"; do
+    [[ -x $root/current/bin/$binary && -x /usr/local/bin/$binary ]] || healthy=false
+  done
+  if [[ $healthy == true ]]; then
+    emit_unchanged "$name $tag ($revision)"
+    exit 0
+  fi
 fi
 
 work=$(mktemp -d "$root/.build.XXXXXX")
-cleanup() { rm -rf "$work"; }
-trap cleanup EXIT
 git clone --quiet --depth 1 --branch "$tag" "$repo" "$work/src"
 cloned=$(git -C "$work/src" rev-parse HEAD)
 [[ $cloned == "$revision" ]] || {
@@ -38,7 +82,7 @@ mkdir -p "$work/out"
 log="$root/logs/$revision.log"
 if ! podman run --rm --network=host \
   -v "$work/src:/src:Z,ro" -v "$work/out:/out:Z" \
-  docker.io/library/fedora:44 bash -euxo pipefail -c '
+  "$build_image" bash -euxo pipefail -c '
     dnf -y install cargo rust gcc gcc-c++ make pkgconf-pkg-config \
       wayland-devel libxkbcommon-devel libjpeg-turbo-devel libpng-devel \
       wayland-protocols-devel lz4-devel libgcc libstdc++
@@ -51,19 +95,36 @@ if ! podman run --rm --network=host \
   exit 1
 fi
 
-stage="$root/versions/$revision.new"
-rm -rf "$stage"
+deployment_key="${revision}-${recipe:0:16}"
+stage="$root/versions/$deployment_key"
+if [[ -e $stage ]]; then
+  deployment_key="${deployment_key}.repair-$(date +%s)"
+  stage="$root/versions/$deployment_key"
+fi
+deploy_stage=$stage
 mkdir -p "$stage/bin"
 for binary in "${binaries[@]}"; do
   candidate="$work/out/$binary"
   [[ -x $candidate ]] || { echo "Build produced no $binary; previous version retained" >&2; exit 1; }
   install -m 0755 "$candidate" "$stage/bin/$binary"
 done
-rm -rf "$root/versions/$revision"
-mv "$stage" "$root/versions/$revision"
-atomic_current_swap "$root" "versions/$revision"
+printf '%s\n' "$manifest" >"$stage/.xps-build"
 for binary in "${binaries[@]}"; do
-  ln -sfn "$root/current/bin/$binary" "/usr/local/bin/$binary"
+  command_link="/usr/local/bin/$binary"
+  if [[ ! -e $command_link && ! -L $command_link ]]; then
+    new_command_links+=("$command_link")
+  fi
+  ln -sfn "$root/current/bin/$binary" "$command_link"
 done
+atomic_current_swap "$root" "versions/$deployment_key"
+deploy_stage=""
+committed=true
+change_description="built $name $tag ($revision)"
+emit_changed "$change_description"
 xps_restorecon "$root" /usr/local/bin
-emit_changed "built $name $tag ($revision)"
+prune_version_dirs "$root" 3 \
+  || echo "Built $name $tag, but could not prune older versions" >&2
+if ! find "$root/logs" -maxdepth 1 -type f -name '*.log' -printf '%T@ %p\n' \
+  | sort -rn | tail -n +6 | cut -d' ' -f2- | xargs -r -- rm -f --; then
+  echo "Built $name $tag, but could not prune older build logs" >&2
+fi

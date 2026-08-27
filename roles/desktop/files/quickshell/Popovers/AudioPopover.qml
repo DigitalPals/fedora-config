@@ -13,7 +13,8 @@ import "../Common/Format.js" as Format
 Surface {
     id: root
 
-    implicitWidth: Theme.popWideWidth
+    implicitWidth: availableWidth > 0
+        ? Math.min(Theme.popWideWidth, availableWidth) : Theme.popWideWidth
     spacing: 0
 
     readonly property real preferredHeightCap: 620
@@ -847,7 +848,7 @@ Surface {
                             fillColor: Theme.accent
 
                             Behavior on value {
-                                NumberAnimation { duration: 70 }
+                                NumberAnimation { duration: Theme.reducedMotion ? 0 : 70 }
                             }
                         }
                     }

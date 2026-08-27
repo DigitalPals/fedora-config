@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import "T3CodeHelpers.js" as Helpers
+import "ExternalUrl.js" as ExternalUrl
 
 // T3 Code session monitor and remote control: keeps a live WebSocket
 // subscription to the orchestration shell of the remote T3 Code server
@@ -33,6 +34,17 @@ Singleton {
     readonly property var environmentCapabilities: T3Connection.environmentCapabilities
     readonly property bool scopeMetadataKnown: T3Connection.scopeMetadataKnown
     readonly property var tokenScope: T3Connection.tokenScope
+
+    // All relay- and server-provided links cross one protocol allow-list
+    // before reaching the desktop opener. Callers can use the result to avoid
+    // closing their panel when an invalid link was rejected.
+    function openExternalUrl(value) {
+        const url = ExternalUrl.safeHttpUrl(value);
+        if (url === "")
+            return false;
+        Quickshell.execDetached(["xdg-open", url]);
+        return true;
+    }
 
     function connect() {
         T3Connection.connect();
@@ -270,7 +282,7 @@ Singleton {
             } else if (msg._tag === "Exit") {
                 if (reqId === T3Rpc.shellReqId) {
                     // Stream ended server-side (shutdown/restart): reconnect.
-                    scheduleRetry();
+                    T3Connection.scheduleRetry();
                 } else if (T3Rpc.rpcHandlers[reqId]) {
                     T3Rpc.rpcHandlers[reqId].exit?.(msg);
                     T3Rpc.dropRpcHandler(reqId);
@@ -584,6 +596,10 @@ Singleton {
 
     function loadFullThreadDiff(threadId, checkpoint) {
         T3Detail.loadFullThreadDiff(threadId, checkpoint);
+    }
+
+    function copyFullThreadDiff(threadId, checkpoint) {
+        return T3Detail.copyFullThreadDiff(threadId, checkpoint);
     }
 
     // ---- git re-exports ----------------------------------------------------

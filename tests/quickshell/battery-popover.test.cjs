@@ -44,7 +44,10 @@ test("battery charge matches the animated blocked usage meter with discharge-onl
     assert.match(battery,
         /BlockMeter\s*\{[\s\S]{0,100}?id:\s*chargeMeter[\s\S]{0,160}?height:\s*10[\s\S]{0,100}?value:\s*root\.chargeFraction[\s\S]{0,100}?fillColor:\s*root\.batteryTone/);
     assert.match(battery,
-        /Behavior on value\s*\{[\s\S]{0,120}?NumberAnimation[\s\S]{0,100}?duration:\s*320/);
+        /Behavior on value\s*\{[\s\S]{0,120}?NumberAnimation[\s\S]{0,100}?duration:\s*Theme\.reducedMotion \? 0 : 320/);
+    assert.match(battery,
+        /SequentialAnimation on opacity\s*\{[\s\S]{0,100}?running:\s*Battery\.charging && !Theme\.reducedMotion/,
+        "reduced-motion mode must stop the charging pulse rather than busy-loop at zero duration");
     assert.match(battery,
         /critical:\s*discharging[\s\S]{0,100}?Settings\.modOpts\.batt\.critAt/);
     assert.match(battery,

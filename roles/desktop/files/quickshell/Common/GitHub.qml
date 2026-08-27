@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import "GitHubHelpers.js" as Helpers
 import "ProcHelpers.js" as ProcHelpers
+import "ExternalUrl.js" as ExternalUrl
 
 // Read-only GitHub repository and Inbox feeds, backed by the authenticated
 // gh CLI. Interactive commit/stat reads and background discovery share one
@@ -100,8 +101,9 @@ Singleton {
     }
 
     function open(url) {
-        if (typeof url === "string" && url !== "")
-            Quickshell.execDetached(["xdg-open", url]);
+        const safe = ExternalUrl.safeHttpUrl(url);
+        if (safe !== "")
+            Quickshell.execDetached(["xdg-open", safe]);
     }
 
     function copy(text) {

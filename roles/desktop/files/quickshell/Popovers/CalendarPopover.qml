@@ -18,7 +18,8 @@ Surface {
     readonly property var serviceEvents: Calendar.events
     readonly property bool eventsEnabled: Calendar.enabled
 
-    implicitWidth: Theme.popWideWidth
+    implicitWidth: availableWidth > 0
+        ? Math.min(Theme.popWideWidth, availableWidth) : Theme.popWideWidth
     spacing: 6
 
     function sameDay(left, right) {

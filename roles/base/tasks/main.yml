@@ -6,14 +6,12 @@
       - bash-completion
       - btrfs-progs
       - bolt
-      - docker-compose
       - firewalld
       - fish
       - flatpak
       - fwupd
       - gvfs
       - gvfs-fuse
-      - moby-engine
       - intel-lpmd
       - mokutil
       - NetworkManager
@@ -30,6 +28,42 @@
       - zram-generator-defaults
     state: present
     allowerasing: true
+
+- name: Remove the retired persistent Ansible fact cache
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.cache/xps-ansible-facts"
+    state: absent
+
+- name: Stop and disable Docker socket activation before removing its packages
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  failed_when: false
+  loop:
+    - docker.socket
+    - docker.service
+  when:
+    - not features.docker | bool
+    - not ansible_check_mode
+
+- name: Converge Docker packages
+  ansible.builtin.dnf:
+    name:
+      - docker-compose
+      - moby-engine
+    state: "{{ features.docker | bool | ternary('present', 'absent') }}"
+    allowerasing: true
+  notify: Reload systemd
+
+- name: Enable Docker when requested
+  ansible.builtin.systemd_service:
+    name: docker.service
+    enabled: true
+    state: started
+  when:
+    - features.docker | bool
+    - not ansible_check_mode
 
 - name: Create the local XPS TuneD profile directory
   ansible.builtin.file:
@@ -133,12 +167,21 @@
     - bluetooth.service
     - avahi-daemon.service
     - cups.service
-    - docker.service
     - fstrim.timer
     - fwupd-refresh.timer
     - thermald.service
     - tuned.service
     - tuned-ppd.service
+
+- name: Apply the managed firewalld zone before using it
+  ansible.builtin.meta: flush_handlers
+
+# This also repairs an interrupted first run where the permanent XML reached
+# disk but the earlier play failed before its handler reloaded the daemon.
+- name: Reconcile firewalld's runtime view with permanent configuration
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: false
+  when: not ansible_check_mode
 
 - name: Enable available Panther Lake power service
   ansible.builtin.systemd_service:
@@ -220,26 +263,35 @@
     - not ansible_check_mode
     - base_network_profiles_outside_zone.stdout_lines | length > 0
 
-- name: Keep Tailscale traffic isolated to tailscale0
-  ansible.builtin.command: >-
-    firewall-cmd --permanent --zone={{ firewall_zone }} --add-interface=tailscale0
-  register: base_firewall_tailscale
-  changed_when: "'ALREADY_ENABLED' not in base_firewall_tailscale.stderr"
-  notify: Reload firewalld
-  when: features.tailscale | bool and not ansible_check_mode
-
 - name: Ensure local privilege groups exist
   ansible.builtin.group:
     name: "{{ item }}"
     state: present
-  loop: [wheel, video, input, docker]
+  loop: "{{ ['wheel', 'video', 'input'] + (features.docker | bool | ternary(['docker'], [])) }}"
 
 - name: Configure primary user groups and Fish login shell
   ansible.builtin.user:
     name: "{{ primary_user }}"
-    groups: wheel,video,input,docker
+    groups: "{{ (['wheel', 'video', 'input'] + (features.docker | bool | ternary(['docker'], []))) | join(',') }}"
     append: true
     shell: /usr/bin/fish
+
+- name: Inspect Docker group membership before revoking it
+  ansible.builtin.getent:
+    database: group
+    key: docker
+    fail_key: false
+  register: base_docker_group
+  when: not features.docker | bool
+
+- name: Revoke Docker socket access when Docker is disabled
+  ansible.builtin.command:
+    argv: [gpasswd, --delete, "{{ primary_user }}", docker]
+  changed_when: true
+  when:
+    - not features.docker | bool
+    - ansible_facts.getent_group.docker is defined
+    - primary_user in (ansible_facts.getent_group.docker[2] | default('')).split(',')
 
 - name: Enable user lingering
   ansible.builtin.command: "loginctl enable-linger {{ primary_user }}"
@@ -256,6 +308,12 @@
     content: "%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n"
   when: passwordless_wheel | bool
 
+- name: Revoke passwordless wheel sudo when disabled
+  ansible.builtin.file:
+    path: /etc/sudoers.d/10-wheel-nopasswd
+    state: absent
+  when: not passwordless_wheel | bool
+
 - name: Configure active local wheel Polkit authorization
   ansible.builtin.copy:
     dest: /etc/polkit-1/rules.d/49-wheel-local.rules
@@ -269,6 +327,18 @@
         }
       });
   when: passwordless_local_polkit | bool
+
+- name: Revoke passwordless local Polkit authorization when disabled
+  ansible.builtin.file:
+    path: /etc/polkit-1/rules.d/49-wheel-local.rules
+    state: absent
+  when: not passwordless_local_polkit | bool
+
+- name: Read the root filesystem type
+  ansible.builtin.command: findmnt --noheadings --output FSTYPE --target /
+  register: base_root_filesystem
+  changed_when: false
+  check_mode: false
 
 - name: Install weekly Btrfs scrub unit
   ansible.builtin.copy:
@@ -287,6 +357,7 @@
       IOSchedulingClass=idle
       ExecStart=/usr/bin/btrfs scrub start -B -d /
   notify: Reload systemd
+  when: base_root_filesystem.stdout | trim == 'btrfs'
 
 - name: Install weekly Btrfs scrub timer
   ansible.builtin.copy:
@@ -306,6 +377,7 @@
       [Install]
       WantedBy=timers.target
   notify: Reload systemd
+  when: base_root_filesystem.stdout | trim == 'btrfs'
 
 - name: Enable weekly Btrfs scrub
   ansible.builtin.systemd_service:
@@ -313,6 +385,28 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: base_root_filesystem.stdout | trim == 'btrfs'
+
+- name: Stop and disable the Btrfs scrub timer on other filesystems
+  ansible.builtin.systemd_service:
+    name: xps-btrfs-scrub.timer
+    enabled: false
+    state: stopped
+    daemon_reload: true
+  failed_when: false
+  when:
+    - base_root_filesystem.stdout | trim != 'btrfs'
+    - not ansible_check_mode
+
+- name: Remove Btrfs-only scrub units on other filesystems
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - xps-btrfs-scrub.service
+    - xps-btrfs-scrub.timer
+  notify: Reload systemd
+  when: base_root_filesystem.stdout | trim != 'btrfs'
 
 - name: Disable GNOME automatic idle suspend without changing blank or lock settings
   become: true

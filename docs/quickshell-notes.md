@@ -22,28 +22,52 @@ you need the reasoning behind a particular change; `git log --oneline
   runtime as "X is not a type". `tests/quickshell/qmldir.test.cjs` enforces it.
 - Pure logic goes in a `.js` module in `Common/` with a Node test in
   `tests/quickshell/` — that suite runs in under a second without Qt.
-- `tests/run` is the gate: Node tests plus `tests/qml-lint`. `update` runs it
-  before deploying, and the Ansible role lints the tree before copying it.
+- `tests/run` is the strict thirteen-stage source gate: Node tests, QML static
+  and runtime checks, integration contracts, and the repository's other
+  fixtures. `update --full` runs it before deploying, and the Ansible role
+  lints the tree before copying it. See `./tests/run --list` and
+  [the operations guide](operations.md#the-strict-source-gate).
 
 ## Testing without a GUI
 
+Run `./tests/run` first; it needs no live shell. For a live deployment, keep
+`quickshell.service` as the only `qs` process and use the shared safety harness
+at both boundaries:
+
 ```sh
-# Deploy a throwaway copy without running ansible (this also reloads the shell):
-rsync -a --delete roles/desktop/files/quickshell/ ~/.config/quickshell/
+set -euo pipefail
+source tests/lib/quickshell-live
+cleanup() {
+  rc=$?
+  trap - EXIT INT TERM
+  qs_live_end || rc=1
+  exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-# Watch it load:
-journalctl --user -u quickshell.service -n 50 --no-pager
-
-# Drive popouts and settings:
+qs_live_begin
+./bootstrap --tags quickshell
+qs_live_wait_ipc 20 popouts close >/dev/null
 qs ipc call popouts toggle t3code      # or: audio, control, wifi, notifications, …
 qs ipc call settings open notifications
-
-# Screenshot (-c includes the mouse cursor):
 grim -g "1020,50 400x420" /tmp/shot.png
+qs_live_end
+trap - EXIT INT TERM
 ```
 
-Do not commit while the live config dir holds an unsynced throwaway copy.
-`rsync -a --delete` from the repo is the one-command way back.
+`qs_live_begin` compares the service MainPID with every `pgrep -x qs` result,
+inspects command lines and cgroups, and only terminates a confirmed unmanaged
+`qs -d`/`qs -p` developer process. `qs_live_end` requires the service to be
+active, its MainPID to be the sole `qs`, and the current invocation journal to
+be free of known QML/runtime errors. Never replace this with `pkill qs`.
+
+The Ansible role is the supported deployment path. A test that temporarily
+edits the deployed tree must be trap-protected, restore the exact managed
+manifest (including destination-only file removal), wait for IPC readiness,
+and then call `qs_live_end`; `tests/t3-contract-snapshot` is the working
+example. Do not commit while a throwaway live copy is deployed.
 
 ### Techniques that work here
 
@@ -52,12 +76,13 @@ Do not commit while the live config dir holds an unsynced throwaway copy.
   `journalctl --user -u quickshell.service`. A harness that must report a value
   writes a file:
   `Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", text, path])`.
-- **Offscreen harness**: `qs -p <file.qml>` runs a single file as its own
-  instance. Point `HOME` at a scratch dir holding a *copy* of
-  `~/.local/state/quickshell/shell-settings.json` so the probe cannot write the
-  real one. A root `ShellRoot` + `PanelWindow` gives real focus behaviour, and
-  `activeFocus` resolves without `WlrKeyboardFocus.OnDemand`, so the probe need
-  not steal the keyboard.
+- **Offscreen harness**: prefer the isolated `qmltestrunner` stage in
+  `tests/run`; it points HOME/XDG paths at a scratch directory and cannot write
+  live settings. If a direct source-tree `qs -d`/`qs -p` probe is indispensable,
+  stop `quickshell.service` first and install a trap that terminates the exact
+  developer PID, restores the service, and finishes with the same sole-PID and
+  current-journal checks as `qs_live_end`. Never run the probe beside the
+  managed service.
 - **Triggering internal code paths live**: add a throwaway `IpcHandler` target
   to the *deployed* `shell.qml`. Cheaper than staging the real event, and it
   exercises the shipped code rather than a copy.
@@ -423,7 +448,7 @@ glass and detached panels. What that added, and what it needs:
   overlay surfaces, not menubar chrome, so they follow the general UI face and
   do not track the menu font setting. `typography.test.cjs` enforces the split.
 
-Still open, if anyone wants it: **QML-level tests via `qmltestrunner-qt6`** —
-installed and viable now that the T3 singletons are small enough to test
-against a stub socket. First targets would be the Settings load/merge/save
-cycle and the `T3Connection` state machine.
+Still open: **broader QML component and state-machine coverage**. The mandatory
+`qmltestrunner-qt6` stage now exercises shared JavaScript helpers inside the QML
+runtime; the next targets are the Settings load/merge/save cycle and the
+`T3Connection` process/socket lifecycle against controlled test doubles.

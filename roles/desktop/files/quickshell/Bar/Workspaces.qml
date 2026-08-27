@@ -135,7 +135,7 @@ Rectangle {
             }
 
             Behavior on color {
-                ColorAnimation { duration: 200 }
+                ColorAnimation { duration: Theme.reducedMotion ? 0 : 200 }
             }
         }
 
@@ -186,7 +186,7 @@ Rectangle {
                     color: slot.restingTone
 
                     Behavior on color {
-                        ColorAnimation { duration: 200 }
+                        ColorAnimation { duration: Theme.reducedMotion ? 0 : 200 }
                     }
                 }
 
@@ -218,7 +218,7 @@ Rectangle {
                     z: 3
 
                     Behavior on color {
-                        ColorAnimation { duration: 200 }
+                        ColorAnimation { duration: Theme.reducedMotion ? 0 : 200 }
                     }
                 }
 

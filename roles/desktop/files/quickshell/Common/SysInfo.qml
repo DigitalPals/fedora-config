@@ -14,12 +14,23 @@ Singleton {
     property string host: "linux"
 
     // Shared idle-inhibit state (bar module + control center toggle).
+    // `idleInhibited` remains the persisted user intent for compatibility;
+    // consumers that need the actual process state use the fields beside it.
     readonly property bool idleInhibited: Settings.idleInhibited
+    property bool idleInhibitPending: false
+    property bool idleInhibitEffective: false
+    property string idleInhibitError: ""
+    property string idleInhibitLifecycle: "stopped"
+    property int idleInhibitRetrySecs: 5
 
     // Night light: hyprsunset warms the screen while enabled and restores
     // neutral gamma when the process is killed.
     readonly property bool nightLight: Settings.nightLight
     property string nightLightLifecycle: "stopped"
+    property bool nightLightPending: false
+    property bool nightLightEffective: false
+    property string nightLightError: ""
+    property int nightLightRetrySecs: 5
     property string tempPath: ""
     property var cpuPrev: null
 
@@ -27,41 +38,132 @@ Singleton {
     // alive while the toggle is enabled because the Wayland inhibitor tied to
     // the bar layer surface is not consistently observed by Hypridle.
     Process {
+        id: idleInhibitProc
+
+        property bool exitSeen: false
+        property int lastExit: -1
+        property bool expectedStop: false
+
         command: ["systemd-inhibit", "--what=idle", "--who=Quickshell",
             "--why=Idle inhibit enabled from the menubar", "--mode=block",
             "sleep", "infinity"]
-        running: root.idleInhibited
+
+        onExited: exitCode => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = -1;
+                idleInhibitConfirm.restart();
+                return;
+            }
+            idleInhibitConfirm.stop();
+            root.idleInhibitEffective = false;
+            if (expectedStop || !root.idleInhibited) {
+                expectedStop = false;
+                root.idleInhibitPending = false;
+                root.idleInhibitLifecycle = "stopped";
+                return;
+            }
+            root.idleInhibitPending = false;
+            root.idleInhibitLifecycle = "error";
+            root.idleInhibitError = exitSeen && lastExit >= 0
+                ? "Idle inhibitor exited with status " + lastExit
+                : "Idle inhibitor could not be started";
+            idleInhibitRetry.interval = root.idleInhibitRetrySecs * 1000;
+            root.idleInhibitRetrySecs = Math.min(root.idleInhibitRetrySecs * 2, 60);
+            idleInhibitRetry.restart();
+        }
     }
 
     Process {
         id: sunsetProc
+        property bool exitSeen: false
+        property int lastExit: -1
         command: ["hyprsunset", "--temperature", String(Settings.warmth)]
         running: false
 
-        onExited: {
+        onExited: exitCode => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = -1;
+                nightLightConfirm.restart();
+                return;
+            }
+            nightLightConfirm.stop();
+            root.nightLightEffective = false;
             if (root.nightLightLifecycle === "restarting" && root.nightLight) {
                 root.nightLightLifecycle = "starting";
                 sunsetProc.command = ["hyprsunset", "--temperature", String(Settings.warmth)];
                 sunsetProc.running = true;
-                root.nightLightLifecycle = "running";
-            } else {
+            } else if (root.nightLightLifecycle === "stopping" || !root.nightLight) {
                 root.nightLightLifecycle = "stopped";
+                root.nightLightPending = false;
+            } else {
+                root.nightLightLifecycle = "error";
+                root.nightLightPending = false;
+                root.nightLightError = exitSeen && lastExit >= 0
+                    ? "Night light exited with status " + lastExit
+                    : "Night light could not be started";
+                nightLightRetry.interval = root.nightLightRetrySecs * 1000;
+                root.nightLightRetrySecs = Math.min(root.nightLightRetrySecs * 2, 60);
+                nightLightRetry.restart();
+            }
+        }
+    }
+
+    function syncIdleInhibit() {
+        idleInhibitRetry.stop();
+        if (idleInhibited) {
+            if (idleInhibitProc.running)
+                return;
+            idleInhibitProc.expectedStop = false;
+            idleInhibitPending = true;
+            idleInhibitLifecycle = "starting";
+            idleInhibitError = "";
+            idleInhibitProc.running = true;
+        } else {
+            idleInhibitError = "";
+            idleInhibitRetrySecs = 5;
+            idleInhibitPending = idleInhibitProc.running;
+            idleInhibitLifecycle = idleInhibitProc.running ? "stopping" : "stopped";
+            if (idleInhibitProc.running) {
+                idleInhibitProc.expectedStop = true;
+                idleInhibitProc.running = false;
+            } else {
+                idleInhibitEffective = false;
+                idleInhibitPending = false;
             }
         }
     }
 
     function syncNightLight() {
+        nightLightRetry.stop();
         if (nightLight) {
             if (sunsetProc.running)
                 return;
+            nightLightPending = true;
+            nightLightError = "";
             nightLightLifecycle = "starting";
             sunsetProc.command = ["hyprsunset", "--temperature", String(Settings.warmth)];
             sunsetProc.running = true;
-            nightLightLifecycle = "running";
         } else if (sunsetProc.running) {
+            nightLightPending = true;
+            nightLightError = "";
+            nightLightRetrySecs = 5;
             nightLightLifecycle = "stopping";
             sunsetProc.running = false;
         } else {
+            nightLightPending = false;
+            nightLightEffective = false;
+            nightLightError = "";
+            nightLightRetrySecs = 5;
             nightLightLifecycle = "stopped";
         }
     }
@@ -83,6 +185,51 @@ Singleton {
     }
 
     onNightLightChanged: syncNightLight()
+    onIdleInhibitedChanged: syncIdleInhibit()
+
+    Timer {
+        id: idleInhibitConfirm
+        interval: 300
+        onTriggered: {
+            if (!idleInhibitProc.running || !root.idleInhibited)
+                return;
+            root.idleInhibitEffective = true;
+            root.idleInhibitPending = false;
+            root.idleInhibitError = "";
+            root.idleInhibitLifecycle = "running";
+            root.idleInhibitRetrySecs = 5;
+        }
+    }
+
+    Timer {
+        id: idleInhibitRetry
+        onTriggered: {
+            if (root.idleInhibited)
+                root.syncIdleInhibit();
+        }
+    }
+
+    Timer {
+        id: nightLightConfirm
+        interval: 300
+        onTriggered: {
+            if (!sunsetProc.running || !root.nightLight)
+                return;
+            root.nightLightEffective = true;
+            root.nightLightPending = false;
+            root.nightLightError = "";
+            root.nightLightLifecycle = "running";
+            root.nightLightRetrySecs = 5;
+        }
+    }
+
+    Timer {
+        id: nightLightRetry
+        onTriggered: {
+            if (root.nightLight)
+                root.syncNightLight();
+        }
+    }
 
     // Command changes are inert on a running process, so a warmth change
     // restarts it — debounced so a slider drag doesn't churn processes.
@@ -91,6 +238,8 @@ Singleton {
         interval: 300
         onTriggered: {
             if (root.nightLight && sunsetProc.running) {
+                nightLightRetry.stop();
+                root.nightLightPending = true;
                 root.nightLightLifecycle = "restarting";
                 sunsetProc.running = false;
             } else if (root.nightLight)
@@ -104,6 +253,11 @@ Singleton {
         function onWarmthChanged() {
             warmthRestart.restart();
         }
+    }
+
+    Component.onCompleted: {
+        syncIdleInhibit();
+        syncNightLight();
     }
 
     Process {
@@ -318,5 +472,4 @@ Singleton {
         onTriggered: root.refreshBrightness()
     }
 
-    Component.onCompleted: syncNightLight()
 }

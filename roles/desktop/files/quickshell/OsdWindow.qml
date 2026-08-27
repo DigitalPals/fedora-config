@@ -60,7 +60,7 @@ PanelWindow {
 
     Behavior on shown {
         NumberAnimation {
-            duration: 140
+            duration: Theme.reducedMotion ? 0 : 140
             easing.type: Easing.OutCubic
         }
     }

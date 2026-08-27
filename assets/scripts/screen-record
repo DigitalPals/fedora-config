@@ -6,6 +6,7 @@ set -euo pipefail
 OUTPUT_DIR="$HOME/Videos/Screen Recordings"
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/screen-record"
 PID_FILE="$STATE_DIR/wf-recorder.pid"
+START_TICKS_STATE="$STATE_DIR/wf-recorder.start-ticks"
 OUTPUT_FILE_STATE="$STATE_DIR/output-file"
 # Epoch seconds the current recording began. The menubar's recording chip
 # reads it so its elapsed clock survives a shell reload mid-recording.
@@ -13,6 +14,15 @@ STARTED_AT_STATE="$STATE_DIR/started-at"
 LOG_FILE="$STATE_DIR/wf-recorder.log"
 
 mkdir -p "$OUTPUT_DIR" "$STATE_DIR"
+chmod 0700 "$STATE_DIR"
+
+# Starting, stopping, and publishing recorder state are one transaction. A
+# second keypress while slurp is open cannot start another selector or clear a
+# recorder that the first invocation is still publishing.
+exec 9>"$STATE_DIR/action.lock"
+if ! flock -n 9; then
+  exit 0
+fi
 
 notify() {
   if command -v notify-send >/dev/null 2>&1; then
@@ -24,6 +34,24 @@ process_name() {
   ps -p "$1" -o comm= 2>/dev/null | tr -d '[:space:]'
 }
 
+process_start_ticks() {
+  # /proc/PID/stat field 22 is stable for a process lifetime and protects the
+  # state file from PID reuse. `comm` alone can match an unrelated recorder.
+  awk '{ print $22 }' "/proc/$1/stat" 2>/dev/null
+}
+
+clear_state() {
+  rm -f -- "$PID_FILE" "$START_TICKS_STATE" "$OUTPUT_FILE_STATE" \
+    "$STARTED_AT_STATE"
+}
+
+publish_state() {
+  local destination=$1 value=$2 temporary
+  temporary="$destination.tmp.$$"
+  printf '%s\n' "$value" >"$temporary"
+  mv -f -- "$temporary" "$destination"
+}
+
 stop_recording() {
   if [ ! -f "$PID_FILE" ]; then
     return 1
@@ -32,8 +60,19 @@ stop_recording() {
   local pid
   pid="$(cat "$PID_FILE" 2>/dev/null || true)"
 
-  if ! [[ "$pid" =~ ^[0-9]+$ ]] || [ "$(process_name "$pid")" != "wf-recorder" ]; then
-    rm -f "$PID_FILE" "$OUTPUT_FILE_STATE" "$STARTED_AT_STATE"
+  if ! [[ "$pid" =~ ^[0-9]+$ ]]; then
+    clear_state
+    return 1
+  fi
+
+  local expected_ticks actual_ticks
+  expected_ticks="$(cat "$START_TICKS_STATE" 2>/dev/null || true)"
+  actual_ticks="$(process_start_ticks "$pid" 2>/dev/null || true)"
+
+  if ! [[ "$expected_ticks" =~ ^[0-9]+$ ]] \
+      || [ "$(process_name "$pid")" != "wf-recorder" ] \
+      || [ "$actual_ticks" != "$expected_ticks" ]; then
+    clear_state
     return 1
   fi
 
@@ -49,14 +88,19 @@ stop_recording() {
     sleep 0.1
   done
 
+  if kill -0 "$pid" 2>/dev/null; then
+    notify "Screen Recording" "Recorder did not stop; recording state was retained"
+    return 2
+  fi
+
   if [ -n "$output_file" ]; then
     notify "Screen Recording" "Saved to $output_file"
   else
     notify "Screen Recording" "Stopped recording"
   fi
 
-  rm -f "$PID_FILE" "$OUTPUT_FILE_STATE" "$STARTED_AT_STATE"
-  exit 0
+  clear_state
+  return 0
 }
 
 normalize_geometry() {
@@ -82,23 +126,38 @@ normalize_geometry() {
   printf '%s\n' "$geometry"
 }
 
-stop_recording || true
-
-# Cancel any existing slurp.
-pkill slurp && exit 0
+if stop_recording; then
+  exit 0
+else
+  stop_status=$?
+  ((stop_status == 2)) && exit 1
+fi
 
 cleanup() {
+  if [ -n "${selection_file:-}" ]; then
+    rm -f -- "$selection_file"
+  fi
+  if [ -n "${SLURP_PID:-}" ]; then
+    kill "$SLURP_PID" 2>/dev/null || true
+    wait "$SLURP_PID" 2>/dev/null || true
+  fi
   if [ -n "${FREEZE_PID:-}" ]; then
     kill "$FREEZE_PID" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
 
-wayfreeze &
+wayfreeze 9>&- &
 FREEZE_PID=$!
 sleep 0.1
 
-SELECTION="$(slurp 2>/dev/null || true)"
+selection_file="$(mktemp "$STATE_DIR/selection.XXXXXX")"
+slurp >"$selection_file" 2>/dev/null 9>&- &
+SLURP_PID=$!
+wait "$SLURP_PID" || true
+unset SLURP_PID
+SELECTION="$(cat "$selection_file")"
+rm -f -- "$selection_file"
 [ -z "$SELECTION" ] && exit 0
 
 SELECTION="$(normalize_geometry "$SELECTION")"
@@ -106,24 +165,32 @@ SELECTION="$(normalize_geometry "$SELECTION")"
 kill "$FREEZE_PID" 2>/dev/null || true
 unset FREEZE_PID
 
-TS="$(date +'%Y-%m-%d_%H-%M-%S')"
+TS="$(date +'%Y-%m-%d_%H-%M-%S-%N')"
 OUTPUT_FILE="$OUTPUT_DIR/screen-recording-${TS}.mp4"
 
-wf-recorder -g "$SELECTION" -f "$OUTPUT_FILE" >"$LOG_FILE" 2>&1 &
+wf-recorder -g "$SELECTION" -f "$OUTPUT_FILE" >"$LOG_FILE" 2>&1 9>&- &
 RECORD_PID=$!
 
 sleep 0.2
 
 if ! kill -0 "$RECORD_PID" 2>/dev/null; then
-  rm -f "$PID_FILE" "$OUTPUT_FILE_STATE" "$STARTED_AT_STATE"
+  clear_state
   notify "Screen Recording" "Failed to start recording"
   exit 1
 fi
 
-printf '%s\n' "$OUTPUT_FILE" > "$OUTPUT_FILE_STATE"
-date +%s > "$STARTED_AT_STATE"
+record_start_ticks="$(process_start_ticks "$RECORD_PID")"
+[[ "$record_start_ticks" =~ ^[0-9]+$ ]] || {
+  kill -INT "$RECORD_PID" 2>/dev/null || true
+  notify "Screen Recording" "Could not verify the recorder process"
+  exit 1
+}
+
+publish_state "$OUTPUT_FILE_STATE" "$OUTPUT_FILE"
+publish_state "$STARTED_AT_STATE" "$(date +%s)"
+publish_state "$START_TICKS_STATE" "$record_start_ticks"
 # The PID is the ready marker watched by the shell. Publish it last so a
 # newly active recording can never be observed without its output and clock.
-printf '%s\n' "$RECORD_PID" > "$PID_FILE"
+publish_state "$PID_FILE" "$RECORD_PID"
 
 notify "Screen Recording" "Recording selected area. Press Super+Shift+~ to stop."

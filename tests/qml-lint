@@ -24,8 +24,8 @@ shell_dir="$repo_root/roles/desktop/files/quickshell"
 # Fedora installs the binary as qmllint-qt6.
 qmllint=$(command -v qmllint-qt6 || command -v qmllint || true)
 if [[ -z $qmllint ]]; then
-  printf 'SKIP  qmllint not installed (dnf install qt6-qtdeclarative-devel)\n' >&2
-  exit 0
+  printf '\033[31mFAIL\033[0m  qmllint not installed (dnf install qt6-qtdeclarative-devel)\n' >&2
+  exit 1
 fi
 
 # Ask Qt where its QML modules live rather than hardcoding a lib64 path.

@@ -76,11 +76,17 @@ Singleton {
     property bool firstRun: false
     property bool savePending: false
     property bool saveError: false
+    property bool loadError: false
+    property string loadErrorText: ""
+    readonly property bool persistenceError: loadError || saveError
     property double lastSavedAt: 0
     property var resetSnapshot: null
     property string resetLabel: ""
     property string announcement: ""
     property bool migrationPending: false
+    property bool writeInFlight: false
+    property string writeSnapshot: ""
+    property bool initialLoadHandled: false
     // Blocks every save while an unreadable settings file is being moved
     // aside, and stays set if that move fails — overwriting it then would
     // destroy the only copy of the user's settings.
@@ -264,6 +270,11 @@ Singleton {
     }
 
     function retrySave() {
+        if (loadError) {
+            announcement = "Retrying the settings file…";
+            store.reload();
+            return;
+        }
         savePending = true;
         saveNow();
     }
@@ -333,6 +344,9 @@ Singleton {
     }
 
     function applyLoaded(rawText) {
+        initialLoadHandled = true;
+        loadError = false;
+        loadErrorText = "";
         const result = SettingsHelpers.parse(rawText);
         // Before the no-op check below: a corrupt file whose defaults happen to
         // match the running state would otherwise slip through unprotected.
@@ -342,8 +356,10 @@ Singleton {
         const merged = SettingsHelpers.merge(parsed);
         // Skip echoes of our own atomic writes (watchChanges reports them)
         // and external edits that merge back to the current state.
-        if (loaded && SettingsHelpers.serialize(merged) === SettingsHelpers.serialize(snapshot()))
+        if (loaded && SettingsHelpers.serialize(merged) === SettingsHelpers.serialize(snapshot())) {
+            ready = true;
             return;
+        }
         ready = false;
         saveTimer.stop();
         savePending = false;
@@ -362,27 +378,72 @@ Singleton {
         applyGlassEffect();
     }
 
-    function saveNow() {
-        if (!ready || corruptBackupPending)
+    function handleLoadFailure(error) {
+        initialLoadHandled = true;
+        if (error === FileViewError.FileNotFound) {
+            loadError = false;
+            loadErrorText = "";
+            applyLoaded("");
             return;
-        const retrying = saveError;
+        }
+
+        // Keep the last known-good in-memory values, and close every write
+        // path. Treating permission/IO failures as an empty first run would
+        // make the next setting change replace a file we never read.
+        ready = false;
+        loadError = true;
+        loadErrorText = "Could not read " + filePath + " ("
+            + FileViewError.toString(error) + ").";
+        saveTimer.stop();
+        savePending = false;
+        announcement = loadErrorText + " Settings will not be saved until it can be read.";
+        console.warn("settings load failed:", FileViewError.toString(error));
+    }
+
+    function handleSaveSucceeded() {
+        const completedSnapshot = writeSnapshot;
+        const wasRetry = saveError;
+        writeInFlight = false;
+        writeSnapshot = "";
         saveError = false;
+        lastSavedAt = Date.now();
+        const changedWhileSaving = SettingsHelpers.serialize(snapshot())
+            !== completedSnapshot;
+        savePending = changedWhileSaving;
+        if (wasRetry)
+            announcement = "Settings saved.";
+        if (changedWhileSaving)
+            saveTimer.restart();
+    }
+
+    function handleSaveFailure(error) {
+        writeInFlight = false;
+        writeSnapshot = "";
+        savePending = false;
+        saveError = true;
+        announcement = "Could not save settings. Retry is available.";
+        console.warn("settings save failed:", FileViewError.toString(error));
+    }
+
+    function saveNow() {
+        if (!ready || migrationPending || corruptBackupPending || loadError
+                || writeInFlight)
+            return;
+        writeSnapshot = SettingsHelpers.serialize(snapshot());
+        writeInFlight = true;
         try {
-            store.setText(SettingsHelpers.serialize(snapshot()));
-            savePending = false;
-            lastSavedAt = Date.now();
-            if (retrying)
-                announcement = "Settings saved.";
+            // FileView reports completion through saved/saveFailed even when
+            // blockWrites is enabled. Do not advertise success before that
+            // signal; a failed atomic rename is still a failed save.
+            store.setText(writeSnapshot);
         } catch (error) {
-            savePending = false;
-            saveError = true;
-            announcement = "Could not save settings. Retry is available.";
-            console.warn("settings save failed:", error);
+            handleSaveFailure(FileViewError.Unknown);
+            console.warn("settings save threw:", error);
         }
     }
 
     function scheduleSave() {
-        if (!ready || migrationPending || corruptBackupPending)
+        if (!ready || migrationPending || corruptBackupPending || loadError)
             return;
         savePending = true;
         saveTimer.restart();
@@ -558,7 +619,9 @@ Singleton {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: root.applyLoaded(text())
-        onLoadFailed: root.applyLoaded("")
+        onLoadFailed: error => root.handleLoadFailure(error)
+        onSaved: root.handleSaveSucceeded()
+        onSaveFailed: error => root.handleSaveFailure(error)
     }
 
     Connections {
@@ -572,7 +635,13 @@ Singleton {
     // Force the load to complete during singleton construction so the first
     // Theme/Bar bindings never see one frame of defaults.
     Component.onCompleted: {
-        if (!loaded)
-            applyLoaded(store.text());
+        if (!loaded && !initialLoadHandled) {
+            const initialText = store.text();
+            // A blocking read emits loaded/loadFailed before returning. The
+            // fallback only covers an already-preloaded FileView that emitted
+            // its signal before this singleton's completion handler ran.
+            if (!initialLoadHandled && store.loaded)
+                applyLoaded(initialText);
+        }
     }
 }

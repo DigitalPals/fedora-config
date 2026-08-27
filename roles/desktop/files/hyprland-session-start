@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Hyprland learns its Wayland socket after the user manager has already
+# started. Publish the complete session environment before allowing any unit
+# in hyprland-session.target to start; otherwise early services can inherit a
+# half-updated environment and then remain broken for the whole login.
+required_environment=(
+  WAYLAND_DISPLAY
+  XDG_CURRENT_DESKTOP
+  HYPRLAND_INSTANCE_SIGNATURE
+)
+for variable in "${required_environment[@]}"; do
+  if [[ -z ${!variable:-} ]]; then
+    printf 'hyprland-session: %s is not set yet\n' "$variable" >&2
+    exit 75
+  fi
+done
+
+runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+mkdir -p "$runtime_dir/fedora-config"
+exec 9>"$runtime_dir/fedora-config/hyprland-session.lock"
+flock 9
+
+systemctl --user import-environment "${required_environment[@]}"
+dbus-update-activation-environment --systemd "${required_environment[@]}"
+systemctl --user start hyprland-session.target
+
+# The portal needs both the imported environment and a live Hyprland socket.
+# Keep this ordered after the target start, while retaining the short grace
+# period that avoids racing Hyprland's socket initialization.
+sleep 1
+systemctl --user restart \
+  xdg-desktop-portal-hyprland.service xdg-desktop-portal.service

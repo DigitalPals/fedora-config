@@ -44,6 +44,9 @@ Rectangle {
     property bool expandTextOnHover: false
     property bool allowTextExpansion: false
     property bool textExpandedByUser: false
+    // Notification history participates in keyboard traversal; toast windows
+    // deliberately do not request keyboard focus.
+    property bool keyboardEnabled: false
 
     signal activated
     signal closeRequested
@@ -65,9 +68,43 @@ Rectangle {
     readonly property real contentHeight: cardContent.implicitHeight + card.padV * 2
 
     height: contentHeight
+    activeFocusOnTab: keyboardEnabled && actionable
+    Accessible.role: actionable ? Accessible.Button : Accessible.StaticText
+    Accessible.name: (entry.displayAppName || "Notification")
+        + (entry.displaySummary ? ": " + entry.displaySummary : "")
+    Accessible.description: entry.displayBody || ""
+    Accessible.onPressAction: {
+        if (card.actionable)
+            card.activated();
+    }
+
+    Keys.onPressed: event => {
+        if (card.actionable && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space)) {
+            card.activated();
+            event.accepted = true;
+        } else if (card.keyboardEnabled && event.key === Qt.Key_Delete) {
+            card.closeRequested();
+            event.accepted = true;
+        } else if (card.keyboardEnabled
+                && (event.key === Qt.Key_Right || event.key === Qt.Key_Down)) {
+            card.moveFocus(card, true);
+            event.accepted = true;
+        } else if (card.keyboardEnabled
+                && (event.key === Qt.Key_Left || event.key === Qt.Key_Up)) {
+            card.moveFocus(card, false);
+            event.accepted = true;
+        }
+    }
 
     function toggleTextExpansion() {
         textExpandedByUser = !textExpandedByUser;
+    }
+
+    function moveFocus(item, forward) {
+        const next = item.nextItemInFocusChain(forward);
+        if (next)
+            next.forceActiveFocus();
     }
 
     onEntryChanged: textExpandedByUser = false
@@ -80,7 +117,19 @@ Rectangle {
         anchors.fill: parent
         enabled: card.actionable
         cursorShape: Qt.PointingHandCursor
-        onClicked: card.activated()
+        onClicked: {
+            if (card.keyboardEnabled)
+                card.forceActiveFocus();
+            card.activated();
+        }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        radius: card.radius
+        color: "transparent"
+        border.width: card.activeFocus ? 2 : 0
+        border.color: Theme.accent
     }
 
     Row {
@@ -178,7 +227,7 @@ Rectangle {
                         anchors.horizontalCenter: card.style.stampCentred
                             ? parent.horizontalCenter : undefined
                         anchors.verticalCenter: parent.verticalCenter
-                        opacity: card.hovered ? 0 : 1
+                        opacity: card.hovered || closeButton.activeFocus ? 0 : 1
                         text: Notifs.timeAgo(card.entry.arrived, card.nowMs)
                         font.family: card.style.stampFace
                         font.pixelSize: card.style.stampSize
@@ -195,6 +244,7 @@ Rectangle {
                     }
 
                     Rectangle {
+                        id: closeButton
                         anchors.right: card.style.stampCentred ? undefined : parent.right
                         anchors.rightMargin: card.showTextDisclosure
                             && !card.style.stampCentred ? textDisclosure.width : 0
@@ -204,9 +254,31 @@ Rectangle {
                         width: card.style.trailingHeight + 4
                         height: width
                         radius: width / 2
-                        opacity: card.hovered ? 1 : 0
-                        color: closeMouse.containsMouse
+                        opacity: card.hovered || activeFocus ? 1 : 0
+                        color: closeMouse.containsMouse || activeFocus
                             ? Theme.hoverFillStrong : "transparent"
+                        activeFocusOnTab: card.keyboardEnabled
+                        border.width: activeFocus ? 1 : 0
+                        border.color: Theme.accent
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Dismiss notification from "
+                            + (card.entry.displayAppName || "this app")
+                        Accessible.onPressAction: card.closeRequested()
+
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Space
+                                    || event.key === Qt.Key_Delete) {
+                                card.closeRequested();
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                                card.moveFocus(closeButton, true);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                                card.moveFocus(closeButton, false);
+                                event.accepted = true;
+                            }
+                        }
 
                         Sym {
                             anchors.centerIn: parent
@@ -219,10 +291,13 @@ Rectangle {
                         MouseArea {
                             id: closeMouse
                             anchors.fill: parent
-                            enabled: card.hovered
+                            enabled: card.hovered || closeButton.activeFocus
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: card.closeRequested()
+                            onClicked: {
+                                closeButton.forceActiveFocus();
+                                card.closeRequested();
+                            }
                         }
 
                         Behavior on opacity {
@@ -244,7 +319,7 @@ Rectangle {
                         radius: width / 2
                         color: disclosureMouse.containsMouse || activeFocus
                             ? Theme.hoverFillStrong : "transparent"
-                        activeFocusOnTab: visible
+                        activeFocusOnTab: visible && card.keyboardEnabled
                         border.width: activeFocus ? 1 : 0
                         border.color: Theme.accent
 
@@ -258,6 +333,12 @@ Rectangle {
                             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                                     || event.key === Qt.Key_Space) {
                                 card.toggleTextExpansion();
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                                card.moveFocus(textDisclosure, true);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                                card.moveFocus(textDisclosure, false);
                                 event.accepted = true;
                             }
                         }
@@ -316,8 +397,12 @@ Rectangle {
             }
 
             NotifActions {
+                id: notificationActions
                 entry: card.entry
-                reveal: card.hovered && card.groupCount === 1
+                reveal: card.groupCount === 1 && (card.hovered || card.activeFocus
+                    || closeButton.activeFocus || textDisclosure.activeFocus
+                    || notificationActions.hasFocusedAction)
+                keyboardEnabled: card.keyboardEnabled
                 face: card.style.face
                 pixelSize: card.style.pill
             }

@@ -322,9 +322,16 @@ def make_upload_file() -> str:
     stream = tempfile.NamedTemporaryFile(prefix="quickshell-speedtest-", delete=False)
     try:
         stream.truncate(size)
-        return stream.name
-    finally:
+    except BaseException:
+        path = stream.name
         stream.close()
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        raise
+    stream.close()
+    return stream.name
 
 
 def run_test(interface: str) -> None:

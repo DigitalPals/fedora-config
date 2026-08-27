@@ -11,8 +11,11 @@ Revealer {
     required property var entry
     property string face: Theme.fontMenu
     property int pixelSize: Theme.fontCaption
+    property bool keyboardEnabled: false
 
     property var items: []
+    property int focusedActions: 0
+    readonly property bool hasFocusedAction: focusedActions > 0
 
     orientation: Qt.Vertical
 
@@ -51,8 +54,35 @@ Revealer {
                 width: Math.min(pillText.implicitWidth + 20, 160)
                 radius: 7
                 color: primary
-                    ? (pillMouse.containsMouse ? Theme.accentBg : Theme.accentBgSoft)
-                    : (pillMouse.containsMouse ? Theme.hoverFillStrong : Theme.hoverFill)
+                    ? (pillMouse.containsMouse || activeFocus ? Theme.accentBg : Theme.accentBgSoft)
+                    : (pillMouse.containsMouse || activeFocus ? Theme.hoverFillStrong : Theme.hoverFill)
+                activeFocusOnTab: root.keyboardEnabled && root.reveal
+                border.width: activeFocus ? 1 : 0
+                border.color: Theme.accent
+                Accessible.role: Accessible.Button
+                Accessible.name: pill.modelData.text
+                Accessible.onPressAction: Notifs.invoke(root.entry, pill.modelData)
+
+                onActiveFocusChanged: root.focusedActions = Math.max(0,
+                    root.focusedActions + (activeFocus ? 1 : -1))
+
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                            || event.key === Qt.Key_Space) {
+                        Notifs.invoke(root.entry, pill.modelData);
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                        const next = pill.nextItemInFocusChain(true);
+                        if (next)
+                            next.forceActiveFocus();
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                        const previous = pill.nextItemInFocusChain(false);
+                        if (previous)
+                            previous.forceActiveFocus();
+                        event.accepted = true;
+                    }
+                }
 
                 Text {
                     id: pillText
@@ -72,7 +102,10 @@ Revealer {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Notifs.invoke(root.entry, pill.modelData)
+                    onClicked: {
+                        pill.forceActiveFocus();
+                        Notifs.invoke(root.entry, pill.modelData);
+                    }
                 }
             }
         }

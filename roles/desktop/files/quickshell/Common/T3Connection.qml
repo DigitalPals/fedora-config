@@ -40,6 +40,14 @@ Singleton {
     readonly property bool paired: host !== "" && accessToken !== ""
     readonly property bool cloudLoginRunning: cloudLoginProc.running
     property string cloudLoginError: ""
+    // Every credential replacement/removal invalidates all asynchronous work
+    // created by the preceding session.
+    property int sessionEpoch: 0
+    property string credentialFingerprint: ""
+    property var ticketRequest: null
+    property var descriptorRequest: null
+    property string pendingSocketUrl: ""
+    property int pendingSocketEpoch: -1
 
     property string environmentLabel: ""
     property string environmentId: ""
@@ -79,7 +87,64 @@ Singleton {
         cloudLoginError = "";
         connectionError = "";
         cloudLoginProc.attempted = true;
+        cloudLoginProc.attemptEpoch = sessionEpoch;
         cloudLoginProc.running = true;
+    }
+
+    function fingerprint(data) {
+        return JSON.stringify([
+            data.httpBaseUrl ?? "", data.wsBaseUrl ?? "",
+            data.accessToken ?? "", data.authMode ?? "",
+            data.tokenType || "Bearer", data.cloudStatus || "signed-out"
+        ]);
+    }
+
+    function resetTransport() {
+        const shouldDrop = state === "connected" || state === "connecting";
+        sessionEpoch++;
+        retryTimer.stop();
+        ticketTimeout.stop();
+        cloudTicketTimeout.stop();
+        socketConnectTimeout.stop();
+        descriptorTimeout.stop();
+        if (ticketRequest) {
+            ticketRequest.abort();
+            ticketRequest = null;
+        }
+        if (descriptorRequest) {
+            descriptorRequest.abort();
+            descriptorRequest = null;
+        }
+        cloudTicketProc.reconnectEpoch = -1;
+        cloudTicketProc.timedOutEpoch = -1;
+        if (cloudTicketProc.running)
+            cloudTicketProc.running = false;
+        state = "offline";
+        pendingSocketUrl = "";
+        pendingSocketEpoch = -1;
+        // Destroy the wrapper, not merely its underlying WebSocket. A late
+        // signal from the old C++ socket would otherwise be delivered through
+        // the same QML object after its epoch property had been overwritten.
+        socketLoader.active = false;
+        if (shouldDrop)
+            dropped();
+        retrySecs = 5;
+        environmentLabel = "";
+        environmentId = "";
+        serverVersion = "";
+        environmentCapabilities = ({});
+    }
+
+    function clearCredential() {
+        host = "";
+        wsBaseUrl = "";
+        accessToken = "";
+        authMode = "";
+        tokenType = "Bearer";
+        cloudStatus = "signed-out";
+        cloudIdentity = "";
+        scopeMetadataKnown = false;
+        tokenScope = "";
     }
 
     // ---- state file ------------------------------------------------------
@@ -93,6 +158,11 @@ Singleton {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: {
+            const nextFingerprint = root.fingerprint(stateData);
+            if (nextFingerprint !== root.credentialFingerprint) {
+                root.resetTransport();
+                root.credentialFingerprint = nextFingerprint;
+            }
             root.host = (stateData.httpBaseUrl ?? "").replace(/\/+$/, "");
             root.wsBaseUrl = stateData.wsBaseUrl ?? "";
             root.accessToken = stateData.accessToken ?? "";
@@ -107,22 +177,38 @@ Singleton {
             root.scopeMetadataKnown = typeof stateData.scope === "string"
                 || Array.isArray(stateData.scope);
             root.tokenScope = root.scopeMetadataKnown ? stateData.scope : "";
+            if (!socketLoader.active)
+                socketLoader.active = true;
             if (root.paired) {
-                if (root.state !== "connected" && !cloudTicketProc.running)
-                    root.connect();
+                if (root.state !== "connected") {
+                    if (cloudTicketProc.running
+                            && cloudTicketProc.attemptEpoch !== root.sessionEpoch) {
+                        // The old DPoP helper must finish before its Process can
+                        // be reused. Remember only the newest generation; its
+                        // stale exit consumes this slot exactly once.
+                        cloudTicketProc.reconnectEpoch = root.sessionEpoch;
+                        root.state = "offline";
+                    } else if (!cloudTicketProc.running) {
+                        root.connect();
+                    }
+                }
             } else {
                 root.state = root.stateWithoutCredential();
             }
         }
-        onLoadFailed: {
-            root.host = "";
-            root.wsBaseUrl = "";
-            root.accessToken = "";
-            root.authMode = "";
-            root.tokenType = "Bearer";
-            root.cloudStatus = "signed-out";
-            root.cloudIdentity = "";
-            root.state = "signed-out";
+        onLoadFailed: error => {
+            root.resetTransport();
+            root.credentialFingerprint = "";
+            root.clearCredential();
+            if (cloudLoginProc.running)
+                cloudLoginProc.running = false;
+            if (error === FileViewError.FileNotFound) {
+                root.connectionError = "";
+                root.state = "signed-out";
+            } else {
+                root.connectionError = "Could not read the T3 credential file";
+                root.state = "offline";
+            }
         }
 
         JsonAdapter {
@@ -144,6 +230,7 @@ Singleton {
         id: cloudLoginProc
 
         property bool attempted: false
+        property int attemptEpoch: -1
         property bool exitSeen: false
         property int lastExit: 0
         property string errText: ""
@@ -167,6 +254,8 @@ Singleton {
             if (!cloudLoginProc.attempted)
                 return;
             cloudLoginProc.attempted = false;
+            if (cloudLoginProc.attemptEpoch !== root.sessionEpoch)
+                return;
             if (cloudLoginProc.exitSeen && cloudLoginProc.lastExit === 0) {
                 root.cloudLoginError = "";
                 stateFile.reload();
@@ -181,10 +270,16 @@ Singleton {
         id: cloudTicketProc
 
         property bool attempted: false
+        property int attemptEpoch: -1
         property bool exitSeen: false
         property int lastExit: 0
         property string outText: ""
         property string errText: ""
+        // A credential refresh can arrive while the preceding helper is still
+        // terminating. Process instances cannot run two commands at once, so
+        // this single epoch slot hands the newest attempt off after shutdown.
+        property int reconnectEpoch: -1
+        property int timedOutEpoch: -1
 
         command: ["node", Quickshell.shellDir + "/scripts/t3-cloud.mjs", "ticket"]
         stdout: StdioCollector {
@@ -203,17 +298,35 @@ Singleton {
                 cloudTicketProc.errText = "";
                 cloudTicketProc.exitSeen = false;
                 cloudTicketProc.lastExit = 0;
+                cloudTicketTimeout.epoch = cloudTicketProc.attemptEpoch;
+                cloudTicketTimeout.restart();
                 return;
             }
+            cloudTicketTimeout.stop();
             if (!cloudTicketProc.attempted)
                 return;
+            const attemptEpoch = cloudTicketProc.attemptEpoch;
             cloudTicketProc.attempted = false;
+            if (attemptEpoch !== root.sessionEpoch) {
+                const reconnectEpoch = cloudTicketProc.reconnectEpoch;
+                cloudTicketProc.reconnectEpoch = -1;
+                if (reconnectEpoch === root.sessionEpoch && root.paired)
+                    root.connect();
+                return;
+            }
+            if (cloudTicketProc.timedOutEpoch === attemptEpoch) {
+                cloudTicketProc.timedOutEpoch = -1;
+                root.connectionError = "T3 Connect authorization timed out";
+                root.scheduleRetry(attemptEpoch);
+                return;
+            }
             if (cloudTicketProc.exitSeen && cloudTicketProc.lastExit === 0) {
                 try {
                     const response = JSON.parse(cloudTicketProc.outText);
                     if (typeof response.socketUrl === "string"
                             && response.socketUrl !== "") {
-                        root.openSocketUrl(response.socketUrl);
+                        root.openSocketUrl(response.socketUrl,
+                            attemptEpoch);
                         return;
                     }
                 } catch (e) {
@@ -224,7 +337,7 @@ Singleton {
                 root.connectionError = cloudTicketProc.errText !== ""
                     ? cloudTicketProc.errText : "T3 Connect authorization failed";
             }
-            root.scheduleRetry();
+            root.scheduleRetry(attemptEpoch);
         }
     }
 
@@ -237,6 +350,7 @@ Singleton {
             state = stateWithoutCredential();
             return;
         }
+        const epoch = sessionEpoch;
         // The state file routinely loads before the socket component does.
         // Without a retry the shell would sit offline until a restart; the
         // loader's onStatusChanged connects the moment it wins that race and
@@ -245,28 +359,45 @@ Singleton {
         if (socketLoader.status !== Loader.Ready) {
             state = "offline";
             if (socketLoader.status !== Loader.Error)
-                scheduleRetry();
+                scheduleRetry(epoch);
             return;
         }
-        state = "connecting";
-        fetchDescriptor();
         if (authMode === "cloud" && tokenType === "DPoP") {
-            if (!cloudTicketProc.running) {
-                cloudTicketProc.attempted = true;
-                cloudTicketProc.running = true;
+            if (cloudTicketProc.running) {
+                if (cloudTicketProc.attemptEpoch !== epoch) {
+                    cloudTicketProc.reconnectEpoch = epoch;
+                    state = "offline";
+                }
+                return;
             }
+            cloudTicketProc.attempted = true;
+            cloudTicketProc.attemptEpoch = epoch;
+            cloudTicketProc.running = true;
+            state = "connecting";
+            fetchDescriptor(epoch);
+            return;
+        }
+        if (ticketRequest) {
+            state = "connecting";
             return;
         }
         const xhr = new XMLHttpRequest();
+        ticketRequest = xhr;
         xhr.open("POST", host + "/api/auth/websocket-ticket");
         xhr.setRequestHeader("Authorization", "Bearer " + accessToken);
         xhr.onreadystatechange = () => {
             if (xhr.readyState !== XMLHttpRequest.DONE)
                 return;
+            if (root.ticketRequest === xhr) {
+                root.ticketRequest = null;
+                ticketTimeout.stop();
+            }
+            if (epoch !== root.sessionEpoch)
+                return;
             if (xhr.status === 200) {
                 try {
                     const ticket = JSON.parse(xhr.responseText).ticket;
-                    openSocket(ticket);
+                    openSocket(ticket, epoch);
                     return;
                 } catch (e) {
                     console.warn("t3code: bad ticket response");
@@ -279,30 +410,63 @@ Singleton {
             } else {
                 root.connectionError = Helpers.ticketErrorText(xhr.status);
             }
-            root.scheduleRetry();
+            root.scheduleRetry(epoch);
         };
         xhr.send();
+        ticketTimeout.epoch = epoch;
+        ticketTimeout.restart();
+        state = "connecting";
+        fetchDescriptor(epoch);
     }
 
-    function openSocket(ticket) {
+    function openSocket(ticket, epoch) {
         openSocketUrl(host.replace(/^https:/, "wss:").replace(/^http:/, "ws:")
-            + "/ws?wsTicket=" + encodeURIComponent(ticket));
+            + "/ws?wsTicket=" + encodeURIComponent(ticket), epoch);
     }
 
-    function openSocketUrl(url) {
-        const sock = socketLoader.item;
-        if (!sock)
+    function openSocketUrl(url, epoch) {
+        if (epoch !== sessionEpoch)
             return;
-        sock.active = false;
-        sock.url = url;
-        sock.active = true;
+        // A Loader generation owns exactly one WebSocket attempt. Recreating
+        // it severs every signal connection from the preceding attempt, so a
+        // delayed close/frame cannot be mistaken for this one.
+        pendingSocketUrl = url;
+        pendingSocketEpoch = epoch;
+        socketLoader.active = false;
+        socketLoader.active = true;
     }
 
-    function fetchDescriptor() {
+    function activatePendingSocket() {
+        if (pendingSocketEpoch !== sessionEpoch || pendingSocketUrl === ""
+                || !socketLoader.item)
+            return false;
+        const epoch = pendingSocketEpoch;
+        socketLoader.item.sessionEpoch = epoch;
+        socketLoader.item.url = pendingSocketUrl;
+        pendingSocketUrl = "";
+        pendingSocketEpoch = -1;
+        socketConnectTimeout.epoch = epoch;
+        socketConnectTimeout.restart();
+        socketLoader.item.active = true;
+        return true;
+    }
+
+    function fetchDescriptor(epoch) {
+        if (descriptorRequest) {
+            descriptorRequest.onreadystatechange = null;
+            descriptorRequest.abort();
+        }
         const xhr = new XMLHttpRequest();
+        descriptorRequest = xhr;
         xhr.open("GET", host + "/.well-known/t3/environment");
         xhr.onreadystatechange = () => {
-            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200)
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return;
+            if (root.descriptorRequest === xhr) {
+                root.descriptorRequest = null;
+                descriptorTimeout.stop();
+            }
+            if (epoch !== root.sessionEpoch || xhr.status !== 200)
                 return;
             try {
                 const d = JSON.parse(xhr.responseText);
@@ -321,15 +485,21 @@ Singleton {
             }
         };
         xhr.send();
+        descriptorTimeout.epoch = epoch;
+        descriptorTimeout.restart();
     }
 
-    function scheduleRetry() {
+    function scheduleRetry(epoch) {
+        if (epoch !== undefined && epoch !== sessionEpoch)
+            return;
+        socketConnectTimeout.stop();
         dropped();
         if (socketLoader.item)
             socketLoader.item.active = false;
         if (state !== "signed-out" && state !== "cloud-empty")
             state = "offline";
         retryTimer.interval = retrySecs * 1000;
+        retryTimer.epoch = sessionEpoch;
         retrySecs = Math.min(retrySecs * 2, 120);
         retryTimer.restart();
     }
@@ -342,7 +512,71 @@ Singleton {
 
     Timer {
         id: retryTimer
-        onTriggered: root.connect()
+        property int epoch: -1
+        onTriggered: {
+            if (epoch === root.sessionEpoch)
+                root.connect();
+        }
+    }
+
+    Timer {
+        id: ticketTimeout
+        interval: 20000
+        property int epoch: -1
+        onTriggered: {
+            if (epoch !== root.sessionEpoch || !root.ticketRequest)
+                return;
+            const request = root.ticketRequest;
+            root.ticketRequest = null;
+            request.onreadystatechange = null;
+            request.abort();
+            root.connectionError = "T3 authorization timed out";
+            root.scheduleRetry(epoch);
+        }
+    }
+
+    Timer {
+        id: cloudTicketTimeout
+        // The helper may refresh the browser session, relay JWT and environment
+        // token through separate bounded requests before exchanging a ticket.
+        interval: 90000
+        property int epoch: -1
+        onTriggered: {
+            if (epoch !== root.sessionEpoch || !cloudTicketProc.running
+                    || cloudTicketProc.attemptEpoch !== epoch)
+                return;
+            // Terminate first. onRunningChanged schedules the retry only after
+            // the Process reports that this generation has fully stopped.
+            cloudTicketProc.timedOutEpoch = epoch;
+            cloudTicketProc.running = false;
+        }
+    }
+
+    Timer {
+        id: socketConnectTimeout
+        interval: 20000
+        property int epoch: -1
+        onTriggered: {
+            if (epoch !== root.sessionEpoch || root.state !== "connecting"
+                    || !socketLoader.item || !socketLoader.item.active)
+                return;
+            root.connectionError = "T3 connection timed out";
+            root.scheduleRetry(epoch);
+        }
+    }
+
+    Timer {
+        id: descriptorTimeout
+        interval: 15000
+        property int epoch: -1
+        onTriggered: {
+            if (epoch !== root.sessionEpoch || !root.descriptorRequest)
+                return;
+            const request = root.descriptorRequest;
+            root.descriptorRequest = null;
+            request.onreadystatechange = null;
+            request.abort();
+        }
     }
 
     Timer {
@@ -366,8 +600,15 @@ Singleton {
                 // enables while the loader is Ready, and the one line that
                 // clears connectionError runs on a socket that can never open.
                 root.connectionError = "QtWebSockets is not installed";
+                root.pendingSocketUrl = "";
+                root.pendingSocketEpoch = -1;
+                retryTimer.stop();
+                socketConnectTimeout.stop();
+                root.state = "offline";
                 return;
             }
+            if (status === Loader.Ready && root.activatePendingSocket())
+                return;
             // Pick up a connect() that arrived before this component finished
             // loading. retryTimer is stopped first: connect() armed it on the
             // not-ready path, and letting it fire afterwards would tear down
@@ -384,13 +625,16 @@ Singleton {
         target: socketLoader.item
         enabled: socketLoader.status === Loader.Ready
 
-        function onTextReceived(message) {
-            root.message(message);
+        function onTextReceived(message, epoch) {
+            if (epoch === root.sessionEpoch)
+                root.message(message);
         }
 
-        function onStatusChanged() {
-            const st = socketLoader.item.status;
+        function onSocketStatusChanged(st, socketError, epoch) {
+            if (epoch !== root.sessionEpoch)
+                return;
             if (st === 1) { // open
+                socketConnectTimeout.stop();
                 // Cleared before the state change so no listener ever sees a
                 // connected shell still carrying the failure it recovered from.
                 root.connectionError = "";
@@ -398,6 +642,7 @@ Singleton {
                 root.retrySecs = 5;
                 root.opened();
             } else if (st === 3 || st === 4) { // closed | error
+                socketConnectTimeout.stop();
                 // Qt raises the close and the error that caused it as two
                 // separate transitions, in either order and with only one of
                 // them carrying text (a refusal closes first, a TLS failure
@@ -405,11 +650,11 @@ Singleton {
                 // string never overwrites a real one, and the read sits
                 // outside the guard below — by the time the error arrives the
                 // close has often already scheduled the retry.
-                const reason = Helpers.socketErrorText(socketLoader.item.errorString);
+                const reason = Helpers.socketErrorText(socketError);
                 if (reason !== "")
                     root.connectionError = reason;
                 if (root.state === "connected" || root.state === "connecting")
-                    root.scheduleRetry();
+                    root.scheduleRetry(epoch);
             }
         }
     }

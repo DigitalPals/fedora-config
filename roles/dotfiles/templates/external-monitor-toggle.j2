@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for command in hyprctl jq socat; do
-  command -v "$command" >/dev/null || exit 0
+for command in hyprctl jq socat timeout; do
+  if ! command -v "$command" >/dev/null; then
+    printf 'external-monitor-toggle: waiting for %s\n' "$command" >&2
+    exit 75
+  fi
 done
 
 external_connected() {
@@ -22,7 +25,7 @@ lid_closed() {
 }
 apply_state() {
   local monitors
-  monitors=$(hyprctl monitors -j 2>/dev/null) || return 0
+  monitors=$(timeout 5s hyprctl monitors -j 2>/dev/null) || return 1
   local edp_active=false xreal=false
   jq -e '.[] | select(.name == "eDP-1") | select((.disabled // false) | not)' <<<"$monitors" >/dev/null && edp_active=true
   jq -e '.[] | select(((.disabled // false) | not) and (((.description // "") | test("XREAL|Nreal";"i")) or ((.make // "") | test("XREAL|Nreal";"i"))))' <<<"$monitors" >/dev/null && xreal=true
@@ -36,9 +39,20 @@ apply_state() {
   fi
 }
 
-apply_state
-[[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || exit 0
-socket="${XDG_RUNTIME_DIR:?}/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+if [[ -z ${XDG_RUNTIME_DIR:-} || -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  printf 'external-monitor-toggle: Hyprland environment is not available yet\n' >&2
+  exit 75
+fi
+socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+for _attempt in {1..12}; do
+  [[ -S $socket ]] && break
+  sleep 1
+done
+if [[ ! -S $socket ]]; then
+  printf 'external-monitor-toggle: waiting for Hyprland event socket %s\n' "$socket" >&2
+  exit 75
+fi
+apply_state || exit 75
 upower_pid=""
 if command -v upower >/dev/null 2>&1; then
   while read -r _line; do apply_state; done < <(upower --monitor) &
@@ -48,8 +62,15 @@ cleanup() {
   [[ -z $upower_pid ]] || kill "$upower_pid" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
-while IFS= read -r line; do
-  case "$line" in
-    monitoradded'>>'*|monitorremoved'>>'*) sleep 2; apply_state ;;
-  esac
-done < <(socat -U - "UNIX-CONNECT:$socket")
+if ! socat -U - "UNIX-CONNECT:$socket" | while IFS= read -r line; do
+    case "$line" in
+      monitoradded'>>'*|monitorremoved'>>'*) sleep 2; apply_state || exit 75 ;;
+    esac
+  done; then
+  printf 'external-monitor-toggle: Hyprland event stream disconnected\n' >&2
+  exit 75
+fi
+
+# A clean EOF still means the long-lived watcher was lost. Ask systemd to
+# retry instead of silently leaving the monitor policy inactive.
+exit 75

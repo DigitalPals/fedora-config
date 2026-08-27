@@ -8,7 +8,8 @@ import "../Common"
 Surface {
     id: root
 
-    implicitWidth: Theme.popWidth
+    implicitWidth: availableWidth > 0
+        ? Math.min(Theme.popWidth, availableWidth) : Theme.popWidth
     padding: Theme.surfacePadding
     spacing: 10
     property bool clearArmed: false

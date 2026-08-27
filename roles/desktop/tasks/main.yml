@@ -1,9 +1,29 @@
 ---
-- name: Enable the selected Hyprland COPR only
-  ansible.builtin.command: dnf -y copr enable sdegler/hyprland
-  args:
-    creates: /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo
+- name: Download the pinned Hyprland COPR signing key
+  ansible.builtin.get_url:
+    url: https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
+    dest: /etc/pki/rpm-gpg/XPS-sdegler-hyprland-copr.gpg
+    checksum: sha256:581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7
+    owner: root
+    group: root
+    mode: "0644"
   when: not ansible_check_mode
+
+- name: Import the fingerprint-verified Hyprland COPR package key
+  ansible.builtin.rpm_key:
+    key: /etc/pki/rpm-gpg/XPS-sdegler-hyprland-copr.gpg
+    fingerprint:
+      - 64BBBF013D1CA5E4BE5B0552C043104207862204
+    state: present
+  when: not ansible_check_mode
+
+- name: Converge the selected Hyprland COPR definition
+  ansible.builtin.template:
+    src: hyprland-copr.repo.j2
+    dest: /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Install stable Hyprland and desktop integration packages
   ansible.builtin.dnf:
@@ -185,6 +205,19 @@
     - "{{ primary_home }}/.local/state/hyprland"
   tags: [browser]
 
+# Hyprland watches every required Lua module and reloads the graph immediately
+# when any one of them changes.  Install rendered dependencies before a module
+# can start importing them so a first live deployment never enters emergency
+# mode between two Ansible loop iterations.
+- name: Install rendered Hyprland Lua dependencies before their consumers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: features.lua.j2
+    dest: "{{ primary_home }}/.config/hypr/features.lua"
+    mode: "0644"
+  tags: [browser]
+
 - name: Install Hyprland Lua configuration
   become: true
   become_user: "{{ primary_user }}"
@@ -193,15 +226,26 @@
     dest: "{{ primary_home }}/.config/hypr/{{ item }}"
     mode: "0644"
   loop:
-    - hyprland.lua
     - monitors.lua
     - input.lua
     - looknfeel.lua
     - bindings.lua
     - autostart.lua
+    # This entrypoint requires every module above. Keeping it last makes an
+    # empty live configuration valid at each observable deployment boundary.
+    - hyprland.lua
   tags: [browser]
 
-- name: Install rendered Hyprland helper configuration
+- name: Install ordered Hyprland session starter
+  ansible.builtin.copy:
+    src: hyprland-session-start
+    dest: /usr/local/libexec/xps-hyprland-session-start
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [browser]
+
+- name: Install rendered Hyprland service configuration
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
@@ -211,12 +255,14 @@
   loop:
     - { src: hypridle.conf.j2, dest: hypridle.conf }
     - { src: hyprlock.conf.j2, dest: hyprlock.conf }
+  tags: [browser]
 
 # The copy below is unconditional, so broken QML would land on disk and only
 # surface at the next shell reload, far from the change that caused it. Run
 # the same static check tests/run uses, against the source tree, first.
 # Skip with --skip-tags quickshell-lint; it is read-only, so it also runs
-# under --check. tests/qml-lint exits 0 with a SKIP when qmllint is absent.
+# under --check. A missing qmllint is a failed prerequisite, just as it is in
+# the repository and CI gates.
 - name: Check the Quickshell configuration before installing it
   ansible.builtin.command: "{{ playbook_dir }}/tests/qml-lint"
   delegate_to: localhost
@@ -236,15 +282,223 @@
   when: quickshell_lint.rc | default(0) != 0
   tags: [quickshell, quickshell-lint]
 
-- name: Install Quickshell menubar configuration
+- name: Install durable updater backend used by Quickshell and the CLI
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    src: quickshell/
-    dest: "{{ primary_home }}/.config/quickshell/"
+    src: "{{ config_repo }}/assets/scripts/xps-update-run"
+    dest: "{{ primary_home }}/.local/bin/xps-update-run"
+    mode: "0755"
+  tags: [quickshell]
+
+- name: Build the tracked Quickshell source manifest
+  ansible.builtin.shell: |
+    set -o pipefail
+    repo={{ playbook_dir | quote }}
+    git -C "$repo" ls-files -z --cached --others --exclude-standard -- \
+        roles/desktop/files/quickshell |
+      while IFS= read -r -d '' source_path; do
+        # The index still names tracked paths deleted in this working tree.
+        # Keep intentional untracked sources, but never declare a missing
+        # source managed or its obsolete deployed copy will escape cleanup.
+        if [[ -f "$repo/$source_path" || -L "$repo/$source_path" ]]; then
+          printf '%s\n' "$source_path"
+        fi
+      done
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+  register: quickshell_tracked_files
+  tags: [quickshell]
+
+- name: Record relative paths in the managed Quickshell tree
+  ansible.builtin.set_fact:
+    quickshell_managed_manifest: >-
+      {{ quickshell_tracked_files.stdout_lines
+         | map('regex_replace', '^roles/desktop/files/quickshell/', '')
+         | reject('equalto', '')
+         | list }}
+  tags: [quickshell]
+
+- name: Build the tracked Quickshell directory manifest
+  ansible.builtin.shell: |
+    set -o pipefail
+    while IFS= read -r relative_path; do
+      directory=${relative_path%/*}
+      while [[ -n $directory && $directory != "$relative_path" ]]; do
+        printf '%s\n' "$directory"
+        [[ $directory == */* ]] || break
+        directory=${directory%/*}
+      done
+    done | LC_ALL=C sort -u
+  args:
+    executable: /bin/bash
+    stdin: "{{ quickshell_managed_manifest | join('\n') }}\n"
+  become: false
+  changed_when: false
+  check_mode: false
+  register: quickshell_tracked_directories
+  tags: [quickshell]
+
+- name: Record the managed Quickshell directories
+  ansible.builtin.set_fact:
+    quickshell_managed_directories: >-
+      {{ quickshell_tracked_directories.stdout_lines
+         | reject('equalto', '')
+         | list }}
+  tags: [quickshell]
+
+- name: Inspect the managed Quickshell root without following links
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.config/quickshell"
+    follow: false
+  register: quickshell_root_stat
+  tags: [quickshell]
+
+- name: Record whether the Quickshell root must be normalized
+  ansible.builtin.set_fact:
+    quickshell_root_unsafe: >-
+      {{ quickshell_root_stat.stat.exists
+         and (quickshell_root_stat.stat.islnk | default(false)
+              or not (quickshell_root_stat.stat.isdir | default(false))) }}
+  tags: [quickshell]
+
+- name: Remove a non-directory or linked Quickshell root safely
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/quickshell"
+    state: absent
+  when: quickshell_root_unsafe | bool
+  register: quickshell_root_normalized
+  tags: [quickshell]
+
+- name: Create the managed Quickshell root directory
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/quickshell"
+    state: directory
+    mode: "0755"
+    follow: false
+  when: not (ansible_check_mode and quickshell_root_unsafe | bool)
+  register: quickshell_root_created
+  tags: [quickshell]
+
+- name: Inspect the deployed Quickshell tree before writing through any child path
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.find:
+    paths: "{{ primary_home }}/.config/quickshell"
+    recurse: true
+    hidden: true
+    file_type: any
+    follow: false
+  when: not (ansible_check_mode and quickshell_root_unsafe | bool)
+  register: quickshell_deployed_tree
+  tags: [quickshell]
+
+- name: Remove files and links that are stale or unsafe copy destinations
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: >-
+    {{ quickshell_deployed_tree.files | default([])
+       | rejectattr('isdir')
+       | list }}
+  loop_control:
+    label: "{{ item.path }}"
+  vars:
+    quickshell_relative_path: >-
+      {{ item.path | regex_replace('^' + (primary_home + '/.config/quickshell/') | regex_escape, '') }}
+  when: >-
+    quickshell_relative_path not in quickshell_managed_manifest
+    or item.islnk | default(false)
+  register: quickshell_removed_files
+  tags: [quickshell]
+
+- name: Remove directories not present in the tracked Quickshell manifest
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: >-
+    {{ quickshell_deployed_tree.files | default([])
+       | selectattr('isdir')
+       | list }}
+  loop_control:
+    label: "{{ item.path }}"
+  vars:
+    quickshell_relative_directory: >-
+      {{ item.path | regex_replace('^' + (primary_home + '/.config/quickshell/') | regex_escape, '') }}
+  when: quickshell_relative_directory not in quickshell_managed_directories
+  register: quickshell_removed_directories
+  tags: [quickshell]
+
+- name: Record deferred path normalization during check mode
+  ansible.builtin.set_fact:
+    quickshell_path_normalization_pending: >-
+      {{ ansible_check_mode
+         and (quickshell_root_unsafe | bool
+              or quickshell_removed_files.changed | default(false)
+              or quickshell_removed_directories.changed | default(false)) }}
+  tags: [quickshell]
+
+- name: Create tracked Quickshell directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/quickshell/{{ item }}"
+    state: directory
+    mode: "0755"
+    follow: false
+  loop: "{{ quickshell_managed_directories }}"
+  loop_control:
+    label: "{{ item }}"
+  when: not quickshell_path_normalization_pending | bool
+  register: quickshell_directories
+  tags: [quickshell]
+
+- name: Install tracked Quickshell menubar files
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "quickshell/{{ item }}"
+    dest: "{{ primary_home }}/.config/quickshell/{{ item }}"
     mode: "0644"
-    directory_mode: "0755"
+    follow: false
+    local_follow: false
+  loop: "{{ quickshell_managed_manifest }}"
+  loop_control:
+    label: "{{ item }}"
+  when: not quickshell_path_normalization_pending | bool
   register: quickshell_config
+  tags: [quickshell]
+
+- name: Create fedora-config deployment state directory
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/state/fedora-config"
+    state: directory
+    mode: "0700"
+  tags: [quickshell]
+
+- name: Save the deployed Quickshell manifest outside its watched config tree
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.local/state/fedora-config/quickshell-manifest.txt"
+    mode: "0600"
+    content: "{{ quickshell_managed_manifest | sort | join('\n') }}\n"
   tags: [quickshell]
 
 # Deliberately no restart handler: Quickshell watches its config directory and
@@ -256,39 +510,13 @@
       Quickshell configuration changed; the running shell reloads it on its
       own. Check `journalctl --user -u quickshell.service -n 50` if the bar
       looks wrong.
-  when: quickshell_config is changed
-  tags: [quickshell]
-
-- name: Remove retired Quickshell components
-  ansible.builtin.file:
-    path: "{{ primary_home }}/.config/quickshell/{{ item }}"
-    state: absent
-  loop:
-    - Common/Popovers.qml
-    - Popovers/LauncherPopover.qml
-    - Popovers/PopoverWindow.qml
-    # The unit tests moved to the repo's tests/quickshell/; this clears the
-    # copies earlier deploys left behind. Safe to drop once every machine has
-    # run the playbook since.
-    - Common/tests
-    # The switch and slider merged into Common/Toggle.qml and
-    # Common/HSlider.qml. A directory carrying a qmldir is not scanned, so a
-    # leftover copy is inert rather than ambiguous — this is tidiness.
-    - Popovers/Toggle.qml
-    - Popovers/HSlider.qml
-    - Settings/SettingsSwitch.qml
-    - Settings/SettingsSlider.qml
-    - Bar/RecordingChip.qml
-    - PowerMenu.qml
-    # Retired variants from the old per-state asset set. The exact-geometry
-    # `-white.svg` hover marks are current assets and must remain deployed.
-    - assets/claude-dim.svg
-    - assets/kimi-dim.svg
-    - assets/openai-dim.svg
-    - assets/t3-dark.svg
-    - assets/t3-dim.svg
-    - assets/t3-light-dim.svg
-    - assets/tailscale-dim.svg
+  when: >-
+    quickshell_config is changed
+    or quickshell_removed_files is changed
+    or quickshell_removed_directories is changed
+    or quickshell_root_normalized is changed
+    or quickshell_root_created is changed
+    or quickshell_directories is changed
   tags: [quickshell]
 
 - name: Configure portal preference without patching Fedora files
@@ -328,8 +556,18 @@
     - quickshell
     - hypridle
     - hyprpolkitagent
-    - voxtype
   notify: Reload user systemd
+
+- name: Install the restartable Voxtype user unit
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: voxtype.service.j2
+    dest: "{{ primary_home }}/.config/systemd/user/voxtype.service"
+    mode: "0644"
+  notify:
+    - Reload user systemd
+    - Restart Voxtype daemon
 
 - name: Install external monitor watcher unit
   become: true
@@ -341,15 +579,20 @@
       [Unit]
       Description=Apply XPS lid and external display policy
       PartOf=hyprland-session.target
+      After=graphical-session-pre.target
+      StartLimitIntervalSec=0
 
       [Service]
       Type=simple
       ExecStart=%h/.local/bin/external-monitor-toggle
       Restart=on-failure
-      RestartSec=2
+      RestartSec=5
 
       [Install]
       WantedBy=hyprland-session.target
+  notify:
+    - Reload user systemd
+    - Restart external monitor watcher
 
 - name: Enable desktop units for the Hyprland target
   become: true

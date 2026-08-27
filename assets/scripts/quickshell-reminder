@@ -177,6 +177,12 @@ restore_reminders() {
 
 require_tools
 command=${1:-}
+ensure_state_dir
+# Record files and their transient timers form one logical state machine.
+# Serialize add/cancel/clear/fire/restore so a timer firing cannot race a user
+# cancellation into re-creating or deleting the wrong half of that state.
+exec 9>"$state_dir/operation.lock"
+flock 9
 case $command in
   add)
     (($# >= 2)) || usage

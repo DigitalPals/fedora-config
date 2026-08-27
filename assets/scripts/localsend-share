@@ -2,9 +2,12 @@
 # Share clipboard text, files, or folders through LocalSend.
 
 set -euo pipefail
+umask 077
 
 mode="${1:-}"
 shift || true
+script_path="$(readlink -f -- "$0")"
+stage_dir="${XDG_RUNTIME_DIR:-/tmp}/localsend-share-${UID}"
 
 if [ -z "$mode" ]; then
   echo "Usage: localsend-share <clipboard|file|folder> [path...]" >&2
@@ -12,10 +15,29 @@ if [ -z "$mode" ]; then
 fi
 
 case "$mode" in
+  _send-staged)
+    [[ $# == 1 ]] || exit 2
+    staged_file=$1
+    [[ $(dirname -- "$staged_file") == "$stage_dir" \
+        && $(basename -- "$staged_file") == clipboard-*.txt \
+        && -f $staged_file && ! -L $staged_file ]] || {
+      echo "Refusing staged clipboard path outside $stage_dir" >&2
+      exit 2
+    }
+    trap 'rm -f -- "$staged_file"' EXIT INT TERM
+    localsend --headless send "$staged_file"
+    ;;
   clipboard)
-    temp_file="$(mktemp --suffix=.txt)"
+    mkdir -p -- "$stage_dir"
+    chmod 0700 -- "$stage_dir"
+    find "$stage_dir" -maxdepth 1 -type f -name 'clipboard-*.txt' \
+      -mmin +1440 -delete
+    temp_file="$(mktemp "$stage_dir/clipboard-XXXXXXXX.txt")"
+    trap 'rm -f -- "$temp_file"' EXIT INT TERM
     wl-paste > "$temp_file"
-    systemd-run --user --quiet --collect localsend --headless send "$temp_file"
+    systemd-run --user --quiet --collect "$script_path" _send-staged "$temp_file"
+    # The transient worker owns cleanup after it has been successfully queued.
+    trap - EXIT INT TERM
     ;;
   file|folder)
     if [ "$#" -gt 0 ]; then

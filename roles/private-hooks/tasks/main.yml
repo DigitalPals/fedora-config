@@ -1,4 +1,26 @@
 ---
+- name: Remove private-hook artifacts when the feature is disabled
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ primary_home }}/.local/bin/sccache"
+    - /etc/udev/rules.d/70-apple-studio-display.rules
+    - /usr/local/libexec/xps-build-asdcontrol
+    - /usr/local/bin/asdcontrol
+    - /var/cache/xps-upstream/asdcontrol
+    - /var/lib/xps-upstream/asdcontrol
+    - /var/cache/xps-upstream/conthrax.zip
+    - /usr/local/share/fonts/conthrax
+  notify:
+    - Reload udev
+    - Refresh fonts
+  when: not features.private_hooks | bool
+
+- name: End the private-hooks role after disabled-state convergence
+  ansible.builtin.meta: end_role
+  when: not features.private_hooks | bool
+
 - name: Ensure private hook directory exists
   become: true
   become_user: "{{ primary_user }}"
@@ -28,12 +50,25 @@
   notify: Reload udev
   when: features.apple_display | bool
 
+- name: Remove Apple display privileges and helper when disabled
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/udev/rules.d/70-apple-studio-display.rules
+    - /usr/local/libexec/xps-build-asdcontrol
+    - /usr/local/bin/asdcontrol
+    - /var/cache/xps-upstream/asdcontrol
+    - /var/lib/xps-upstream/asdcontrol
+  notify: Reload udev
+  when: not features.apple_display | bool
+
 - name: Checkout pinned asdcontrol source
   ansible.builtin.git:
     repo: https://github.com/nikosdion/asdcontrol.git
     dest: /var/cache/xps-upstream/asdcontrol/source
     version: 0ee8bd576d4e93513027d713e688988cb0d827ef
-    force: false
+    force: true
   when: features.apple_display | bool and not ansible_check_mode
 
 - name: Install patched asdcontrol build helper

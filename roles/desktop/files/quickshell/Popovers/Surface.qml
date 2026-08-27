@@ -24,7 +24,8 @@ PopoutPanel {
     property alias spacing: column.spacing
     default property alias content: column.data
 
-    implicitWidth: Theme.popWidth
+    implicitWidth: availableWidth > 0
+        ? Math.min(Theme.popWidth, availableWidth) : Theme.popWidth
     implicitHeight: column.implicitHeight + padding * 2
 
     Rectangle {
@@ -70,7 +71,7 @@ PopoutPanel {
         id: column
         x: root.padding
         y: root.padding
-        width: parent.width - root.padding * 2
+        width: Math.max(0, parent.width - root.padding * 2)
         spacing: Theme.panelSectionSpacing
     }
 }

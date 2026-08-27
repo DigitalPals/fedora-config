@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# Shared safety/readiness helpers for tests that inspect the managed live shell.
+# Source this file; do not execute it directly.  The caller remains responsible
+# for restoring any temporary configuration before qs_live_end is called.
+
+QS_LIVE_SERVICE=${QS_LIVE_SERVICE:-quickshell.service}
+QS_LIVE_TIMEOUT=${QS_LIVE_TIMEOUT:-20}
+QS_LIVE_ERROR_PATTERN='Failed to load|Syntax error|Cannot open|(Type|Reference|Range)Error|Binding loop|invalid (width|height|size)|larger than the maximum texture size|requested buffer size is too big|oversized'
+
+qs_live_error() {
+  printf 'quickshell live check: %s\n' "$*" >&2
+}
+
+qs_live_main_pid() {
+  systemctl --user show "$QS_LIVE_SERVICE" -p MainPID --value 2>/dev/null
+}
+
+qs_live_control_group() {
+  systemctl --user show "$QS_LIVE_SERVICE" -p ControlGroup --value 2>/dev/null
+}
+
+qs_live_pid_command() {
+  local pid=$1
+  [[ -r /proc/$pid/cmdline ]] || return 1
+  tr '\0' ' ' <"/proc/$pid/cmdline"
+}
+
+qs_live_pid_cgroup() {
+  local pid=$1
+  [[ -r /proc/$pid/cgroup ]] || return 1
+  sed -n 's/^0:://p' "/proc/$pid/cgroup"
+}
+
+qs_live_wait_service() {
+  local deadline=$((SECONDS + ${1:-$QS_LIVE_TIMEOUT})) pid
+  while ((SECONDS < deadline)); do
+    pid=$(qs_live_main_pid || true)
+    if systemctl --user is-active --quiet "$QS_LIVE_SERVICE" &&
+       [[ $pid =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  qs_live_error "$QS_LIVE_SERVICE did not become active with a live MainPID"
+  systemctl --user status "$QS_LIVE_SERVICE" --no-pager >&2 || true
+  return 1
+}
+
+# Compare the systemd MainPID with every qs process.  An extra process is
+# terminated only when it belongs to this user, sits outside the service's
+# cgroup, and its command line proves it is a direct developer invocation.
+# Anything ambiguous is reported and left alone.
+qs_live_reconcile_processes() {
+  local main service_cgroup pid command process_cgroup uid unknown=0
+  local pids=()
+
+  main=$(qs_live_main_pid || true)
+  service_cgroup=$(qs_live_control_group || true)
+  [[ $main =~ ^[1-9][0-9]*$ ]] || {
+    qs_live_error "$QS_LIVE_SERVICE has no MainPID"
+    return 1
+  }
+  mapfile -t pids < <(pgrep -x qs 2>/dev/null || true)
+
+  for pid in "${pids[@]}"; do
+    [[ $pid == "$main" ]] && continue
+    command=$(qs_live_pid_command "$pid" || true)
+    process_cgroup=$(qs_live_pid_cgroup "$pid" || true)
+    uid=$(ps -o uid= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+    qs_live_error "extra qs PID $pid: command=${command:-unreadable}; cgroup=${process_cgroup:-unreadable}"
+
+    if [[ $uid == "$(id -u)" && -n $process_cgroup &&
+          $process_cgroup != "$service_cgroup" &&
+          $command =~ (^|[[:space:]])([^[:space:]]*/)?qs([[:space:]]|$) &&
+          $command =~ (^|[[:space:]])-(d|p)([[:space:]]|$) ]]; then
+      qs_live_error "terminating confirmed unmanaged developer PID $pid"
+      kill -TERM "$pid"
+      local deadline=$((SECONDS + 5))
+      while kill -0 "$pid" 2>/dev/null && ((SECONDS < deadline)); do
+        sleep 0.1
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        qs_live_error "developer PID $pid ignored SIGTERM; terminating it"
+        kill -KILL "$pid"
+      fi
+    else
+      unknown=1
+      qs_live_error "leaving unconfirmed extra PID $pid running"
+    fi
+  done
+
+  mapfile -t pids < <(pgrep -x qs 2>/dev/null || true)
+  if ((unknown != 0)) || ((${#pids[@]} != 1)) || [[ ${pids[0]:-} != "$main" ]]; then
+    qs_live_error "expected $main to be the sole qs PID; found: ${pids[*]:-none}"
+    return 1
+  fi
+}
+
+qs_live_begin() {
+  command -v systemctl >/dev/null 2>&1 || {
+    qs_live_error 'systemctl is unavailable'
+    return 1
+  }
+  command -v qs >/dev/null 2>&1 || {
+    qs_live_error 'qs is unavailable'
+    return 1
+  }
+  systemctl --user is-active --quiet "$QS_LIVE_SERVICE" || {
+    qs_live_error "$QS_LIVE_SERVICE is not active; refusing a live test"
+    return 1
+  }
+  qs_live_wait_service && qs_live_reconcile_processes
+}
+
+qs_live_wait_ipc() {
+  local timeout=$1 target=$2 method=$3 deadline out
+  shift 3
+  deadline=$((SECONDS + timeout))
+  while ((SECONDS < deadline)); do
+    if out=$(qs ipc call "$target" "$method" "$@" 2>/dev/null); then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    sleep 0.25
+  done
+  qs_live_error "IPC target $target.$method was not ready after ${timeout}s"
+  return 1
+}
+
+qs_live_wait_value() {
+  local timeout=$1 target=$2 method=$3 expected=$4 deadline out
+  shift 4
+  deadline=$((SECONDS + timeout))
+  while ((SECONDS < deadline)); do
+    if out=$(qs ipc call "$target" "$method" "$@" 2>/dev/null) &&
+       [[ $out == "$expected" ]]; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    sleep 0.25
+  done
+  qs_live_error "IPC target $target.$method did not report '$expected' after ${timeout}s (last value: ${out:-unavailable})"
+  return 1
+}
+
+qs_live_current_journal() {
+  local invocation
+  invocation=$(systemctl --user show "$QS_LIVE_SERVICE" -p InvocationID --value 2>/dev/null)
+  [[ $invocation =~ ^[0-9a-fA-F]{32}$ ]] || {
+    qs_live_error "$QS_LIVE_SERVICE has no valid InvocationID"
+    return 1
+  }
+  journalctl --user "_SYSTEMD_INVOCATION_ID=$invocation" --no-pager
+}
+
+qs_live_check_journal() {
+  local log
+  log=$(qs_live_current_journal) || return 1
+  if grep -Eqi "$QS_LIVE_ERROR_PATTERN" <<<"$log"; then
+    qs_live_error 'the current service invocation contains QML/runtime errors:'
+    grep -Ei "$QS_LIVE_ERROR_PATTERN" <<<"$log" | tail -n 30 >&2
+    return 1
+  fi
+}
+
+qs_live_end() {
+  if ! systemctl --user is-active --quiet "$QS_LIVE_SERVICE"; then
+    qs_live_error "$QS_LIVE_SERVICE stopped during the test; attempting recovery"
+    systemctl --user start "$QS_LIVE_SERVICE" || return 1
+  fi
+  qs_live_wait_service && qs_live_reconcile_processes && qs_live_check_journal
+}

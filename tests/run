@@ -5,11 +5,24 @@
 # runs it before ansible-playbook. Every stage runs even if an earlier one
 # fails; the exit status is nonzero when any of them did.
 set -uo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 shell_dir=roles/desktop/files/quickshell
 failed_stages=()
+test_scratch_dirs=()
+
+cleanup_test_scratch() {
+  local directory
+  for directory in "${test_scratch_dirs[@]}"; do
+    [[ $directory == "${TMPDIR:-/tmp}"/fedora-config-qml.* ]] &&
+      rm -rf -- "$directory"
+  done
+}
+trap cleanup_test_scratch EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [[ -t 1 ]]; then
   C_GREEN=$'\033[32m' C_RED=$'\033[31m' C_YELLOW=$'\033[33m' C_OFF=$'\033[0m'
@@ -56,7 +69,7 @@ stage_unit_tests() {
     return
   fi
   if ! command -v node >/dev/null 2>&1; then
-    skip 'unit tests' 'node not installed (dnf install nodejs24)'
+    fail 'unit tests' 'node not installed (dnf install nodejs24)'
     return
   fi
 
@@ -82,15 +95,87 @@ stage_unit_tests() {
   fi
 }
 
+# ── Whole-source syntax and playbook parse gate ────────────────────────
+stage_source_syntax() {
+  local out='' rc=0 t0 elapsed file
+  local bash_files=() python_files=() node_files=()
+
+  for command in bash python3 node ansible-playbook; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+      fail 'source syntax' "$command not installed"
+      return
+    fi
+  done
+
+  mapfile -t bash_files < <(rg -l '^#!.*(bash|sh)' -g '!*.j2' | LC_ALL=C sort)
+  mapfile -t python_files < <(
+    { rg --files -g '*.py'; rg -l '^#!.*python' -g '!*.j2'; } | LC_ALL=C sort -u
+  )
+  mapfile -t node_files < <(
+    rg --files roles assets scripts -g '*.js' -g '*.mjs' -g '*.cjs' 2>/dev/null \
+      | LC_ALL=C sort
+  )
+  if ((${#bash_files[@]} == 0 || ${#python_files[@]} == 0 || ${#node_files[@]} == 0)); then
+    fail 'source syntax' 'source discovery unexpectedly returned an empty language set'
+    return
+  fi
+
+  t0=$(now_ms)
+  for file in "${bash_files[@]}"; do
+    if ! out=$(bash -n "$file" 2>&1); then
+      rc=1
+      out="$file: $out"
+      break
+    fi
+  done
+  if ((rc == 0)); then
+    out=$(python3 - "${python_files[@]}" <<'PY' 2>&1
+from pathlib import Path
+import sys
+
+for name in sys.argv[1:]:
+    path = Path(name)
+    compile(path.read_text(encoding="utf-8"), str(path), "exec")
+PY
+) || rc=$?
+  fi
+  if ((rc == 0)); then
+    for file in "${node_files[@]}"; do
+      if ! out=$(node --check "$file" 2>&1); then
+        rc=1
+        break
+      fi
+    done
+  fi
+  if ((rc == 0)); then
+    out=$(ansible-playbook -i inventory/hosts.yml site.yml --syntax-check 2>&1) || rc=$?
+  fi
+
+  elapsed=$(( $(now_ms) - t0 ))
+  if ((rc == 0)); then
+    pass 'source syntax' "${#bash_files[@]} shell, ${#python_files[@]} Python, ${#node_files[@]} JS, and Ansible $(took "$elapsed")"
+  else
+    fail 'source syntax' 'a source file or site.yml failed to parse'
+    excerpt "${out:-unknown failure}"
+  fi
+}
+
 # ── Hyprland workspace/monitor policy ───────────────────────────────────────────
 stage_hyprland_workspaces() {
   local out rc=0 t0 elapsed
   t0=$(now_ms)
-  out=$(bash tests/hyprland-workspaces 2>&1) || rc=$?
+  if ! command -v luajit >/dev/null 2>&1; then
+    fail 'Hyprland' 'luajit is required for workspace policy fixtures'
+    return
+  fi
+  out=$({
+    bash tests/hyprland-workspaces
+    bash tests/hyprland-features
+  } 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
   if ((rc == 0)); then
-    pass 'Hyprland' "workspace hotplug policy $(took "$elapsed")"
+    pass 'Hyprland' "workspace and optional-feature policy $(took "$elapsed")"
   else
     fail 'Hyprland' 'workspace hotplug policy fixtures failed'
     excerpt "${out:-unknown failure}"
@@ -105,15 +190,110 @@ stage_qml_lint() {
   out=$(tests/qml-lint 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
-  if [[ $out == SKIP* ]]; then
-    skip 'qml lint' "$(sed 's/^SKIP  *//' <<<"$out" | tail -n1)"
-  elif ((rc == 0)); then
+  if ((rc == 0)); then
     # qml-lint's own success line already carries the file count; reuse it so
     # both stages read the same way.
     pass 'qml lint' "$(sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^PASS  *//' <<<"$out" | tail -n1) $(took "$elapsed")"
   else
     fail 'qml lint' 'qmllint reported errors'
     excerpt "$(sed 's/\x1b\[[0-9;]*m//g' <<<"$out")"
+  fi
+}
+
+# ── QML JavaScript runtime contracts ───────────────────────────────
+stage_qml_runtime() {
+  local runner qml_import_path scratch out rc=0 t0 elapsed
+  runner=$(command -v qmltestrunner-qt6 || command -v qmltestrunner || true)
+  if [[ -z $runner ]]; then
+    fail 'qml runtime' 'qmltestrunner not installed (dnf install qt6-qtdeclarative-devel)'
+    return
+  fi
+  if ! command -v dbus-run-session >/dev/null 2>&1; then
+    fail 'qml runtime' 'dbus-run-session not installed'
+    return
+  fi
+
+  qml_import_path=$(qtpaths6 --query QT_INSTALL_QML 2>/dev/null \
+    || qtpaths --query QT_INSTALL_QML 2>/dev/null || true)
+  [[ -d ${qml_import_path:-} ]] || qml_import_path=/usr/lib64/qt6/qml
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-qml.XXXXXX") || {
+    fail 'qml runtime' 'could not create an isolated runtime directory'
+    return
+  }
+  test_scratch_dirs+=("$scratch")
+  mkdir -p "$scratch/home" "$scratch/config" "$scratch/state" "$scratch/runtime"
+  chmod 700 "$scratch/runtime"
+
+  t0=$(now_ms)
+  out=$(env \
+    HOME="$scratch/home" \
+    XDG_CONFIG_HOME="$scratch/config" \
+    XDG_STATE_HOME="$scratch/state" \
+    XDG_RUNTIME_DIR="$scratch/runtime" \
+    QT_QPA_PLATFORM=offscreen \
+    QT_QUICK_BACKEND=software \
+    QS_REDUCED_MOTION=1 \
+    dbus-run-session -- "$runner" \
+      -input tests/qml \
+      -import "$qml_import_path" \
+      -import "$shell_dir" \
+      -o -,txt 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+  rm -rf -- "$scratch"
+
+  if ((rc == 0)); then
+    pass 'qml runtime' "QML JavaScript runtime contracts $(took "$elapsed")"
+  else
+    fail 'qml runtime' 'offscreen qmltestrunner checks failed'
+    excerpt "${out:-unknown failure}" 100
+  fi
+}
+
+# ── Custom Ansible callback compatibility ─────────────────────────────────
+stage_callback_smoke() {
+  local out rc=0 t0 elapsed
+  t0=$(now_ms)
+
+  if [[ ! -f tests/callback-smoke.py ]]; then
+    fail 'callback' 'tests/callback-smoke.py is missing'
+    return
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    fail 'callback' 'python3 not installed'
+    return
+  fi
+
+  out=$(python3 tests/callback-smoke.py 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+  if ((rc == 0)); then
+    pass 'callback' "Ansible stdout compatibility $(took "$elapsed")"
+  else
+    fail 'callback' 'Ansible stdout compatibility smoke test failed'
+    excerpt "${out:-unknown failure}"
+  fi
+}
+
+# ── Python helper concurrency/error contracts ──────────────────────────
+stage_python_helpers() {
+  local out rc=0 t0 elapsed
+  if ! command -v python3 >/dev/null 2>&1; then
+    fail 'Python tests' 'python3 not installed'
+    return
+  fi
+  t0=$(now_ms)
+  out=$({
+    python3 tests/usage-fetch.py \
+      && python3 tests/repository-policy.py \
+      && python3 tests/installer-convergence.py \
+      && python3 tests/quickshell-deployment.py \
+      && python3 tests/cybex-deployment.py
+  } 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+  if ((rc == 0)); then
+    pass 'Python tests' "helper isolation and repository policy $(took "$elapsed")"
+  else
+    fail 'Python tests' 'helper or repository-policy fixtures failed'
+    excerpt "${out:-unknown failure}"
   fi
 }
 
@@ -130,13 +310,24 @@ finalize = Path("roles/finalize/tasks/main.yml").read_text()
 autostart = Path("roles/desktop/files/autostart.lua").read_text()
 bindings = Path("roles/desktop/files/bindings.lua").read_text()
 look = Path("roles/desktop/files/looknfeel.lua").read_text()
+theme = Path("roles/desktop/files/quickshell/Common/Theme.qml").read_text()
+live_helpers = Path("tests/lib/quickshell-live").read_text()
+snapshot = Path("tests/t3-contract-snapshot").read_text()
 
 assert Path("roles/desktop/files/quickshell/shell.qml").is_file()
 assert Path("roles/desktop/templates/quickshell.service.j2").is_file()
 assert Path("roles/desktop/templates/hyprland-quickshell.j2").is_file()
 assert not Path("roles/desktop/files/noctalia").exists()
 assert "- quickshell" in tasks
-assert "src: quickshell/" in tasks
+assert "Install tracked Quickshell menubar files" in tasks
+assert 'src: "quickshell/{{ item }}"' in tasks
+assert "loop: \"{{ quickshell_managed_manifest }}\"" in tasks
+assert tasks.index("Build the tracked Quickshell source manifest") < tasks.index("Install tracked Quickshell menubar files")
+assert tasks.index("Install rendered Hyprland Lua dependencies before their consumers") < tasks.index("Install Hyprland Lua configuration")
+lua_install = tasks[tasks.index("Install Hyprland Lua configuration"):tasks.index("Install ordered Hyprland session starter")]
+assert lua_install.index("- bindings.lua") < lua_install.index("- hyprland.lua")
+assert '(Quickshell.env("QS_REDUCED_MOTION") || "").trim()' in theme
+assert "(Type|Reference|Range)Error" in live_helpers
 assert 'hl.dsp.global("quickshell:launcherToggle")' in bindings
 assert "noctalia" not in autostart.lower()
 assert "qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper)" in look
@@ -145,6 +336,9 @@ assert "noctalia-retired-" in finalize
 assert "/usr/share/wayland-sessions/hyprland-noctalia.desktop" in finalize
 assert "name: noctalia" in finalize
 assert "quickshell.service" in finalize
+assert "--delete-excluded" in snapshot
+assert "--exclude='__pycache__/'" in snapshot
+assert "--exclude='*.py[co]'" in snapshot
 print("Quickshell configuration and guarded Noctalia migration are wired")
 PY
 ) || rc=1
@@ -223,8 +417,13 @@ assert detect("1234", "5678", "Goodix Fingerprint USB Device", "usbhid"), "named
 
 speaker_manager = Path("roles/xps-2026/files/xps-speaker-tuning").read_text()
 camera_tasks = Path("roles/xps-2026/tasks/camera.yml").read_text()
+camera_role = Path("roles/xps-2026/tasks/main.yml").read_text()
+camera_disabled = Path("roles/xps-2026/tasks/camera-disabled.yml").read_text()
 sleep_hook = Path("roles/xps-2026/files/camera/xps-ipu7-camera-sleep").read_text()
+camera_init = Path("roles/xps-2026/files/camera/xps-ipu7-camera-init").read_text()
+relay_override = Path("roles/xps-2026/files/camera/v4l2-relayd-override.conf").read_text()
 resume_unit = Path("roles/xps-2026/templates/xps-ipu7-camera-resume.service.j2").read_text()
+init_unit = Path("roles/xps-2026/templates/xps-ipu7-camera-init.service.j2").read_text()
 camera_builder = Path("roles/xps-2026/templates/xps-ipu7-build.j2").read_text()
 
 assert "wait_for_speaker()" in speaker_manager
@@ -241,6 +440,89 @@ assert "ExecStart=/usr/bin/systemctl restart xps-ipu7-camera-init.service" in re
 assert "ExecStart=/usr/bin/systemctl start v4l2-relayd@ipu7.service" in resume_unit
 assert "module_status=$(dkms status" in camera_builder
 assert 'dkms status -m "$module" -v "$bundle_version" 2>/dev/null | grep -q' not in camera_builder
+assert '"$stage/usr/src/vision-drivers-$dkms_version/xps-ipu7-abi-check"' in camera_builder
+assert "MAKE=\"./xps-ipu7-abi-check $kernelver" in camera_builder
+assert 'BUILD_DEPENDS[0]="ipu7-drivers"' in camera_builder
+assert 'dkms_version=$(dkms_version_for_manifest "$inputs")' in camera_builder
+assert 'dkms status -m "$module" -v "$dkms_version"' in camera_builder
+installed_dkms_version = camera_builder.split("installed_dkms_version() {", 1)[1].split("\n}", 1)[0]
+assert "package_version=$(rpm -q --qf '%{VERSION}' xps-ipu7-camera-stack" in installed_dkms_version
+assert 'hashed=$(dkms_version_for_package_manifest "$package_version" "$manifest")' in installed_dkms_version
+assert 'hashed=$(dkms_version_for_manifest "$manifest")' not in installed_dkms_version
+assert '/usr/src/ipu7-drivers-@DKMS_VERSION@' in Path("roles/xps-2026/files/camera/xps-ipu7-camera-stack.spec").read_text()
+bundle = "1.0.5.xps6"
+manifest_a = "a" * 64
+manifest_b = "b" * 64
+assert f"{bundle}.input{manifest_a[:16]}" != f"{bundle}.input{manifest_b[:16]}", \
+    "same bundle version with changed inputs must select a fresh DKMS identity"
+assert "snapshot_installed_rpm" in camera_builder
+valid_historic_nevra = camera_builder.split("valid_role_target_nevra() {", 1)[1].split("\n}", 1)[0]
+assert "${bundle_version}" not in valid_historic_nevra
+assert "${manifest:0:16}" in valid_historic_nevra
+assert "xps-ipu7-camera-stack-" in valid_historic_nevra
+prepare_rollback = camera_builder.split("prepare_rollback() {", 1)[1].split("\n}", 1)[0]
+assert prepare_rollback.index("snapshot_installed_rpm") < prepare_rollback.index('rollback_rpm "$expected"')
+assert '[[ -L $rollback_root/current ]] || return 1' in camera_builder
+assert 'rollback-rpm) rollback_rpm "${2:-}"' in camera_builder
+assert "prepare-rollback) prepare_rollback" in camera_builder
+assert "transaction-info) transaction_info" in camera_builder
+assert "rollback-nevra) rollback_nevra" in camera_builder
+assert "begin-transaction) begin_transaction" in camera_builder
+assert "commit-transaction) commit_transaction" in camera_builder
+commit_transaction = camera_builder.split("commit_transaction() {", 1)[1].split("\n}", 1)[0]
+assert commit_transaction.index("validate_installed") < commit_transaction.index('mv -f "$temporary" "$committed_identity_file"')
+assert commit_transaction.index('mv -f "$temporary" "$committed_identity_file"') < commit_transaction.index('unlink "$transaction_marker"')
+assert 'sync -f "$temporary"' in camera_builder and 'sync -f "$state_dir"' in camera_builder
+build_rpm = camera_builder.split("build_rpm() {", 1)[1].split("\n}", 1)[0]
+assert build_rpm.index("guard_unresolved_build") < build_rpm.index("snapshot_installed_rpm")
+guard_unresolved_build = camera_builder.split("guard_unresolved_build() {", 1)[1].split("\n}", 1)[0]
+assert '[[ $marker_target == "manifest=$inputs" ]]' in guard_unresolved_build
+assert 'if [[ $transaction_unresolved != true ]]; then\n    snapshot_installed_rpm' in build_rpm
+install_dkms = camera_builder.split("install_dkms() {", 1)[1].split("\n}", 1)[0]
+assert 'loaded_transaction_needs_reboot \\\n       "$changed" "$transaction_pending"' in install_dkms
+assert "transaction_info >/dev/null" in install_dkms
+assert "write_reboot_marker" in install_dkms
+assert "install-dkms-force)" in camera_builder
+assert camera_tasks.index("Recover and verify the interrupted camera transaction boundary") < camera_tasks.index("Build the pinned camera stack as a local RPM")
+assert "xps_2026_camera_transaction_marker_valid | bool\n         if xps_2026_camera_transaction_marker_present | bool" in camera_tasks
+assert '"{{ xps_2026_camera_transaction_previous_identity }}"' in camera_tasks
+assert "xps_2026_camera_recovered_previous_nevra" in camera_tasks
+assert "not xps_2026_camera_transaction_marker_present | bool" in camera_tasks
+assert camera_tasks.index("Prepare and verify the exact rollback snapshot at the DNF boundary") < camera_tasks.index("Persist the camera transaction marker before closing exposure")
+assert camera_tasks.index("Persist the camera transaction marker before closing exposure") < camera_tasks.index("Stop and disable camera exposure before the DNF transaction")
+assert camera_tasks.index("Stop and disable camera exposure before the DNF transaction") < camera_tasks.index("Install the locally built, RPM-managed IPU7 userspace and DKMS sources")
+rpm_install = camera_tasks.split("- name: Install the locally built, RPM-managed IPU7 userspace and DKMS sources", 1)[1].split("\n- name:", 1)[0]
+assert "xps_2026_camera_install_gate | bool" in rpm_install
+assert "xps_2026_camera_rollback_ready" in camera_tasks
+assert "xps_2026_camera_exposure_closed" in camera_tasks
+assert camera_tasks.index("Prove and commit the exact new camera package and DKMS identity") < camera_tasks.index("Record whether the new camera transaction needs rollback")
+assert camera_tasks.index("Commit the exact retained or restored camera rollback") < camera_tasks.index("Retire superseded DKMS bundles only after commit or proven rollback")
+assert camera_tasks.index("Register, build, and sign the IPU7 PSYS and CVS DKMS modules") < camera_tasks.index("Retire superseded DKMS bundles only after commit or proven rollback")
+assert camera_tasks.index("Validate the retained or restored prior camera stack") < camera_tasks.index("Retire superseded DKMS bundles only after commit or proven rollback")
+assert camera_tasks.index("Retire superseded DKMS bundles only after commit or proven rollback") < camera_tasks.index("Restart the exact retained camera stack after DKMS pruning")
+target_commit_task = camera_tasks.split("- name: Prove and commit the exact new camera package and DKMS identity", 1)[1].split("\n- name:", 1)[0]
+assert "xps_2026_camera_candidate_ready | bool" in target_commit_task
+assert "candidate_reboot_required" not in target_commit_task
+prune_task = camera_tasks.split("- name: Retire superseded DKMS bundles only after commit or proven rollback", 1)[1].split("\n- name:", 1)[0]
+expose_task = camera_tasks.split("- name: Expose the IPU7 relay configuration only when its stack is ready", 1)[1].split("\n- name:", 1)[0]
+assert "reboot_required" not in prune_task and "reboot_required" not in expose_task
+assert "Keep the updated camera stack enabled but stopped until reboot" not in camera_tasks
+assert camera_init.count("assert_committed_transaction") >= 3
+assert "transaction.in-progress" in camera_init and "committed-identity" in camera_init
+assert "ConditionPathExists=!/var/lib/xps-hardware/ipu7/transaction.in-progress" in relay_override
+assert "ConditionPathExists=!/var/lib/xps-hardware/ipu7/transaction.in-progress" in init_unit
+assert "import_tasks: camera-disabled.yml" in camera_role
+assert "when: not xps_2026_camera_enabled | bool" in camera_role
+for retired_camera_path in (
+    "/etc/v4l2-relayd.d/ipu7.conf",
+    "/etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf",
+    "/etc/systemd/system/xps-ipu7-camera.service",
+    "/usr/local/share/xps-2026/camera",
+    "/var/cache/xps-ipu7",
+):
+    assert retired_camera_path in camera_disabled
+assert "Remove role-owned IPU7 DKMS modules from every kernel" in camera_disabled
+assert "name: xps-ipu7-camera-stack" in camera_disabled
 print("Python syntax and fingerprint detection fixtures valid")
 PY
 ) || rc=1
@@ -260,6 +542,10 @@ PY
       if wait_for_speaker >/dev/null; then exit 1; fi
       [[ $sleep_calls -eq $((speaker_wait_attempts - 1)) ]]
     ' 2>&1) || rc=1
+  fi
+
+  if ((rc == 0)); then
+    out=$(python3 tests/camera-transaction.py 2>&1) || rc=1
   fi
 
   if ((rc == 0)); then
@@ -411,20 +697,73 @@ stage_screenshot_workflow() {
   fi
 }
 
-stage_unit_tests
-stage_hyprland_workspaces
-stage_qml_lint
-stage_quickshell_integration
-stage_xps_hardware
-stage_plymouth_layout
-stage_screenshot_workflow
-stage_brightness_routing
+stage_update_backend() {
+  local out rc=0 t0 elapsed command
+  for command in bash jq timeout; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+      fail 'updater' "$command not installed"
+      return
+    fi
+  done
+  t0=$(now_ms)
+  out=$(bash tests/xps-update-run 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+
+  if ((rc == 0)); then
+    pass 'updater' "durable state/lock/log fixture $(took "$elapsed")"
+  else
+    fail 'updater' 'durable backend fixture failed'
+    excerpt "${out:-unknown failure}"
+  fi
+}
+
+stages=(
+  stage_source_syntax
+  stage_unit_tests
+  stage_hyprland_workspaces
+  stage_qml_lint
+  stage_qml_runtime
+  stage_quickshell_integration
+  stage_callback_smoke
+  stage_python_helpers
+  stage_xps_hardware
+  stage_plymouth_layout
+  stage_update_backend
+  stage_screenshot_workflow
+  stage_brightness_routing
+)
+
+case ${1:-} in
+  --list)
+    printf '%d required source-check stages (execution order):\n' "${#stages[@]}"
+    for stage in "${stages[@]}"; do
+      label=${stage#stage_}
+      printf '  %s\n' "${label//_/ }"
+    done
+    exit 0
+    ;;
+  -h|--help)
+    printf 'Usage: tests/run [--list]\n'
+    printf 'Run every required source-tree check, or list the authoritative stage order.\n'
+    exit 0
+    ;;
+  '') ;;
+  *)
+    printf 'tests/run: unknown argument %s\n' "$1" >&2
+    exit 2
+    ;;
+esac
+
+for stage in "${stages[@]}"; do
+  "$stage"
+done
 
 # Keep the verdict on the last line: `update` tails this output into its own
 # failure report, so the actionable summary has to survive the truncation.
 if ((${#failed_stages[@]} > 0)); then
-  printf '\n%d of 7 repo check stages failed: %s\n' \
-    "${#failed_stages[@]}" "$(IFS=, ; printf '%s' "${failed_stages[*]}")"
+  printf '\n%d of %d repo check stages failed: %s\n' \
+    "${#failed_stages[@]}" "${#stages[@]}" \
+    "$(IFS=, ; printf '%s' "${failed_stages[*]}")"
   exit 1
 fi
 exit 0

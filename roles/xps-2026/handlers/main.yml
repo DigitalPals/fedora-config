@@ -57,3 +57,15 @@
   when:
     - not ansible_check_mode
     - xps_2026_camera_ready | default(false) | bool
+
+- name: Refresh WirePlumber after camera removal
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    name: wireplumber.service
+    state: restarted
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  failed_when: false
+  when: not ansible_check_mode

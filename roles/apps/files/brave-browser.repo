@@ -2,5 +2,5 @@
 name=Brave Browser
 enabled=1
 gpgcheck=1
-gpgkey=https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+gpgkey=file:///etc/pki/rpm-gpg/XPS-brave-browser.asc
 baseurl=https://brave-browser-rpm-release.s3.brave.com/$basearch

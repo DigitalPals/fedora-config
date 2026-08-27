@@ -126,14 +126,14 @@ test("bar popouts use the quick detached motion profile", () => {
     const theme = read("Common/Theme.qml");
     const host = read("Bar/PopoutHost.qml");
 
-    assert.match(theme, /popoutOpenDuration:\s*250/);
-    assert.match(theme, /popoutCloseDuration:\s*165/);
-    assert.match(theme, /popoutMorphDuration:\s*320/);
-    assert.match(theme, /popoutFadeInDuration:\s*170/);
-    assert.match(theme, /popoutFadeOutDuration:\s*120/);
-    assert.match(theme, /popoutContentFadeDuration:\s*150/);
-    assert.match(theme, /popoutInitialScale:\s*0\.975/);
-    assert.match(theme, /popoutTravel:\s*10/);
+    assert.match(theme, /popoutOpenDuration:\s*reducedMotion \? 0 : 250/);
+    assert.match(theme, /popoutCloseDuration:\s*reducedMotion \? 0 : 165/);
+    assert.match(theme, /popoutMorphDuration:\s*reducedMotion \? 0 : 320/);
+    assert.match(theme, /popoutFadeInDuration:\s*reducedMotion \? 0 : 170/);
+    assert.match(theme, /popoutFadeOutDuration:\s*reducedMotion \? 0 : 120/);
+    assert.match(theme, /popoutContentFadeDuration:\s*reducedMotion \? 0 : 150/);
+    assert.match(theme, /popoutInitialScale:\s*reducedMotion \? 1 : 0\.975/);
+    assert.match(theme, /popoutTravel:\s*reducedMotion \? 0 : 10/);
     assert.match(host, /bodyTop:\s*barBottom \+ Theme\.popGap/,
         "the faster motion must retain the detached twelve-pixel gap");
     assert.match(host, /xScale:\s*Theme\.popoutInitialScale/);
@@ -464,7 +464,8 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
     assert.match(settings, /function retrySave/);
     assert.match(settings,
         /migrationPending = parsed !== null && parsed\.v !== SettingsHelpers\.VERSION/);
-    assert.match(settings, /if \(!ready \|\| migrationPending \|\| corruptBackupPending\)/,
+    assert.match(settings,
+        /if \(!ready \|\| migrationPending \|\| corruptBackupPending \|\| loadError\)/,
         "older files must wait for the next user mutation before a current-schema write");
     assert.match(bindings, /mainMod \..*" \+ comma".*settings toggle/);
 });
@@ -779,9 +780,10 @@ test("an unreadable settings file is preserved before anything saves over it", (
 
     // Both save paths stay shut until the move has succeeded, and the failure
     // branch must not clear the guard.
-    assert.match(settings, /function saveNow\(\) \{\s*\n\s*if \(!ready \|\| corruptBackupPending\)/);
     assert.match(settings,
-        /function scheduleSave\(\) \{\s*\n\s*if \(!ready \|\| migrationPending \|\| corruptBackupPending\)/);
+        /function saveNow\(\) \{\s*\n\s*if \(!ready \|\| migrationPending \|\| corruptBackupPending \|\| loadError/);
+    assert.match(settings,
+        /function scheduleSave\(\) \{\s*\n\s*if \(!ready \|\| migrationPending \|\| corruptBackupPending \|\| loadError\)/);
     const onExited = settings.slice(settings.indexOf("id: corruptBackupProc"));
     const clears = onExited.slice(0, onExited.indexOf("console.warn"))
         .match(/corruptBackupPending = false/g) ?? [];
@@ -790,4 +792,25 @@ test("an unreadable settings file is preserved before anything saves over it", (
 
     assert.match(settings, /root\.announcement = "The settings file could not be read\./,
         "the user is told the file was kept rather than lost");
+});
+
+test("FileView failures cannot become empty settings or false save success", () => {
+    const settings = read("Common/Settings.qml");
+
+    assert.match(settings,
+        /if \(error === FileViewError\.FileNotFound\) \{[\s\S]*?applyLoaded\(""\);[\s\S]*?return;/,
+        "only a confirmed missing file may initialize first-run defaults");
+    assert.match(settings,
+        /function handleLoadFailure\(error\)[\s\S]*?ready = false;[\s\S]*?loadError = true;/,
+        "other read errors must retain memory state and disable writes");
+    assert.doesNotMatch(settings, /onLoadFailed:\s*root\.applyLoaded\(""\)/);
+    assert.match(settings, /onSaved: root\.handleSaveSucceeded\(\)/);
+    assert.match(settings,
+        /onSaveFailed: error => root\.handleSaveFailure\(error\)/);
+    const saveNow = settings.slice(settings.indexOf("function saveNow()"),
+        settings.indexOf("function scheduleSave()"));
+    assert.doesNotMatch(saveNow, /lastSavedAt\s*=/,
+        "starting a write is not evidence that it succeeded");
+    assert.match(settings,
+        /function handleSaveSucceeded\(\)[\s\S]*lastSavedAt = Date\.now\(\)/);
 });

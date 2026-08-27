@@ -23,7 +23,10 @@ test("network details poll only while acquired and serialize snapshots", () => {
     const controller = read("Common/NetworkDetails.qml");
     assert.match(controller, /function acquire\(\)/);
     assert.match(controller, /function release\(\)/);
-    assert.match(controller, /interval:\s*1500/);
+    assert.match(controller, /readonly property int pollIntervalMs:\s*1500/);
+    assert.match(controller, /interval:\s*root\.pollIntervalMs/);
+    assert.match(controller, /pollCadenceText:/,
+        "the visible cadence label must come from the actual polling interval");
     assert.match(controller, /running:\s*root\.acquired/);
     assert.match(controller, /if \(snapshotProc\.running\)[\s\S]*snapshotAgain = true/);
     assert.match(controller, /scannerDevice\.scannerEnabled = false/);

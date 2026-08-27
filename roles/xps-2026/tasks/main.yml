@@ -41,6 +41,8 @@
       {{ xps_2026_endpoint_stats.results[1].stat.exists
          or xps_2026_endpoint_stats.results[2].stat.exists }}
     xps_2026_has_ipu7: "{{ xps_2026_ipu7_pci.rc == 0 and xps_2026_ipu7_pci.stdout | trim | length > 0 }}"
+    xps_2026_ipu7_pci_bdf: >-
+      {{ (xps_2026_ipu7_pci.stdout_lines | default([]) | first | default('')).split(' ') | first }}
   tags: [always]
 
 - name: Report a non-matching XPS 2026 hardware role
@@ -89,6 +91,10 @@
   when:
     - xps_2026_is_supported | bool
     - xps_2026_has_fingerprint | bool
+
+- name: Retire the role-owned IPU7 camera stack when explicitly disabled
+  ansible.builtin.import_tasks: camera-disabled.yml
+  when: not xps_2026_camera_enabled | bool
 
 - name: Configure the Panther Lake IPU7 internal camera
   ansible.builtin.import_tasks: camera.yml

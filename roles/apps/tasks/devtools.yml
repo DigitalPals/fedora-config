@@ -10,15 +10,42 @@
   failed_when: false
   when: not ansible_check_mode
 
+- name: Refuse an unreadable Voxtype backend state
+  ansible.builtin.fail:
+    msg: >-
+      Voxtype backend status failed: {{ apps_voxtype_status.stderr
+      | default(apps_voxtype_status.stdout) | default('unknown failure') }}
+  when:
+    - not ansible_check_mode
+    - apps_voxtype_status.rc | default(1) != 0
+
 - name: Select Voxtype GPU backend
+  become: true
   ansible.builtin.command: >-
     voxtype --config {{ primary_home }}/.config/voxtype/config.toml
     setup gpu --enable
+  register: apps_voxtype_gpu_enable
   changed_when: true
   when:
     - not ansible_check_mode
     - apps_voxtype_status.rc | default(1) == 0
     - "'Active backend: GPU' not in apps_voxtype_status.stdout"
+  notify: Restart Voxtype after updates
+
+- name: Verify the selected Voxtype GPU backend
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: >-
+    voxtype --config {{ primary_home }}/.config/voxtype/config.toml
+    setup gpu --status
+  register: apps_voxtype_gpu_verify
+  changed_when: false
+  failed_when: >-
+    apps_voxtype_gpu_verify.rc != 0
+    or 'Active backend: GPU' not in apps_voxtype_gpu_verify.stdout
+  when:
+    - not ansible_check_mode
+    - apps_voxtype_gpu_enable is changed
 
 - name: Download Voxtype base English model when absent
   become: true
@@ -29,6 +56,32 @@
   failed_when: false
   when: not ansible_check_mode
 
+- name: Verify the required Voxtype model is installed
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.local/share/voxtype/models/ggml-base.bin"
+  register: apps_voxtype_model
+
+- name: Refuse an incomplete first Voxtype model installation
+  ansible.builtin.assert:
+    that: apps_voxtype_model.stat.exists
+    fail_msg: >-
+      Voxtype's required base model could not be installed and no prior model
+      is available.
+  when: not ansible_check_mode
+
+- name: Inspect the configured Rust toolchain before updating it
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ primary_home }}/.cargo/bin/rustup"
+      - toolchain
+      - list
+  register: apps_rust_toolchain_existing
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Initialize the user Rustup installation
   become: true
   become_user: "{{ primary_user }}"
@@ -38,7 +91,7 @@
       - -y
       - --no-modify-path
       - --default-toolchain
-      - nightly
+      - "{{ rust_toolchain }}"
       - --component
       - rustfmt
       - --component
@@ -49,7 +102,7 @@
   failed_when: false
   when: not ansible_check_mode
 
-- name: Install nightly Rust toolchain and components
+- name: Install the inventory-pinned Rust toolchain and components
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.command:
@@ -57,7 +110,7 @@
       - "{{ primary_home }}/.cargo/bin/rustup"
       - toolchain
       - install
-      - nightly
+      - "{{ rust_toolchain }}"
       - --profile
       - default
       - --component
@@ -71,18 +124,46 @@
     - not ansible_check_mode
     - apps_rustup_init.rc | default(0) == 0
 
-- name: Report Rust nightly update failure while retaining the installed toolchain
+- name: Make the inventory-pinned Rust toolchain the user default
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ primary_home }}/.cargo/bin/rustup"
+      - default
+      - "{{ rust_toolchain }}"
+  register: apps_rustup_default
+  changed_when: "'unchanged' not in (apps_rustup_default.stdout | lower)"
+  when:
+    - not ansible_check_mode
+    - >-
+      (apps_rustup_nightly.rc | default(1) | int) == 0
+      or rust_toolchain in (apps_rust_toolchain_existing.stdout | default(''))
+
+- name: Report Rust toolchain update failure while retaining the configured toolchain
   ansible.builtin.debug:
     msg: "Rust nightly update failed; installed toolchain retained: {{ apps_rustup_nightly.stderr | default('unknown failure') }}"
   when:
     - not ansible_check_mode
     - apps_rustup_nightly.rc | default(0) != 0
+    - rust_toolchain in (apps_rust_toolchain_existing.stdout | default(''))
+
+- name: Refuse a failed first installation of the configured Rust toolchain
+  ansible.builtin.fail:
+    msg: >-
+      Rust toolchain {{ rust_toolchain }} could not be installed and no prior
+      copy of that pinned toolchain is available:
+      {{ apps_rustup_nightly.stderr | default(apps_rustup_init.stderr) | default('unknown failure') }}
+  when:
+    - not ansible_check_mode
+    - apps_rustup_nightly.rc | default(1) != 0
+    - rust_toolchain not in (apps_rust_toolchain_existing.stdout | default(''))
 
 - name: Install user CLI updater
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    src: update-user-tools
+  ansible.builtin.template:
+    src: update-user-tools.j2
     dest: "{{ primary_home }}/.local/bin/update-user-tools"
     mode: "0755"
 
@@ -92,4 +173,14 @@
   ansible.builtin.command: "{{ primary_home }}/.local/bin/update-user-tools"
   register: apps_user_tools_update
   changed_when: (apps_user_tools_update.stdout | regex_search('(?m)^CHANGED:')) is not none
+  failed_when: apps_user_tools_update.rc not in [0, 75]
   when: not ansible_check_mode
+
+- name: Report user-managed CLI update failures that retained installed versions
+  ansible.builtin.debug:
+    msg: >-
+      User-managed CLI update failed; complete installed versions were retained:
+      {{ apps_user_tools_update.stderr | default('unknown failure') }}
+  when:
+    - not ansible_check_mode
+    - apps_user_tools_update.rc | default(0) == 75

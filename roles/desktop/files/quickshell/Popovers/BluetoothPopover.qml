@@ -7,6 +7,18 @@ Surface {
     id: root
 
     readonly property var devices: BluetoothState.devices
+    property string announcement: ""
+    focus: visible
+
+    Keys.onEscapePressed: Popouts.close()
+
+    function focusInitial() {
+        if (visible)
+            Qt.callLater(() => bluetoothToggle.forceActiveFocus());
+    }
+
+    Component.onCompleted: focusInitial()
+    onVisibleChanged: focusInitial()
 
     // Header + toggle
     Item {
@@ -24,6 +36,7 @@ Surface {
         }
 
         Toggle {
+            id: bluetoothToggle
             anchors.right: parent.right
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
@@ -67,14 +80,54 @@ Surface {
 
             required property var modelData
             readonly property bool busy: modelData.state === BluetoothDeviceState.Connecting || modelData.state === BluetoothDeviceState.Disconnecting
+            readonly property string actionName: modelData.connected
+                ? "Disconnect " + modelData.deviceName
+                : "Connect " + modelData.deviceName
+
+            function activate() {
+                if (dev.busy)
+                    return;
+                root.announcement = dev.actionName;
+                if (dev.modelData.connected)
+                    dev.modelData.disconnect();
+                else
+                    dev.modelData.connect();
+            }
 
             width: parent.width - 4
             x: 2
             height: modelData.connected ? Theme.panelTileHeight : Theme.listRowHeight
             radius: Theme.rowRadius
             color: modelData.connected ? Theme.chip
-                : btMouse.containsMouse ? Theme.chipHover : "transparent"
-            opacity: modelData.connected || btMouse.containsMouse ? 1 : 0.75
+                : btMouse.containsMouse || activeFocus ? Theme.chipHover : "transparent"
+            opacity: modelData.connected || btMouse.containsMouse || activeFocus ? 1 : 0.75
+            enabled: !busy
+            activeFocusOnTab: enabled
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accent
+            Accessible.role: Accessible.Button
+            Accessible.name: actionName
+            Accessible.description: busy ? "Bluetooth action in progress"
+                : modelData.connected ? "Connected" : modelData.paired ? "Paired" : "Not connected"
+            Accessible.onPressAction: dev.activate()
+
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    dev.activate();
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) {
+                    const next = dev.nextItemInFocusChain(true);
+                    if (next)
+                        next.forceActiveFocus();
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
+                    const previous = dev.nextItemInFocusChain(false);
+                    if (previous)
+                        previous.forceActiveFocus();
+                    event.accepted = true;
+                }
+            }
 
             Row {
                 anchors.verticalCenter: parent.verticalCenter
@@ -137,29 +190,28 @@ Surface {
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontSecondary
                 font.weight: dev.modelData.connected ? Theme.weightMedium : Theme.weightRegular
-                color: dev.modelData.connected ? (actionMouse.containsMouse ? Theme.red : Theme.textDim) : Theme.textDim
-
-                MouseArea {
-                    id: actionMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    enabled: dev.modelData.connected
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: dev.modelData.disconnect()
-                }
+                color: dev.modelData.connected && (btMouse.containsMouse || dev.activeFocus)
+                    ? Theme.red : Theme.textDim
             }
 
             MouseArea {
                 id: btMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                z: -1
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    if (!dev.modelData.connected && !dev.busy)
-                        dev.modelData.connect();
+                    dev.forceActiveFocus();
+                    dev.activate();
                 }
             }
         }
+    }
+
+    Item {
+        width: 1
+        height: 1
+        opacity: 0
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: root.announcement
     }
 }

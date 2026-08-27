@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# cliphist watcher target: skip clipboard formats that password managers mark
+# as concealed, and keep the history database bounded.
+
+set -euo pipefail
+
+if wl-paste --list-types 2>/dev/null \
+    | grep -Eiq 'passwordmanagerhint|x-kde-secret|keepassxc|concealed'; then
+  # Consume the watcher payload so wl-paste can complete cleanly without ever
+  # passing the secret bytes to cliphist.
+  cat >/dev/null
+  exit 0
+fi
+
+exec cliphist -max-items 500 store

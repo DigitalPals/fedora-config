@@ -21,9 +21,11 @@ Surface {
 
     padding: 0
     spacing: 0
+    focus: visible
 
     readonly property var players: Media.players
     property int sourceIdx: -1
+    property string announcement: ""
 
     // The source switcher's manual pick wins; without one this falls back to
     // Media.player, which is literally what the bar chip shows.
@@ -38,6 +40,51 @@ Surface {
     readonly property bool hasArt: player !== null && player.trackArtUrl !== ""
     readonly property bool playing: player !== null && player.isPlaying
     readonly property bool multiSource: players.length > 1
+
+    Keys.onEscapePressed: Popouts.close()
+
+    function selectSource(delta) {
+        if (!multiSource)
+            return;
+        const current = players.indexOf(player);
+        sourceIdx = (current + delta + players.length) % players.length;
+        announceMedia();
+    }
+
+    function announceMedia() {
+        if (!player) {
+            announcement = "No media player";
+            return;
+        }
+        const title = player.trackTitle || "Unknown track";
+        announcement = (player.identity || "Media") + ": " + title
+            + (playing ? ", playing" : ", paused");
+    }
+
+    function focusInitial() {
+        if (!visible)
+            return;
+        Qt.callLater(() => {
+            const target = multiSource ? sourceButton : playButton;
+            if (target && target.visible && target.enabled)
+                target.forceActiveFocus();
+        });
+    }
+
+    onVisibleChanged: focusInitial()
+    onPlayerChanged: {
+        announceMedia();
+        focusInitial();
+    }
+    onPlayingChanged: announceMedia()
+
+    Connections {
+        target: root.player
+        ignoreUnknownSignals: true
+
+        function onTrackTitleChanged() { root.announceMedia(); }
+        function onTrackArtistChanged() { root.announceMedia(); }
+    }
 
     // The sleeve, and how far down the panel its light reaches. The wash ends
     // inside the seek block, so nothing below it has to know about artwork.
@@ -226,8 +273,10 @@ Surface {
         property bool primary: false
         property bool recessed: false
         property bool active: false
+        property bool toggle: false
         property bool available: true
         property string accessibleName: ""
+        property string accessibleDescription: ""
         signal triggered
 
         width: diameter
@@ -235,16 +284,44 @@ Surface {
         radius: diameter / 2
         opacity: available ? 1 : 0.4
         scale: buttonMouse.pressed ? 0.9 : 1
-        Accessible.role: Accessible.Button
+        activeFocusOnTab: available
+        border.width: activeFocus ? 2 : 0
+        border.color: primary ? Theme.accentFg : Theme.accent
+        Accessible.role: toggle ? Accessible.CheckBox : Accessible.Button
         Accessible.name: button.accessibleName
+        Accessible.description: button.accessibleDescription
+        Accessible.checked: toggle && active
+        Accessible.onPressAction: {
+            if (button.available)
+                button.triggered();
+        }
         color: {
             if (button.primary)
-                return buttonMouse.containsMouse ? Theme.accentHover : Theme.accent;
-            if (buttonMouse.containsMouse)
+                return buttonMouse.containsMouse || button.activeFocus
+                    ? Theme.accentHover : Theme.accent;
+            if (buttonMouse.containsMouse || button.activeFocus)
                 return Theme.chipHover;
             if (button.active)
                 return Theme.accentBgSoft;
             return button.recessed ? Theme.chip : "transparent";
+        }
+
+        Keys.onPressed: event => {
+            if (button.available && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space)) {
+                button.triggered();
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+                const next = button.nextItemInFocusChain(true);
+                if (next)
+                    next.forceActiveFocus();
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                const previous = button.nextItemInFocusChain(false);
+                if (previous)
+                    previous.forceActiveFocus();
+                event.accepted = true;
+            }
         }
 
         Behavior on color {
@@ -293,7 +370,10 @@ Surface {
             hoverEnabled: true
             enabled: button.available
             cursorShape: Qt.PointingHandCursor
-            onClicked: button.triggered()
+            onClicked: {
+                button.forceActiveFocus();
+                button.triggered();
+            }
         }
     }
 
@@ -350,6 +430,7 @@ Surface {
         // which is where every line of copy is. The artwork keeps its colour
         // to the left of that, where there is nothing to read.
         Rectangle {
+            id: sourceButton
             anchors.fill: parent
             gradient: Gradient {
                 orientation: Gradient.Horizontal
@@ -418,7 +499,27 @@ Surface {
             height: Theme.chipHeight
             radius: Theme.chipRadius
             color: !root.multiSource ? "transparent"
-                : srcMouse.containsMouse ? Theme.chipHover : Theme.chip
+                : srcMouse.containsMouse || activeFocus ? Theme.chipHover : Theme.chip
+            enabled: root.multiSource
+            activeFocusOnTab: enabled
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accent
+            Accessible.role: Accessible.Button
+            Accessible.name: "Choose media player"
+            Accessible.description: root.player ? root.player.identity : "No player"
+            Accessible.onPressAction: root.selectSource(1)
+
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space || event.key === Qt.Key_Right
+                        || event.key === Qt.Key_Down) {
+                    root.selectSource(1);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+                    root.selectSource(-1);
+                    event.accepted = true;
+                }
+            }
 
             Behavior on color {
                 ColorAnimation { duration: Theme.chipFadeDuration }
@@ -454,8 +555,8 @@ Surface {
                 enabled: root.multiSource
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    const cur = root.players.indexOf(root.player);
-                    root.sourceIdx = (cur + 1) % root.players.length;
+                    sourceButton.forceActiveFocus();
+                    root.selectSource(1);
                 }
             }
         }
@@ -608,6 +709,7 @@ Surface {
             spacing: 8
 
             TransportButton {
+                id: previousButton
                 anchors.verticalCenter: parent.verticalCenter
                 mark: "previous"
                 recessed: true
@@ -617,6 +719,7 @@ Surface {
             }
 
             TransportButton {
+                id: playButton
                 anchors.verticalCenter: parent.verticalCenter
                 mark: root.playing ? "pause" : "play"
                 diameter: 52
@@ -628,6 +731,7 @@ Surface {
             }
 
             TransportButton {
+                id: nextButton
                 anchors.verticalCenter: parent.verticalCenter
                 mark: "next"
                 recessed: true
@@ -649,6 +753,8 @@ Surface {
                 diameter: 34
                 glyphSize: Theme.iconMedium
                 accessibleName: "Shuffle"
+                accessibleDescription: active ? "On" : "Off"
+                toggle: true
                 active: root.player !== null && root.player.shuffle
                 available: root.player !== null && root.player.shuffleSupported
                 onTriggered: root.player.shuffle = !root.player.shuffle
@@ -663,6 +769,10 @@ Surface {
                 diameter: 34
                 glyphSize: Theme.iconMedium
                 accessibleName: "Repeat"
+                accessibleDescription: !root.player
+                    || root.player.loopState === MprisLoopState.None ? "Off"
+                    : root.player.loopState === MprisLoopState.Track ? "One track" : "Playlist"
+                toggle: true
                 active: root.player !== null
                     && root.player.loopState !== MprisLoopState.None
                 available: root.player !== null && root.player.loopSupported
@@ -728,5 +838,18 @@ Surface {
                 wrapMode: Text.Wrap
             }
         }
+    }
+
+    Item {
+        width: 1
+        height: 1
+        opacity: 0
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: root.announcement
+    }
+
+    Component.onCompleted: {
+        announceMedia();
+        focusInitial();
     }
 }

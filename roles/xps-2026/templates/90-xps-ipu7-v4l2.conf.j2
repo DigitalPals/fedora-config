@@ -12,7 +12,7 @@ wireplumber.profiles = {
 monitor.v4l2.rules = [
   {
     matches = [
-      { device.bus-path = "pci-0000:00:05.0" }
+      { device.bus-path = "pci-{{ xps_2026_ipu7_pci_bdf }}" }
     ]
     actions = {
       update-props = { device.disabled = true }

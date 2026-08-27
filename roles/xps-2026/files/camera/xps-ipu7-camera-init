@@ -6,6 +6,22 @@ die() {
   exit 1
 }
 
+assert_committed_transaction() {
+  local actual committed
+  [[ ! -e /var/lib/xps-hardware/ipu7/transaction.in-progress ]] \
+    || die 'the camera package transaction is incomplete; rerun the camera role'
+  [[ -r /var/lib/xps-hardware/ipu7/committed-identity ]] \
+    || die 'the installed camera package has no verified committed identity'
+  committed=$(</var/lib/xps-hardware/ipu7/committed-identity)
+  [[ $committed =~ ^manifest=[[:xdigit:]]{64}$ ||
+     $committed =~ ^nevra=[^[:cntrl:]]+$ ]] \
+    || die 'the committed camera package identity is malformed'
+  actual=$(/usr/local/libexec/xps-ipu7-build installed-identity) \
+    || die 'the installed camera package identity cannot be read'
+  [[ $actual == "$committed" ]] \
+    || die 'the installed camera package does not match its committed identity'
+}
+
 [[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == 'Dell Inc.' ]] || die 'not a Dell system'
 case "$(cat /sys/class/dmi/id/product_sku 2>/dev/null)" in
   0DB9|0DBA) ;;
@@ -13,15 +29,19 @@ case "$(cat /sys/class/dmi/id/product_sku 2>/dev/null)" in
 esac
 [[ -e /sys/bus/acpi/devices/OVTI08F4:00 || -e /sys/bus/acpi/devices/OVTI08F4:01 ]] \
   || die 'OVTI08F4 ACPI camera is absent'
-[[ $(cat /sys/bus/pci/devices/0000:00:05.0/vendor 2>/dev/null) == 0x8086 ]] \
-  || die 'Intel IPU7 PCI function is absent'
-[[ $(cat /sys/bus/pci/devices/0000:00:05.0/device 2>/dev/null) == 0xb05d ]] \
-  || die 'PCI function is not Panther Lake IPU7 (8086:b05d)'
+ipu7_bdf=""
+for pci_device in /sys/bus/pci/devices/*; do
+  [[ $(cat "$pci_device/vendor" 2>/dev/null) == 0x8086 \
+     && $(cat "$pci_device/device" 2>/dev/null) == 0xb05d ]] || continue
+  ipu7_bdf=${pci_device##*/}
+  break
+done
+[[ -n $ipu7_bdf ]] || die 'Panther Lake IPU7 PCI function (8086:b05d) is absent'
 
-/usr/local/libexec/xps-ipu7-abi-check "$(uname -r)" \
-  || die "Fedora's stock IPU7 ABI changed; PSYS compatibility needs review"
-/usr/local/libexec/xps-ipu7-userspace-check \
-  || die 'the installed minimal IPU7 userspace dependency closure is incomplete'
+assert_committed_transaction
+
+/usr/local/libexec/xps-ipu7-build validate-installed "$(uname -r)" >/dev/null \
+  || die 'the committed camera RPM, userspace, or DKMS identity is no longer exact'
 
 reboot_marker=/var/lib/xps-hardware/ipu7/reboot-required
 if [[ -r $reboot_marker ]]; then
@@ -35,6 +55,11 @@ fi
 if journalctl -k -b --no-pager 2>/dev/null | grep -Eq 'RIP: .*ipu7|BUG:.*ipu7'; then
   die 'this boot already recorded an IPU7 kernel fault; reboot before retrying the camera'
 fi
+
+# Close the small race with an Ansible refresh beginning while this oneshot was
+# running. The transaction marker is durable before DNF and the role stops this
+# unit, but this second check also refuses module exposure before that stop wins.
+assert_committed_transaction
 
 # On the first managed start an earlier automatic probe may have bound the
 # sensor before CVS owned its USBIO power path. Rebind it once in the correct

@@ -16,7 +16,7 @@ config_repo: "{{ playbook_dir }}"
 
 expected_hardware:
   sys_vendor: Dell Inc.
-  product_name_regex: "(?i)(XPS|DA14260)"
+  product_name_regex: "(?i)(XPS|DA14260|DA16260)"
   cpu_regex: "(?i)(Intel.*(Ultra|X7)|Panther Lake)"
 
 # XPS 2026 hardware-role preferences. The camera stack is attempted only when
@@ -29,6 +29,11 @@ xps_2026_haptic_intensity: high
 passwordless_wheel: true
 passwordless_local_polkit: true
 gdm_autologin: true
+# sccache has no transport upgrade for the existing private-LAN scheduler.
+# Setting this true is an explicit acceptance that its bearer token and build
+# traffic cross that network without TLS. Set false (or use an https://
+# scheduler URL) to keep compilation local instead.
+allow_insecure_sccache_transport: true
 
 features:
   tailscale: true
@@ -38,10 +43,14 @@ features:
   private_hooks: true
   apple_display: true
   source_builds: true
+  # Inbound LocalSend, mDNS, Steam, and source-server ports are a deliberate
+  # workstation trust decision. Disable this on machines used on untrusted
+  # networks; feature-specific ports are additionally gated below.
+  local_network_services: true
 
 private_services:
   portal_binary: /home/john/Code/portal/target/release/portal
-  sccache_scheduler: 10.10.0.233:10600
+  sccache_scheduler_url: http://10.10.0.233:10600
   # The token itself is never read by Ansible. This hook merely tests for this file.
   sccache_token_file: /etc/sccache/client-token
 
@@ -50,50 +59,101 @@ firewall_ports:
   - { port: "53317", protocol: tcp, comment: LocalSend }
   - { port: "53317", protocol: udp, comment: LocalSend }
   - { port: "5353", protocol: udp, comment: mDNS }
-  - { port: "27036-27037", protocol: tcp, comment: Steam Remote Play }
-  - { port: "10400-10401", protocol: udp, comment: Steam Remote Play }
-  - { port: "27031-27036", protocol: udp, comment: Steam Remote Play }
-  - { port: "27015", protocol: tcp, comment: Source dedicated server }
-  - { port: "27015", protocol: udp, comment: Source dedicated server }
+  - { port: "27036-27037", protocol: tcp, comment: Steam Remote Play, feature: steam }
+  - { port: "10400-10401", protocol: udp, comment: Steam Remote Play, feature: steam }
+  - { port: "27031-27036", protocol: udp, comment: Steam Remote Play, feature: steam }
+  - { port: "27015", protocol: tcp, comment: Source dedicated server, feature: steam }
+  - { port: "27015", protocol: udp, comment: Source dedicated server, feature: steam }
+
+# Toolchain channels are policy, not an implicit moving target. Updating this
+# date is the explicit review point for a new nightly compiler.
+rust_toolchain: nightly-2026-08-23
+
+# User-managed developer tools are also deliberate pins. The apps role keeps a
+# working installed version when a network/update attempt fails; changing one
+# of these values is the explicit authorization to install different code.
+claude_code_version: "2.1.247"
+opencode_version: "1.18.22"
+
+# The starter is copied only for a genuinely absent Neovim configuration. This
+# revision matches the starter already used by this machine; subsequent plugin
+# resolution remains governed by Neovim's own lazy-lock.json when present.
+lazyvim_starter_commit: 803bc181d7c0d6d5eeba9274d9be49b287294d99
+
+# Distroboxes are created lazily and are never destroyed just because a pin is
+# changed. These manifest digests were resolved from the named upstream tags on
+# 2026-08-27; recreate a box explicitly after reviewing a refreshed digest.
+distrobox_images:
+  - name: fedora
+    source_tag: registry.fedoraproject.org/fedora-toolbox:44
+    image: registry.fedoraproject.org/fedora-toolbox@sha256:752f99bd5ae59c95bbb2a8f1fd3c1c7126e0c31b1db1e60f1303f7db2e36dd45
+  - name: arch
+    source_tag: docker.io/library/archlinux:latest
+    image: docker.io/library/archlinux@sha256:b860afd5823683f7ea389ba5f00d812f4fe55f6f286dea329d2abeefa535e309
+  - name: debian
+    source_tag: docker.io/library/debian:latest
+    image: docker.io/library/debian@sha256:f324c7ff54321e8d9c588493a20244965938ce0aa50bbd1022d38010e9ffc4b1
+
+# Source builds are tied to immutable source tags/commits and an immutable base
+# image. Fedora packages installed inside the build remain Fedora 44 content.
+source_build_container_image: docker.io/library/fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
 
 github_release_apps:
   - name: lazygit
     repo: jesseduffield/lazygit
     asset_regex: '^lazygit_.*_linux_x86_64[.]tar[.]gz$'
     kind: archive
+    version: v0.64.1
+    checksum: sha256:f8ea237c41f194cd799b48505518bfdaae4edf5a2ad6bd3d898e939785ee4532
   - name: lazydocker
     repo: jesseduffield/lazydocker
     asset_regex: '^lazydocker_.*_Linux_x86_64[.]tar[.]gz$'
     kind: archive
+    version: v0.25.2
+    checksum: sha256:0d9dbfc26068b218e7ed84b104748cadc6e3cf733c0afd35465306fb39b9523c
   - name: mdview
     repo: DigitalPals/mdview
-    asset_regex: '(x86_64|amd64).*(tar[.]gz|rpm)$'
-    kind: archive-auto
+    asset_regex: '^mdview-0[.]0[.]1-1[.]fc44[.]x86_64[.]rpm$'
+    kind: rpm
+    version: "0.0.1"
+    checksum: sha256:2100ed7607ffb6b49fdaca46fd14d09da6f716bcdac8fa8596e5f051f199d83d
   - name: voxtype
     repo: peteonrails/voxtype
     asset_regex: '^voxtype-.*[.]x86_64[.]rpm$'
     kind: rpm
+    version: v0.7.5
+    checksum: sha256:50dd10fe8dcdd0f0d7a2796ca8d628e21810c81e2ae1c365075643e552e79c61
   - name: bun
     repo: oven-sh/bun
     asset_regex: '^bun-linux-x64[.]zip$'
     kind: archive
+    version: bun-v1.4.0
+    checksum: sha256:2d03fb5fb83ac8b567aca0a281b2ce1a1a19d488f56c2968d88c3f25e92fe452
   - name: balena
     repo: balena-io/balena-cli
     asset_regex: '^balena-cli-.*-linux-x64-standalone[.]tar[.]gz$'
     kind: archive
+    version: v25.2.5
+    checksum: sha256:f127556de933f0ef2d48c1e3beb034d1d4ca990d3b12c4ad039e2c4cd85e12eb
   - name: oh-my-posh
     repo: JanDeDobbeleer/oh-my-posh
     asset_regex: '^posh-linux-amd64$'
     kind: binary
+    version: v30.6.5
+    checksum: sha256:079febf68932744a6c8d05179a2798bca083613275eca6de41b1efe9c82e15c8
 nerd_font_apps:
   - name: nerd-font-jetbrains-mono
     repo: ryanoasis/nerd-fonts
     asset_regex: '^JetBrainsMono[.]tar[.]xz$'
     kind: font
+    version: v3.5.1
+    checksum: sha256:04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf
   - name: nerd-font-fira-code
     repo: ryanoasis/nerd-fonts
     asset_regex: '^FiraCode[.]tar[.]xz$'
     kind: font
+    version: v3.5.1
+    checksum: sha256:68e3bd6164864b8b514605bc34e3a87ac401c8c48682fcce6478c70263340207
 pinned_font_archives:
   - name: oppo-sans
     version: "4.0"
@@ -136,7 +196,11 @@ pinned_font_files:
 source_apps:
   - name: awww
     repo_url: https://codeberg.org/LGFae/awww.git
+    tag: v0.12.1
+    commit: f66e12a76dbc4c669b2f1375f78bce49f5b19d66
     binary_names: [awww, awww-daemon]
   - name: wayfreeze
     repo_url: https://github.com/jappie3/wayfreeze.git
+    tag: 0.2.1
+    commit: 59ac913ebb71920992c52dc1002535b733994397
     binary_names: [wayfreeze]

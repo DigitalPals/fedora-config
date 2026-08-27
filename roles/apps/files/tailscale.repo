@@ -5,4 +5,4 @@ enabled=1
 type=rpm
 repo_gpgcheck=1
 gpgcheck=1
-gpgkey=https://pkgs.tailscale.com/stable/fedora/repo.gpg
+gpgkey=file:///etc/pki/rpm-gpg/XPS-tailscale.asc

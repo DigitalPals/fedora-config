@@ -2,14 +2,20 @@
 # Screenshot capture with optional Satty editing
 # Usage: screenshot [region|fullscreen]
 
+set -euo pipefail
+
 OUTPUT_DIR="$HOME/Pictures/Screenshots"
 mkdir -p "$OUTPUT_DIR"
-
-# Cancel any existing slurp
-pkill slurp && exit 0
+ACTION_DIR="${XDG_RUNTIME_DIR:-/tmp}/screenshot-${UID}"
+mkdir -p "$ACTION_DIR"
+chmod 0700 "$ACTION_DIR"
+exec 9>"$ACTION_DIR/action.lock"
+# Coalesce repeated key presses instead of killing an unrelated slurp owned by
+# another application (or racing two cursor-setting restoration traps).
+flock -n 9 || exit 0
 
 MODE="${1:-region}"
-TS="$(date +'%Y-%m-%d_%H-%M-%S')"
+TS="$(date +'%Y-%m-%d_%H-%M-%S-%N')"
 OUTPUT_FILE="$OUTPUT_DIR/screenshot-${TS}.png"
 FREEZE_PID=""
 CAPTURED=0
@@ -70,7 +76,7 @@ offer_edit() {
       "Screenshot saved to clipboard and file" \
       "Click to edit in Satty" 2>/dev/null) || exit 0
     [ "$action" = "default" ] && edit_screenshot "$1"
-  ) &
+  ) 9>&- &
 }
 
 case "$MODE" in
@@ -80,9 +86,9 @@ case "$MODE" in
   region|*)
     # wayfreeze otherwise requests that the compositor copy the cursor into
     # its frozen layer, where grim can no longer distinguish it from pixels.
-    wayfreeze --hide-cursor & FREEZE_PID=$!
+    wayfreeze --hide-cursor 9>&- & FREEZE_PID=$!
     sleep 0.1
-    SELECTION=$(slurp 2>/dev/null || true)
+    SELECTION=$(slurp 9>&- 2>/dev/null || true)
     if [ -n "$SELECTION" ]; then
       if grim -g "$SELECTION" "$OUTPUT_FILE"; then
         CAPTURED=1
@@ -102,4 +108,11 @@ if [ "$CAPTURED" -eq 0 ]; then
 fi
 
 wl-copy --type image/png < "$OUTPUT_FILE" || exit 1
+# The capture transaction is complete once compositor state is restored. Do
+# that before releasing the lock; the deferred notification/editor must not
+# serialize future captures.
+cleanup
+trap - EXIT
+flock -u 9
+exec 9>&-
 offer_edit "$OUTPUT_FILE"

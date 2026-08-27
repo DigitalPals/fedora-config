@@ -1,0 +1,13 @@
+---
+boot_cybex_override_files:
+  - logo.png
+  - entry.png
+  - bullet.png
+  - progress_bar.png
+  - progress_box.png
+  - cybex.script
+  - cybex.plymouth
+
+# All current overrides live at the theme root. Add a parent here before
+# introducing any future override below a source-external directory.
+boot_cybex_override_directories: []

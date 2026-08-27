@@ -265,7 +265,7 @@ BarModule {
                 color: button.ink
 
                 RotationAnimation on rotation {
-                    running: button.transcribing
+                    running: button.transcribing && !Theme.reducedMotion
                     from: 0
                     to: 360
                     duration: 850
@@ -273,7 +273,7 @@ BarModule {
                 }
 
                 SequentialAnimation on opacity {
-                    running: button.recording
+                    running: button.recording && !Theme.reducedMotion
                     loops: Animation.Infinite
                     NumberAnimation { to: 0.35; duration: 650; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1; duration: 650; easing.type: Easing.InOutSine }

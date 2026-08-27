@@ -715,7 +715,7 @@ Column {
                     color: T3Theme.textFaint
 
                     RotationAnimation on rotation {
-                        running: workingIndicator.visible
+                        running: workingIndicator.visible && !Theme.reducedMotion
                         from: 0
                         to: 360
                         duration: 1100

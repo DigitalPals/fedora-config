@@ -3,6 +3,11 @@ state_file = "auto"
 [hotkey]
 enabled = false
 
+# Quickshell already exposes recording/transcription state in the managed
+# menubar; do not probe for Voxtype's separate optional OSD frontend.
+[osd]
+enabled = false
+
 [audio]
 device = "default"
 sample_rate = 16000

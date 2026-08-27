@@ -22,6 +22,12 @@ PopoutPanel {
         navItems.findIndex(item => item.id === Settings.page))
     readonly property bool dragActive: pageLoader.item
         ? (pageLoader.item.dragActive ?? false) : false
+    readonly property string persistenceStatus: Settings.loadError
+        ? (Settings.loadErrorText !== "" ? Settings.loadErrorText
+            : "Could not read the settings file.") + " Retry is available."
+        : Settings.saveError ? "Could not save settings. Retry is available."
+        : Settings.savePending ? "Saving changes…"
+        : Settings.font === "mono" ? "Saved · live" : "Saved · applies live"
 
     implicitWidth: Math.max(320, Math.min(preferredWidth, availableWidth))
     implicitHeight: Math.max(280, Math.min(preferredHeight, availableHeight))
@@ -339,10 +345,12 @@ PopoutPanel {
             }
 
             SettingsAction {
-                visible: Settings.saveError && !Settings.undoAvailable
+                visible: Settings.persistenceError && !Settings.undoAvailable
                 compact: root.compactNav
                 text: "Retry"
                 glyph: "refresh"
+                Accessible.name: Settings.loadError
+                    ? "Retry loading settings" : "Retry saving settings"
                 onTriggered: Settings.retrySave()
             }
 
@@ -350,12 +358,15 @@ PopoutPanel {
                 spacing: 7
                 leftPadding: root.compactNav ? 0 : 8
                 width: parent.width
+                Accessible.role: Settings.persistenceError
+                    ? Accessible.AlertMessage : Accessible.StaticText
+                Accessible.name: root.persistenceStatus
 
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 6; height: 6; radius: 3
                     color: Settings.undoAvailable ? Theme.accent
-                        : Settings.saveError ? Theme.red
+                        : Settings.persistenceError ? Theme.red
                         : Settings.savePending ? Theme.amber : Theme.connected
                 }
 
@@ -364,16 +375,17 @@ PopoutPanel {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - 6 - 7 - parent.leftPadding
                     text: Settings.undoAvailable ? Settings.resetLabel + " reset"
-                        : Settings.saveError ? "Could not save"
+                        : Settings.loadError ? "Could not read settings"
+                        : Settings.saveError ? "Could not save settings"
                         : Settings.savePending ? "Saving changes…"
                         : Settings.font === "mono" ? "Saved · live" : "Saved · applies live"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontMicro
-                    color: Settings.saveError ? Theme.redText : Theme.textFaint
+                    color: Settings.persistenceError ? Theme.redText : Theme.textFaint
                     elide: Text.ElideRight
-                    Accessible.role: Settings.saveError
+                    Accessible.role: Settings.persistenceError
                         ? Accessible.AlertMessage : Accessible.StaticText
-                    Accessible.name: text
+                    Accessible.name: root.persistenceStatus
                 }
             }
         }

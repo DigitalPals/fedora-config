@@ -71,7 +71,7 @@ Singleton {
         detailLatestTurn && typeof detailLatestTurn.turnId === "string"
             ? detailLatestTurn.turnId : "")
     property var detailDiff: ({ checkpointRef: "", loading: false, error: "",
-        text: "", fullText: "", truncated: false, totalChars: 0, totalLines: 0 })
+        text: "", truncated: false, totalChars: 0, totalLines: 0 })
 
     // Repository status for the selected thread (vcs.refreshStatus), fetched
     // per detail open and after git actions; drives which git actions are
@@ -111,7 +111,7 @@ Singleton {
         detailLatestActivity = null;
         detailActionablePlan = null;
         detailCheckpointSummary = null;
-        detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "", fullText: "",
+        detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
             truncated: false, totalChars: 0, totalLines: 0 });
         detailReset();
     }
@@ -363,9 +363,9 @@ Singleton {
         if (ready.length === 0) {
             detailCheckpointSummary = null;
             if (detailDiff.checkpointRef !== "") {
-                T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
+                cancelDiffRequests(detailThreadId);
                 detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
-                    fullText: "", truncated: false, totalChars: 0, totalLines: 0 });
+                    truncated: false, totalChars: 0, totalLines: 0 });
             }
         } else {
             const checkpoint = ready[ready.length - 1];
@@ -390,9 +390,9 @@ Singleton {
             });
             if (detailDiff.checkpointRef !== ""
                     && detailDiff.checkpointRef !== checkpoint.checkpointRef) {
-                T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
+                cancelDiffRequests(detailThreadId);
                 detailDiff = ({ checkpointRef: "", loading: false, error: "", text: "",
-                    fullText: "", truncated: false, totalChars: 0, totalLines: 0 });
+                    truncated: false, totalChars: 0, totalLines: 0 });
             }
         }
     }
@@ -400,6 +400,13 @@ Singleton {
     function recomputeDetail() {
         recomputePendingRequests();
         recomputeDetailDerived();
+    }
+
+    function cancelDiffRequests(threadId) {
+        if (typeof threadId !== "string" || threadId === "")
+            return;
+        T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", threadId, ""));
+        T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff-copy", threadId, ""));
     }
 
     function loadFullThreadDiff(threadId, checkpoint) {
@@ -413,7 +420,7 @@ Singleton {
             return "";
         T3Rpc.beginAction(key, "", false);
         detailDiff = ({ checkpointRef: checkpoint.checkpointRef ?? "", loading: true,
-            error: "", text: "", fullText: "", truncated: false,
+            error: "", text: "", truncated: false,
             totalChars: 0, totalLines: 0 });
         return T3Rpc.requestOnce("orchestration.getFullThreadDiff", {
             threadId: threadId,
@@ -435,8 +442,7 @@ Singleton {
             }
             const rendered = Helpers.truncateDiff(value.diff);
             root.detailDiff = Object.assign({
-                checkpointRef: checkpoint.checkpointRef ?? "", loading: false, error: "",
-                fullText: value.diff
+                checkpointRef: checkpoint.checkpointRef ?? "", loading: false, error: ""
             }, rendered);
             T3Rpc.clearAction(key);
         }, error => {
@@ -450,6 +456,45 @@ Singleton {
                 loading: false, error: error
             });
         }, { actionKey: key, fallback: "Diff unavailable" });
+    }
+
+    // Fetch the full patch only in direct response to the copy action. The
+    // singleton keeps the bounded preview; the full response exists only for
+    // this callback and is handed straight to the compositor clipboard.
+    function copyFullThreadDiff(threadId, checkpoint) {
+        const key = T3Rpc.actionKey("diff-copy", threadId, "");
+        if (!T3Connection.canRead)
+            return T3Rpc.rejectAction(key, "This pairing cannot read thread data", false);
+        if (!checkpoint || checkpoint.status !== "ready"
+                || typeof checkpoint.checkpointTurnCount !== "number")
+            return T3Rpc.rejectAction(key, "No ready checkpoint is available", false);
+        if (!Helpers.canBeginAction(T3Rpc.actionStates, key))
+            return "";
+        T3Rpc.beginAction(key, "", false);
+        return T3Rpc.requestOnce("orchestration.getFullThreadDiff", {
+            threadId: threadId,
+            toTurnCount: checkpoint.checkpointTurnCount,
+            ignoreWhitespace: false
+        }, value => {
+            if (root.detailThreadId !== threadId
+                    || root.detailCheckpointSummary?.checkpointRef !== checkpoint.checkpointRef) {
+                T3Rpc.clearAction(key);
+                return;
+            }
+            if (!value || typeof value.diff !== "string") {
+                T3Rpc.failAction(key, "Malformed diff response");
+                return;
+            }
+            Quickshell.clipboardText = value.diff;
+            T3Rpc.clearAction(key);
+        }, error => {
+            if (root.detailThreadId !== threadId
+                    || root.detailCheckpointSummary?.checkpointRef !== checkpoint.checkpointRef) {
+                T3Rpc.clearAction(key);
+                return;
+            }
+            T3Rpc.failAction(key, error);
+        }, { actionKey: key, fallback: "Full diff copy unavailable" });
     }
 
 
@@ -586,7 +631,7 @@ Singleton {
         detailResubscribeTimer.stop();
         pendingDetailResubscribeId = "";
         stopDetailRequest();
-        T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", threadId, ""));
+        cancelDiffRequests(threadId);
         resetDetailData();
         if (T3Connection.state !== "connected" || threadId === "")
             return;
@@ -630,14 +675,14 @@ Singleton {
         if (detailThreadId === threadId && detailReqId !== "")
             return;
         if (detailThreadId !== "" && detailThreadId !== threadId)
-            T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
+            cancelDiffRequests(detailThreadId);
         detailThreadId = threadId;
         startDetailSubscription(threadId);
     }
 
     function closeDetail() {
         if (detailThreadId !== "")
-            T3Rpc.cancelActionRequests(T3Rpc.actionKey("diff", detailThreadId, ""));
+            cancelDiffRequests(detailThreadId);
         detailResubscribeTimer.stop();
         pendingDetailResubscribeId = "";
         stopDetailRequest();

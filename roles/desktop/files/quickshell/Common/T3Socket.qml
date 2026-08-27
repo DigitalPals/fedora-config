@@ -9,6 +9,10 @@ Item {
 
     property string url: ""
     property bool active: false
+    // Transport generation that opened this socket. The connection singleton
+    // ignores late frames/status changes from an invalidated credential.
+    property int sessionEpoch: 0
+    property int activeSessionEpoch: -1
 
     // Mirrors WebSocket.status without leaking the enum import upstream:
     // 0 connecting · 1 open · 2 closing · 3 closed · 4 error
@@ -16,7 +20,16 @@ Item {
     readonly property bool open: sock.status === WebSocket.Open
     readonly property string errorString: sock.errorString
 
-    signal textReceived(string message)
+    signal textReceived(string message, int epoch)
+    signal socketStatusChanged(int status, string error, int epoch)
+
+    onActiveChanged: {
+        if (active)
+            activeSessionEpoch = sessionEpoch;
+        // Assign imperatively so activeSessionEpoch is captured before the
+        // underlying socket sees activation. A binding offers no such order.
+        sock.active = active;
+    }
 
     function sendText(message) {
         if (sock.status === WebSocket.Open)
@@ -26,7 +39,10 @@ Item {
     WebSocket {
         id: sock
         url: root.url
-        active: root.active
-        onTextMessageReceived: message => root.textReceived(message)
+        active: false
+        onTextMessageReceived: message => root.textReceived(message,
+            root.activeSessionEpoch)
+        onStatusChanged: root.socketStatusChanged(sock.status, sock.errorString,
+            root.activeSessionEpoch)
     }
 }

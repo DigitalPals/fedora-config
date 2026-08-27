@@ -38,7 +38,9 @@ test("the Internet row always opens Network details and never toggles Wi-Fi", ()
     // targets for one outcome, and a chevron that looked like it did something
     // the row did not.
     const radioRow = objectBlock(source, source.indexOf("component RadioRow:"));
-    assert.match(radioRow, /onClicked:\s*radio\.activated\(\)/);
+    assert.match(radioRow,
+        /onClicked:\s*\{[\s\S]*?radio\.forceActiveFocus\(\);[\s\S]*?radio\.activated\(\);[\s\S]*?\}/,
+        "pointer activation must leave keyboard focus on the action it invoked");
     assert.doesNotMatch(radioRow, /RightButton/,
         "a radio row has one outcome, so it must not split the mouse buttons");
     assert.equal(radioRow.match(/MouseArea\s*\{/g).length, 1,

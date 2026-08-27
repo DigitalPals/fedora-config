@@ -117,6 +117,19 @@ test("all shared toggles use one persisted write path", () => {
     assert.match(sys, /function toggleNightLight\(\)/);
     assert.match(sys, /function setIdleInhibited\(value\)/);
     assert.match(sys, /function toggleIdleInhibited\(\)/);
+    for (const state of ["nightLightPending", "nightLightEffective",
+        "nightLightError", "idleInhibitPending", "idleInhibitEffective",
+        "idleInhibitError"])
+        assert.match(sys, new RegExp(`property \\w+ ${state}:`),
+            `${state} must distinguish desired state from process reality`);
+    assert.match(sys,
+        /id: nightLightConfirm[\s\S]*nightLightEffective = true/);
+    assert.match(sys,
+        /id: idleInhibitConfirm[\s\S]*idleInhibitEffective = true/);
+    assert.match(sys,
+        /nightLightLifecycle = "error"[\s\S]*nightLightRetry\.restart\(\)/);
+    assert.match(sys,
+        /idleInhibitLifecycle = "error"[\s\S]*idleInhibitRetry\.restart\(\)/);
     assert.match(control, /onToggled:\s*SysInfo\.toggleNightLight\(\)/);
     assert.match(control, /onToggled:\s*SysInfo\.toggleIdleInhibited\(\)/);
 });
@@ -132,7 +145,9 @@ test("Control Panel fills use their intended accent strength", () => {
     // The radios are rows: they carry a value and a chevron, and a row that is
     // merely connected is not a selection, so nothing about them is painted.
     // Only its mark takes the accent.
-    assert.match(radioRow, /color: radioMouse\.containsMouse \? Theme\.chip : "transparent"/);
+    assert.match(radioRow,
+        /color: radioMouse\.containsMouse \|\| activeFocus \? Theme\.chip : "transparent"/,
+        "keyboard focus must expose the same neutral state layer as hover");
     assert.doesNotMatch(radioRow, /Theme\.(?:accentContainer|accentSoft|accentBg|accentSubtle)/,
         "a radio row must not paint an accent field behind its label");
     assert.match(radioRow, /color: radio\.on \? Theme\.accent : Theme\.icon/,
@@ -143,8 +158,9 @@ test("Control Panel fills use their intended accent strength", () => {
     const quickTile = control.slice(
         control.indexOf("component QuickTile:"),
         control.indexOf("component SessionAction:"));
-    assert.match(quickTile, /tile\.on \? Theme\.accent\b/);
-    assert.match(quickTile, /tile\.on\s*\n\s*\? Theme\.accentFg/);
+    assert.match(quickTile, /tile\.effective \? Theme\.accent\b/,
+        "process-backed actions light only after the requested state is effective");
+    assert.match(quickTile, /tile\.effective\s*\n\s*\? Theme\.accentFg/);
     assert.doesNotMatch(quickTile, /Theme\.accentContainer/,
         "active quick actions must not use the darker container treatment");
     // A running capture is the one state that owns a field of its own, and it

@@ -4,6 +4,24 @@
     msg: "GDM autologin remains disabled by inventory; set gdm_autologin=true to enable it."
   when: not gdm_autologin | bool
 
+- name: Explicitly disable GDM autologin
+  ansible.builtin.lineinfile:
+    path: /etc/gdm/custom.conf
+    regexp: "^\\s*#?\\s*AutomaticLoginEnable\\s*="
+    line: AutomaticLoginEnable=False
+    insertafter: "^\\[daemon\\]$"
+    firstmatch: true
+    create: true
+    mode: "0644"
+  when: not gdm_autologin | bool
+
+- name: Remove the managed GDM autologin user when disabled
+  ansible.builtin.lineinfile:
+    path: /etc/gdm/custom.conf
+    regexp: "^\\s*#?\\s*AutomaticLogin\\s*="
+    state: absent
+  when: not gdm_autologin | bool
+
 - name: Ensure GDM daemon section exists
   ansible.builtin.lineinfile:
     path: /etc/gdm/custom.conf
@@ -12,7 +30,6 @@
     insertbefore: BOF
     create: true
     mode: "0644"
-  when: gdm_autologin | bool
 
 - name: Enable GDM autologin for the selected user
   ansible.builtin.lineinfile:
@@ -168,11 +185,21 @@
   register: retired_noctalia_user_data
   tags: [quickshell]
 
+- name: Allocate one fresh Noctalia retirement backup identifier
+  ansible.builtin.set_fact:
+    retired_noctalia_backup_stamp: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+  when: >-
+    retired_noctalia_user_data.results
+    | selectattr('stat.exists')
+    | list
+    | length > 0
+  tags: [quickshell]
+
 - name: Create a private backup directory for retired Noctalia data
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.local/state/noctalia-retired-{{ ansible_date_time.iso8601_basic_short }}"
+    path: "{{ primary_home }}/.local/state/noctalia-retired-{{ retired_noctalia_backup_stamp }}"
     state: directory
     mode: "0700"
   when: >-
@@ -190,7 +217,7 @@
       - /usr/bin/mv
       - --
       - "{{ item.item.path }}"
-      - "{{ primary_home }}/.local/state/noctalia-retired-{{ ansible_date_time.iso8601_basic_short }}/{{ item.item.name }}"
+      - "{{ primary_home }}/.local/state/noctalia-retired-{{ retired_noctalia_backup_stamp }}/{{ item.item.name }}"
   loop: "{{ retired_noctalia_user_data.results }}"
   loop_control:
     label: "{{ item.item.path }}"

@@ -19,11 +19,9 @@ import "UpdatesHelpers.js" as UpdatesHelpers
 // dnf-makecache.timer already keeps warm is both the honest and the cheap
 // answer, and it is what the panel's footnote says it is doing.
 //
-// The run itself streams here rather than into a terminal. Root comes from
-// `sudo -n` where the wheel sudoers drop-in makes that silent, else `pkexec`,
-// whose dialog is the polkit agent's native one. State lives in this
-// singleton, never in the popover: the panel can close and reopen mid-run and
-// the transaction neither notices nor cares.
+// The privileged run belongs to a transient user service and publishes an
+// atomic status record plus append-only logs. This singleton is a client: it
+// can be destroyed by a config hot reload and attach to the same run again.
 Singleton {
     id: root
 
@@ -258,6 +256,23 @@ Singleton {
     property string fpWarning: ""
     // The finished panel has been opened; closing it then retires `done`.
     property bool runSeen: false
+    readonly property string runBackend:
+        Quickshell.env("HOME") + "/.local/bin/xps-update-run"
+    property bool runIncludedFlatpak: true
+    property int dnfLogOffset: 0
+    property int flatpakLogOffset: 0
+    property int wantedDnfBytes: 0
+    property int wantedFlatpakBytes: 0
+    property string dnfLogCarry: ""
+    property string flatpakLogCarry: ""
+    property string backendTerminalState: ""
+    property string backendMessage: ""
+    property double backendFinishedAt: 0
+    // Status requests are deliberately subordinate to a local start. A retry
+    // from a terminal run must not accept the old run's final status after the
+    // backend has already returned the new durable run.
+    property int statusGeneration: 0
+    property bool startPending: false
 
     readonly property int runPercent: UpdatesHelpers.runPercent(
         dnfCur, dnfTotal, fpCur, fpTotal)
@@ -269,9 +284,7 @@ Singleton {
     }
     readonly property ListModel feed: feedModel
 
-    function run() {
-        if (runActive)
-            return;
+    function resetRun(runId, startedAt, includedFlatpak) {
         feedModel.clear();
         dnfCur = 0;
         dnfTotal = 0;
@@ -290,19 +303,39 @@ Singleton {
         runSeen = false;
         runDnfRc = 0;
         runFpRc = 0;
-        runStamp = UpdatesHelpers.logStamp(new Date());
-        runStartedAt = Date.now();
+        runStamp = runId || "";
+        runStartedAt = startedAt > 0 ? startedAt : Date.now();
         runElapsed = 0;
         dnfPhase = "resolving";
         tableVerb = "";
         lastDoneIndex = -1;
         runDnfDone = false;
-        runFpDone = !flatpakEnabled;
+        runIncludedFlatpak = includedFlatpak;
+        runFpDone = !includedFlatpak;
+        dnfLogOffset = 0;
+        flatpakLogOffset = 0;
+        wantedDnfBytes = 0;
+        wantedFlatpakBytes = 0;
+        dnfLogCarry = "";
+        flatpakLogCarry = "";
+        backendTerminalState = "";
+        backendMessage = "";
+        backendFinishedAt = 0;
         runState = "running";
         doneClear.stop();
-        runDnfProc.running = true;
-        if (flatpakEnabled)
-            runFpProc.running = true;
+    }
+
+    function run() {
+        if (runActive || runStartProc.running)
+            return;
+        statusGeneration++;
+        startPending = true;
+        resetRun("", Date.now(), flatpakEnabled);
+        const command = [runBackend, "start", "--json"];
+        if (!flatpakEnabled)
+            command.push("--no-flatpak");
+        runStartProc.command = command;
+        runStartProc.running = true;
     }
 
     function dnfLine(line) {
@@ -393,28 +426,125 @@ Singleton {
         }
     }
 
-    function finishRunDnf(exitCode) {
-        runDnfRc = exitCode;
-        runDnfDone = true;
-        finishRun();
+    function consumeBackendLog(kind, body, targetOffset) {
+        let text = (kind === "dnf" ? dnfLogCarry : flatpakLogCarry)
+            + String(body || "");
+        const complete = text.endsWith("\n");
+        const lines = text.split("\n");
+        const carry = complete ? "" : lines.pop();
+        if (complete)
+            lines.pop();
+        for (const line of lines) {
+            if (kind === "dnf")
+                dnfLine(line);
+            else
+                fpLine(line);
+        }
+        if (kind === "dnf") {
+            dnfLogCarry = carry;
+            dnfLogOffset = targetOffset;
+        } else {
+            flatpakLogCarry = carry;
+            flatpakLogOffset = targetOffset;
+        }
+        drainBackendLogs();
+        maybeFinishBackendRun();
     }
 
-    function finishRunFp(exitCode) {
-        runFpRc = exitCode;
+    function drainBackendLogs() {
+        if (runStamp === "")
+            return;
+        if (!dnfLogReadProc.running && wantedDnfBytes > dnfLogOffset) {
+            dnfLogReadProc.targetRunStamp = runStamp;
+            dnfLogReadProc.sourceOffset = dnfLogOffset;
+            dnfLogReadProc.targetOffset = wantedDnfBytes;
+            dnfLogReadProc.command = [runBackend, "read-log",
+                dnfLogReadProc.targetRunStamp, "dnf",
+                String(dnfLogReadProc.sourceOffset),
+                String(dnfLogReadProc.targetOffset
+                    - dnfLogReadProc.sourceOffset)];
+            dnfLogReadProc.running = true;
+        }
+        if (!flatpakLogReadProc.running
+                && wantedFlatpakBytes > flatpakLogOffset) {
+            flatpakLogReadProc.targetRunStamp = runStamp;
+            flatpakLogReadProc.sourceOffset = flatpakLogOffset;
+            flatpakLogReadProc.targetOffset = wantedFlatpakBytes;
+            flatpakLogReadProc.command = [runBackend, "read-log",
+                flatpakLogReadProc.targetRunStamp, "flatpak",
+                String(flatpakLogReadProc.sourceOffset),
+                String(flatpakLogReadProc.targetOffset
+                    - flatpakLogReadProc.sourceOffset)];
+            flatpakLogReadProc.running = true;
+        }
+    }
+
+    function applyBackendStatus(data) {
+        if (!data || typeof data.id !== "string" || data.id === ""
+                || data.state === "idle" || data.state === "dismissed")
+            return;
+        const started = Number(data.startedAt || 0) * 1000;
+        const includedFlatpak = data.flatpak !== false;
+        if (runStamp !== data.id)
+            resetRun(data.id, started, includedFlatpak);
+        else {
+            runStartedAt = started > 0 ? started : runStartedAt;
+            runIncludedFlatpak = includedFlatpak;
+        }
+
+        wantedDnfBytes = Math.max(wantedDnfBytes, Number(data.dnfBytes || 0));
+        wantedFlatpakBytes = Math.max(wantedFlatpakBytes,
+            Number(data.flatpakBytes || 0));
+        runDnfDone = data.dnfDone === true;
+        runFpDone = !includedFlatpak || data.flatpakDone === true;
+        runDnfRc = Number(data.dnfRc || 0);
+        runFpRc = Number(data.flatpakRc || 0);
+        backendMessage = typeof data.message === "string" ? data.message : "";
+        drainBackendLogs();
+
+        if (data.state === "queued" || data.state === "running") {
+            runState = "running";
+            return;
+        }
+        if (["done", "failed", "cancelled"].indexOf(data.state) === -1)
+            return;
+        backendTerminalState = data.state;
+        backendFinishedAt = Number(data.finishedAt || 0) * 1000;
+        runDnfDone = true;
         runFpDone = true;
+        if (data.state !== "done")
+            runDnfRc = Number(data.exitCode || runDnfRc
+                || ProcHelpers.NOT_STARTED);
+        maybeFinishBackendRun();
+    }
+
+    function maybeFinishBackendRun() {
+        if (backendTerminalState === "" || dnfLogReadProc.running
+                || flatpakLogReadProc.running || dnfLogOffset < wantedDnfBytes
+                || flatpakLogOffset < wantedFlatpakBytes)
+            return;
+        if (dnfLogCarry !== "") {
+            dnfLine(dnfLogCarry);
+            dnfLogCarry = "";
+        }
+        if (flatpakLogCarry !== "") {
+            fpLine(flatpakLogCarry);
+            flatpakLogCarry = "";
+        }
         finishRun();
     }
 
     function finishRun() {
         if (!runDnfDone || !runFpDone || !runActive)
             return;
-        runFinishedAt = Date.now();
+        runFinishedAt = backendFinishedAt > 0 ? backendFinishedAt : Date.now();
         runDuration = Math.round((runFinishedAt - runStartedAt) / 1000);
         if (runDnfRc !== 0) {
             failTail = rawTail;
             failHeadline = UpdatesHelpers.failureHeadline(rawTail);
             if (failHeadline === "")
-                failHeadline = runDnfRc === 126 || runDnfRc === 127
+                failHeadline = backendMessage !== "" ? backendMessage
+                    : runDnfRc === 126 || runDnfRc === 127
                     ? "Authorization dismissed"
                     : runDnfRc === ProcHelpers.NOT_STARTED
                     ? "dnf could not be started"
@@ -423,7 +553,7 @@ Singleton {
         } else {
             // A Flathub hiccup should not turn a completed system upgrade
             // into a failure banner; it gets a warning line instead.
-            if (flatpakEnabled && runFpRc !== 0)
+            if (runIncludedFlatpak && runFpRc !== 0)
                 fpWarning = "flatpak update failed — see the log";
             runState = "done";
             doneClear.restart();
@@ -434,9 +564,20 @@ Singleton {
     }
 
     function dismissRun() {
+        if (runStamp !== "")
+            Quickshell.execDetached([runBackend, "dismiss", runStamp]);
+        statusGeneration++;
+        startPending = false;
         runState = "idle";
         runSeen = false;
         doneClear.stop();
+    }
+
+    function cancelRun() {
+        if (!runActive || runStamp === "" || cancelProc.running)
+            return;
+        cancelProc.command = [runBackend, "cancel", runStamp];
+        cancelProc.running = true;
     }
 
     // Raw transcript, in the pager everyone already has. The log file is the
@@ -485,70 +626,182 @@ Singleton {
         }
     }
 
-    // Root through the silent path when the wheel drop-in provides it, else
-    // pkexec and the polkit agent's dialog. Output tees into the same log
-    // shelf the ./update script uses, and the pipefail keeps dnf's own exit
-    // status through the tee.
+    // The updater owns the privileged transaction in a transient user service.
+    // These short-lived processes are clients only: a shell hot reload can
+    // discard them without discarding the worker, its lock, or its logs.
     Process {
-        id: runDnfProc
+        id: runStartProc
+        property string body: ""
+        property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["bash", "-c",
-            "set -o pipefail; "
-            + "d=\"${XDG_STATE_HOME:-$HOME/.local/state}/xps-update/logs/"
-            + root.runStamp + "\"; mkdir -p \"$d\"; "
-            + "if sudo -n true 2>/dev/null; then auth='sudo -n'; "
-            + "else auth='pkexec'; fi; "
-            + "$auth dnf -y upgrade --refresh 2>&1 | tee \"$d/dnf.log\""]
-
-        stdout: SplitParser {
-            onRead: data => root.dnfLine(data)
+        stdout: StdioCollector {
+            onStreamFinished: runStartProc.body = text
         }
-
+        stderr: StdioCollector {
+            onStreamFinished: runStartProc.errText = text.trim()
+        }
         onExited: (exitCode, exitStatus) => {
-            runDnfProc.exitSeen = true;
-            runDnfProc.lastExit = exitCode;
+            runStartProc.exitSeen = true;
+            runStartProc.lastExit = exitCode;
         }
         onRunningChanged: {
             if (running) {
+                body = "";
+                errText = "";
                 exitSeen = false;
                 lastExit = 0;
-            } else {
-                root.finishRunDnf(exitSeen ? lastExit : ProcHelpers.NOT_STARTED);
+                return;
+            }
+            if (!exitSeen && body === "" && errText === ""
+                    && !root.startPending)
+                return;
+            root.startPending = false;
+            try {
+                root.applyBackendStatus(JSON.parse(body));
+            } catch (error) {
+                root.runDnfDone = true;
+                root.runFpDone = true;
+                root.runDnfRc = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+                root.backendMessage = errText !== "" ? errText
+                    : "The update service could not be started";
+                root.backendTerminalState = "failed";
+                root.maybeFinishBackendRun();
             }
         }
     }
 
     Process {
-        id: runFpProc
+        id: runStatusProc
+        property int requestGeneration: 0
+        property string body: ""
+        property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["bash", "-c",
-            "set -o pipefail; "
-            + "d=\"${XDG_STATE_HOME:-$HOME/.local/state}/xps-update/logs/"
-            + root.runStamp + "\"; mkdir -p \"$d\"; "
-            + "if sudo -n true 2>/dev/null; then auth='sudo -n'; else auth=''; fi; "
-            + "$auth flatpak update --system --noninteractive 2>&1 "
-            + "| tee \"$d/flatpak.log\""]
-
-        stdout: SplitParser {
-            onRead: data => root.fpLine(data)
+        stdout: StdioCollector {
+            onStreamFinished: runStatusProc.body = text
         }
-
+        stderr: StdioCollector {
+            onStreamFinished: runStatusProc.errText = text.trim()
+        }
         onExited: (exitCode, exitStatus) => {
-            runFpProc.exitSeen = true;
-            runFpProc.lastExit = exitCode;
+            runStatusProc.exitSeen = true;
+            runStatusProc.lastExit = exitCode;
         }
         onRunningChanged: {
             if (running) {
+                body = "";
+                errText = "";
                 exitSeen = false;
                 lastExit = 0;
-            } else {
-                root.finishRunFp(exitSeen ? lastExit : ProcHelpers.NOT_STARTED);
+                return;
+            }
+            if (!exitSeen && body === "" && errText === "")
+                return;
+            if (UpdatesHelpers.acceptsStatusResponse(root.statusGeneration,
+                    requestGeneration, root.startPending, exitSeen, lastExit)) {
+                try {
+                    root.applyBackendStatus(JSON.parse(body));
+                    return;
+                } catch (error) {
+                    console.warn("update status: invalid backend response", error);
+                }
+            }
+            if (root.runActive && errText !== "")
+                console.warn("update status:", errText);
+        }
+    }
+
+    Process {
+        id: dnfLogReadProc
+        property string targetRunStamp: ""
+        property int sourceOffset: 0
+        property int targetOffset: 0
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: -1
+        stdout: StdioCollector {
+            onStreamFinished: dnfLogReadProc.body = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            dnfLogReadProc.exitSeen = true;
+            dnfLogReadProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = -1;
+            } else if (UpdatesHelpers.acceptsLogRead(root.runStamp,
+                    root.dnfLogOffset, targetRunStamp, sourceOffset,
+                    targetOffset, exitSeen, lastExit)) {
+                root.consumeBackendLog("dnf", body, targetOffset);
+            } else if (exitSeen && (targetRunStamp !== root.runStamp
+                    || sourceOffset !== root.dnfLogOffset)) {
+                // The process slot is free again; immediately service the
+                // current run rather than waiting for its next status poll.
+                root.drainBackendLogs();
+            } else if (exitSeen && lastExit !== 0) {
+                console.warn("dnf update log read exited with status", lastExit);
             }
         }
+    }
+
+    Process {
+        id: flatpakLogReadProc
+        property string targetRunStamp: ""
+        property int sourceOffset: 0
+        property int targetOffset: 0
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: -1
+        stdout: StdioCollector {
+            onStreamFinished: flatpakLogReadProc.body = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            flatpakLogReadProc.exitSeen = true;
+            flatpakLogReadProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = -1;
+            } else if (UpdatesHelpers.acceptsLogRead(root.runStamp,
+                    root.flatpakLogOffset, targetRunStamp, sourceOffset,
+                    targetOffset, exitSeen, lastExit)) {
+                root.consumeBackendLog("flatpak", body, targetOffset);
+            } else if (exitSeen && (targetRunStamp !== root.runStamp
+                    || sourceOffset !== root.flatpakLogOffset)) {
+                root.drainBackendLogs();
+            } else if (exitSeen && lastExit !== 0) {
+                console.warn("flatpak update log read exited with status", lastExit);
+            }
+        }
+    }
+
+    Process {
+        id: cancelProc
+        onExited: root.refreshRunStatus()
+    }
+
+    function refreshRunStatus() {
+        if (runStatusProc.running || startPending)
+            return;
+        runStatusProc.requestGeneration = statusGeneration;
+        runStatusProc.command = [runBackend, "status", "--json"];
+        runStatusProc.running = true;
+    }
+
+    Timer {
+        id: statusPoll
+        interval: 1000
+        running: root.runActive && !root.startPending
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.refreshRunStatus()
     }
 
     Timer {
@@ -672,6 +925,7 @@ Singleton {
     Component.onCompleted: {
         initialized = true;
         automaticCheck(true);
+        refreshRunStatus();
     }
     onFlatpakEnabledChanged: {
         if (initialized)

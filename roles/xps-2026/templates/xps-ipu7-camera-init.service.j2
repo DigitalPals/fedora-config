@@ -5,7 +5,8 @@ After=systemd-modules-load.service
 Before=v4l2-relayd@ipu7.service
 PartOf=xps-ipu7-camera.service
 ConditionPathExistsGlob=/sys/bus/acpi/devices/OVTI08F4:*
-ConditionPathExists=/sys/bus/pci/devices/0000:00:05.0
+ConditionPathExists=/sys/bus/pci/devices/{{ xps_2026_ipu7_pci_bdf }}
+ConditionPathExists=!/var/lib/xps-hardware/ipu7/transaction.in-progress
 
 [Service]
 Type=oneshot

@@ -78,6 +78,13 @@ $EDITOR inventory/group_vars/all.yml
 `bootstrap` installs `ansible-core` when needed and applies the complete
 configuration. It is safe to run again after changing the configuration.
 
+The optional private distributed `sccache` hook accepts `https://` scheduler
+URLs by default. The currently configured private-LAN scheduler only offers
+HTTP, so its use is guarded by the explicit
+`allow_insecure_sccache_transport` inventory switch. That opt-in sends the
+scheduler bearer token and compilation traffic without TLS; turn it off to
+fall back to the local cache.
+
 When `gdm_autologin` is enabled in `inventory/group_vars/all.yml`, the next boot
 automatically logs in to **Hyprland (Quickshell)**. From that session, check the
 installation with:
@@ -100,8 +107,13 @@ git pull --ff-only
 ```
 
 This updates Fedora packages and system Flatpaks. Use `./update --full` to also
-reapply the Ansible configuration. Detailed logs are saved under
-`~/.local/state/xps-update/logs/`. Run `./update --help` for all options.
+run the strict repository gate and reapply the Ansible configuration. The
+worker survives terminal and Quickshell restarts; Ctrl+C detaches rather than
+cancelling it. Detailed status and logs are saved under
+`~/.local/state/xps-update/logs/`. Do not reboot while an update is active.
+Run `./update --help` for options and see the
+[operations guide](docs/operations.md) for attach, cancel, log, tag, and reboot
+behavior.
 
 ## Commands
 
@@ -110,21 +122,41 @@ reapply the Ansible configuration. Detailed logs are saved under
 | `./bootstrap` | Install Ansible if needed and apply the full configuration |
 | `./update` | Update Fedora packages and system Flatpaks |
 | `./update --full` | Also update tools and reapply the managed configuration |
+| `./tests/run` | Run all thirteen strict source-check stages |
 | `./verify` | Run non-destructive checks against the installed system |
 
 Extra arguments to `bootstrap` are passed to `ansible-playbook`. For `update`,
 use `--full` before Ansible arguments, for example `./update --full --check
 --diff` or `./update --full --tags desktop,dotfiles`.
 
+The supported tag list comes from `ansible-playbook site.yml --list-tags`.
+Partial tag runs still execute `always` validation (fresh facts, feature,
+Fedora, user, and hardware contracts), and narrow tags do not form independent
+installation profiles. `./update --full` also always skips the `boot` role; use
+the [documented direct bootstrap path](docs/operations.md#supported-ansible-tags)
+for a reviewed boot/initramfs change.
+
 ## Documentation
 
 | Document | Purpose |
 | --- | --- |
+| [docs/operations.md](docs/operations.md) | Commands, tags, updater/callback diagnostics, source-check stages, reboot rules, and reduced motion |
+| [docs/dependency-policy.md](docs/dependency-policy.md) | Immutable dependency pins, intentional moving channels, and their update procedure |
+| [docs/fedora-major-upgrade.md](docs/fedora-major-upgrade.md) | Actionable preparation, offline-upgrade, convergence, and hardware validation runbook |
+| [docs/licensing.md](docs/licensing.md) | Current no-license boundary and the owner actions required for code and assets |
 | [docs/quickshell-notes.md](docs/quickshell-notes.md) | Working on the Quickshell shell: how to test it headlessly, the traps, and what has already been decided against |
 | [docs/shell-settings-manual-verification.md](docs/shell-settings-manual-verification.md) | Hand-test checklist for the settings window |
 | [docs/t3-composer-manual-verification.md](docs/t3-composer-manual-verification.md) | Hand-test checklist for the T3 composer |
 | [docs/t3-git-actions-manual-verification.md](docs/t3-git-actions-manual-verification.md) | Hand-test checklist for the T3 git actions |
 | [docs/xps-2026-hardware.md](docs/xps-2026-hardware.md) | XPS 2026 speaker, camera, fingerprint, haptics, Secure Boot, and diagnostics |
 
-The automated side is `./verify`, which runs `tests/run` (Node unit tests plus
-a qmllint sweep) before the system checks.
+The automated side is `./verify`, which runs all of `tests/run` before the
+installed-system checks. The source gate runs every stage and fails rather than
+silently skipping a missing required tool; `./tests/run --list` is its
+authoritative stage list.
+
+> [!IMPORTANT]
+> The repository currently has no repository-wide software license, and the
+> bundled large raster assets have unknown creator/source/license metadata.
+> See [licensing and asset provenance](docs/licensing.md) before reuse or
+> redistribution.

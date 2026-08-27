@@ -145,6 +145,38 @@ test("log stamps match the update script's shelf naming", () => {
     assert.equal(H.logStamp(new Date(2026, 0, 1, 0, 0, 0)), "20260101-000000");
 });
 
+test("log readers accept bytes only for the exact run and source offset", () => {
+    assert.equal(H.acceptsLogRead("new", 0, "new", 0, 42, true, 0), true);
+    assert.equal(H.acceptsLogRead("new", 0, "old", 0, 42, true, 0), false,
+        "a callback from the prior durable run cannot contaminate this run");
+    assert.equal(H.acceptsLogRead("new", 24, "new", 0, 42, true, 0), false,
+        "overlapping callbacks cannot replay bytes or jump the live offset");
+    assert.equal(H.acceptsLogRead("new", 0, "new", 0, 42, false, 0), false,
+        "the initial non-running signal is not a successful read");
+    assert.equal(H.acceptsLogRead("new", 0, "new", 0, 42, true, 1), false,
+        "a failed read must remain retryable without advancing the offset");
+    assert.equal(H.acceptsLogRead("new", 42, "new", 42, 42, true, 0), false,
+        "an empty interval cannot trigger log consumption");
+});
+
+test("status readers cannot cross a local start or dismiss boundary", () => {
+    assert.equal(H.acceptsStatusResponse(8, 8, false, true, 0), true);
+    assert.equal(H.acceptsStatusResponse(9, 8, false, true, 0), false,
+        "the prior terminal run cannot overwrite a retry response");
+    assert.equal(H.acceptsStatusResponse(8, 8, true, true, 0), false,
+        "start owns run discovery until its response is handled");
+    assert.equal(H.acceptsStatusResponse(8, 8, false, false, 0), false);
+    assert.equal(H.acceptsStatusResponse(8, 8, false, true, 1), false);
+
+    const updates = read("Common/Updates.qml");
+    assert.match(updates,
+        /statusGeneration\+\+;\s*startPending = true;\s*resetRun\(/,
+        "a local start must invalidate an already-running old status request");
+    assert.match(updates,
+        /running: root\.runActive && !root\.startPending/,
+        "the triggered status timer must stay dormant until start settles");
+});
+
 test("the QML coordinator settles both commands, including start failures", () => {
     const updates = read("Common/Updates.qml");
     const popover = read("Popovers/UpdatesPopover.qml");

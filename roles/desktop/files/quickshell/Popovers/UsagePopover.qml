@@ -21,7 +21,8 @@ Surface {
     }
 
     // Right-island popouts run a touch wider (design t5).
-    implicitWidth: Theme.popWideWidth
+    implicitWidth: availableWidth > 0
+        ? Math.min(Theme.popWideWidth, availableWidth) : Theme.popWideWidth
     padding: Theme.panelPadding
     spacing: Theme.panelSectionSpacing
 

@@ -1,0 +1,5 @@
+-- Rendered from inventory. Keep optional UI affordances in lockstep with the
+-- packages and helpers Ansible converges for the same feature.
+return {
+  podman = {{ (features.podman | bool) | ternary('true', 'false') }},
+}

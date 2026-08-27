@@ -210,6 +210,29 @@ function logStamp(date) {
         + pad(date.getMinutes()) + pad(date.getSeconds());
 }
 
+// A log read is a snapshot of one run at one byte offset. Process callbacks
+// can arrive after the coordinator has discovered a newer durable run, so a
+// successful exit alone is not enough: accepting stale bytes would mix two
+// transactions and advancing the new run's offset would permanently skip its
+// opening lines.
+function acceptsLogRead(activeRun, activeOffset, targetRun, sourceOffset,
+        targetOffset, exitSeen, exitCode) {
+    return !!exitSeen && exitCode === 0 && targetRun !== ""
+        && targetRun === activeRun && sourceOffset === activeOffset
+        && targetOffset > sourceOffset;
+}
+
+// A status subprocess can outlive the UI action that launched it. In
+// particular, retrying a terminal run must not let the prior run's last status
+// replace the response from `start`. The caller increments its generation for
+// every local start/dismiss boundary and suppresses polling while start owns
+// discovery of the durable run id.
+function acceptsStatusResponse(activeGeneration, requestGeneration,
+        startPending, exitSeen, exitCode) {
+    return !startPending && !!exitSeen && exitCode === 0
+        && requestGeneration === activeGeneration;
+}
+
 var exported = {
     dnfNames: dnfNames,
     flatpakNames: flatpakNames,
@@ -223,7 +246,9 @@ var exported = {
     runPercent: runPercent,
     kernelHint: kernelHint,
     failureHeadline: failureHeadline,
-    logStamp: logStamp
+    logStamp: logStamp,
+    acceptsLogRead: acceptsLogRead,
+    acceptsStatusResponse: acceptsStatusResponse
 };
 
 if (typeof module !== "undefined" && module.exports)

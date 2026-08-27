@@ -21,6 +21,9 @@ Singleton {
 
     property bool active: false
     property int recorderPid: 0
+    property string recorderName: ""
+    property string expectedStartTicks: ""
+    property string actualStartTicks: ""
     property string outputFile: ""
     // Epoch seconds. 0 while not recording, or while a recording started by an
     // older copy of the script left no stamp behind.
@@ -44,8 +47,15 @@ Singleton {
 
     function refresh() {
         pidView.reload();
+        ticksView.reload();
         stampView.reload();
         outputView.reload();
+    }
+
+    function recomputeActive() {
+        active = recorderPid > 0 && recorderName === "wf-recorder"
+            && expectedStartTicks !== ""
+            && expectedStartTicks === actualStartTicks;
     }
 
     function recomputeElapsed() {
@@ -58,7 +68,7 @@ Singleton {
             : elapsed + 1;
     }
 
-    // Cheap: three small reads off tmpfs, no process spawned. The chip has to
+    // Cheap: small reads off tmpfs/procfs, no process spawned. The chip has to
     // notice a recording the compositor keybind started, and there is no
     // signal for that beyond the file appearing.
     Timer {
@@ -127,8 +137,53 @@ Singleton {
         id: procView
         path: root.recorderPid > 0 ? "/proc/" + root.recorderPid + "/comm" : ""
         printErrors: false
-        onLoaded: root.active = text().trim() === "wf-recorder"
-        onLoadFailed: root.active = false
+        onLoaded: {
+            root.recorderName = text().trim();
+            procStatView.reload();
+            root.recomputeActive();
+        }
+        onLoadFailed: {
+            root.recorderName = "";
+            root.actualStartTicks = "";
+            root.recomputeActive();
+        }
+    }
+
+    FileView {
+        id: procStatView
+        path: root.recorderPid > 0 ? "/proc/" + root.recorderPid + "/stat" : ""
+        printErrors: false
+        onLoaded: {
+            // Fields following the final `) ` begin at proc stat field 3;
+            // process names may contain spaces, so splitting the whole line is
+            // not safe. Start time is field 22, hence index 19 here.
+            const raw = text();
+            const close = raw.lastIndexOf(") ");
+            const fields = close >= 0
+                ? raw.slice(close + 2).trim().split(/\s+/) : [];
+            root.actualStartTicks = fields.length > 19 ? fields[19] : "";
+            root.recomputeActive();
+        }
+        onLoadFailed: {
+            root.actualStartTicks = "";
+            root.recomputeActive();
+        }
+    }
+
+    FileView {
+        id: ticksView
+        path: root.stateDir + "/wf-recorder.start-ticks"
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            root.expectedStartTicks = text().trim();
+            root.recomputeActive();
+        }
+        onLoadFailed: {
+            root.expectedStartTicks = "";
+            root.recomputeActive();
+        }
     }
 
     FileView {
