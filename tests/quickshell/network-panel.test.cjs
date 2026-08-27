@@ -31,17 +31,17 @@ test("network details poll only while acquired and serialize snapshots", () => {
     assert.match(controller, /NetworkHelpers\.updatePingHistory/);
 });
 
-test("DNS and observed-band selectors are profile-backed and expose recovery errors", () => {
+test("DNS controls remain profile-backed and Wi-Fi band options stay out of the view", () => {
     const panel = read("Popovers/WifiPopover.qml");
     const controller = read("Common/NetworkDetails.qml");
     assert.match(panel, /model:\s*\["Automatic", "Cloudflare", "Google", "Custom"\]/);
     assert.match(panel, /NetworkHelpers\.validateDnsServers/);
     assert.match(panel, /NetworkDetails\.dnsMixed/);
     assert.match(panel, /NetworkDetails\.dnsNotice/);
-    assert.match(panel, /model:\s*NetworkDetails\.bandAvailable/);
-    assert.match(panel, /NetworkDetails\.setBand\("auto"\)/);
+    assert.doesNotMatch(panel, /WI-FI BAND/);
+    assert.doesNotMatch(panel, /NetworkDetails\.bandAvailable/);
+    assert.doesNotMatch(panel, /NetworkDetails\.setBand/);
     assert.match(controller, /command:\s*\["python3", root\.helper, "dns"\]/);
-    assert.match(controller, /command:\s*\["python3", root\.helper, "band"\]/);
 });
 
 test("Wi-Fi defaults to a connected-network picker and expands all actionable rows", () => {

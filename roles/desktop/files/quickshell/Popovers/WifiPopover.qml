@@ -1163,67 +1163,6 @@ Surface {
                 }
 
                 Column {
-                    visible: root.activeWifi !== null
-                        && (NetworkDetails.bandAvailable.length > 0
-                            || NetworkDetails.bandSelected !== "auto")
-                    width: parent.width
-                    spacing: 7
-
-                    Row {
-                        width: parent.width
-
-                        SectionLabel {
-                            width: parent.width - bandStatus.implicitWidth
-                            text: "WI-FI BAND"
-                        }
-
-                        Text {
-                            id: bandStatus
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: NetworkDetails.bandBusy ? "Reconnecting…"
-                                : NetworkDetails.bandCurrent !== ""
-                                    ? "Using " + NetworkDetails.bandCurrent + " GHz" : ""
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontTiny
-                            color: Theme.textDim
-                        }
-                    }
-
-                    Row {
-                        spacing: 7
-
-                        Pill {
-                            label: "Automatic"
-                            selected: NetworkDetails.bandSelected === "auto"
-                            enabled: !NetworkDetails.bandBusy
-                            onTriggered: NetworkDetails.setBand("auto")
-                        }
-
-                        Repeater {
-                            model: NetworkDetails.bandAvailable
-
-                            Pill {
-                                required property string modelData
-                                label: modelData + " GHz"
-                                selected: NetworkDetails.bandSelected === modelData
-                                enabled: !NetworkDetails.bandBusy
-                                onTriggered: NetworkDetails.setBand(modelData)
-                            }
-                        }
-                    }
-
-                    Text {
-                        visible: NetworkDetails.bandError !== ""
-                        width: parent.width
-                        text: NetworkDetails.bandError
-                        wrapMode: Text.Wrap
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontTiny
-                        color: Theme.red
-                    }
-                }
-
-                Column {
                     width: parent.width
                     spacing: 7
 
