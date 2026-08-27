@@ -11,8 +11,14 @@ BarModule {
 
     // ModuleSlot only constructs this object for the enabled module on the
     // live bar. Its object lifetime is therefore the exact polling claim.
-    Component.onCompleted: EthernetState.acquire()
-    Component.onDestruction: EthernetState.release()
+    Component.onCompleted: {
+        EthernetState.acquire();
+        Tailscale.acquire();
+    }
+    Component.onDestruction: {
+        EthernetState.release();
+        Tailscale.release();
+    }
 
     readonly property string statusText: {
         const parts = [];
@@ -24,6 +30,15 @@ BarModule {
             parts.push("Wi-Fi off-network");
         else
             parts.push("Wi-Fi off");
+        if (Tailscale.connected) {
+            const identity = Tailscale.net || Tailscale.host;
+            let detail = "Tailscale" + (identity !== "" ? " " + identity : "");
+            if (Tailscale.ip !== "")
+                detail += " (" + Tailscale.ip + ")";
+            if (Tailscale.exitNode)
+                detail += " · exit node";
+            parts.push(detail);
+        }
         return parts.join(" · ");
     }
 

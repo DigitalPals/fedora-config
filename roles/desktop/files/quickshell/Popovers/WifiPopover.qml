@@ -51,6 +51,26 @@ Surface {
     readonly property string connectedWifiGlyph: connectedWifiName === "" ? "wifi_off"
         : connectedWifiSignal >= 66 ? "wifi"
         : connectedWifiSignal >= 33 ? "network_wifi_2_bar" : "network_wifi_1_bar"
+    readonly property string tailscaleDetail: {
+        if (!Tailscale.statusKnown)
+            return "Checking status…";
+        if (Tailscale.statusError !== "")
+            return "Status unavailable · " + Tailscale.statusError;
+        if (!Tailscale.running)
+            return "Stopped · open details to connect";
+        if (!Tailscale.connected)
+            return "Connecting…";
+        const parts = ["Connected"];
+        if (Tailscale.host !== "")
+            parts.push(Tailscale.host);
+        if (Tailscale.net !== "")
+            parts.push(Tailscale.net);
+        if (Tailscale.ip !== "")
+            parts.push(Tailscale.ip);
+        if (Tailscale.exitNode)
+            parts.push("exit node active");
+        return parts.join(" · ");
+    }
 
     readonly property string heroTitle: primary
         ? (NetworkHelpers.physicalType(primary) === "ethernet" ? "Ethernet" : "Wi-Fi")
@@ -82,10 +102,12 @@ Surface {
         onClaimed: {
             EthernetState.acquire();
             NetworkDetails.acquire();
+            Tailscale.acquire();
         }
         onReleased: {
             EthernetState.release();
             NetworkDetails.release();
+            Tailscale.release();
             root.wifiNetworksOpen = false;
             root.pendingConnectKey = "";
             root.clearCredentials();
@@ -416,6 +438,115 @@ Surface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: action.triggered()
+        }
+    }
+
+    component TailscaleSummary: Rectangle {
+        id: summary
+
+        width: parent ? parent.width : 0
+        height: 48
+        radius: Theme.rowRadius
+        color: summaryMouse.containsMouse ? Theme.chipHover
+            : Tailscale.connected ? Theme.chip : "transparent"
+        scale: summaryMouse.pressed ? 0.99 : 1
+        activeFocusOnTab: true
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+
+        Accessible.role: Accessible.Button
+        Accessible.name: "Tailscale"
+        Accessible.description: root.tailscaleDetail
+        Accessible.onPressAction: summary.openDetails()
+
+        function openDetails() {
+            Popouts.openPanel("tailscale", "right");
+        }
+
+        onActiveFocusChanged: if (activeFocus) root.ensureVisible(summary)
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                summary.openDetails();
+                event.accepted = true;
+            }
+        }
+
+        Behavior on color {
+            ColorAnimation { duration: Theme.surfaceDuration }
+        }
+
+        Behavior on scale {
+            NumberAnimation {
+                duration: Theme.pressDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.springCurve
+            }
+        }
+
+        Item {
+            x: 10
+            anchors.verticalCenter: parent.verticalCenter
+            width: 20
+            height: 20
+
+            BrandIcon {
+                anchors.centerIn: parent
+                width: 14
+                height: 14
+                name: "tailscale"
+                colorized: true
+                tint: Tailscale.connected ? Theme.accent : Theme.textDim
+                opacity: Tailscale.connected ? 1 : 0.55
+            }
+        }
+
+        Column {
+            x: 40
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - x - 42
+            spacing: 1
+
+            Text {
+                width: parent.width
+                text: "Tailscale"
+                elide: Text.ElideRight
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
+                font.weight: Tailscale.connected
+                    ? Theme.weightSemibold : Theme.weightMedium
+                color: Theme.textHi
+            }
+
+            Text {
+                width: parent.width
+                text: root.tailscaleDetail
+                elide: Text.ElideRight
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontTiny
+                color: Tailscale.statusError !== "" ? Theme.red : Theme.textDim
+            }
+        }
+
+        Sym {
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            name: "chevron_right"
+            size: Theme.iconSmall
+            color: summaryMouse.containsMouse ? Theme.textHi : Theme.textFaint
+        }
+
+        MouseArea {
+            id: summaryMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                summary.forceActiveFocus();
+                summary.openDetails();
+            }
         }
     }
 
@@ -1017,6 +1148,18 @@ Surface {
                         symbol: "router"
                         value: root.primary && root.primary.gateway ? root.primary.gateway : "--"
                     }
+                }
+
+                Column {
+                    width: parent.width
+                    spacing: 7
+
+                    SectionLabel {
+                        width: parent.width
+                        text: "TAILSCALE"
+                    }
+
+                    TailscaleSummary {}
                 }
 
                 Column {

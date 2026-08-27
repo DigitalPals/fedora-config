@@ -11,7 +11,8 @@ Surface {
 
     property string copiedIp: ""
 
-    // The peer list is live only while this panel is up.
+    // Keep IPC-opened details fresh even when the Network bar module is
+    // disabled and therefore holds no long-lived polling claim of its own.
     Claim {
         active: root.visible
         onClaimed: Tailscale.acquire()
@@ -60,10 +61,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             checked: Tailscale.running
             accessibleName: "Tailscale"
-            onToggled: v => {
-                Quickshell.execDetached(["sh", "-c", v ? "tailscale up" : "tailscale down"]);
-                Tailscale.toggle();
-            }
+            onToggled: value => Tailscale.setRunning(value)
         }
     }
 

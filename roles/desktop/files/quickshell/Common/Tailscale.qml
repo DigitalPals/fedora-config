@@ -4,15 +4,13 @@ import Quickshell
 import Quickshell.Io
 import "ProcHelpers.js" as ProcHelpers
 
-// One `tailscale status --json` for the whole shell. The control centre and
-// the Tailscale panel each used to spawn their own — the control centre's
-// read this machine's status and swallowed every failure in a bare catch,
-// the panel's read the peer list and classified failures properly. One run
-// now answers both, with the panel's error handling.
+// One `tailscale status --json` for the whole shell. The Network menubar
+// summary, Network view and Tailscale detail panel all read this snapshot, so
+// one run answers both "am I connected?" and "who else is on the tailnet?"
 //
 // This is a poll rather than a subscription because `tailscale status` has
 // no watch mode; watchers keep it running only while something is on screen
-// to read it.
+// to read it. The enabled Network module is normally the long-lived watcher.
 Singleton {
     id: root
 
@@ -22,6 +20,10 @@ Singleton {
     property string net: ""
     property string ip: ""
     property bool exitNode: false
+    // BackendState alone is not enough for a visible "connected" claim: a
+    // usable tailnet session also has this machine's Tailscale address, and a
+    // failed read must never leave a stale mark lit in the menubar.
+    readonly property bool connected: running && ip !== "" && statusError === ""
 
     // The tailnet. A status run has come back, either way: an empty `peers`
     // with no statusError is a genuinely empty tailnet, while a failed run
@@ -38,13 +40,15 @@ Singleton {
 
     // ---- watchers ---------------------------------------------------------
     // Polling is the consumer's business, not Popouts': a view that wants
-    // fresh status says so for as long as it is alive. Refreshing on the
-    // first acquire keeps the old triggeredOnStart behaviour.
+    // fresh status says so for as long as it is alive. Every newly visible
+    // consumer asks for a fresh snapshot unless one is already in flight.
+    // This matters now the menubar holds a long-lived claim: opening a detail
+    // view must not inherit a snapshot that is almost one poll interval old.
     property int watchers: 0
 
     function acquire() {
         watchers++;
-        if (watchers === 1)
+        if (!statusProc.running)
             refresh();
     }
 
@@ -67,9 +71,13 @@ Singleton {
 
     // `tailscale up`/`down` returns before the backend has settled, so the
     // read that confirms it is deliberately delayed rather than immediate.
-    function toggle() {
-        Quickshell.execDetached(["sh", "-c", running ? "tailscale down" : "tailscale up"]);
+    function setRunning(value) {
+        Quickshell.execDetached(["tailscale", value ? "up" : "down"]);
         settle.restart();
+    }
+
+    function toggle() {
+        setRunning(!running);
     }
 
     Timer {

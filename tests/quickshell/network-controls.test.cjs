@@ -60,6 +60,7 @@ test("the Bluetooth row always opens details and never toggles the radio", () =>
 test("the stable wifi popout is a scrollable Ethernet and Wi-Fi Network view", () => {
     const source = read("Popovers/WifiPopover.qml");
     assert.match(source, /text:\s*"Network"/);
+    assert.match(source, /text:\s*"TAILSCALE"/);
     assert.match(source, /text:\s*"ETHERNET"/);
     assert.match(source, /model:\s*EthernetState\.devices/);
     assert.match(source, /model:\s*WifiState\.others/);
@@ -93,6 +94,58 @@ test("the combined menubar indicator gives wired transport priority", () => {
     assert.match(module, /for \(const device of EthernetState\.connectedDevices\)/);
     assert.match(module, /"Ethernet " \+ \(device\.connection \|\| device\.device\)/);
     assert.match(module, /"Wi-Fi " \+ WifiState\.name/);
+    assert.match(module, /if \(Tailscale\.connected\)/);
+    assert.match(module, /Tailscale\.net \|\| Tailscale\.host/);
+    assert.match(module, /Tailscale\.exitNode/);
+    assert.doesNotMatch(module, /BrandIcon\s*\{/,
+        "Tailscale belongs in the tooltip and panel, not beside the transport glyph");
+});
+
+test("Tailscale is an overlay with a persistent drill-in, not the physical route", () => {
+    const singleton = read("Common/Tailscale.qml");
+    const panel = read("Popovers/WifiPopover.qml");
+
+    assert.match(singleton,
+        /readonly property bool connected:\s*running && ip !== "" && statusError === ""/);
+    assert.match(panel, /component TailscaleSummary:\s*Rectangle/);
+    assert.match(panel, /TailscaleSummary\s*\{\}/);
+    assert.match(panel, /Stopped · open details to connect/);
+    assert.match(panel, /exit node active/);
+    assert.match(panel, /Popouts\.openPanel\("tailscale", "right"\)/);
+
+    // Tailscale augments the view; the hero and diagnostics remain bound to
+    // NetworkDetails' selected Ethernet/Wi-Fi interface.
+    assert.match(panel, /readonly property var primary:\s*NetworkDetails\.primary/);
+    assert.match(panel, /NetworkDetails\.primaryInterface/);
+    assert.doesNotMatch(panel, /primary:\s*Tailscale/);
+});
+
+test("Tailscale polling follows Network consumers and refreshes new views", () => {
+    const singleton = read("Common/Tailscale.qml");
+    const module = read("Bar/Modules/Wifi.qml");
+    const panel = read("Popovers/WifiPopover.qml");
+
+    assert.match(singleton,
+        /function acquire\(\)[\s\S]{0,120}watchers\+\+;[\s\S]{0,80}if \(!statusProc\.running\)\s*refresh\(\)/);
+    assert.match(singleton, /interval:\s*30000/);
+    for (const source of [module, panel]) {
+        assert.match(source, /Tailscale\.acquire\(\)/);
+        assert.match(source, /Tailscale\.release\(\)/);
+    }
+});
+
+test("the Tailscale switch issues exactly one requested state change", () => {
+    const singleton = read("Common/Tailscale.qml");
+    const panel = read("Popovers/TailscalePopover.qml");
+    const checked = panel.indexOf("checked: Tailscale.running");
+    assert.ok(checked >= 0);
+    const start = panel.lastIndexOf("Toggle {", checked);
+    const toggle = objectBlock(panel, start);
+
+    assert.match(toggle, /onToggled:\s*value => Tailscale\.setRunning\(value\)/);
+    assert.doesNotMatch(toggle, /execDetached/);
+    assert.match(singleton,
+        /function setRunning\(value\)[\s\S]{0,140}Quickshell\.execDetached\(\["tailscale", value \? "up" : "down"\]\)/);
 });
 
 test("wired monitoring is ref-counted by each visible Network consumer", () => {
