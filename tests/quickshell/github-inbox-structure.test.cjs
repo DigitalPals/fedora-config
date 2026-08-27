@@ -92,7 +92,7 @@ test("the popover defaults to Inbox and exposes accessible top-level tabs", () =
     assert.match(source, /label:\s*"Repositories"[\s\S]{0,80}?pageName:\s*"repos"/);
     assert.match(source, /Accessible\.role:\s*Accessible\.PageTab/);
     assert.match(source, /Accessible\.selected:\s*selected/);
-    assert.match(source, /Accessible\.name:\s*"Refresh GitHub repositories and Inbox"/);
+    assert.match(source, /accessibleName:\s*"Refresh GitHub repositories and Inbox"/);
     assert.match(source, /property bool settledExpanded:\s*false/);
     assert.match(source, /Accessible\.name:\s*"Settled, "/);
     assert.deepEqual(load("GitHubHelpers.js").inboxSections([]).map(group => group.title),
@@ -112,29 +112,48 @@ test("the GitHub workspace follows the integrated T3 module hierarchy", () => {
         /component TabButton[\s\S]{0,400}?color:\s*selected \? T3Theme\.hoverStrong/,
         "a selected tab lights the held chip rather than the accent");
     assert.match(source, /component GroupHeader:[\s\S]*?T3Theme\.tabularNumberFeatures/);
-    assert.match(source,
-        /height:\s*quiet \? T3Theme\.quietRowHeight : T3Theme\.activeRowHeight/,
-        "settled activity should use the same density shift as parked T3 work");
 
-    // These two are a one-line row and a two-line row, and only the height
-    // says which is which. Collapsing the tall one onto the short one draws
-    // the detail line straight through the group header underneath it — which
-    // is what happened when T3's inbox went single-line and both tokens were
-    // pointed at the shared list-row height.
+    // T3 and GitHub share one flat-line list grammar. The Inbox is the
+    // quietest form: one coloured status glyph and one meaningful title.
+    // Workflow display titles win over generic workflow names such as "CI";
+    // other detail remains available to accessibility and the page being opened.
+    const inboxRow = source.match(
+        /component InboxRow: Rectangle \{([\s\S]*?)\n {4}\}\n\n {4}\/\/ ---- header/)?.[1] ?? "";
+    assert.match(inboxRow, /height:\s*T3Theme\.quietRowHeight/);
+    assert.match(inboxRow, /color:\s*"transparent"/);
+    assert.match(inboxRow, /border\.width:\s*activeFocus \? 1 : 0/,
+        "attention must not bring back a resting border");
+    assert.match(inboxRow,
+        /name:\s*root\.inboxStatusIcon\(inboxCard\.row\)[\s\S]{0,140}?color:\s*inboxCard\.statusColor/,
+        "status belongs to one semantic glyph");
+    assert.doesNotMatch(inboxRow, /id:\s*inboxContext|id:\s*statusPill/,
+        "Inbox rows should show no provenance or written status");
+    assert.match(inboxRow,
+        /displayTitle:\s*row\.kind === "run" && row\.detail !== ""[\s\S]{0,100}?\? row\.detail : row\.title/,
+        "workflow rows should expose the GitHub display title, not a generic workflow name");
+    assert.match(inboxRow,
+        /id:\s*inboxTitle[\s\S]{0,420}?text:\s*inboxCard\.displayTitle/);
+
+    const repoRow = source.match(
+        /id:\s*repoRow([\s\S]*?)\n {16}\}\n {12}\}\n {8}\}/)?.[1] ?? "";
+    assert.match(repoRow, /height:\s*T3Theme\.quietRowHeight/);
+    assert.match(repoRow, /color:\s*"transparent"/);
+    assert.match(repoRow, /id:\s*repoContext/);
+    assert.match(repoRow, /id:\s*openRepoAction[\s\S]*symbol:\s*"open_in_new"/,
+        "repository rows drill in while retaining a direct browser action");
+
+    const collapsedCommit = source.match(
+        /id:\s*collapsed\b([\s\S]*?)\n {20}\}\n\n {20}\/\/ Expanded/)?.[1] ?? "";
+    assert.match(collapsedCommit, /height:\s*T3Theme\.quietRowHeight/);
+    assert.match(collapsedCommit, /color:\s*"transparent"/);
+    assert.match(collapsedCommit, /id:\s*commitContext/);
+
     const t3Theme = read("Common/T3Theme.qml");
-    const rowToken = name => {
-        const m = t3Theme.match(new RegExp(
-            `readonly property int ${name}:\\s*(?:Theme\\.(\\w+)|(\\d+))`));
-        assert.ok(m, `T3Theme.${name} must be an integer token`);
-        if (m[2] !== undefined)
-            return Number(m[2]);
-        const t = read("Common/Theme.qml").match(new RegExp(
-            `readonly property int ${m[1]}:\\s*(\\d+)`));
-        assert.ok(t, `Theme.${m[1]} must be a literal integer token`);
-        return Number(t[1]);
-    };
-    assert.ok(rowToken("activeRowHeight") >= rowToken("quietRowHeight") + 20,
-        "the two-line row must stay a full line taller than the one-line row");
+    assert.match(t3Theme,
+        /readonly property int quietRowHeight:\s*Theme\.listRowHeight/);
+    assert.doesNotMatch(t3Theme, /activeRowHeight/,
+        "the obsolete GitHub-only two-line token must not return");
+    assert.doesNotMatch(source, /T3Theme\.activeRowHeight/);
     assert.match(source, /label:\s*"Working"|\?\s*"Working"/);
     assert.match(source, /label:\s*"Repositories"[\s\S]{0,80}?root\.filteredRepos\.length/);
     assert.match(source, /text:\s*"Search repositories"/);
@@ -143,40 +162,51 @@ test("the GitHub workspace follows the integrated T3 module hierarchy", () => {
         "Escape should clear repository search before closing the panel");
 });
 
-test("Inbox cards open GitHub and expose local hover/focus settlement actions", () => {
+test("Inbox rows open GitHub and expose local hover/focus settlement actions", () => {
     const source = read("Popovers/GitHubPopover.qml");
     assert.match(source, /function openInbox\(row\)[\s\S]*GitHub\.open\(row\.url\)/);
     assert.match(source,
-        /actionsRevealed:[^\n]*inboxHover\.hovered \|\| activeFocus[\s\S]*settleAction\.activeFocus/);
+        /actionsRevealed:\s*row\.canSettle[\s\S]{0,100}?inboxHover\.hovered \|\| activeFocus \|\| settleAction\.activeFocus/);
     assert.match(source, /HoverHandler \{\s*id: inboxHover/);
-    assert.match(source, /label: inboxCard\.row\.lifecycle === "settled" \? "Unsettle" : "Settle"/);
+    assert.match(source,
+        /component RowAction: IconButton \{\s*controlSize:\s*Theme\.chipInnerHeight/);
+    assert.match(source,
+        /symbol: inboxCard\.quiet \? "undo" : "check"/);
+    assert.match(source,
+        /accessibleName: inboxCard\.row\.lifecycle === "settled" \? "Unsettle" : "Settle"/);
     assert.match(source, /GitHub\.settleInboxItem\(inboxCard\.row\.key\)/);
     assert.match(source, /GitHub\.unsettleInboxItem\(inboxCard\.row\.key\)/);
     assert.match(source,
-        /anchors\.topMargin:\s*showingAction[\s\S]{0,100}?settleAction\.height\) \/ 2 : 7/,
-        "passive status should align with the title while inline actions stay centered");
+        /id:\s*settleScope[\s\S]{0,180}?anchors\.verticalCenter:\s*parent\.verticalCenter/,
+        "the compact action must remain centered in the one-line row");
     assert.match(source, /label:\s*"Settle all"/);
     assert.match(source, /onTriggered:\s*GitHub\.settleAllInboxItems\(\)/);
     assert.match(source, /Accessible\.description:\s*"Open on GitHub"/);
     assert.doesNotMatch(source,
         /mark.*(?:notification|thread).*read|\/notifications\/threads\/[^"\s]*\b(?:PATCH|PUT)|\/rerun|\/cancel/i,
         "Inbox actions must remain local and read-only");
-    for (const context of ["row.branch", "row.event", "row.actor", "row.number",
-        "inboxTimeLabel", "runStatusLabel"])
-        assert.ok(source.includes(context), `Inbox rows do not show ${context}`);
+    assert.match(source,
+        /Accessible\.name:\s*displayTitle[\s\S]{0,180}?root\.inboxStatus\(row\)/,
+        "hidden detail and status must remain available to assistive technology");
+    assert.match(source, /Helpers\.runStatusLabel\(row\.status, row\.conclusion\)/);
 });
 
 test("the bar keeps its live-workflow marker clear of the GitHub mark", () => {
     const source = read("Bar/Modules/GitHub.qml");
-    const marker = source.match(/\/\/ Running status:[\s\S]*?color:\s*Theme\.barAccent\s*\n\s*\}/)?.[0] ?? "";
-    assert.match(marker, /visible:\s*GitHub\.runningCount > 0/);
+    assert.match(source,
+        /width:\s*GitHub\.runningCount > 0 \? 5 : 0[\s\S]{0,80}?opacity:\s*GitHub\.runningCount > 0 \? 1 : 0/);
+    const marker = source.match(
+        /\/\/ Static by design:[\s\S]*?Rectangle \{([\s\S]*?)\n {12}\}/)?.[1] ?? "";
     assert.match(marker, /width:\s*5[\s\S]*height:\s*5/);
-    assert.doesNotMatch(marker, /Animation|Animator|Timer|opacity:/);
+    assert.match(marker, /color:\s*Theme\.barAccent/);
+    assert.doesNotMatch(marker, /Animation|Animator|Timer|opacity:/,
+        "the dot itself stays static even while its lane opens and closes");
     assert.match(source, /GitHub\.badgeTone === "red" \? Theme\.barRed/);
     assert.match(source, /GitHub\.badgeTone === "amber" \? Theme\.barAmber/);
     assert.doesNotMatch(source, /id:\s*badge(?:Count)?\b|GitHub\.badgeVisible/,
         "pending Inbox state must not draw a badge over the GitHub mark");
-    assert.match(source, /id:\s*countLabel[\s\S]*text:\s*GitHub\.pendingInboxCount/);
+    assert.match(source,
+        /id:\s*countLabel[\s\S]*text:\s*GitHub\.pendingInboxCount \+ " pending"/);
     assert.match(source,
         /githubTooltip\(GitHub\.runningCount,[\s\S]*GitHub\.pendingInboxCount,[\s\S]*GitHub\.unreadRepoCount/);
 });

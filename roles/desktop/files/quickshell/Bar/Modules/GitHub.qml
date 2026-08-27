@@ -38,8 +38,8 @@ BarModule {
             return summary;
         }
 
-        // The mark carries only the static running marker at its foot; pending
-        // Inbox activity stays in the adjacent count instead of covering it.
+        // Keep the mark pristine, as T3 does. Live work gets its own narrow
+        // status lane and pending activity stays in the adjacent label.
         Item {
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.barIconSize
@@ -53,20 +53,34 @@ BarModule {
                 name: "github"
                 highlighted: ghChip.held || ghChip.hovered
             }
+        }
 
-            // Running status: a static marker, deliberately not tied to badge
-            // visibility and carrying no pulse.
+        Item {
+            anchors.verticalCenter: parent.verticalCenter
+            width: GitHub.runningCount > 0 ? 5 : 0
+            height: 5
+            opacity: GitHub.runningCount > 0 ? 1 : 0
+
+            Behavior on width {
+                NumberAnimation {
+                    duration: Theme.expandDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.springCurve
+                }
+            }
+
+            Behavior on opacity {
+                NumberAnimation { duration: Theme.chipFadeDuration }
+            }
+
+            // Static by design: a permanent workflow marker should not pulse.
             Rectangle {
-                visible: GitHub.runningCount > 0
-                anchors.left: parent.left
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 1
+                anchors.centerIn: parent
                 width: 5
                 height: 5
                 radius: 2.5
                 color: Theme.barAccent
             }
-
         }
 
         Text {
@@ -74,7 +88,7 @@ BarModule {
             visible: !root.compact && GitHub.pendingInboxCount > 0
                 && GitHub.badgeMode !== "count"
             anchors.verticalCenter: parent.verticalCenter
-            text: GitHub.pendingInboxCount
+            text: GitHub.pendingInboxCount + " pending"
             font.family: Theme.fontMenu
             font.pixelSize: Theme.barLabelSize
             font.weight: Theme.weightMedium

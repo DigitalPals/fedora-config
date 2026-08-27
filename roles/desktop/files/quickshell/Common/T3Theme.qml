@@ -86,10 +86,9 @@ Singleton {
     readonly property int pagePadding: Theme.panelPadding
     readonly property int headerHeight: Theme.panelHeaderHeight
     readonly property int footerHeight: Theme.panelFooterHeight
-    // Every one-line row in these panels is one menubar tall. `activeRowHeight`
-    // is the two-line form, which only GitHub still draws — T3's inbox went to
-    // a single line — so it keeps its own height rather than following this.
-    readonly property int activeRowHeight: 64
+    // Every list row in the T3 and GitHub workspaces is one menubar tall.
+    // Context trails the title and actions replace status in place, leaving
+    // detailed copy to the page a row opens.
     readonly property int quietRowHeight: Theme.listRowHeight
     readonly property int iconButtonSize: Theme.chipHeight
 

@@ -14,8 +14,8 @@ Surface {
     id: root
 
     // Match the integrated T3 workspace: the module owns a calm canvas and
-    // composes raised cards inside it, while the popout host still owns the
-    // outer shadow and opening motion.
+    // composes flat rows plus focused detail inside it, while the popout host
+    // still owns the outer shadow and opening motion.
     spacing: 6
     padding: T3Theme.pagePadding
     surfaceColor: T3Theme.canvas
@@ -116,29 +116,6 @@ Surface {
         }
     }
 
-    function toneFill(tone) {
-        switch (tone) {
-        case "red": return T3Theme.redSoft;
-        case "amber": return T3Theme.amberSoft;
-        case "accent": return T3Theme.accentSubtle;
-        default: return T3Theme.surface;
-        }
-    }
-
-    function inboxIcon(row) {
-        switch (row.kind) {
-        case "run": return "deployed_code";
-        case "notification": return "notifications";
-        case "pull_request": return "merge";
-        case "issue": return "adjust";
-        case "push": return "commit";
-        case "ref": return row.refType === "tag" ? "sell" : "fork_right";
-        case "release": return "rocket_launch";
-        case "discussion": return "forum";
-        default: return "change_circle";
-        }
-    }
-
     function inboxStatusIcon(row) {
         if (row.active)
             return "sync";
@@ -159,24 +136,6 @@ Surface {
         if (row.kind === "discussion")
             return "new";
         return row.status || "update";
-    }
-
-    function inboxMeta(row) {
-        const parts = [row.repo];
-        if (row.kind === "run") {
-            if (row.branch)
-                parts.push(row.branch + (row.event ? " / " + row.event : ""));
-            else if (row.event)
-                parts.push(row.event);
-            if (row.actor)
-                parts.push("@" + row.actor);
-            if (row.number > 0)
-                parts.push("#" + row.number);
-        }
-        const when = Helpers.inboxTimeLabel(row, root.now);
-        if (when)
-            parts.push(when);
-        return parts.join(" · ");
     }
 
     // What was last copied, so whichever control did it can confirm — the
@@ -230,6 +189,7 @@ Surface {
         property string owner: ""
         property string name: ""
         property bool strong: false
+        property int textSize: Theme.fontBody
 
         Text {
             id: ownerText
@@ -237,7 +197,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: nameBox.owner + "/"
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: nameBox.textSize
             color: T3Theme.textFaint
         }
 
@@ -247,7 +207,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: nameBox.name
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: nameBox.textSize
             font.weight: nameBox.strong ? Theme.weightMedium : Theme.weightRegular
             color: nameBox.strong ? T3Theme.textPrimary : T3Theme.textSecondary
             elide: Text.ElideRight
@@ -280,6 +240,12 @@ Surface {
         buttonRadius: T3Theme.controlRadius
         tint: T3Theme.textMuted
         fill: T3Theme.hover
+    }
+
+    // T3's one-line rows reveal compact glyph actions. GitHub uses the same
+    // control so settling or opening a row never displaces most of its title.
+    component RowAction: IconButton {
+        controlSize: Theme.chipInnerHeight
     }
 
     component GitHubStatus: StatusPlaceholder {
@@ -413,28 +379,35 @@ Surface {
         }
     }
 
-    component InboxCard: Rectangle {
+    component InboxRow: Rectangle {
         id: inboxCard
 
         required property var row
         readonly property bool quiet: row.lifecycle === "settled"
-        readonly property bool flagged: !quiet && (row.tone === "red" || row.tone === "amber")
-        readonly property bool actionsRevealed: inboxHover.hovered || activeFocus
-            || settleAction.activeFocus
+        readonly property bool subdued: quiet && !row.unread
+        // Workflow `title` is its often-generic name (for example, "CI").
+        // GitHub's display_title is normalized into `detail`, so give the
+        // meaningful run title the single visible text lane.
+        readonly property string displayTitle: row.kind === "run" && row.detail !== ""
+            ? row.detail : row.title
+        readonly property bool actionsRevealed: row.canSettle
+            && (inboxHover.hovered || activeFocus || settleAction.activeFocus)
         readonly property color statusColor: root.toneColor(row.tone)
 
         width: parent ? parent.width : 0
-        height: quiet ? T3Theme.quietRowHeight : T3Theme.activeRowHeight
+        height: T3Theme.quietRowHeight
         radius: T3Theme.rowRadius
-        color: flagged ? root.toneFill(row.tone)
-            : quiet ? "transparent" : T3Theme.surface
-        border.width: activeFocus || flagged || !quiet ? 1 : 0
-        border.color: activeFocus ? T3Theme.focus
-            : flagged ? statusColor : T3Theme.border
+        // GitHub follows T3's flat list even for attention: status is the
+        // coloured glyph, not a full-row alarm field. Focus retains the one
+        // temporary outline needed for keyboard navigation.
+        color: "transparent"
+        border.width: activeFocus ? 1 : 0
+        border.color: T3Theme.focus
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
-        Accessible.name: row.title + ", " + row.detail + ", "
-            + root.inboxStatus(row)
+        Accessible.name: displayTitle
+            + (row.detail !== "" && row.detail !== displayTitle ? ", " + row.detail : "")
+            + ", " + root.inboxStatus(row)
         Accessible.description: "Open on GitHub"
         Accessible.onPressAction: root.openInbox(row)
 
@@ -447,7 +420,7 @@ Surface {
         }
 
         // Unlike MouseArea.containsMouse, the handler remains hovered while
-        // the pointer crosses into the child Settle/Unsettle button.
+        // the pointer crosses into the child settle control.
         HoverHandler {
             id: inboxHover
         }
@@ -479,88 +452,47 @@ Surface {
             anchors.left: parent.left
             anchors.leftMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            width: inboxCard.quiet ? 14 : 18
+            width: 16
             height: width
 
             Sym {
                 anchors.centerIn: parent
-                name: root.inboxIcon(inboxCard.row)
-                size: inboxCard.quiet ? Theme.iconSmall : Theme.iconMedium
-                symWeight: 450
-                color: inboxCard.quiet ? T3Theme.textFaint : inboxCard.statusColor
-            }
-
-            Rectangle {
-                visible: inboxCard.row.unread || inboxCard.row.active
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.margins: -2
-                width: 8
-                height: 8
-                radius: 4
-                color: inboxCard.quiet ? T3Theme.canvas : inboxCard.color
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 5
-                    height: 5
-                    radius: 3
-                    color: inboxCard.statusColor
-                }
+                name: root.inboxStatusIcon(inboxCard.row)
+                size: inboxCard.subdued ? Theme.iconTiny : Theme.iconSmall
+                symWeight: 500
+                color: inboxCard.statusColor
             }
         }
 
-        Item {
-            id: inboxSide
-            readonly property bool showingAction: inboxCard.actionsRevealed
-                && inboxCard.row.canSettle
+        Text {
+            id: inboxTitle
+            anchors.left: inboxGlyph.right
+            anchors.leftMargin: 10
+            anchors.right: inboxCard.actionsRevealed ? settleScope.left : parent.right
+            anchors.rightMargin: inboxCard.actionsRevealed ? 8 : 9
+            anchors.verticalCenter: parent.verticalCenter
+            text: inboxCard.displayTitle
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontSecondary
+            font.weight: inboxCard.subdued ? Theme.weightRegular : Theme.weightMedium
+            color: inboxCard.subdued ? T3Theme.textSecondary : T3Theme.textPrimary
+            elide: Text.ElideRight
+        }
 
+        FocusScope {
+            id: settleScope
+            visible: inboxCard.actionsRevealed
             anchors.right: parent.right
             anchors.rightMargin: 9
-            anchors.top: parent.top
-            // Passive state belongs to the title line. The taller inline
-            // action still centres in the full card when it replaces status.
-            anchors.topMargin: showingAction
-                ? (inboxCard.height - settleAction.height) / 2 : 7
-            width: showingAction ? settleAction.width : statusPill.width
-            height: Math.max(statusPill.height, settleAction.height)
+            anchors.verticalCenter: parent.verticalCenter
+            implicitWidth: settleAction.width
+            implicitHeight: settleAction.height
 
-            Row {
-                id: statusPill
-                visible: !inboxCard.actionsRevealed || !inboxCard.row.canSettle
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 4
-
-                Sym {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: root.inboxStatusIcon(inboxCard.row)
-                    size: Theme.iconTiny
-                    symWeight: 500
-                    color: inboxCard.statusColor
-                }
-
-                Text {
-                    id: statusLabel
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.inboxStatus(inboxCard.row)
-                    font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightMedium
-                    color: inboxCard.statusColor
-                }
-            }
-
-            Action {
+            RowAction {
                 id: settleAction
-                visible: inboxCard.row.canSettle && inboxCard.actionsRevealed
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                label: inboxCard.row.lifecycle === "settled" ? "Unsettle" : "Settle"
+                symbol: inboxCard.quiet ? "undo" : "check"
+                accessibleName: inboxCard.row.lifecycle === "settled" ? "Unsettle" : "Settle"
                 tint: T3Theme.accent
-                fill: T3Theme.accentSoft
-                hPadding: 14
-                revealed: inboxCard.actionsRevealed
                 onTriggered: {
                     if (inboxCard.row.lifecycle === "settled")
                         GitHub.unsettleInboxItem(inboxCard.row.key);
@@ -568,40 +500,6 @@ Surface {
                         GitHub.settleInboxItem(inboxCard.row.key);
                 }
             }
-        }
-
-        Text {
-            anchors.left: inboxGlyph.right
-            anchors.leftMargin: 10
-            anchors.right: inboxSide.left
-            anchors.rightMargin: 8
-            y: inboxCard.quiet ? 10 : 8
-            text: inboxCard.row.title
-            font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontBody
-            font.weight: inboxCard.row.unread || inboxCard.row.active
-                ? Theme.weightSemibold : Theme.weightMedium
-            color: inboxCard.quiet ? T3Theme.textSecondary : T3Theme.textPrimary
-            elide: Text.ElideRight
-        }
-
-        Text {
-            visible: !inboxCard.quiet
-            anchors.left: inboxGlyph.right
-            anchors.leftMargin: 10
-            anchors.right: parent.right
-            anchors.rightMargin: 9
-            y: 31
-            text: {
-                const meta = root.inboxMeta(inboxCard.row);
-                return inboxCard.row.detail !== "" && meta !== ""
-                    ? inboxCard.row.detail + " · " + meta
-                    : inboxCard.row.detail || meta;
-            }
-            font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontSecondary
-            color: inboxCard.row.tone === "red" ? T3Theme.red : T3Theme.textFaint
-            elide: Text.ElideRight
         }
     }
 
@@ -629,7 +527,7 @@ Surface {
 
             Column {
                 anchors.left: parent.left
-                anchors.leftMargin: 11
+                anchors.leftMargin: 2
                 anchors.right: topTabs.left
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
@@ -640,8 +538,8 @@ Surface {
 
                     BrandIcon {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Theme.iconMedium
-                        height: Theme.iconMedium
+                        width: 18
+                        height: 18
                         name: "github"
                         colorized: true
                         tint: T3Theme.textPrimary
@@ -656,29 +554,11 @@ Surface {
                         font.letterSpacing: -0.2
                         color: T3Theme.textPrimary
                     }
-
-                    Rectangle {
-                        visible: GitHub.pendingInboxCount > 0 && moduleHeader.width >= 420
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: pendingText.implicitWidth + 10
-                        height: 18
-                        radius: 5
-                        color: root.toneFill(GitHub.badgeTone)
-
-                        Text {
-                            id: pendingText
-                            anchors.centerIn: parent
-                            text: GitHub.pendingInboxCount + " pending"
-                            font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontMicro
-                            font.weight: Theme.weightMedium
-                            font.features: T3Theme.tabularNumberFeatures
-                            color: root.toneColor(GitHub.badgeTone)
-                        }
-                    }
                 }
 
                 Row {
+                    id: headerStatusRow
+                    width: parent.width
                     spacing: 6
 
                     Rectangle {
@@ -692,7 +572,7 @@ Surface {
                     }
 
                     Text {
-                        width: Math.max(0, topTabs.x - 40)
+                        width: Math.max(0, headerStatusRow.width - 11)
                         anchors.verticalCenter: parent.verticalCenter
                         elide: Text.ElideRight
                         text: {
@@ -720,9 +600,9 @@ Surface {
             Row {
                 id: topTabs
                 anchors.right: refreshButton.left
-                anchors.rightMargin: 3
+                anchors.rightMargin: 2
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
+                spacing: 2
 
                 TabButton {
                     label: "Inbox"
@@ -735,50 +615,15 @@ Surface {
                 }
             }
 
-            Rectangle {
+            IconButton {
                 id: refreshButton
                 anchors.right: parent.right
-                anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: T3Theme.iconButtonSize
-                height: T3Theme.iconButtonSize
-                radius: T3Theme.controlRadius
-                color: refreshMouse.containsMouse || activeFocus
-                    ? T3Theme.hoverStrong : "transparent"
-                border.width: activeFocus ? 1 : 0
-                border.color: T3Theme.focus
-                activeFocusOnTab: visible
-                Accessible.role: Accessible.Button
-                Accessible.name: "Refresh GitHub repositories and Inbox"
-                Accessible.onPressAction: GitHub.refreshAll()
-
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                            || event.key === Qt.Key_Space) {
-                        GitHub.refreshAll();
-                        event.accepted = true;
-                    }
-                }
-
-                Sym {
-                    anchors.centerIn: parent
-                    name: "refresh"
-                    size: Theme.iconMedium
-                    symWeight: 450
-                    color: GitHub.polling || GitHub.inboxPolling
-                        ? T3Theme.accent : T3Theme.textMuted
-                }
-
-                MouseArea {
-                    id: refreshMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        refreshButton.forceActiveFocus();
-                        GitHub.refreshAll();
-                    }
-                }
+                symbol: "refresh"
+                accessibleName: "Refresh GitHub repositories and Inbox"
+                tint: GitHub.polling || GitHub.inboxPolling
+                    ? T3Theme.accent : T3Theme.textMuted
+                onTriggered: GitHub.refreshAll()
             }
         }
 
@@ -787,7 +632,6 @@ Surface {
             id: backAction
             visible: root.page === "commits"
             anchors.left: parent.left
-            anchors.leftMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             symbol: "arrow_back"
             accessibleName: "Back to repositories"
@@ -831,7 +675,6 @@ Surface {
             id: openRepoLink
             visible: root.page === "commits"
             anchors.right: parent.right
-            anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             symbol: "open_in_new"
             accessibleName: "Open repository on GitHub"
@@ -895,7 +738,7 @@ Surface {
 
         Rectangle {
             anchors.left: parent.left
-            anchors.leftMargin: 7
+            anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 1
             width: 5
@@ -907,7 +750,7 @@ Surface {
 
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 19
+            anchors.leftMargin: 14
             anchors.right: footerSummary.left
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
@@ -921,14 +764,14 @@ Surface {
             }
             elide: Text.ElideRight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.fontMicro
             color: T3Theme.textFaint
         }
 
         Text {
             id: footerSummary
             anchors.right: parent.right
-            anchors.rightMargin: 7
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 1
             text: {
@@ -941,7 +784,7 @@ Surface {
                         ? " · " + GitHub.pendingInboxCount + " pending" : "");
             }
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.fontMicro
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
         }
@@ -1010,19 +853,15 @@ Surface {
                     : "Workflow reports are disabled in settings"
             }
 
-            Rectangle {
+            Item {
                 id: settleAllBar
                 visible: GitHub.pendingInboxCount > 0
                 width: parent.width
-                height: visible ? 40 : 0
-                radius: T3Theme.controlRadius
-                color: T3Theme.surface
-                border.width: 1
-                border.color: T3Theme.border
+                height: visible ? T3Theme.quietRowHeight : 0
 
                 Sym {
                     anchors.left: parent.left
-                    anchors.leftMargin: 10
+                    anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     name: "done_all"
                     size: Theme.iconSmall
@@ -1032,7 +871,7 @@ Surface {
 
                 Text {
                     anchors.left: parent.left
-                    anchors.leftMargin: 32
+                    anchors.leftMargin: 30
                     anchors.right: settleAllAction.left
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
@@ -1047,7 +886,7 @@ Surface {
                 Action {
                     id: settleAllAction
                     anchors.right: parent.right
-                    anchors.rightMargin: 4
+                    anchors.rightMargin: 2
                     anchors.verticalCenter: parent.verticalCenter
                     label: "Settle all"
                     hPadding: 16
@@ -1090,7 +929,7 @@ Surface {
                         id: settledDrawer
                         visible: inboxSection.modelData.id === "settled"
                         width: parent.width
-                        height: visible ? 36 : 0
+                        height: visible ? Theme.sectionHeaderHeight + 8 : 0
                         radius: T3Theme.controlRadius
                         color: settledMouse.containsMouse || activeFocus
                             ? T3Theme.hoverStrong : "transparent"
@@ -1177,7 +1016,7 @@ Surface {
                         model: inboxSection.modelData.id !== "settled" || root.settledExpanded
                             ? inboxSection.modelData.rows : []
 
-                        delegate: InboxCard {
+                        delegate: InboxRow {
                             required property var modelData
                             row: modelData
                         }
@@ -1316,16 +1155,17 @@ Surface {
                     id: repoRow
 
                     required property var modelData
-                    required property int index
 
                     readonly property bool unread: modelData.pushedAt !== ""
                         && GitHub.seenAt !== "" && modelData.pushedAt > GitHub.seenAt
+                    readonly property bool actionsRevealed: repoHover.hovered || activeFocus
+                        || openRepoAction.activeFocus
 
                     width: repoList.width
-                    height: T3Theme.activeRowHeight
+                    height: T3Theme.quietRowHeight
                     radius: T3Theme.rowRadius
-                    color: T3Theme.surface
-                    border.width: 1
+                    color: "transparent"
+                    border.width: activeFocus ? 1 : 0
                     border.color: activeFocus ? T3Theme.focus : T3Theme.border
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
@@ -1370,13 +1210,13 @@ Surface {
                         anchors.left: parent.left
                         anchors.leftMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 18
-                        height: 18
+                        width: 16
+                        height: 16
 
                         Sym {
                             anchors.centerIn: parent
                             name: "folder"
-                            size: Theme.iconMedium
+                            size: Theme.iconSmall
                             symWeight: 450
                             color: repoRow.unread ? T3Theme.accent : T3Theme.textMuted
                         }
@@ -1386,102 +1226,132 @@ Surface {
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
                             anchors.margins: -2
-                            width: 8
-                            height: 8
-                            radius: 4
-                            color: repoRow.color
+                            width: 9
+                            height: 9
+                            radius: 5
+                            color: T3Theme.canvas
 
                             Rectangle {
                                 anchors.centerIn: parent
-                                width: 5
-                                height: 5
+                                width: 6
+                                height: 6
                                 radius: 3
                                 color: T3Theme.accent
                             }
                         }
                     }
 
-                    Row {
-                        id: repoTail
+                    Item {
+                        id: repoLine
+                        anchors.left: repoGlyph.right
+                        anchors.leftMargin: 10
                         anchors.right: parent.right
                         anchors.rightMargin: 9
-                        y: 7
-                        spacing: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: parent.height
 
-                        Sym {
-                            visible: GitHub.watchError(repoRow.modelData.slug) !== ""
+                        RepoName {
+                            anchors.left: parent.left
+                            anchors.right: repoContext.left
                             anchors.verticalCenter: parent.verticalCenter
-                            name: "warning"
-                            size: Theme.iconTiny
-                            color: T3Theme.amber
+                            height: parent.height
+                            owner: repoRow.modelData.owner
+                            name: repoRow.modelData.name
+                            strong: repoRow.unread
+                            textSize: Theme.fontSecondary
                         }
 
-                        Rectangle {
-                            visible: repoRow.modelData.watched
+                        Text {
+                            id: repoContext
+                            anchors.right: repoSide.left
+                            anchors.rightMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            width: watchLabel.implicitWidth + 10
-                            height: watchLabel.implicitHeight + 4
-                            radius: 4
-                            color: T3Theme.accentSubtle
+                            leftPadding: text === "" ? 0 : 8
+                            width: text === "" ? 0
+                                : Math.min(implicitWidth, parent.width * 0.36)
+                            text: {
+                                const parts = [];
+                                if (repoRow.modelData.branch)
+                                    parts.push(repoRow.modelData.branch);
+                                if (repoRow.modelData.watched)
+                                    parts.push("watched");
+                                return parts.join(" · ");
+                            }
+                            elide: Text.ElideRight
+                            font.family: T3Theme.fontUi
+                            font.pixelSize: Theme.fontMicro
+                            color: T3Theme.textFaint
+                        }
 
-                            Text {
-                                id: watchLabel
-                                anchors.centerIn: parent
-                                text: "Watching"
-                                font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontMicro
-                                font.weight: Theme.weightMedium
-                                color: T3Theme.accent
+                        Item {
+                            id: repoSide
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: repoRow.actionsRevealed
+                                ? repoActions.implicitWidth : repoStatus.implicitWidth
+                            height: parent.height
+
+                            Row {
+                                id: repoStatus
+                                visible: !repoRow.actionsRevealed
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 5
+
+                                Sym {
+                                    visible: GitHub.watchError(repoRow.modelData.slug) !== ""
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: "warning"
+                                    size: Theme.iconTiny
+                                    color: T3Theme.amber
+                                }
+
+                                Sym {
+                                    visible: repoRow.modelData.isPrivate
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: "lock"
+                                    size: Theme.iconTiny
+                                    color: T3Theme.textFaint
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: Helpers.relTime(repoRow.modelData.pushedAt, root.now)
+                                    font.family: T3Theme.fontUi
+                                    font.pixelSize: Theme.fontMicro
+                                    font.features: T3Theme.tabularNumberFeatures
+                                    color: repoRow.unread ? T3Theme.accent : T3Theme.textFaint
+                                }
+
+                                Sym {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: "chevron_right"
+                                    size: Theme.iconSmall
+                                    color: T3Theme.textFaint
+                                }
                             }
                         }
-
-                        Sym {
-                            visible: repoRow.modelData.isPrivate
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "lock"
-                            size: Theme.iconTiny
-                            color: T3Theme.textFaint
-                        }
-
-                        Sym {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "chevron_right"
-                            size: Theme.iconSmall
-                            color: T3Theme.textFaint
-                        }
                     }
 
-                    RepoName {
-                        anchors.left: repoGlyph.right
-                        anchors.leftMargin: 10
-                        anchors.right: repoTail.left
-                        anchors.rightMargin: 8
-                        y: 5
-                        height: 22
-                        owner: repoRow.modelData.owner
-                        name: repoRow.modelData.name
-                        strong: repoRow.unread
-                    }
-
-                    Text {
-                        anchors.left: repoGlyph.right
-                        anchors.leftMargin: 10
+                    FocusScope {
+                        id: repoActions
+                        visible: repoRow.actionsRevealed
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
-                        y: 31
-                        text: {
-                            const parts = [];
-                            if (repoRow.modelData.branch)
-                                parts.push(repoRow.modelData.branch);
-                            const age = Helpers.relTime(repoRow.modelData.pushedAt, root.now);
-                            if (age !== "")
-                                parts.push("updated " + age + " ago");
-                            return parts.join(" · ");
+                        anchors.rightMargin: 9
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: openRepoAction.width
+                        implicitHeight: openRepoAction.height
+
+                        RowAction {
+                            id: openRepoAction
+                            symbol: "open_in_new"
+                            accessibleName: "Open repository on GitHub"
+                            tint: T3Theme.accent
+                            onTriggered: {
+                                GitHub.open(GitHub.repoUrl(repoRow.modelData.slug));
+                                Popouts.close();
+                            }
                         }
-                        elide: Text.ElideRight
-                        font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontSecondary
-                        color: T3Theme.textFaint
                     }
                 }
             }
@@ -1550,7 +1420,7 @@ Surface {
 
                     width: commitList.width
                     height: commitBand.height + (expanded ? expandedCard.height + 6
-                        : T3Theme.activeRowHeight)
+                        : T3Theme.quietRowHeight)
 
                     HDivider {
                         id: commitBand
@@ -1558,17 +1428,18 @@ Surface {
                         height: visible ? root.dividerHeight : 0
                     }
 
-                    // Collapsed: subject on one line, provenance under it.
+                    // Collapsed commits use the same one-line reading rhythm
+                    // as threads and repositories; the expanded card owns the
+                    // full message and diff statistics.
                     Rectangle {
                         id: collapsed
                         visible: !commitRow.expanded
                         y: commitBand.height
                         width: parent.width
-                        height: T3Theme.activeRowHeight
+                        height: T3Theme.quietRowHeight
                         radius: T3Theme.rowRadius
-                        color: collapsedMouse.containsMouse || activeFocus
-                            ? T3Theme.hoverStrong : T3Theme.surface
-                        border.width: 1
+                        color: "transparent"
+                        border.width: activeFocus ? 1 : 0
                         border.color: activeFocus ? T3Theme.focus : T3Theme.border
                         activeFocusOnTab: visible
                         Accessible.role: Accessible.Button
@@ -1584,18 +1455,31 @@ Surface {
                             }
                         }
 
+                        HoverHandler { id: collapsedHover }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: parent.radius
+                            color: collapsedHover.hovered
+                                ? T3Theme.hoverStrong : "transparent"
+
+                            Behavior on color {
+                                ColorAnimation { duration: T3Theme.fastDuration }
+                            }
+                        }
+
                         Item {
                             id: commitGlyph
                             anchors.left: parent.left
                             anchors.leftMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 18
-                            height: 18
+                            width: 16
+                            height: 16
 
                             Sym {
                                 anchors.centerIn: parent
                                 name: "commit"
-                                size: Theme.iconMedium
+                                size: Theme.iconSmall
                                 symWeight: 450
                                 color: commitRow.unread ? T3Theme.accent : T3Theme.textMuted
                             }
@@ -1605,34 +1489,36 @@ Surface {
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
                                 anchors.margins: -2
-                                width: 8
-                                height: 8
-                                radius: 4
-                                color: collapsed.color
+                                width: 9
+                                height: 9
+                                radius: 5
+                                color: T3Theme.canvas
 
                                 Rectangle {
                                     anchors.centerIn: parent
-                                    width: 5
-                                    height: 5
+                                    width: 6
+                                    height: 6
                                     radius: 3
                                     color: T3Theme.accent
                                 }
                             }
                         }
 
-                        Column {
+                        Item {
                             anchors.left: commitGlyph.right
                             anchors.leftMargin: 10
                             anchors.right: parent.right
-                            anchors.rightMargin: 12
+                            anchors.rightMargin: 9
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 1
+                            height: parent.height
 
                             Text {
-                                width: parent.width
+                                anchors.left: parent.left
+                                anchors.right: commitContext.left
+                                anchors.verticalCenter: parent.verticalCenter
                                 text: commitRow.modelData.subject
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontBody
+                                font.pixelSize: Theme.fontSecondary
                                 font.weight: commitRow.unread
                                     ? Theme.weightMedium : Theme.weightRegular
                                 color: commitRow.unread ? T3Theme.textPrimary
@@ -1640,21 +1526,42 @@ Surface {
                                 elide: Text.ElideRight
                             }
 
+                            Text {
+                                id: commitContext
+                                anchors.right: commitStatus.left
+                                anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                leftPadding: 8
+                                width: Math.min(implicitWidth, parent.width * 0.34)
+                                text: commitRow.modelData.short + " · "
+                                    + commitRow.modelData.author
+                                elide: Text.ElideRight
+                                font.family: T3Theme.fontUi
+                                font.pixelSize: Theme.fontMicro
+                                color: T3Theme.textFaint
+                            }
+
                             Row {
-                                spacing: 0
+                                id: commitStatus
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
 
                                 Text {
-                                    text: commitRow.modelData.short
-                                    font.family: T3Theme.fontMono
-                                    font.pixelSize: Theme.fontCaption
-                                    color: T3Theme.textFaint
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: Helpers.agoLabelIso(
+                                        commitRow.modelData.date, root.now)
+                                    font.family: T3Theme.fontUi
+                                    font.pixelSize: Theme.fontMicro
+                                    font.features: T3Theme.tabularNumberFeatures
+                                    color: commitRow.unread
+                                        ? T3Theme.accent : T3Theme.textFaint
                                 }
 
-                                Text {
-                                    text: " · " + commitRow.modelData.author + " · "
-                                        + Helpers.agoLabelIso(commitRow.modelData.date, root.now)
-                                    font.family: T3Theme.fontUi
-                                    font.pixelSize: Theme.fontCaption
+                                Sym {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: "expand_more"
+                                    size: Theme.iconSmall
                                     color: T3Theme.textFaint
                                 }
                             }
@@ -1663,7 +1570,6 @@ Surface {
                         MouseArea {
                             id: collapsedMouse
                             anchors.fill: parent
-                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 collapsed.forceActiveFocus();

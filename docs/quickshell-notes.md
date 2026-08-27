@@ -306,9 +306,9 @@ in a face of their own. They all follow the menubar now. Four rules, and
 Metrics live in Theme's `---- dialog metrics ----` block: `panelRadius` follows
 `Settings.barRadius`, so squaring the menubar squares the panels under it;
 `panelRowHeight` 28 is a settings row, `listRowHeight` 34 is one menubar-tall
-list row, `panelTileHeight` 48 is the two-line form, `sectionHeaderHeight` 22
-is the mark above them, and `panelHeaderHeight` / `panelFooterHeight` are a
-panel's title block and its one-line footer.
+list row, `panelTileHeight` 48 is the occasional two-line form,
+`sectionHeaderHeight` 22 is the mark above them, and `panelHeaderHeight` /
+`panelFooterHeight` are a panel's title block and its one-line footer.
 
 Two aliases changed meaning rather than value: `Theme.cardFill`,
 `Theme.tile` and `Theme.insetSurface` now resolve to `Theme.chip`, and
@@ -326,11 +326,15 @@ Two things this pass had to fix, both worth remembering:
   the word only in a proportional face; in JetBrains Mono the two overlapped.
   Anchor a count to `label.right`, never to a measured constant. Lanes that
   clear a fixed-size *icon* (the 30–32px ones) are fine.
-- **Two row-height tokens that mean different things must not be merged.**
-  `T3Theme.quietRowHeight` is one line and `activeRowHeight` is two; pointing
-  both at the shared list height drew GitHub's detail line straight through the
-  group header below it. `github-inbox-structure.test.cjs` now requires a full
-  line between them.
+- **Compact a row as a layout change, not a token change.** T3 first moved its
+  inbox to one line; GitHub later followed. GitHub's Inbox is deliberately only
+  a coloured status glyph and meaningful title; workflow rows prefer GitHub's
+  run display title over generic workflow names such as `CI`. Repositories and
+  commits keep their context in bounded lanes beside the title. Simply
+  shortening the old two-line card would draw its detail through the next
+  section header.
+  `github-inbox-structure.test.cjs` requires all three lists to use the shared
+  flat row and pins the Inbox's quieter status treatment separately.
 
 `SettingsHelpers.semanticPalette` also gained a real step at every level. It
 built the ladder with `ensureContrast`, which only ever *raises* a colour, so a

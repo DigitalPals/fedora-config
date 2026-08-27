@@ -16,7 +16,7 @@ Keep the GitHub module enabled unless a step explicitly says otherwise.
   Existing rows appear under collapsed **Settled** (live workflows remain in
   **Active**) and the bar has no Inbox badge.
 - [ ] Trigger a workflow and observe queued/requested/waiting/pending and then
-  in-progress state in **Active**. Active cards have no Settle action and do not
+  in-progress state in **Active**. Active rows have no Settle action and do not
   increase the Inbox badge; the static bar marker appears without pulsing.
 - [ ] Leave it active for more than 30 seconds. Its state refreshes on the fast
   workflow-only cadence, for at most five active repositories.
@@ -52,12 +52,12 @@ Keep the GitHub module enabled unless a step explicitly says otherwise.
 
 ## Settlement, emphasis, and persistence
 
-- [ ] Hover an unsettled card and use **Settle**. The card moves into the
-  collapsed **Settled** drawer and its badge contribution disappears. Expand
-  the drawer, hover or keyboard-focus the card, and use **Unsettle** to return
-  it to **Attention** or **Updates**.
-- [ ] Click the card outside its Settle/Unsettle button. It still opens the
-  GitHub URL; using the local action does not activate the card.
+- [ ] Hover an unsettled row and use the accessible **Settle** check action.
+  The row moves into the collapsed **Settled** drawer and its badge contribution
+  disappears. Expand the drawer, hover or keyboard-focus the row, and use
+  **Unsettle** to return it to **Attention** or **Updates**.
+- [ ] Click the row outside its Settle/Unsettle icon. It still opens the GitHub
+  URL; using the local action does not activate the row.
 - [ ] Close the popover with several pending rows. Their bold/unread emphasis
   clears, but the bar badge and unsettled lifecycle persist until settlement.
   Repository-tab dots also clear independently and never add to the bar badge.
@@ -103,8 +103,17 @@ Keep the GitHub module enabled unless a step explicitly says otherwise.
   interactive commit/stat reads complete before remaining background jobs.
 - [ ] Tab to **Inbox** and **Repositories**, use Left/Right and Enter/Space, and
   confirm assistive names expose them as selected page tabs.
-- [ ] Keyboard-focus an Inbox card, Tab to its revealed settlement action, and
-  operate both Settle and Unsettle with Enter/Space. Card activation still opens
+- [ ] Confirm Inbox rows show only a coloured status glyph and meaningful title.
+  Workflow rows use GitHub's run display title instead of a generic workflow
+  name such as `CI`. Needs-you and error rows have no resting fill or border;
+  their glyph alone carries the semantic colour. Hidden non-workflow detail
+  remains present in the accessible name.
+- [ ] Confirm repository and collapsed commit rows remain one compact line:
+  title first, bounded context next, status/time at the right.
+- [ ] In **Repositories**, activate a row to drill into commits, then use its
+  revealed **Open repository on GitHub** icon to open the repository directly.
+- [ ] Keyboard-focus an Inbox row, Tab to its revealed settlement action, and
+  operate both Settle and Unsettle with Enter/Space. Row activation still opens
   the browser. The settled drawer itself is keyboard operable and announces its
   expanded/collapsed state.
 - [ ] Drill into **Commits** and press Escape to return to **Repositories**.
