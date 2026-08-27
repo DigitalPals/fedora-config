@@ -230,8 +230,8 @@ Surface {
                 width: parent.width
                 text: {
                     if (!root.p || root.p.status !== "ok")
-                        return root.p && root.p.status !== "ok" ? root.info.cmd.split(" ")[0] + "-oauth" : "";
-                    return [root.p.plan, root.p.account, root.p.source].filter(Boolean).join(" · ");
+                        return "";
+                    return root.p.plan || "";
                 }
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontMicro

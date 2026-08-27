@@ -133,6 +133,56 @@ class ClaudeRefreshTests(unittest.TestCase):
             self.assertEqual(result["plan"], "Claude Pro")
 
 
+class ClaudePlanTests(unittest.TestCase):
+    def test_max_tier_includes_its_usage_multiplier(self):
+        self.assertEqual(MODULE.claude_plan({
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x",
+        }), "Claude Max 20x")
+        self.assertEqual(MODULE.claude_plan({
+            "subscriptionType": "max",
+            "rateLimitTier": "default-claude-max-5x",
+        }), "Claude Max 5x")
+
+    def test_non_max_and_unknown_tiers_fall_back_to_subscription(self):
+        self.assertEqual(MODULE.claude_plan({
+            "subscriptionType": "pro",
+            "rateLimitTier": "default_claude_pro",
+        }), "Claude Pro")
+        self.assertEqual(MODULE.claude_plan({
+            "subscriptionType": "max",
+            "rateLimitTier": "future_tier_name",
+        }), "Claude Max")
+
+    def test_cached_label_updates_and_identity_metadata_is_removed(self):
+        state = {
+            "version": MODULE.STATE_VERSION,
+            "providers": {"claude": {"lastOk": {
+                "status": "ok",
+                "plan": "Claude Max",
+                "account": "private@example.test",
+                "source": "claude-oauth",
+            }}},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            credential_dir = Path(temporary) / ".claude"
+            credential_dir.mkdir()
+            credential_dir.joinpath(".credentials.json").write_text(json.dumps({
+                "claudeAiOauth": {
+                    "accessToken": "unused",
+                    "subscriptionType": "max",
+                    "rateLimitTier": "default_claude_max_20x",
+                }
+            }))
+            with mock.patch.dict(os.environ, {"HOME": temporary}, clear=False):
+                MODULE.update_cached_claude_metadata(state)
+
+        cached = state["providers"]["claude"]["lastOk"]
+        self.assertEqual(cached["plan"], "Claude Max 20x")
+        self.assertNotIn("account", cached)
+        self.assertNotIn("source", cached)
+
+
 class ResilientFetchTests(unittest.TestCase):
     @staticmethod
     def reading(reset=10_000):

@@ -57,3 +57,9 @@ test("menubar quota thresholds color text without semantic backgrounds", () => {
     assert.match(chips, /status === "crit" \? Theme\.barRedText/);
     assert.match(chips, /status === "warn" \? Theme\.barAmber/);
 });
+
+test("provider header shows only the full subscription", () => {
+    assert.match(popover, /return root\.p\.plan \|\| "";/);
+    assert.doesNotMatch(popover, /root\.p\.(?:account|source)/);
+    assert.doesNotMatch(popover, /join\(" · "\)/);
+});

@@ -22,6 +22,7 @@ import fcntl
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -242,6 +243,17 @@ CLAUDE_PLANS = {"pro": "Claude Pro", "max": "Claude Max", "team": "Claude Team",
                 "enterprise": "Claude Enterprise"}
 
 
+def claude_plan(oauth):
+    subscription = oauth.get("subscriptionType")
+    plan = CLAUDE_PLANS.get(subscription, subscription)
+    tier = oauth.get("rateLimitTier")
+    if subscription == "max" and isinstance(tier, str):
+        match = re.search(r"(?:^|[_-])max[_-](\d+x)(?:$|[_-])", tier.lower())
+        if match:
+            plan = f"{plan} {match.group(1)}"
+    return plan
+
+
 def token_expired(value, now=None, skew=0):
     if not isinstance(value, (int, float)):
         return False
@@ -260,6 +272,32 @@ def read_claude_oauth(path):
         return oauth
     except (OSError, ValueError, TypeError, KeyError):
         return None
+
+
+def claude_credentials_path():
+    cfg_dir = os.environ.get("CLAUDE_CONFIG_DIR") or home(".claude")
+    return os.path.join(cfg_dir, ".credentials.json")
+
+
+def update_cached_claude_metadata(state):
+    """Upgrade display metadata without spending a Claude endpoint request."""
+    providers = state.get("providers")
+    if not isinstance(providers, dict):
+        return
+    entry = providers.get("claude")
+    if not isinstance(entry, dict):
+        return
+    last_ok = entry.get("lastOk")
+    if not isinstance(last_ok, dict):
+        return
+
+    # Account and implementation-source labels are no longer part of the UI
+    # contract; remove them from the private cache as well as future results.
+    last_ok.pop("account", None)
+    last_ok.pop("source", None)
+    oauth = read_claude_oauth(claude_credentials_path())
+    if oauth:
+        last_ok["plan"] = claude_plan(oauth)
 
 
 def refresh_claude_oauth(path, oauth):
@@ -359,8 +397,7 @@ def claude_limit_window(raw):
 
 
 def fetch_claude(auto_refresh=False):
-    cfg_dir = os.environ.get("CLAUDE_CONFIG_DIR") or home(".claude")
-    path = os.path.join(cfg_dir, ".credentials.json")
+    path = claude_credentials_path()
     if not os.path.isfile(path):
         return err("nocreds", "claude")
     oauth = read_claude_oauth(path)
@@ -376,12 +413,7 @@ def fetch_claude(auto_refresh=False):
         refreshed = True
     token = oauth["accessToken"]
 
-    plan = CLAUDE_PLANS.get(oauth.get("subscriptionType"), oauth.get("subscriptionType"))
-    account = None
-    try:
-        account = read_json(home(".claude.json"))["oauthAccount"]["emailAddress"]
-    except Exception:
-        pass
+    plan = claude_plan(oauth)
 
     data, e = http_json("claude", "https://api.anthropic.com/api/oauth/usage", {
         "Authorization": f"Bearer {token}",
@@ -437,8 +469,8 @@ def fetch_claude(auto_refresh=False):
                    "currency": extra.get("currency"),
                    "unlimited": False}
 
-    return {"status": "ok", "plan": plan, "account": account,
-            "source": "claude-oauth", "windows": windows, "credits": credits}
+    return {"status": "ok", "plan": plan,
+            "windows": windows, "credits": credits}
 
 
 # ---------------------------------------------------------------- Codex
@@ -777,6 +809,8 @@ def main():
         elif lock_fd is not None:
             os.close(lock_fd)
         lock = None
+
+    update_cached_claude_metadata(state)
 
     # Enabling refresh should immediately recover an auth failure left by the
     # disabled setting, but a failed enabled refresh still observes backoff.
