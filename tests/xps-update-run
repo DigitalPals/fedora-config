@@ -52,8 +52,28 @@ apply_mock systemd-run \
   'printf "%s\n" "$unit" >>"$MOCK_SYSTEMD_LOG"'
 
 apply_mock sudo \
-  'printf "unexpected package command: %s\n" "$*" >>"$MOCK_PACKAGE_LOG"' \
-  'exit 99'
+  'set -euo pipefail' \
+  'printf "%s\n" "$*" >>"$MOCK_PACKAGE_LOG"' \
+  '[[ -n ${MOCK_PACKAGE_SUCCESS:-} ]] || exit 99' \
+  '[[ ${1:-} != -n ]] || shift' \
+  'exec "$@"'
+
+apply_mock dnf \
+  'set -euo pipefail' \
+  'printf "%s\n" "$*" >>"$MOCK_DNF_LOG"' \
+  'if [[ " $* " == *" upgrade "* ]]; then' \
+  '  printf "Repositories loaded.\nNothing to do.\n"' \
+  '  exit "${MOCK_DNF_UPGRADE_RC:-0}"' \
+  'fi' \
+  'if [[ " $* " == *" needs-restarting "* ]]; then' \
+  '  if [[ -n ${MOCK_REBOOT_GATE:-} ]]; then' \
+  '    : >"$MOCK_REBOOT_GATE.entered"' \
+  '    while [[ ! -e $MOCK_REBOOT_GATE.release ]]; do sleep 0.01; done' \
+  '  fi' \
+  '  printf "%s\n" "${MOCK_REBOOT_JSON:-[]}"' \
+  '  exit "${MOCK_REBOOT_RC:-2}"' \
+  'fi' \
+  'exit 98'
 
 export HOME="$fixture/home"
 export XDG_STATE_HOME="$fixture/state"
@@ -61,10 +81,15 @@ export XDG_RUNTIME_DIR="$fixture/runtime"
 export MOCK_ACTIVE_DIR="$active_dir"
 export MOCK_SYSTEMD_LOG="$fixture/systemd.log"
 export MOCK_PACKAGE_LOG="$fixture/package.log"
+export MOCK_DNF_LOG="$fixture/dnf.log"
+export XPS_UPDATE_BOOT_ID_FILE="$fixture/boot-id"
 export PATH="$mock_bin:$PATH"
+printf 'boot-a\n' >"$XPS_UPDATE_BOOT_ID_FILE"
 
 idle=$($backend status --json)
 [[ $(jq -r .state <<<"$idle") == idle ]]
+[[ $(jq -r .bootId <<<"$idle") == boot-a ]]
+[[ $(jq -r .rebootRecommendation <<<"$idle") == unavailable ]]
 
 # Hold the first launch inside mocked systemd-run. The run is published before
 # registration, so a second start must resolve it immediately instead of
@@ -192,6 +217,94 @@ printf 'abcdefghi' >"$next_dir/dnf.log"
 window_status=$($backend status --json "$next_id")
 [[ $(jq -r .dnfBytes <<<"$window_status") -eq 9 ]]
 
+# Legacy records have no boot-scoped authority. They stay readable, but must
+# never manufacture either a positive or negative recommendation.
+jq 'del(.bootId, .rebootRecommendation)' "$next_status" >"$next_status.legacy"
+mv -f -- "$next_status.legacy" "$next_status"
+legacy=$($backend status --json "$next_id")
+[[ $(jq -r .rebootRecommendation <<<"$legacy") == unavailable ]]
+
+# A successful transaction publishes `checking` while the Fedora plugin is
+# running, then accepts exit 1 only alongside a JSON true result.
+export MOCK_PACKAGE_SUCCESS=1
+export MOCK_REBOOT_RC=1
+export MOCK_REBOOT_JSON='[{"type":"reboot","reboot_required":true,"packages":["kernel-core"]}]'
+export MOCK_REBOOT_GATE="$fixture/reboot-check"
+recommended_start=$($backend start --json --no-flatpak)
+recommended_id=$(jq -er .id <<<"$recommended_start")
+[[ $(jq -r .rebootRecommendation <<<"$recommended_start") == pending ]]
+$backend _worker "$recommended_id" --no-flatpak &
+recommended_worker=$!
+for _ in {1..200}; do
+  [[ -e $MOCK_REBOOT_GATE.entered ]] && break
+  sleep 0.01
+done
+[[ -e $MOCK_REBOOT_GATE.entered ]]
+checking=$($backend status --json "$recommended_id")
+[[ $(jq -r .state <<<"$checking") == running ]]
+[[ $(jq -r .phase <<<"$checking") == reboot-check ]]
+[[ $(jq -r .rebootRecommendation <<<"$checking") == checking ]]
+: >"$MOCK_REBOOT_GATE.release"
+wait "$recommended_worker"
+unset MOCK_REBOOT_GATE
+recommended=$($backend status --json "$recommended_id")
+[[ $(jq -r .state <<<"$recommended") == done ]]
+[[ $(jq -r .bootId <<<"$recommended") == boot-a ]]
+[[ $(jq -r .rebootRecommendation <<<"$recommended") == recommended ]]
+grep -q -- '--quiet --cacheonly needs-restarting --json' "$MOCK_DNF_LOG"
+
+# Dismissing the transcript does not dismiss a positive same-boot result. A
+# subsequent run inherits it, and malformed plugin output cannot erase it.
+$backend dismiss "$recommended_id"
+dismissed=$($backend status --json "$recommended_id")
+[[ $(jq -r .state <<<"$dismissed") == dismissed ]]
+[[ $(jq -r .rebootRecommendation <<<"$dismissed") == recommended ]]
+export MOCK_REBOOT_RC=1
+export MOCK_REBOOT_JSON='not-json'
+carry_start=$($backend start --json --no-flatpak)
+carry_id=$(jq -er .id <<<"$carry_start")
+[[ $(jq -r .rebootRecommendation <<<"$carry_start") == recommended ]]
+$backend _worker "$carry_id" --no-flatpak
+carried=$($backend status --json "$carry_id")
+[[ $(jq -r .state <<<"$carried") == done ]]
+[[ $(jq -r .rebootRecommendation <<<"$carried") == recommended ]]
+
+# A new boot clears the positive at the JSON boundary. The next valid exit
+# 0/false result records an explicit no-reboot confirmation for that boot.
+printf 'boot-b\n' >"$XPS_UPDATE_BOOT_ID_FILE"
+after_boot=$($backend status --json "$carry_id")
+[[ $(jq -r .bootId <<<"$after_boot") == boot-b ]]
+[[ $(jq -r .rebootRecommendation <<<"$after_boot") == unavailable ]]
+export MOCK_REBOOT_RC=0
+export MOCK_REBOOT_JSON='[{"type":"reboot","reboot_required":false,"packages":[]}]'
+not_needed_start=$($backend start --json --no-flatpak)
+not_needed_id=$(jq -er .id <<<"$not_needed_start")
+[[ $(jq -r .rebootRecommendation <<<"$not_needed_start") == pending ]]
+$backend _worker "$not_needed_id" --no-flatpak
+not_needed=$($backend status --json "$not_needed_id")
+[[ $(jq -r .state <<<"$not_needed") == done ]]
+[[ $(jq -r .rebootRecommendation <<<"$not_needed") == not-needed ]]
+
+# Malformed JSON and a plugin/tool failure are unavailable, but neither turns
+# the already-completed update into a failed run.
+export MOCK_REBOOT_RC=0
+export MOCK_REBOOT_JSON='{"reboot_required":false}'
+malformed_start=$($backend start --json --no-flatpak)
+malformed_id=$(jq -er .id <<<"$malformed_start")
+$backend _worker "$malformed_id" --no-flatpak
+malformed=$($backend status --json "$malformed_id")
+[[ $(jq -r .state <<<"$malformed") == done ]]
+[[ $(jq -r .rebootRecommendation <<<"$malformed") == unavailable ]]
+
+export MOCK_REBOOT_RC=2
+export MOCK_REBOOT_JSON='[]'
+failed_check_start=$($backend start --json --no-flatpak)
+failed_check_id=$(jq -er .id <<<"$failed_check_start")
+$backend _worker "$failed_check_id" --no-flatpak
+failed_check=$($backend status --json "$failed_check_id")
+[[ $(jq -r .state <<<"$failed_check") == done ]]
+[[ $(jq -r .rebootRecommendation <<<"$failed_check") == unavailable ]]
+
 ! grep -q 'set +e;.*set -e' "$backend"
 
-printf 'Durable updater serializes starts, closes cancellation races, preserves uncertain state, and reads exact log windows\n'
+printf 'Durable updater serializes starts, closes cancellation races, preserves boot-scoped reboot advice, and reads exact log windows\n'

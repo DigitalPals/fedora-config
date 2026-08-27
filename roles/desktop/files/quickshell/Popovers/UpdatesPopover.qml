@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 import "../Common/Format.js" as Format
+import "../Common/UpdatesHelpers.js" as UpdatesHelpers
 
 // Pending updates, the native run that installs them, and the transcript it
 // leaves behind.
@@ -631,13 +632,24 @@ Surface {
     }
 
     Rectangle {
-        visible: root.mode === "done" && Updates.kernelPending !== ""
+        id: rebootOutcome
+
+        readonly property bool recommended: Updates.rebootRecommendation
+            === "recommended"
+        readonly property bool notNeeded: Updates.rebootRecommendation
+            === "not-needed"
+
+        // Negative and unavailable confirmations retire with the completed
+        // transcript. A positive remains actionable after that transcript is
+        // dismissed, until the backend observes a different boot ID.
+        visible: root.mode === "done"
+            || (root.mode === "idle" && recommended)
         width: parent.width
         height: 40
         radius: Theme.tileRadius
-        color: Theme.amberBgSoft
+        color: notNeeded ? Theme.okBgSoft : Theme.amberBgSoft
         border.width: 1
-        border.color: Theme.amberBorder
+        border.color: notNeeded ? Theme.okBorder : Theme.amberBorder
 
         Row {
             anchors.fill: parent
@@ -646,26 +658,33 @@ Surface {
             spacing: 9
 
             Sym {
+                id: rebootIcon
                 anchors.verticalCenter: parent.verticalCenter
-                name: "restart_alt"
+                name: rebootOutcome.recommended ? "restart_alt"
+                    : rebootOutcome.notNeeded ? "check_circle" : "warning"
                 size: Theme.iconSmall + 2
                 symWeight: 600
-                color: Theme.amber
+                fill: 1
+                color: rebootOutcome.notNeeded ? Theme.ok : Theme.amber
             }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 15 - restartButton.width - parent.spacing * 2
-                text: "Kernel " + Updates.kernelPending + " installed — restart to use it"
+                width: parent.width - 15
+                    - (restartButton.visible ? restartButton.width
+                        + parent.spacing * 2 : parent.spacing)
+                text: UpdatesHelpers.rebootLabel(
+                    Updates.rebootRecommendation, Updates.kernelPending)
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontTiny
                 font.weight: Theme.weightBold
-                color: Theme.amber
+                color: rebootOutcome.notNeeded ? Theme.ok : Theme.amber
                 elide: Text.ElideRight
             }
 
             ActionButton {
                 id: restartButton
+                visible: rebootOutcome.recommended
                 anchors.verticalCenter: parent.verticalCenter
                 label: "Restart"
                 tint: Theme.amber

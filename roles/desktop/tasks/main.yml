@@ -94,6 +94,8 @@
       - qrencode
       - iproute
       - iputils
+      # Fedora's authoritative post-update reboot recommendation command.
+      - dnf5-plugins
     state: present
   when: not ansible_check_mode
   tags: [quickshell]

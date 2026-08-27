@@ -9,6 +9,7 @@ log_shelf="$state_root/logs"
 current_file="$state_root/current"
 runtime_root="${XDG_RUNTIME_DIR:-$state_root/runtime}"
 lock_file="$runtime_root/update.lock"
+boot_id_file="${XPS_UPDATE_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
 script_path="$(readlink -f -- "$0")"
 mkdir -p -- "$log_shelf" "$runtime_root"
 chmod 0700 -- "$state_root" "$log_shelf" "$runtime_root" 2>/dev/null || true
@@ -65,6 +66,39 @@ resolve_id() {
 }
 
 status_path() { printf '%s/%s/status.json\n' "$log_shelf" "$1"; }
+
+current_boot_id() {
+  local id=""
+  [[ -r $boot_id_file ]] && IFS= read -r id < "$boot_id_file"
+  [[ -n $id ]] || return 1
+  printf '%s\n' "$id"
+}
+
+valid_reboot_recommendation() {
+  case ${1:-} in
+    pending|checking|recommended|not-needed|unavailable) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Recommendations belong to one boot. Missing fields are legacy records, and
+# a record from an earlier boot is no longer evidence that this boot should be
+# restarted. Normalize both cases at the status boundary without rewriting a
+# status file that an active worker may be replacing concurrently.
+status_reboot_recommendation() {
+  local file=$1 expected_boot=$2 recorded_boot recommendation
+  recommendation="unavailable"
+  if [[ -n $expected_boot && -r $file ]]; then
+    recorded_boot=$(jq -r '.bootId // empty' "$file" 2>/dev/null || true)
+    if [[ $recorded_boot == "$expected_boot" ]]; then
+      recommendation=$(jq -r '.rebootRecommendation // "unavailable"' \
+        "$file" 2>/dev/null || printf unavailable)
+      valid_reboot_recommendation "$recommendation" \
+        || recommendation="unavailable"
+    fi
+  fi
+  printf '%s\n' "$recommendation"
+}
 
 status_state() {
   local file
@@ -146,22 +180,30 @@ atomic_text() {
 }
 
 json_status() {
-  local id=${1:-} file dnf_bytes=0 flatpak_bytes=0
+  local id=${1:-} file dnf_bytes=0 flatpak_bytes=0 boot_id recommendation
+  boot_id=$(current_boot_id || true)
   [[ -n $id ]] || id=$(current_id || true)
   if ! valid_id "$id"; then
-    printf '{"state":"idle","id":""}\n'
+    jq -cn --arg bootId "$boot_id" \
+      '{state: "idle", id: "", bootId: $bootId,
+        rebootRecommendation: "unavailable"}'
     return
   fi
   repair_stale_status "$id"
   file=$(status_path "$id")
   if [[ ! -r $file ]]; then
-    jq -n --arg id "$id" '{id: $id, state: "unknown"}'
+    jq -n --arg id "$id" --arg bootId "$boot_id" \
+      '{id: $id, state: "unknown", bootId: $bootId,
+        rebootRecommendation: "unavailable"}'
     return 1
   fi
   [[ ! -r $log_shelf/$id/dnf.log ]] || dnf_bytes=$(wc -c < "$log_shelf/$id/dnf.log")
   [[ ! -r $log_shelf/$id/flatpak.log ]] || flatpak_bytes=$(wc -c < "$log_shelf/$id/flatpak.log")
+  recommendation=$(status_reboot_recommendation "$file" "$boot_id")
   jq --argjson dnfBytes "$dnf_bytes" --argjson flatpakBytes "$flatpak_bytes" \
-    '. + {dnfBytes: $dnfBytes, flatpakBytes: $flatpakBytes}' "$file"
+    --arg bootId "$boot_id" --arg rebootRecommendation "$recommendation" \
+    '. + {dnfBytes: $dnfBytes, flatpakBytes: $flatpakBytes,
+      bootId: $bootId, rebootRecommendation: $rebootRecommendation}' "$file"
 }
 
 human_status() {
@@ -172,9 +214,12 @@ human_status() {
 write_status() {
   local state=$1 phase=$2 message=${3:-} exit_code=${4:-0} finished=0
   local temporary="$run_dir/.status.$$.tmp"
+  local status_boot_id=${boot_id:-} status_reboot=${reboot_recommendation:-unavailable}
+  valid_reboot_recommendation "$status_reboot" || status_reboot="unavailable"
   [[ $state == queued || $state == running ]] || finished=$(date +%s)
   jq -n --arg id "$run_id" --arg state "$state" --arg phase "$phase" \
     --arg message "$message" --arg logDir "$run_dir" --arg unit "$unit_name" \
+    --arg bootId "$status_boot_id" --arg rebootRecommendation "$status_reboot" \
     --argjson startedAt "$started_at" --argjson finishedAt "$finished" \
     --argjson exitCode "$exit_code" --argjson full "$full" \
     --argjson flatpak "$with_flatpak" --argjson dnfDone "$dnf_done" \
@@ -186,7 +231,8 @@ write_status() {
       finishedAt: $finishedAt, exitCode: $exitCode, full: $full,
       flatpak: $flatpak, dnfDone: $dnfDone, flatpakDone: $flatpakDone,
       dnfRc: $dnfRc, flatpakRc: $flatpakRc, testsRc: $testsRc,
-      ansibleRc: $ansibleRc}' > "$temporary"
+      ansibleRc: $ansibleRc, bootId: $bootId,
+      rebootRecommendation: $rebootRecommendation}' > "$temporary"
   mv -f -- "$temporary" "$run_dir/status.json"
 }
 
@@ -261,6 +307,15 @@ start_run() {
 
   local run_id unit_name run_dir started_at dnf_done=false flatpak_done=false
   local dnf_rc=0 flatpak_rc=0 tests_rc=0 ansible_rc=0
+  local boot_id reboot_recommendation
+  boot_id=$(current_boot_id || true)
+  reboot_recommendation="pending"
+  if [[ -n $active_id ]]; then
+    reboot_recommendation=$(status_reboot_recommendation \
+      "$(status_path "$active_id")" "$boot_id")
+    [[ $reboot_recommendation == recommended ]] \
+      || reboot_recommendation="pending"
+  fi
   run_id="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
   unit_name="xps-update-$run_id.service"
   run_dir="$log_shelf/$run_id"
@@ -314,6 +369,48 @@ worker_exit_fallback() {
     "$([[ $rc -eq 0 ]] && printf 125 || printf '%s' "$rc")" 2>/dev/null || true
 }
 
+check_reboot_recommendation() {
+  local carried_recommendation=false output_file error_file rc parsed=""
+  [[ $reboot_recommendation == recommended ]] \
+    && carried_recommendation=true
+
+  if [[ -z $boot_id ]]; then
+    reboot_recommendation="unavailable"
+    return 0
+  fi
+
+  reboot_recommendation="checking"
+  write_status running reboot-check \
+    "Checking whether Fedora recommends a reboot" 0
+  output_file="$run_dir/reboot.json"
+  error_file="$run_dir/reboot.err"
+  timeout 30s env LC_ALL=C dnf --quiet --cacheonly needs-restarting --json \
+    > "$output_file" 2> "$error_file"
+  rc=$?
+  if [[ $rc -eq 0 || $rc -eq 1 ]]; then
+    parsed=$(jq -r '
+      if type != "array" then error("expected an array") else
+        [.[] | select(type == "object" and .type == "reboot"
+          and (.reboot_required | type) == "boolean")
+          | .reboot_required]
+        | if length == 1 then .[0] else error("expected one reboot result") end
+      end
+    ' "$output_file" 2>/dev/null) || parsed=""
+  fi
+
+  if [[ $rc -eq 1 && $parsed == true ]]; then
+    reboot_recommendation="recommended"
+  elif [[ $rc -eq 0 && $parsed == false ]]; then
+    reboot_recommendation="not-needed"
+  elif [[ $carried_recommendation == true ]]; then
+    # A missing plugin, timeout, or malformed response cannot erase a
+    # recommendation already established during this boot.
+    reboot_recommendation="recommended"
+  else
+    reboot_recommendation="unavailable"
+  fi
+}
+
 worker() {
   run_id=${1:-}; shift || true
   valid_id "$run_id" || exit 2
@@ -322,6 +419,11 @@ worker() {
   started_at=$(jq -r '.startedAt // 0' "$run_dir/status.json" 2>/dev/null || printf 0)
   [[ $started_at =~ ^[0-9]+$ ]] || started_at=$(date +%s)
   dnf_done=false; flatpak_done=false; dnf_rc=0; flatpak_rc=0; tests_rc=0; ansible_rc=0
+  boot_id=$(current_boot_id || true)
+  reboot_recommendation=$(status_reboot_recommendation \
+    "$run_dir/status.json" "$boot_id")
+  [[ $reboot_recommendation == recommended ]] \
+    || reboot_recommendation="pending"
   trap worker_cancelled INT TERM
   trap worker_exit_fallback EXIT
   exec 9>"$lock_file"
@@ -401,6 +503,8 @@ worker() {
     fi
   fi
 
+  check_reboot_recommendation
+
   local message="Update completed"
   (( flatpak_rc == 0 )) || message="Update completed; Flatpak reported status $flatpak_rc"
   printf 'XPS update %s finished at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
@@ -448,6 +552,8 @@ load_status_globals() {
   flatpak_done=$(jq -r '.flatpakDone // false' "$file"); dnf_rc=$(jq -r '.dnfRc // 0' "$file")
   flatpak_rc=$(jq -r '.flatpakRc // 0' "$file"); tests_rc=$(jq -r '.testsRc // 0' "$file")
   ansible_rc=$(jq -r '.ansibleRc // 0' "$file")
+  boot_id=$(current_boot_id || true)
+  reboot_recommendation=$(status_reboot_recommendation "$file" "$boot_id")
 }
 
 cancel_run() {

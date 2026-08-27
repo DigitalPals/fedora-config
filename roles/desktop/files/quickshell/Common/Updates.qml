@@ -254,6 +254,12 @@ Singleton {
     property var failTail: []
     property var rawTail: []
     property string fpWarning: ""
+    // Fedora's needs-restarting result is authoritative. The kernel parsed
+    // from dnf's transcript is optional explanatory detail only.
+    property string bootId: ""
+    property string rebootRecommendation: "unavailable"
+    readonly property bool rebootRecommended:
+        rebootRecommendation === "recommended"
     // The finished panel has been opened; closing it then retires `done`.
     property bool runSeen: false
     readonly property string runBackend:
@@ -331,6 +337,8 @@ Singleton {
         statusGeneration++;
         startPending = true;
         resetRun("", Date.now(), flatpakEnabled);
+        if (!rebootRecommended)
+            rebootRecommendation = "pending";
         const command = [runBackend, "start", "--json"];
         if (!flatpakEnabled)
             command.push("--no-flatpak");
@@ -480,7 +488,12 @@ Singleton {
     }
 
     function applyBackendStatus(data) {
-        if (!data || typeof data.id !== "string" || data.id === ""
+        if (!data)
+            return;
+        bootId = typeof data.bootId === "string" ? data.bootId : "";
+        rebootRecommendation = UpdatesHelpers.normalizedRebootRecommendation(
+            data.rebootRecommendation);
+        if (typeof data.id !== "string" || data.id === ""
                 || data.state === "idle" || data.state === "dismissed")
             return;
         const started = Number(data.startedAt || 0) * 1000;

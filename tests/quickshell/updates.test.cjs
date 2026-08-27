@@ -128,6 +128,54 @@ test("only an incoming kernel earns the reboot hint", () => {
     assert.equal(H.kernelHint("kernel-headers", "up", "7.1.9-200.fc44"), "");
 });
 
+test("authoritative reboot states are normalized and presented explicitly", () => {
+    for (const state of ["pending", "checking", "recommended", "not-needed",
+        "unavailable"])
+        assert.equal(H.normalizedRebootRecommendation(state), state);
+    assert.equal(H.normalizedRebootRecommendation(undefined), "unavailable");
+    assert.equal(H.normalizedRebootRecommendation("legacy-guess"), "unavailable",
+        "an older status must never become a false recommendation");
+
+    assert.equal(H.rebootLabel("recommended", "7.1.9"),
+        "Reboot recommended · Kernel 7.1.9 installed");
+    assert.equal(H.rebootLabel("recommended", ""), "Reboot recommended");
+    assert.equal(H.rebootLabel("not-needed", "7.1.9"),
+        "No reboot recommended", "the kernel parser is detail, not authority");
+    assert.equal(H.rebootLabel("unavailable", ""),
+        "Couldn’t determine whether a reboot is recommended");
+});
+
+test("the completed widget gates reboot action and retains only positive advice", () => {
+    const updates = read("Common/Updates.qml");
+    const bar = read("Bar/Modules/Updates.qml");
+    const barHost = read("Bar/Bar.qml");
+    const popover = read("Popovers/UpdatesPopover.qml");
+
+    assert.match(updates, /property string bootId:\s*""/);
+    assert.match(updates,
+        /property string rebootRecommendation:\s*"unavailable"/);
+    assert.match(updates,
+        /normalizedRebootRecommendation\(\s*data\.rebootRecommendation\)/);
+    assert.match(popover,
+        /visible:\s*root\.mode === "done"[\s\S]{0,100}root\.mode === "idle" && recommended/,
+        "only a positive survives the completed transcript");
+    assert.match(popover, /visible:\s*rebootOutcome\.recommended/,
+        "the Restart action is controlled by Fedora's result");
+    assert.match(popover, /onTriggered:\s*Session\.reboot\(\)/);
+    assert.doesNotMatch(popover,
+        /visible:\s*root\.mode === "done" && Updates\.kernelPending !== ""/,
+        "a parsed kernel must not gate the outcome or action");
+
+    assert.match(barHost,
+        /Updates\.runState !== "idle" \|\| Updates\.rebootRecommended/);
+    assert.match(bar,
+        /stateGlyph:[\s\S]{0,100}rebootRecommended[\s\S]{0,100}"restart_alt"/);
+    assert.match(bar,
+        /idleColor:\s*chip\.rebootRecommended \? Theme\.barAmber/);
+    assert.match(bar,
+        /tooltip:[\s\S]{0,300}chip\.rebootRecommended[\s\S]{0,150}rebootLabel/);
+});
+
 test("the failure banner leads with the last line that names a problem", () => {
     assert.equal(H.failureHeadline([
         "Running transaction check…",

@@ -187,6 +187,29 @@ function kernelHint(name, verb, version) {
     return String(version || "").split("-")[0];
 }
 
+var REBOOT_RECOMMENDATIONS = [
+    "pending", "checking", "recommended", "not-needed", "unavailable"
+];
+
+// Machine status is durable and may predate the fields this client knows.
+// Unknown or missing values are uncertainty, never an inferred negative.
+function normalizedRebootRecommendation(value) {
+    return REBOOT_RECOMMENDATIONS.indexOf(value) !== -1
+        ? value : "unavailable";
+}
+
+function rebootLabel(recommendation, kernelVersion) {
+    var state = normalizedRebootRecommendation(recommendation);
+    if (state === "recommended") {
+        var kernel = String(kernelVersion || "");
+        return "Reboot recommended"
+            + (kernel !== "" ? " · Kernel " + kernel + " installed" : "");
+    }
+    if (state === "not-needed")
+        return "No reboot recommended";
+    return "Couldn’t determine whether a reboot is recommended";
+}
+
 // The line a failure banner leads with: the last line of the tail that names
 // a problem, clipped so a stack of context cannot take over the panel.
 function failureHeadline(lines) {
@@ -245,6 +268,8 @@ var exported = {
     parseFlatpakRunLine: parseFlatpakRunLine,
     runPercent: runPercent,
     kernelHint: kernelHint,
+    normalizedRebootRecommendation: normalizedRebootRecommendation,
+    rebootLabel: rebootLabel,
     failureHeadline: failureHeadline,
     logStamp: logStamp,
     acceptsLogRead: acceptsLogRead,

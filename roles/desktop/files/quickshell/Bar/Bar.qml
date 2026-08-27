@@ -238,7 +238,7 @@ PanelWindow {
         case "bt": return BluetoothState.connected;
         case "batt": return Battery.isLaptop;
         case "updates": return Updates.total > 0 || Updates.error !== ""
-            || Updates.runState !== "idle";
+            || Updates.runState !== "idle" || Updates.rebootRecommended;
         case "tray": return SystemTray.items.values.length > 0;
         default: return true;
         }

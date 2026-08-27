@@ -166,7 +166,9 @@ test("menubar icons keep bright system ink and shared monochrome brands", () => 
     assert.match(bar, /BarBrandIcon\s*\{[\s\S]{0,180}?name:\s*"fedora"/);
     assert.match(bar,
         /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/);
-    assert.match(updates, /idleColor:\s*Theme\.barIcon/);
+    assert.match(updates,
+        /idleColor:\s*chip\.rebootRecommended \? Theme\.barAmber : Theme\.barIcon/,
+        "a reboot recommendation uses the contrast-safe amber bar ink");
     assert.match(media, /name:\s*root\.playing[\s\S]{0,180}?color:\s*mediaChip\.fg/);
     assert.match(media, /highlighted:\s*mediaChip\.held \|\| mediaChip\.hovered/);
     assert.match(media, /colorization:\s*mediaChip\.held \|\| mediaChip\.hovered \? 1 : 0/);

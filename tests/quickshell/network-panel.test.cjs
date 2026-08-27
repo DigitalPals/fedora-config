@@ -126,6 +126,6 @@ test("QR generation is immediate and sustained speed tests support device switch
 
 test("new runtime commands are explicit desktop dependencies", () => {
     const tasks = fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8");
-    for (const dependency of ["NetworkManager", "python3", "curl", "iw", "qrencode", "iproute", "iputils"])
+    for (const dependency of ["NetworkManager", "python3", "curl", "iw", "qrencode", "iproute", "iputils", "dnf5-plugins"])
         assert.match(tasks, new RegExp(`- ${dependency}(?:\\s|$)`));
 });
