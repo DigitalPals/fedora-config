@@ -62,6 +62,13 @@
     name:
       - NetworkManager
       - python3
+      # Online Accounts stores Google OAuth credentials in the keyring;
+      # Evolution Data Server exposes its calendar cache to Quickshell.
+      - gnome-online-accounts
+      - gnome-control-center
+      - gnome-calendar
+      - evolution-data-server
+      - python3-gobject
       - curl
       - iw
       - qrencode

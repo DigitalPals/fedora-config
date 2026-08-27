@@ -250,10 +250,56 @@ SettingsPage {
                 onResetRequested: view.resetOpt("dateFormat")
             }
 
+            SwitchRow {
+                width: parent.width
+                label: "Events"
+                description: "Show upcoming system-calendar events in the popover"
+                checked: view.opts.showEvents
+                dirty: view.optDirty("showEvents")
+                onToggled: value => view.setOpt("showEvents", value)
+                onResetRequested: view.resetOpt("showEvents")
+            }
+
+            SliderRow {
+                visible: view.opts.showEvents
+                width: parent.width
+                label: "Look ahead"
+                min: 1
+                max: 31
+                step: 1
+                value: view.opts.daysAhead
+                unit: value === 1 ? "day" : "days"
+                valueWidth: 62
+                dirty: view.optDirty("daysAhead")
+                onMoved: value => view.setOpt("daysAhead", value)
+                onResetRequested: view.resetOpt("daysAhead")
+            }
+
+            SliderRow {
+                visible: view.opts.showEvents
+                width: parent.width
+                label: "Refresh"
+                min: 5
+                max: 60
+                step: 5
+                value: view.opts.pollMins
+                unit: "min"
+                dirty: view.optDirty("pollMins")
+                onMoved: value => view.setOpt("pollMins", value)
+                onResetRequested: view.resetOpt("pollMins")
+            }
+
+            SettingsAction {
+                visible: view.opts.showEvents
+                text: "Online accounts"
+                glyph: "manage_accounts"
+                onTriggered: Calendar.manageAccounts()
+            }
+
             Text {
                 width: parent.width
                 leftPadding: Theme.settingsLabelWidth
-                text: "12/24-hour time is set on the System page"
+                text: "12/24-hour time is set on the System page. Google sign-in is handled by GNOME Online Accounts; credentials never enter Quickshell."
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
                 color: Theme.textDim

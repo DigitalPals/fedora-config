@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 11;
+var VERSION = 12;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -101,7 +101,10 @@ function defaultModOpts() {
         ws: { minSlots: 5, hideEmpty: false, style: "numbers" },
         media: { titleFormat: "title-artist", maxWidth: 180 },
         indicators: { mode: "hover" },
-        clock: { seconds: false, showDate: true, dateFormat: "ddd dd" },
+        clock: {
+            seconds: false, showDate: true, dateFormat: "ddd dd",
+            showEvents: true, daysAhead: 14, pollMins: 15
+        },
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
         t3: { showLabel: true },
         usage: { claude: true, codex: true, kimi: true, warnAt: 25, critAt: 10 },
@@ -469,6 +472,9 @@ var MOD_OPT_CHECKS = {
     clock: {
         seconds: boolIn,
         showDate: boolIn,
+        showEvents: boolIn,
+        daysAhead: function(v, d) { return intIn(v, 1, 31, 1, d); },
+        pollMins: function(v, d) { return intIn(v, 5, 60, 5, d); },
         dateFormat: function(v, d) {
             return enumIn(v, ["ddd dd", "ddd d MMM", "dd MMM", "dd-MM"], d);
         }

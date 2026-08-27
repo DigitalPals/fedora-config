@@ -30,6 +30,7 @@ singleton Notifs Notifs.qml
 singleton SysInfo SysInfo.qml
 singleton Osd Osd.qml
 singleton Weather Weather.qml
+singleton Calendar Calendar.qml
 singleton Wallpaper Wallpaper.qml
 singleton Settings Settings.qml
 singleton Audio Audio.qml

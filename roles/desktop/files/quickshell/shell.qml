@@ -194,6 +194,7 @@ ShellRoot {
         void Notifs.server;
         void Usage.pollIntervalSecs;
         void GitHub.pollEnabled;
+        void Calendar.enabled;
         void Settings.loaded;
         void Updates.total;
         void Recorder.active;

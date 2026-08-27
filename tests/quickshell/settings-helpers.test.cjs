@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 11);
+    assert.equal(H.VERSION, 12);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, false);
     assert.equal(d.barColorMode, "default");
@@ -71,6 +71,9 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.modOpts.indicators, { mode: "hover" });
     assert.equal(d.modOpts.clock.seconds, false);
     assert.equal(d.modOpts.clock.dateFormat, "ddd dd");
+    assert.equal(d.modOpts.clock.showEvents, true);
+    assert.equal(d.modOpts.clock.daysAhead, 14);
+    assert.equal(d.modOpts.clock.pollMins, 15);
     assert.deepEqual(d.modOpts.updates, { pollMins: 30, flatpak: true, notify: true });
     assert.deepEqual(d.modOpts.tray, { expanded: false });
     assert.deepEqual(d.modOpts.weather,
@@ -182,6 +185,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
         ws: { minSlots: 99, style: "triangles" },
         media: { maxWidth: 133, titleFormat: "title" },
         indicators: { mode: "sometimes" },
+        clock: { showEvents: "yes", daysAhead: 99, pollMins: 7 },
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
         usage: { warnAt: 8, critAt: 60, claude: "yes" },
         gh: {
@@ -207,6 +211,9 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.indicators.mode, "hover");
     assert.equal(H.normalizeModOpts({ indicators: { mode: "always" } }).indicators.mode,
         "always");
+    assert.equal(next.clock.showEvents, true, "non-boolean falls back to default");
+    assert.equal(next.clock.daysAhead, 31);
+    assert.equal(next.clock.pollMins, 5);
     assert.equal(next.weather.lat, 90, "out-of-range latitude clamps like other numerics");
     assert.equal(next.weather.lon, -12.3457);
     assert.equal(next.weather.place, "Emmen Centrum");

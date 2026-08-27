@@ -399,9 +399,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema eleven keeps the classic menubar and adds notification history", () => {
+test("schema twelve keeps the classic menubar and adds the system calendar", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 11/);
+    assert.match(helpers, /var VERSION = 12/);
     assert.match(helpers, /"media", "indicators", "clock"/);
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibited:\s*true/);
