@@ -56,6 +56,25 @@ test("the card anatomy is defined once, in Common/", () => {
     }
 });
 
+test("web notification icons fall through to the shared origin resolver", () => {
+    const icon = read(path.join("Common", "NotifIcon.qml"));
+    const resolver = read(path.join("Common", "WebIcons.qml"));
+    const notifs = read(path.join("Common", "Notifs.qml"));
+
+    assert.match(icon, /WebIcons\.request\(entry\.webOrigin\)/);
+    assert.match(icon, /WebIcons\.sourceFor\(entry\.webOrigin \|\| ""\)/);
+    assert.match(icon, /status === Image\.Error[\s\S]*?root\.primaryFailed = true/,
+        "an expired Chromium image-path must fall through to the cached favicon");
+    assert.match(resolver, /scripts\/notification-icon\.py/);
+    assert.match(resolver, /property var requested:\s*\(\{\}\)/,
+        "toast and history instances must deduplicate origin lookups");
+    const webBranch = notifs.match(/if \(entry\.webOrigin\) \{([\s\S]*?)\n        \}/);
+    assert.ok(webBranch, "Notifs.iconSource must have an explicit web-origin branch");
+    assert.match(webBranch[1], /entry\.image/);
+    assert.doesNotMatch(webBranch[1], /entry\.appIcon/,
+        "a known web origin must never fall back to the Brave product logo");
+});
+
 test("every style key the card reads is supplied by every caller", () => {
     const needed = keysRead();
     assert.ok(needed.size >= 10,

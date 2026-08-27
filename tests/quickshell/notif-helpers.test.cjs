@@ -20,7 +20,35 @@ function chromeNotification(overrides = {}) {
 test("browser detection accepts browser names and desktop entries only", () => {
     assert.equal(H.isBrowser("Google Chrome", ""), true);
     assert.equal(H.isBrowser("Web app", "chromium-browser"), true);
+    assert.equal(H.isBrowser("Brave", "brave-browser"), true);
     assert.equal(H.isBrowser("Signal", "signal-desktop"), false);
+});
+
+test("Brave app windows resolve known product identities by safe domain suffix", () => {
+    const slack = H.derivePresentation(chromeNotification({
+        appName: "Brave",
+        desktopEntry: "brave-browser",
+        hints: { "x-kde-origin-name": "digitalhermes.slack.com" },
+    }));
+    assert.equal(slack.displayAppName, "Slack");
+    assert.equal(slack.webOrigin, "digitalhermes.slack.com");
+    assert.equal(slack.brandIcon, "slack");
+
+    const youtube = H.derivePresentation(chromeNotification({
+        appName: "Brave",
+        desktopEntry: "brave-browser",
+        hints: { "x-kde-origin-name": "https://www.youtube.com/" },
+    }));
+    assert.equal(youtube.displayAppName, "YouTube");
+    assert.equal(youtube.brandIcon, "youtube");
+
+    const lookalike = H.derivePresentation(chromeNotification({
+        appName: "Brave",
+        desktopEntry: "brave-browser",
+        hints: { "x-kde-origin-name": "fake-slack.com" },
+    }));
+    assert.equal(lookalike.displayAppName, "fake-slack.com");
+    assert.equal(lookalike.brandIcon, "");
 });
 
 test("WhatsApp resolves from the advertised origin hint", () => {
@@ -79,10 +107,12 @@ test("body text duplicated by the summary is suppressed", () => {
 test("icon precedence favors brands and never falls back to Chrome for web sources", () => {
     assert.deepEqual(H.iconPreference({
         brandIcon: "whatsapp", webOrigin: "web.whatsapp.com",
-        appIcon: "google-chrome", desktopEntry: "google-chrome", image: "avatar.png",
+        appIcon: "google-chrome", desktopEntry: "google-chrome",
+        image: "avatar.png", siteIcon: "favicon.png",
     }), [
         { kind: "brand", value: "whatsapp" },
         { kind: "image", value: "avatar.png" },
+        { kind: "site-icon", value: "favicon.png" },
         { kind: "web-fallback", value: "" },
     ]);
     assert.deepEqual(H.iconPreference({

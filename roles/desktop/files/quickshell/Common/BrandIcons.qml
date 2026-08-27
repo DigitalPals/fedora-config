@@ -13,7 +13,7 @@ Singleton {
 
     readonly property var names: [
         "claude", "fedora", "github", "kimi", "openai",
-        "t3", "tailscale", "whatsapp", "youtube"
+        "slack", "t3", "tailscale", "whatsapp", "youtube"
     ]
     readonly property var files: ({
         claude: "claude.svg",
@@ -21,6 +21,7 @@ Singleton {
         github: "github.svg",
         kimi: "kimi.svg",
         openai: "openai.svg",
+        slack: "slack.svg",
         t3: "t3.svg",
         tailscale: "tailscale.svg",
         whatsapp: "whatsapp.svg",
@@ -35,6 +36,7 @@ Singleton {
         github: "github-white.svg",
         kimi: "kimi-white.svg",
         openai: "openai-white.svg",
+        slack: "slack-white.svg",
         // The canonical T3 wordmark is already white.
         t3: "t3.svg",
         tailscale: "tailscale-white.svg",
@@ -47,6 +49,7 @@ Singleton {
         github: "GitHub",
         kimi: "Kimi",
         openai: "OpenAI",
+        slack: "Slack",
         t3: "T3 Code",
         tailscale: "Tailscale",
         whatsapp: "WhatsApp",

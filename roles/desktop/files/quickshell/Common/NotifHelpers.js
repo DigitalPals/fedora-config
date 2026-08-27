@@ -4,6 +4,28 @@
 var MIN_TIMEOUT_MS = 8000;
 var MAX_TIMEOUT_MS = 12000;
 
+// Chromium's Linux notification bridge identifies web senders by origin, not
+// by the --app window that happened to host them. Keep the small set of
+// product identities used by this shell here; everything else remains a
+// hostname and is eligible for the browser-favicon fallback.
+var WEB_SOURCES = [
+    {
+        domain: "slack.com",
+        name: "Slack",
+        brandIcon: "slack"
+    },
+    {
+        domain: "whatsapp.com",
+        name: "WhatsApp",
+        brandIcon: "whatsapp"
+    },
+    {
+        domain: "youtube.com",
+        name: "YouTube",
+        brandIcon: "youtube"
+    }
+];
+
 function textValue(value) {
     return typeof value === "string" ? value : "";
 }
@@ -104,8 +126,21 @@ function comparableText(value) {
     return singleLine(value).toLowerCase();
 }
 
+function domainMatches(origin, domain) {
+    return origin === domain || origin.slice(-(domain.length + 1)) === "." + domain;
+}
+
+function webSourceForOrigin(origin) {
+    for (var i = 0; i < WEB_SOURCES.length; i++) {
+        if (domainMatches(origin, WEB_SOURCES[i].domain))
+            return WEB_SOURCES[i];
+    }
+    return null;
+}
+
 function displayNameForOrigin(origin) {
-    return origin === "web.whatsapp.com" ? "WhatsApp" : origin;
+    var source = webSourceForOrigin(origin);
+    return source ? source.name : origin;
 }
 
 function derivePresentation(notification) {
@@ -113,9 +148,11 @@ function derivePresentation(notification) {
     var browser = isBrowser(notification.appName, notification.desktopEntry);
     var rawBody = stripMarkup(notification.body);
     var legacy = parseLegacyBody(notification.body);
-    var hintedOrigin = normalizeOrigin(notification.originName
-        || hintValue(notification.hints, "x-kde-origin-name"));
+    var advertisedOrigin = notification.originName
+        || hintValue(notification.hints, "x-kde-origin-name");
+    var hintedOrigin = normalizeOrigin(advertisedOrigin);
     var origin = browser ? (hintedOrigin || legacy.origin) : "";
+    var source = webSourceForOrigin(origin);
     var body = rawBody;
     if (origin !== "" && legacy.origin === origin)
         body = legacy.body;
@@ -131,7 +168,7 @@ function derivePresentation(notification) {
         displaySummary: summary,
         displayBody: body,
         webOrigin: origin,
-        brandIcon: origin === "web.whatsapp.com" ? "whatsapp" : ""
+        brandIcon: source ? source.brandIcon : ""
     };
 }
 
@@ -201,6 +238,8 @@ function iconPreference(entry) {
     if (textValue(entry.webOrigin) !== "") {
         if (textValue(entry.image) !== "")
             choices.push({ kind: "image", value: entry.image });
+        if (textValue(entry.siteIcon) !== "")
+            choices.push({ kind: "site-icon", value: entry.siteIcon });
         choices.push({ kind: "web-fallback", value: "" });
         return choices;
     }

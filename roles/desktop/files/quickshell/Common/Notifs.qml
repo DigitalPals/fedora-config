@@ -250,9 +250,11 @@ Singleton {
     // Image source for the non-brand half of an entry's icon slot; NotifIcon
     // renders an approved brand name through BrandIcon before calling here.
     // Every step falls through when it cannot produce something loadable.
-    // Browser notifications exclude the browser logo once an origin is known,
-    // then use the site's image or the web glyph fallback. Native applications
-    // use app icon, desktop entry, attached image, then their glyph fallback.
+    // Browser notifications exclude the browser logo once an origin is known
+    // and use the site's notification image here. NotifIcon adds the browser's
+    // cached favicon and remote /favicon.ico fallbacks before its web glyph.
+    // Native applications use app icon, desktop entry, attached image, then
+    // their glyph fallback.
     function iconSource(entry) {
         let source = "";
         if (entry.webOrigin) {

@@ -7,7 +7,7 @@ const { shellDir } = require("./shell.cjs");
 const assetsDir = path.join(shellDir, "assets");
 const brands = [
     "claude", "fedora", "github", "kimi", "openai",
-    "t3", "tailscale", "whatsapp", "youtube"
+    "slack", "t3", "tailscale", "whatsapp", "youtube"
 ];
 const whiteVariants = brands.filter(name => name !== "t3");
 
