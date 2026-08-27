@@ -31,6 +31,32 @@
     state: present
     allowerasing: true
 
+- name: Create the local XPS TuneD profile directory
+  ansible.builtin.file:
+    path: /etc/tuned/profiles/xps-performance
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the XPS laptop performance profile
+  ansible.builtin.copy:
+    src: tuned/xps-performance/tuned.conf
+    dest: /etc/tuned/profiles/xps-performance/tuned.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart TuneD PPD bridge
+
+- name: Map the desktop Performance option to the XPS profile
+  ansible.builtin.copy:
+    src: tuned/ppd.conf
+    dest: /etc/tuned/ppd.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart TuneD PPD bridge
+
 - name: Set hostname
   ansible.builtin.hostname:
     name: "{{ machine_hostname }}"

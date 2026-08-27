@@ -133,6 +133,13 @@ fi
 if $xps_2026; then
   pass "precise XPS 2026 hardware gate (SKU $product_sku)"
 
+  check 'XPS performance TuneD profile is installed' \
+    test -r /etc/tuned/profiles/xps-performance/tuned.conf
+  check 'desktop Performance maps to the XPS TuneD profile' \
+    grep -qx 'performance=xps-performance' /etc/tuned/ppd.conf
+  check 'XPS performance TuneD profile is discoverable' \
+    tuned-adm profile_info xps-performance
+
   panther_packages=(
     alsa-sof-firmware linux-firmware cirrus-audio-firmware
     intel-audio-firmware intel-gpu-firmware intel-vsc-firmware
