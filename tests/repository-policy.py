@@ -103,6 +103,11 @@ def verify_dependency_policy(values: dict) -> None:
             f"CI action is not pinned to a full commit: {action_ref}"
         )
 
+    runner = (ROOT / "tests/run").read_text()
+    assert "rg -l '^#!.*(bash|sh)' -g '!*.j2' ." in runner
+    assert "rg --files . -g '*.py'" in runner
+    assert "rg -l '^#!.*python' -g '!*.j2' ." in runner
+
     fish = (ROOT / "roles/dotfiles/files/fish-config.fish").read_text()
     assert "alias codex='codex --dangerously-bypass-approvals-and-sandbox'" in fish
     assert "alias claude='claude --dangerously-skip-permissions'" in fish
