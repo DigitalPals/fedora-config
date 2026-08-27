@@ -771,8 +771,6 @@ Surface {
                     }
                 }
 
-                HDivider {}
-
                 Column {
                     id: inputSection
                     width: parent.width
@@ -890,15 +888,12 @@ Surface {
                     }
                 }
 
-                HDivider {
-                    visible: root.displayStreams.length > 0
-                }
-
                 Column {
                     id: applicationsSection
                     visible: root.displayStreams.length > 0
                     width: parent.width
                     spacing: 8
+                    bottomPadding: 8
 
                     SectionLabel {
                         width: parent.width

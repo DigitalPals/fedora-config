@@ -264,7 +264,15 @@ test("the audio panel has routing, mixer, peak, snapshot, and scroll structure",
     assert.match(picker, /currentLabel:\s*Audio\.sourceReady[\s\S]{0,100}AudioHelpers\.sourceLabel\(Audio\.source\)/);
     assert.match(picker, /id:\s*outputDeviceList[\s\S]{0,80}visible:\s*root\.outputDevicesOpen/);
     assert.match(picker, /id:\s*inputDeviceList[\s\S]{0,80}visible:\s*root\.inputDevicesOpen/);
+    assert.match(picker, /text:\s*"OUTPUT"/);
+    assert.match(picker, /text:\s*"INPUT"/);
     assert.match(picker, /text:\s*"APPLICATIONS"/);
+    assert.equal((picker.match(/SectionLabel\s*\{/g) || []).length, 3,
+        "output, input, and applications retain their labeled dividers");
+    assert.doesNotMatch(picker, /HDivider\s*\{/,
+        "the audio panel has no additional full-width divider rules");
+    assert.match(picker, /id:\s*applicationsSection[\s\S]{0,180}bottomPadding:\s*8/,
+        "application streams retain a small inset below the final volume row");
     assert.match(picker, /visible:\s*root\.displayStreams\.length\s*>\s*0/);
     assert.match(picker, /streamAudio\.volume\s*=\s*Format\.clamp01\(value\)/);
     assert.doesNotMatch(picker, /max:\s*1\.5/);
