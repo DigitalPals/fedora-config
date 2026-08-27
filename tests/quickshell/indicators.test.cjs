@@ -121,8 +121,7 @@ test("all shared toggles use one persisted write path", () => {
     assert.match(control, /onToggled:\s*SysInfo\.toggleIdleInhibited\(\)/);
 });
 
-test("large Control Panel states use subdued accent containers", () => {
-    const theme = read("Common/Theme.qml");
+test("Control Panel fills use their intended accent strength", () => {
     const control = read("Popovers/ControlCenterPopover.qml");
     const battery = read("Popovers/BatteryPopover.qml");
     const slider = read("Popovers/FillSlider.qml");
@@ -130,10 +129,6 @@ test("large Control Panel states use subdued accent containers", () => {
         control.indexOf("component RadioRow:"),
         control.indexOf("component QuickTile:"));
 
-    assert.match(theme,
-        /readonly property color accentContainer:\s*SettingsHelpers\.mixHex\([\s\S]{0,120}?dark \? 0\.46 : 0\.30\)/);
-    assert.match(theme,
-        /readonly property color accentContainerFg:\s*SettingsHelpers\.foregroundFor/);
     // The radios are rows: they carry a value and a chevron, and a row that is
     // merely connected is not a selection, so nothing about them is painted.
     // Only its mark takes the accent.
@@ -143,15 +138,15 @@ test("large Control Panel states use subdued accent containers", () => {
     assert.match(radioRow, /color: radio\.on \? Theme\.accent : Theme\.icon/,
         "the accent survives on the glyph, where it is a mark");
 
-    // A quick action and a switch track are the same idea, so they light the
-    // same way — on the subdued container, never on full accent. The ban is
-    // scoped to the tile's own fill: full accent on a 20px *glyph* is a mark,
-    // which is exactly where the accent is supposed to survive.
+    // Quick actions and value sliders use the same full-strength accent as
+    // the machine meters, with the palette's foreground on top.
     const quickTile = control.slice(
         control.indexOf("component QuickTile:"),
         control.indexOf("component SessionAction:"));
-    assert.match(quickTile, /tile\.on \? Theme\.accentContainer/);
-    assert.doesNotMatch(quickTile, /tile\.on \? Theme\.accent\b/);
+    assert.match(quickTile, /tile\.on \? Theme\.accent\b/);
+    assert.match(quickTile, /tile\.on\s*\n\s*\? Theme\.accentFg/);
+    assert.doesNotMatch(quickTile, /Theme\.accentContainer/,
+        "active quick actions must not use the darker container treatment");
     // A running capture is the one state that owns a field of its own, and it
     // is the error colour, not the accent. It moved out of the grid with the
     // other two capture actions, so the rule is asserted on the track.
@@ -164,8 +159,13 @@ test("large Control Panel states use subdued accent containers", () => {
     assert.doesNotMatch(battery, /color: current \? Theme\.accent\b/);
     assert.doesNotMatch(control, /PowerProfiles/,
         "the profile track lives in BatteryPopover, not in the dashboard");
-    assert.match(slider,
-        /GradientStop \{ position: 1; color: Theme\.accentSoft \}/);
+    assert.match(control, /property color barTone: Theme\.accent/,
+        "machine meters must establish the full-strength accent reference");
+    assert.match(slider, /color: Theme\.accent/,
+        "slider values must use the same full-strength accent as machine meters");
+    assert.doesNotMatch(slider,
+        /Theme\.(?:accentContainer|accentBgSoft|accentSoft)/,
+        "slider values must not use one of the darker accent treatments");
 });
 
 test("reminder manager and shell-wide refresh IPC are wired to the action", () => {

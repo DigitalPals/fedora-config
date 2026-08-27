@@ -2,8 +2,8 @@ import QtQuick
 import "../Common"
 import "../Common/Format.js" as Format
 
-// The shell's filled slider: a recessed well whose subdued accent-container
-// gradient is the value readout, at the bar's chip corner rather than a pill —
+// The shell's filled slider: a recessed well whose full accent fill is the
+// value readout, at the bar's chip corner rather than a pill —
 // the pill is reserved for the one mark the menubar fills. The glyph sits
 // inside the track on the left — as a
 // plain mark, or as a button when `glyphIsButton` (the volume mute) — and
@@ -48,12 +48,7 @@ Rectangle {
         width: root.fillExtent
         height: parent.height
         radius: parent.radius
-
-        gradient: Gradient {
-            orientation: Gradient.Horizontal
-            GradientStop { position: 0; color: Theme.accentBgSoft }
-            GradientStop { position: 1; color: Theme.accentSoft }
-        }
+        color: Theme.accent
 
         Behavior on width {
             NumberAnimation {

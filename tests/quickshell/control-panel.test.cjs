@@ -37,6 +37,8 @@ test("the Control Panel exposes all five equal session actions", () => {
 
     assert.deepEqual(keys, ["lock", "suspend", "logout", "restart", "shutdown"]);
     assert.deepEqual(labels, ["Lock", "Suspend", "Log out", "Restart", "Shut down"]);
+    assert.doesNotMatch(actions, /danger/,
+        "Shut down must use the same neutral presentation as the other actions");
     assert.match(control, /text:\s*"SESSION"/);
     assert.match(control,
         /sessionActionWidth:\s*\n\s*Math\.max\(0, \(contentWidth - 4 \* sessionSpacing\) \/ 5\)/,
@@ -49,8 +51,14 @@ test("the Control Panel exposes all five equal session actions", () => {
     assert.ok(trigger.indexOf("Popouts.close()") < trigger.indexOf("switch (key)"));
     for (const method of ["lock", "suspend", "logout", "reboot", "shutdown"])
         assert.match(trigger, new RegExp(`Session\\.${method}\\(\\)`));
-    assert.match(control, /danger\s*\?\s*\(actionMouse\.containsMouse \? Theme\.red : Theme\.redBg\)/,
-        "Shut down must retain the established red treatment");
+    const sessionAction = control.slice(
+        control.indexOf("component SessionAction:"),
+        control.indexOf("component StatCard:"));
+    assert.match(sessionAction,
+        /color:\s*actionMouse\.containsMouse \? Theme\.chipHover : Theme\.chip/);
+    assert.doesNotMatch(sessionAction,
+        /danger|Theme\.(?:red|redBg|redText|textOnAccent)/,
+        "session actions must not carry the retired red Shutdown styling");
 });
 
 test("launcher and session power compatibility routes toggle control", () => {

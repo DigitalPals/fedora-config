@@ -56,11 +56,11 @@ Surface {
     readonly property real sessionActionWidth:
         Math.max(0, (contentWidth - 4 * sessionSpacing) / 5)
     readonly property var sessionActions: [
-        { key: "lock", glyph: "lock", label: "Lock", danger: false },
-        { key: "suspend", glyph: "bedtime", label: "Suspend", danger: false },
-        { key: "logout", glyph: "logout", label: "Log out", danger: false },
-        { key: "restart", glyph: "restart_alt", label: "Restart", danger: false },
-        { key: "shutdown", glyph: "power_settings_new", label: "Shut down", danger: true }
+        { key: "lock", glyph: "lock", label: "Lock" },
+        { key: "suspend", glyph: "bedtime", label: "Suspend" },
+        { key: "logout", glyph: "logout", label: "Log out" },
+        { key: "restart", glyph: "restart_alt", label: "Restart" },
+        { key: "shutdown", glyph: "power_settings_new", label: "Shut down" }
     ]
 
     // The stat cards are live only while this panel is on screen, so it says
@@ -217,7 +217,7 @@ Surface {
     }
 
     // One quick toggle: its mark over its label, in a grid cell. The cell
-    // lights on the accent container when the toggle is on, which is the
+    // lights on the full accent when the toggle is on, which is the
     // whole rule for reading this grid — and the reason the three capture
     // actions moved out of it, since a one-shot action never lights.
     component QuickTile: Rectangle {
@@ -227,16 +227,16 @@ Surface {
         property string title
         property bool on: false
         readonly property color mark: tile.on
-            ? Theme.accentContainerFg
+            ? Theme.accentFg
             : tileMouse.containsMouse ? Theme.textHi : Theme.icon
-        readonly property color copy: tile.on ? Theme.accentContainerFg
+        readonly property color copy: tile.on ? Theme.accentFg
             : tileMouse.containsMouse ? Theme.textMid : Theme.textFaint
         signal toggled
 
         width: root.tileWidth
         height: root.tileHeight
         radius: Theme.chipRadius
-        color: tile.on ? Theme.accentContainer
+        color: tile.on ? Theme.accent
             : tileMouse.containsMouse ? Theme.chipHover : Theme.chip
         scale: tileMouse.pressed ? 0.95 : 1
 
@@ -298,25 +298,21 @@ Surface {
         }
     }
 
-    // One of the five equal session controls. Shut down keeps the red field
-    // from the retired overlay; the other four use the panel's normal chip
-    // ladder so danger remains unmistakable without making every exit loud.
+    // One of the five equal session controls. They share the same neutral chip
+    // ladder; the action label carries the distinction without a danger fill.
     component SessionAction: Rectangle {
         id: action
 
         property string glyph: ""
         property string label: ""
-        property bool danger: false
         signal triggered
 
         width: root.sessionActionWidth
         height: root.sessionActionHeight
         radius: Theme.chipRadius
-        color: danger
-            ? (actionMouse.containsMouse ? Theme.red : Theme.redBg)
-            : actionMouse.containsMouse ? Theme.chipHover : Theme.chip
+        color: actionMouse.containsMouse ? Theme.chipHover : Theme.chip
         border.width: activeFocus ? 1 : 0
-        border.color: danger ? Theme.red : Theme.accent
+        border.color: Theme.accent
         scale: actionMouse.pressed ? 0.95 : 1
         activeFocusOnTab: true
 
@@ -352,10 +348,8 @@ Surface {
                 anchors.horizontalCenter: parent.horizontalCenter
                 name: action.glyph
                 size: Theme.iconMedium
-                fill: action.danger ? 1 : 0
-                color: action.danger && actionMouse.containsMouse
-                    ? Theme.textOnAccent
-                    : action.danger ? Theme.redText : Theme.icon
+                fill: 0
+                color: Theme.icon
             }
 
             Text {
@@ -366,9 +360,7 @@ Surface {
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontMicro
                 font.weight: Theme.weightMedium
-                color: action.danger && actionMouse.containsMouse
-                    ? Theme.textOnAccent
-                    : action.danger ? Theme.redText : Theme.textLow
+                color: Theme.textLow
             }
         }
 
@@ -782,7 +774,6 @@ Surface {
 
                     glyph: modelData.glyph
                     label: modelData.label
-                    danger: modelData.danger
                     onTriggered: root.triggerSession(modelData.key)
                 }
             }
