@@ -173,10 +173,82 @@ Singleton {
             memUsage = Math.max(0, Math.min(100, (total - avail) / total * 100));
     }
 
+    // ---- brightness --------------------------------------------------
+    // Both directions go through brightness-control, because which screen is
+    // in front of you decides whether brightness is a sysfs backlight or an
+    // Apple display speaking USB HID, and that is not this singleton's
+    // business to know. Reading used to be a direct sysfs read — free, and
+    // the right number only while the laptop panel was the display. Docked to
+    // the Studio Display it reported the closed lid's backlight, and writing
+    // brightnessctl moved that panel instead of the one being looked at.
+    readonly property string brightnessTool:
+        Quickshell.env("HOME") + "/.local/bin/brightness-control"
+
+    // The reading follows the pointer immediately so the slider stays live
+    // under a drag; the process that writes it is coalesced onto the last
+    // value, since a drag emits one on every mouse move.
+    property int pendingBrightness: -1
+
     function setBrightness(pct) {
-        pct = Math.max(1, Math.min(100, Math.round(pct)));
+        pct = Math.max(0, Math.min(100, Math.round(pct)));
         brightness = pct;
-        Quickshell.execDetached(["brightnessctl", "set", pct + "%"]);
+        pendingBrightness = pct;
+        brightnessWrite.restart();
+    }
+
+    Timer {
+        id: brightnessWrite
+        interval: 60
+        onTriggered: {
+            if (root.pendingBrightness < 0)
+                return;
+            // A write still in flight owns the device; re-arm rather than
+            // start a second one over the top of it.
+            if (brightnessSet.running) {
+                brightnessWrite.restart();
+                return;
+            }
+            brightnessSet.command = [root.brightnessTool, "set",
+                String(root.pendingBrightness)];
+            root.pendingBrightness = -1;
+            brightnessSet.running = true;
+            brightnessSettle.restart();
+        }
+    }
+
+    Process {
+        id: brightnessSet
+    }
+
+    // A write that has not landed yet is still the truth: a read overtaking
+    // it would drag the slider back to a value the pointer has already left.
+    Timer {
+        id: brightnessSettle
+        interval: 400
+    }
+
+    // Nothing about either backend is watchable — sysfs backlight attributes
+    // deliver no inotify events and a HID write emits none — so every
+    // consumer that can observe an external change calls this. The OSD does,
+    // over IPC from brightness-control itself.
+    function refreshBrightness() {
+        if (brightnessRead.running || brightnessWrite.running
+                || brightnessSettle.running)
+            return;
+        brightnessRead.running = true;
+    }
+
+    Process {
+        id: brightnessRead
+        command: [root.brightnessTool, "get"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const value = parseInt(text.trim());
+                if (!isNaN(value))
+                    root.brightness = Math.max(0, Math.min(100, value));
+            }
+        }
     }
 
     onTempPathChanged: {
@@ -184,70 +256,6 @@ Singleton {
             tempView.reload();
             readTemperature();
         }
-    }
-
-    // Backlight. Reading is a plain sysfs read — the OSD asks for a fresh
-    // value on every brightness key press, and forking brightnessctl for
-    // that is the most expensive thing on the hot path. Writing still goes
-    // through brightnessctl: sysfs backlight writes need privileges that it
-    // gets from systemd-logind.
-    property string backlightPath: ""
-    property int backlightMax: 0
-
-    // Discover the backlight once, like the CPU sensor above.
-    Process {
-        id: backlightDiscovery
-        command: ["sh", "-c", "for d in /sys/class/backlight/*; do [ -r \"$d/brightness\" ] && { printf '%s' \"$d\"; exit; }; done"]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: root.backlightPath = text.trim()
-        }
-    }
-
-    FileView {
-        id: backlightMaxView
-        path: root.backlightPath === "" ? "" : root.backlightPath + "/max_brightness"
-        printErrors: false
-        onLoaded: {
-            const value = parseInt(backlightMaxView.text().trim());
-            root.backlightMax = isNaN(value) || value <= 0 ? 0 : value;
-            root.readBrightness();
-        }
-    }
-
-    FileView {
-        id: backlightView
-        path: root.backlightPath === "" ? "" : root.backlightPath + "/brightness"
-        printErrors: false
-        onLoaded: root.readBrightness()
-    }
-
-    // brightnessctl reports a plain rounded ratio of brightness/max_brightness
-    // (verified against `brightnessctl -m -p set N` across the range), so the
-    // OSD, the control-centre slider and the CLI all agree.
-    function readBrightness() {
-        if (backlightMax <= 0)
-            return;
-        const value = parseInt(backlightView.text().trim());
-        if (!isNaN(value))
-            brightness = Math.max(0, Math.min(100, Math.round(value * 100 / backlightMax)));
-    }
-
-    onBacklightPathChanged: {
-        if (backlightPath !== "") {
-            backlightMaxView.reload();
-            backlightView.reload();
-        }
-    }
-
-    // Backlight sysfs attributes do not deliver inotify events, so there is
-    // nothing to watch: every consumer that can observe an external change
-    // (the OSD, over IPC from brightness-control) calls this instead.
-    function refreshBrightness() {
-        if (backlightPath === "")
-            return;
-        backlightView.reload();
-        readBrightness();
     }
 
     // ---- watchers ---------------------------------------------------
@@ -298,8 +306,10 @@ Singleton {
     }
 
     // Brightness is read by the control centre; the OSD asks for a fresh
-    // read itself after every key press. Tailscale moved to its own
-    // singleton, which polls on the same watcher basis.
+    // read itself after every key press. The slow poll is only here to catch
+    // a change this machine made no request for — a docked display swapped
+    // under it, say. Tailscale moved to its own singleton, which polls on the
+    // same watcher basis.
     Timer {
         interval: 30000
         running: root.watchers > 0

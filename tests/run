@@ -383,6 +383,20 @@ PY
 }
 
 # ── Screenshot save/copy/edit workflow ────────────────────────────────
+stage_brightness_routing() {
+  local out rc=0 t0 elapsed
+  t0=$(now_ms)
+  out=$(bash tests/brightness-routing 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+
+  if ((rc == 0)); then
+    pass 'brightness' "HID and backlight routing by focused monitor $(took "$elapsed")"
+  else
+    fail 'brightness' 'routing fixture failed'
+    excerpt "${out:-unknown failure}"
+  fi
+}
+
 stage_screenshot_workflow() {
   local out rc=0 t0 elapsed
   t0=$(now_ms)
@@ -404,6 +418,7 @@ stage_quickshell_integration
 stage_xps_hardware
 stage_plymouth_layout
 stage_screenshot_workflow
+stage_brightness_routing
 
 # Keep the verdict on the last line: `update` tails this output into its own
 # failure report, so the actionable summary has to survive the truncation.
