@@ -121,8 +121,8 @@ PanelWindow {
             }
 
             // Construct the launcher with the shell instead of on the first
-            // shortcut press. App sorting and the first eight delegates are
-            // therefore already warm when the compositor maps this window.
+            // shortcut press. App sorting and the first viewport of delegates
+            // are therefore already warm when the compositor maps this window.
             LauncherView {
                 id: launcherView
                 width: implicitWidth

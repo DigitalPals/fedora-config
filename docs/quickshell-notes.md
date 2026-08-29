@@ -232,8 +232,11 @@ than as a dozen properties.
 effects; `LauncherView.qml` only renders its normalized rows. Every open resets
 to the Apps tab; Emoji, History (clipboard), and Actions are discoverable tabs
 beside it in a compact 460px card. The strip is 34px tall, the search field is
-44px, and up to eight 42px rows use 28px icons. Rows show one line only; action
-subtitles and keywords remain searchable metadata but do not add visual bulk.
+44px, and an up-to-eight-row viewport uses 42px rows with 28px icons. The Apps
+tab keeps every visible desktop entry in its model and scrolls inside that
+fixed viewport; keyboard selection keeps the active row in view. Rows show one
+line only; action subtitles and keywords remain searchable metadata but do not
+add visual bulk.
 
 `Left`/`Right` cycle tabs, as do `Ctrl+Tab` and `Ctrl+Shift+Tab`. `Up`, `Down`,
 and result-navigation `Tab` wrap at the list ends; `PageUp`/`PageDown` jump six

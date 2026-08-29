@@ -61,6 +61,26 @@ test("the empty app directory is alphabetical", () => {
     assert.match(view, /readonly property var rows:\s*LauncherProviders\.rows/);
 });
 
+test("the app directory keeps every match in a fixed scrolling viewport", () => {
+    const view = read("LauncherView.qml");
+    const providers = read("Common/LauncherProviders.qml");
+    const appRows = providers.slice(providers.indexOf("readonly property var appRows"),
+        providers.indexOf("readonly property var windowRows"));
+    const results = view.slice(view.indexOf("// ---- Results"),
+        view.indexOf("// ---- Empty state"));
+
+    assert.doesNotMatch(appRows, /slice\(0, root\.maxResults\)/,
+        "the provider must not discard apps below the first viewport");
+    assert.match(results,
+        /height:\s*Math\.min\(root\.maxResults, root\.rows\.length\) \* root\.rowHeight/);
+    assert.match(results, /interactive:\s*contentHeight > height/);
+    assert.match(results, /boundsBehavior:\s*Flickable\.StopAtBounds/);
+    assert.match(results, /ScrollChrome\s*\{[\s\S]*target:\s*resultList/);
+    assert.match(view,
+        /resultList\.positionViewAtIndex\(selected, ListView\.Contain\)/,
+        "keyboard navigation must reveal selections beyond the first viewport");
+});
+
 test("the view is provider-driven and owns no search subprocesses", () => {
     const view = read("LauncherView.qml");
     const providers = read("Common/LauncherProviders.qml");

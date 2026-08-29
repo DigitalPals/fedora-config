@@ -5,9 +5,9 @@ import "Common"
 import "Common/LauncherNavigation.js" as Navigation
 import "Popovers"
 
-// Compact eight-result tabbed command palette. LauncherProviders owns
-// routing, asynchronous work and activation; this permanently warm view
-// renders each normalized row on one line.
+// Compact eight-row tabbed command palette. LauncherProviders owns routing,
+// asynchronous work and activation; this permanently warm view renders each
+// normalized row on one line and scrolls longer result sets in-place.
 Surface {
     id: root
 
@@ -48,6 +48,7 @@ Surface {
         search.text = "";
         selected = 0;
         focusInput();
+        resultList.positionViewAtBeginning();
         Qt.callLater(() => {
             if (Launcher.open)
                 root.focusInput();
@@ -68,10 +69,15 @@ Surface {
         }
     }
 
-    onRowsChanged: selected = Navigation.clampSelection(selected, rows.length)
+    onRowsChanged: {
+        selected = Navigation.clampSelection(selected, rows.length);
+        Qt.callLater(() => root.revealSelection());
+    }
+    onSelectedChanged: revealSelection()
     onQueryChanged: {
         selected = 0;
         LauncherProviders.query = query;
+        Qt.callLater(() => resultList.positionViewAtBeginning());
     }
 
     function activate(row): void {
@@ -82,6 +88,7 @@ Surface {
         LauncherProviders.selectedProviderId = providerId;
         search.text = "";
         selected = 0;
+        resultList.positionViewAtBeginning();
         focusInput();
     }
 
@@ -105,6 +112,13 @@ Surface {
 
     function pageSelection(offset): void {
         selected = Navigation.pageSelection(selected, rows.length, offset);
+    }
+
+    function revealSelection(): void {
+        if (rows.length === 0)
+            resultList.positionViewAtBeginning();
+        else
+            resultList.positionViewAtIndex(selected, ListView.Contain);
     }
 
     // Shared by the TextInput and by LauncherWindow's one-frame focus-race
@@ -350,96 +364,108 @@ Surface {
     }
 
     // ---- Results ---------------------------------------------------------
-    ListView {
-        id: resultList
+    Item {
         width: parent.width
         height: Math.min(root.maxResults, root.rows.length) * root.rowHeight
-        interactive: false
-        model: root.rows
+        clip: true
 
-        delegate: Rectangle {
-            id: resultRow
+        ListView {
+            id: resultList
+            anchors.fill: parent
+            model: root.rows
+            interactive: contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
 
-            required property var modelData
-            required property int index
-            readonly property bool isSelected: index === root.selected
-            width: resultList.width
-            height: root.rowHeight
-            radius: Theme.rowRadius
-            // The selected result lights the bar's held chip. A full-accent
-            // slab across a 460px row was the loudest thing in the shell, and
-            // the value jump from mid copy to white already says which row it
-            // is — the same way a taken segment says it everywhere else.
-            color: isSelected ? Theme.chipHover : "transparent"
+            delegate: Rectangle {
+                id: resultRow
 
-            Item {
-                x: 10
-                anchors.verticalCenter: parent.verticalCenter
-                width: root.resultIconSize
-                height: root.resultIconSize
+                required property var modelData
+                required property int index
+                readonly property bool isSelected: index === root.selected
+                width: resultList.width
+                height: root.rowHeight
+                radius: Theme.rowRadius
+                // The selected result lights the bar's held chip. A full-accent
+                // slab across a 460px row was the loudest thing in the shell, and
+                // the value jump from mid copy to white already says which row it
+                // is — the same way a taken segment says it everywhere else.
+                color: isSelected ? Theme.chipHover : "transparent"
 
-                Image {
-                    anchors.fill: parent
-                    visible: source !== ""
-                    source: resultRow.modelData.icon
-                        ? Quickshell.iconPath(resultRow.modelData.icon, true) : ""
-                    sourceSize: Qt.size(64, 64)
-                    fillMode: Image.PreserveAspectFit
-                    asynchronous: true
-                }
+                Item {
+                    x: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: root.resultIconSize
+                    height: root.resultIconSize
 
-                Rectangle {
-                    visible: !resultRow.modelData.icon
-                    anchors.fill: parent
-                    radius: 9
-                    color: Theme.chip
-
-                    Sym {
-                        anchors.centerIn: parent
-                        visible: !resultRow.modelData.iconText
-                        name: resultRow.modelData.glyph || root.provider.glyph
-                        size: Theme.iconMedium
-                        animateColor: false
-                        color: resultRow.isSelected ? Theme.textHi : Theme.textMid
+                    Image {
+                        anchors.fill: parent
+                        visible: source !== ""
+                        source: resultRow.modelData.icon
+                            ? Quickshell.iconPath(resultRow.modelData.icon, true) : ""
+                        sourceSize: Qt.size(64, 64)
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
                     }
 
-                    Text {
-                        anchors.centerIn: parent
-                        visible: !!resultRow.modelData.iconText
-                        text: resultRow.modelData.iconText || ""
-                        font.family: Theme.fontMenu
-                        font.pixelSize: 20
+                    Rectangle {
+                        visible: !resultRow.modelData.icon
+                        anchors.fill: parent
+                        radius: 9
+                        color: Theme.chip
+
+                        Sym {
+                            anchors.centerIn: parent
+                            visible: !resultRow.modelData.iconText
+                            name: resultRow.modelData.glyph || root.provider.glyph
+                            size: Theme.iconMedium
+                            animateColor: false
+                            color: resultRow.isSelected ? Theme.textHi : Theme.textMid
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            visible: !!resultRow.modelData.iconText
+                            text: resultRow.modelData.iconText || ""
+                            font.family: Theme.fontMenu
+                            font.pixelSize: 20
+                        }
+                    }
+                }
+
+                Text {
+                    x: 48
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - x - 12
+                    textFormat: Text.StyledText
+                    text: root.titleFor(resultRow.modelData)
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    font.weight: Theme.weightBold
+                    color: Theme.textHi
+                    elide: Text.ElideRight
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: root.selected = resultRow.index
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton
+                                && LauncherProviders.canRemove(resultRow.modelData))
+                            LauncherProviders.remove(resultRow.modelData);
+                        else
+                            root.activate(resultRow.modelData);
                     }
                 }
             }
+        }
 
-            Text {
-                x: 48
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - x - 12
-                textFormat: Text.StyledText
-                text: root.titleFor(resultRow.modelData)
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
-                font.weight: Theme.weightBold
-                color: Theme.textHi
-                elide: Text.ElideRight
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onEntered: root.selected = resultRow.index
-                onClicked: mouse => {
-                    if (mouse.button === Qt.RightButton
-                            && LauncherProviders.canRemove(resultRow.modelData))
-                        LauncherProviders.remove(resultRow.modelData);
-                    else
-                        root.activate(resultRow.modelData);
-                }
-            }
+        ScrollChrome {
+            anchors.fill: parent
+            target: resultList
         }
     }
 

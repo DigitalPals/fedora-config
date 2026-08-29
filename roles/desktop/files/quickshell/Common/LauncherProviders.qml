@@ -63,8 +63,7 @@ Singleton {
             }))
             .filter(row => row.score >= 0)
             .sort((a, b) => b.score - a.score
-                || a.title.localeCompare(b.title))
-            .slice(0, root.maxResults);
+                || a.title.localeCompare(b.title));
     }
 
     readonly property var windowRows: {
