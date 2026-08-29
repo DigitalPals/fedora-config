@@ -470,7 +470,7 @@ check 'Hyprland Lua entry point is a regular file' bash -c '[[ -f $HOME/.config/
 check_diagnostic 'deployed Quickshell tree exactly matches tracked source files' check_managed_quickshell_tree
 
 required_commands=(Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
-  voxtype localsend lazygit lazydocker mdview bun balena t3code-update \
+  voxtype localsend lazygit lazydocker mdview bun balena t3code-update hermes \
   git gh gcc g++ cmake rustup mold sccache node npm python3 claude opencode oh-my-posh \
   kitty nvim fish zoxide fzf eza jq rg fd dust bat btop glow fastfetch duf ffmpeg mpv yt-dlp imv brave-browser)
 feature_enabled docker && required_commands+=(docker)
@@ -500,6 +500,19 @@ check 'inventory-pinned Claude Code' bash -c \
 check 'inventory-pinned OpenCode' bash -c \
   'actual=$(opencode --version 2>/dev/null); [[ ${actual%% *} == "$1" ]]' \
   _ "$opencode_version"
+check 'local Hermes Agent runtime is absent' bash -c '
+  home=$1
+  ! command -v hermes >/dev/null 2>&1 &&
+    [[ ! -e $home/.hermes ]] &&
+    [[ ! -e $home/.local/share/xps-user-tools/hermes ]] &&
+    [[ ! -e $home/.config/systemd/user/hermes-backend.service ]] &&
+    ! systemctl --user is-active --quiet hermes-backend.service &&
+    ! systemctl --user is-enabled --quiet hermes-backend.service
+' _ "$primary_home"
+check 'Hermes remote credential is private when present' bash -c '
+  credential=$1/.local/state/hermes-menubar/remote-webui-auth.json
+  [[ ! -e $credential || $(stat -c %a "$credential") == 600 ]]
+' _ "$primary_home"
 check 'Android sdkmanager' test -x "$HOME/Android/Sdk/cmdline-tools/latest/bin/sdkmanager"
 check 'Android platform-tools' test -x "$HOME/Android/Sdk/platform-tools/adb"
 
@@ -565,9 +578,11 @@ if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyp
   errors=$(hyprctl configerrors 2>/dev/null || true)
   [[ -z $errors || $errors == 'no errors' ]] && pass 'Hyprland has no config errors' || fail "Hyprland config errors: $errors"
   check 'retired Noctalia process is absent' bash -c '! pgrep -x noctalia'
-  for unit in quickshell hypridle hyprpolkitagent voxtype external-monitor-toggle; do
+  for unit in quickshell hypridle hyprpolkitagent voxtype external-monitor-toggle hermes-menubar-bridge; do
     check "user unit active: $unit" user_unit_active "$unit.service"
   done
+  check 'Hermes menubar bridge enabled for the Hyprland session' \
+    systemctl --user is-enabled --quiet hermes-menubar-bridge.service
   if quickshell_live_diagnostic=$(qs_live_begin 2>&1); then
     quickshell_live_safe=true
     pass 'managed Quickshell MainPID is the sole qs process at test start'
@@ -613,6 +628,7 @@ printf '%s\n' \
   '  - multi-monitor bars, per-output launcher/panel placement, responsive widths, audio wheel/mute, and popout hover switching' \
   '  - T3 Code dropdown row expand/collapse and selection across needs-you, running, plan-ready, completed, idle, and failed sections; one inspector/subscription, bounded scrolling, explicit open links, Stop, per-thread/bulk Mark reviewed, and unchanged chip/count/tooltip/notifications' \
   '  - T3 Code approval and follow-up sending/failure feedback plus structured-input single-select, multi-select, custom, Back/Next/Submit, multi-question completeness, retry draft retention, and resolution cleanup' \
+  '  - Hermes New chat default, historical-conversation dropdown, streamed replies and tool activity, Stop/steer, approvals/clarifications, secret and sudo prompts, reconnect reconciliation, and menubar working/attention/done states' \
   '  - lid close/open and Apple/AORUS/XREAL hotplug behavior' \
   '  - touchpad/haptics, Wi-Fi 7 throughput, audio, Snapshot/video-call camera, and mic LED' \
   '  - fan response under load, suspend/resume, docked-lid behavior, LocalSend transfer, and Steam launch' \

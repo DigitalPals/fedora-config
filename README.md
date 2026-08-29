@@ -145,6 +145,7 @@ for a reviewed boot/initramfs change.
 | [docs/fedora-major-upgrade.md](docs/fedora-major-upgrade.md) | Actionable preparation, offline-upgrade, convergence, and hardware validation runbook |
 | [docs/licensing.md](docs/licensing.md) | Current no-license boundary and the owner actions required for code and assets |
 | [docs/quickshell-notes.md](docs/quickshell-notes.md) | Working on the Quickshell shell: how to test it headlessly, the traps, and what has already been decided against |
+| [docs/hermes-menubar.md](docs/hermes-menubar.md) | Hermes conversation history, New chat behavior, password sign-in, streaming states, and diagnostics |
 | [docs/shell-settings-manual-verification.md](docs/shell-settings-manual-verification.md) | Hand-test checklist for the settings window |
 | [docs/t3-composer-manual-verification.md](docs/t3-composer-manual-verification.md) | Hand-test checklist for the T3 composer |
 | [docs/t3-git-actions-manual-verification.md](docs/t3-git-actions-manual-verification.md) | Hand-test checklist for the T3 git actions |

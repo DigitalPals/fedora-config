@@ -17,7 +17,9 @@ BarModule {
 
         readonly property color badgeTone: GitHub.badgeTone === "red" ? Theme.barRed
             : GitHub.badgeTone === "amber" ? Theme.barAmber : Theme.barAccent
-        readonly property real detailSaving: countLabel.visible
+        readonly property bool detailAvailable: GitHub.pendingInboxCount > 0
+            && GitHub.badgeMode !== "count"
+        readonly property real detailSaving: detailAvailable
             ? countLabel.implicitWidth + spacing : 0
 
         host: root.host
@@ -85,8 +87,7 @@ BarModule {
 
         Text {
             id: countLabel
-            visible: !root.compact && GitHub.pendingInboxCount > 0
-                && GitHub.badgeMode !== "count"
+            visible: !root.compact && ghChip.detailAvailable
             anchors.verticalCenter: parent.verticalCenter
             text: GitHub.pendingInboxCount + " pending"
             font.family: Theme.fontMenu

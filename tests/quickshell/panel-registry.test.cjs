@@ -123,6 +123,15 @@ test("calendar, weather, and notifications each have one widget and one view", (
     assert.doesNotMatch(read("Popovers/qmldir"), /NotifCenterPopover/);
 });
 
+test("Hermes Agent owns one right-side conversation client panel", () => {
+    assert.deepEqual(R.byName("hermes"), {
+        name: "hermes", island: "right", moduleId: "hermes",
+        source: "Popovers/HermesPopover.qml"
+    });
+    assert.match(read("Bar/Modules/Hermes.qml"), /moduleId:\s*"hermes"/);
+    assert.match(read("Bar/Modules/Hermes.qml"), /panelName:\s*"hermes"/);
+});
+
 test("the four status widgets each own exactly one dedicated view", () => {
     const expected = {
         vol: ["audio", "Bar/Modules/Volume.qml", "Popovers/AudioPopover.qml"],

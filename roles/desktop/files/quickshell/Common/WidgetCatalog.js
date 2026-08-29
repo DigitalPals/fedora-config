@@ -22,6 +22,7 @@ var WIDGETS = {
     clock: { name: "Clock", short: "Clock", detail: true },
     weather: { name: "Weather", short: "Weather", detail: true },
     t3: { name: "T3 Code", short: "T3", detail: true },
+    hermes: { name: "Hermes Agent", short: "Hermes", detail: true },
     usage: { name: "Model usage", short: "Usage", detail: true },
     gh: { name: "GitHub", short: "GH", detail: true },
     updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true },

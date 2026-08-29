@@ -10,7 +10,10 @@ BarModule {
 
     moduleId: "clock"
     spacing: 0
-    detailSaving: showDate ? clockDate.implicitWidth + dateSeparator.width : 0
+    // Measure the configured date even while compact. `showDate` includes the
+    // compact state and would otherwise erase the saving needed to restore it.
+    detailSaving: Settings.modOpts.clock.showDate
+        ? clockDate.implicitWidth + dateSeparator.width : 0
 
     // Named once: the date and the space before it are one decision, and binding
     // the spacer to the date's `visible` would make it depend on effective

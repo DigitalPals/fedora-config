@@ -79,4 +79,18 @@ Singleton {
         open = false;
         changed();
     }
+
+    // Quickshell briefly substitutes a FALLBACK screen when the compositor
+    // drops every real output. Waiting for the owning Bar Scope to be destroyed
+    // can leave its mapped layer surface polishing against that placeholder.
+    // Retire the popout as soon as its named output disappears; a surviving
+    // output that merely moves keeps the same name and stays open.
+    Connections {
+        target: Screens
+
+        function onLayerSurfaceModelChanged() {
+            if (root.open && !Screens.byName(root.hostScreenName))
+                root.close();
+        }
+    }
 }

@@ -37,6 +37,10 @@ const EXEMPT = {
     "Common/T3Socket.qml":
         "imports the optional QtWebSockets package; T3Connection loads it "
         + "through a Loader by URL so a missing package degrades to "
+        + "Loader.Error instead of an unresolvable type",
+    "Common/HermesSocket.qml":
+        "imports the optional QtWebSockets package; HermesConnection loads it "
+        + "through a Loader by URL so a missing package degrades to "
         + "Loader.Error instead of an unresolvable type"
 };
 
@@ -128,4 +132,9 @@ test("T3Socket stays reachable by URL, since it is not a type", () => {
     // The exemption is only safe while this is how it loads. It moved from
     // T3Code to T3Connection when the transport was split out.
     assert.match(read("Common/T3Connection.qml"), /source:\s*"T3Socket\.qml"/);
+});
+
+test("HermesSocket stays reachable by URL, since it is not a type", () => {
+    assert.match(read("Common/HermesConnection.qml"),
+        /source:\s*"HermesSocket\.qml"/);
 });

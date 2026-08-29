@@ -289,7 +289,10 @@ stage_python_helpers() {
       && python3 tests/repository-policy.py \
       && python3 tests/installer-convergence.py \
       && python3 tests/quickshell-deployment.py \
-      && python3 tests/cybex-deployment.py
+      && python3 tests/cybex-deployment.py \
+      && python3 tests/hermes-bridge.py \
+      && python3 tests/hermes-webui-auth.py \
+      && python3 tests/hermes-remote-runtime.py
   } 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
   if ((rc == 0)); then

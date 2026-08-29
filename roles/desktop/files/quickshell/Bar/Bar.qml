@@ -531,7 +531,11 @@ PanelWindow {
 
     Timer {
         id: fitTimer
-        interval: 0
+        // Width changes are animated. Re-fitting an intermediate spring frame
+        // feeds a partial width back into compaction and can make the selected
+        // detail set oscillate indefinitely. Debounce through the full spring,
+        // then measure the stable compact or expanded geometry once.
+        interval: Math.max(1, Theme.expandDuration + 20)
         onTriggered: barWindow.recomputeFit()
     }
 
@@ -568,7 +572,8 @@ PanelWindow {
         ws: "Modules/Workspaces.qml", media: "Modules/Media.qml",
         clock: "Modules/Clock.qml", weather: "Modules/Weather.qml",
         indicators: "Modules/Indicators.qml",
-        t3: "Modules/T3.qml", usage: "Modules/Usage.qml",
+        t3: "Modules/T3.qml", hermes: "Modules/Hermes.qml",
+        usage: "Modules/Usage.qml",
         gh: "Modules/GitHub.qml", updates: "Modules/Updates.qml",
         tray: "Modules/Tray.qml", notifications: "Modules/Notifications.qml",
         vol: "Modules/Volume.qml", wifi: "Modules/Wifi.qml",

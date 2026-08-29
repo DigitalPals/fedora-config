@@ -63,6 +63,36 @@ def verify_dependency_policy(values: dict) -> None:
     assert re.fullmatch(r"nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}", values["rust_toolchain"])
     assert SEMVER.fullmatch(values["claude_code_version"])
     assert SEMVER.fullmatch(values["opencode_version"])
+    assert not any(key.startswith("hermes_agent_") for key in values)
+    assert "hermes_remote_url" not in values
+
+    hermes_tasks = (ROOT / "roles/desktop/tasks/hermes-menubar.yml").read_text()
+    assert "hermes-agent-removed-v1" in hermes_tasks
+    assert '"{{ primary_home }}/.local/share/xps-user-tools/hermes"' in hermes_tasks
+    assert '"{{ primary_home }}/.hermes"' in hermes_tasks
+    assert '"{{ primary_home }}/.local/bin/hermes"' in hermes_tasks
+    assert "raw.githubusercontent.com/NousResearch/hermes-agent" not in hermes_tasks
+    assert not (ROOT / "roles/desktop/tasks/hermes-agent.yml").exists()
+    assert not (
+        ROOT / "roles/desktop/templates/hermes-backend.service.j2"
+    ).exists()
+    hermes_bridge_unit = (
+        ROOT / "roles/desktop/templates/hermes-menubar-bridge.service.j2"
+    ).read_text()
+    assert "HERMES_REMOTE_URL" not in hermes_bridge_unit
+    assert (
+        "--remote-auth-state "
+        "{{ primary_home }}/.local/state/hermes-menubar/remote-webui-auth.json"
+        in hermes_bridge_unit
+    )
+    assert "--remote-only" in hermes_bridge_unit
+    assert "--upstream" not in hermes_bridge_unit
+    assert "hermes-backend.service" not in hermes_bridge_unit
+    assert "EnvironmentFile=" not in hermes_bridge_unit
+    assert "HERMES_REMOTE_PASSWORD" not in hermes_bridge_unit
+    assert "HERMES_REMOTE_PASSWORD" not in (
+        ROOT / "inventory/group_vars/all.yml"
+    ).read_text()
 
     names = set()
     for entry in values["distrobox_images"]:
@@ -91,6 +121,7 @@ def verify_dependency_policy(values: dict) -> None:
         ("jq", "durable updater fixture"),
         ("dbus-daemon", "isolated QML runtime fixture"),
         ("luajit", "Hyprland Lua policy fixtures"),
+        ("python3-websockets", "Hermes bridge protocol fixtures"),
     ):
         assert re.search(rf"^\s+{re.escape(package)} \\$", workflow, re.MULTILINE), (
             f"the clean Fedora CI container must explicitly install {package} "

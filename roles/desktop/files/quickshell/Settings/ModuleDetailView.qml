@@ -102,6 +102,7 @@ SettingsPage {
                 case "clock": return clockOptions;
                 case "weather": return weatherOptions;
                 case "t3": return t3Options;
+                case "hermes": return hermesOptions;
                 case "usage": return usageOptions;
                 case "gh": return ghOptions;
                 case "vol": return volOptions;
@@ -444,6 +445,38 @@ SettingsPage {
                 dirty: view.optDirty("critAt")
                 onMoved: value => view.setOpt("critAt", value)
                 onResetRequested: view.resetOpt("critAt")
+            }
+        }
+    }
+
+    Component {
+        id: hermesOptions
+
+        Column {
+            spacing: 8
+
+            SwitchRow {
+                width: parent.width
+                label: "Status label"
+                description: "Show Hermes activity beside its icon"
+                checked: view.opts.showLabel
+                dirty: view.optDirty("showLabel")
+                onToggled: value => view.setOpt("showLabel", value)
+                onResetRequested: view.resetOpt("showLabel")
+            }
+
+            PickerRow {
+                width: parent.width
+                label: "Activity detail"
+                model: [
+                    { value: "full", label: "Full detail" },
+                    { value: "verb", label: "Verb only" },
+                    { value: "generic", label: "Working only" }
+                ]
+                current: view.opts.activityDetail
+                dirty: view.optDirty("activityDetail")
+                onPicked: value => view.setOpt("activityDetail", value)
+                onResetRequested: view.resetOpt("activityDetail")
             }
         }
     }

@@ -82,6 +82,8 @@
     name:
       - NetworkManager
       - python3
+      # Durable JSON-RPC/WebSocket transport for the Hermes menubar bridge.
+      - python3-websockets
       # Online Accounts stores Google OAuth credentials in the keyring;
       # Evolution Data Server exposes its calendar cache to Quickshell.
       - gnome-online-accounts
@@ -99,6 +101,10 @@
     state: present
   when: not ansible_check_mode
   tags: [quickshell]
+
+- name: Install the remote Hermes WebUI menubar client
+  ansible.builtin.import_tasks: hermes-menubar.yml
+  tags: [quickshell, hermes-menubar]
 
 - name: Install Fedora fuzzel and matugen rather than COPR variants
   ansible.builtin.dnf:

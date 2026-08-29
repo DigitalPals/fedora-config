@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 13);
+    assert.equal(H.VERSION, 14);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, false);
     assert.equal(d.barColorMode, "default");
@@ -46,7 +46,7 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id), ["indicators", "clock", "weather"]);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["updates", "gh", "t3", "usage", "tray", "notifications",
+        ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
          "vol", "wifi", "bt", "batt"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, false,
@@ -63,7 +63,7 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "indicators", "clock", "weather", "t3", "usage", "gh", "updates",
+        ["ws", "media", "indicators", "clock", "weather", "t3", "hermes", "usage", "gh", "updates",
          "tray", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
@@ -79,6 +79,7 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.modOpts.weather,
         { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 });
     assert.deepEqual(d.modOpts.t3, { showLabel: true });
+    assert.deepEqual(d.modOpts.hermes, { showLabel: true, activityDetail: "verb" });
     assert.equal(d.modOpts.usage.warnAt, 25);
     assert.equal(d.modOpts.usage.critAt, 10);
     assert.equal(d.modOpts.usage.claudeAutoRefresh, true);
@@ -182,12 +183,14 @@ test("normalizeModOpts drops unknown modules and keys", () => {
         wifi: { anything: 1 },
         clock: { seconds: true, bogus: "x" },
         t3: { showLabel: false, pulse: true },
+        hermes: { showLabel: false, activityDetail: "private", pulse: true },
         vol: "not-an-object"
     });
     assert.ok(!("flux" in next) && !("wifi" in next));
     assert.equal(next.clock.seconds, true);
     assert.ok(!("bogus" in next.clock));
     assert.deepEqual(next.t3, { showLabel: false });
+    assert.deepEqual(next.hermes, { showLabel: false, activityDetail: "verb" });
     assert.deepEqual(next.vol, H.defaultModOpts().vol);
     assert.deepEqual(H.normalizeModOpts(null), H.defaultModOpts());
     assert.deepEqual(H.normalizeModOpts("nope"), H.defaultModOpts());
@@ -200,6 +203,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
         indicators: { mode: "sometimes" },
         clock: { showEvents: "yes", daysAhead: 99, pollMins: 7 },
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
+        hermes: { showLabel: "yes", activityDetail: "full" },
         usage: {
             warnAt: 8, critAt: 60, claude: "yes", claudeAutoRefresh: false
         },
@@ -233,6 +237,10 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.weather.lon, -12.3457);
     assert.equal(next.weather.place, "Emmen Centrum");
     assert.equal(next.weather.pollMins, 5);
+    assert.equal(next.hermes.showLabel, true, "non-boolean falls back to default");
+    assert.equal(next.hermes.activityDetail, "full");
+    assert.equal(H.normalizeModOpts({ hermes: { activityDetail: "generic" } })
+        .hermes.activityDetail, "generic");
     assert.equal(next.usage.warnAt, 10);
     assert.equal(next.usage.critAt, 25);
     assert.equal(next.usage.claude, true, "non-boolean falls back to default");
@@ -442,7 +450,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.equal(next.left[0].on, false);
     assert.deepEqual(next.center.map(m => m.id), ["indicators", "clock", "weather"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["updates", "gh", "t3", "usage", "tray", "notifications",
+        ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
          "wifi", "bt", "batt"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === false),
         "appended module keeps its default enable flag");
@@ -624,7 +632,7 @@ test("schema-11 inserts notifications before the first right-side status widget"
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
         ["updates", "tray", "gh", "notifications", "wifi", "t3",
-         "usage", "vol", "bt", "batt"]);
+         "hermes", "usage", "vol", "bt", "batt"]);
 });
 
 test("schema-11 appends notifications on the right when its status widgets moved", () => {
@@ -639,6 +647,44 @@ test("schema-11 appends notifications on the right when its status widgets moved
     assert.equal(migrated.right.at(-1).id, "notifications");
     assert.deepEqual(migrated.left, raw.left,
         "status widgets keep their custom column, order, flags and policies");
+});
+
+test("schema-14 inserts Hermes immediately after T3 without rewriting a custom layout", () => {
+    const oldIds = H.MODULE_IDS.filter(id => id !== "hermes");
+    const entry = (id, index) => ({
+        id,
+        on: index % 2 === 0,
+        detail: ["compact", "prefer", "auto"][index % 3]
+    });
+    const raw = {
+        left: oldIds.slice(0, 4).reverse().map(entry),
+        center: oldIds.slice(4, 8).map((id, index) => entry(id, index + 4)),
+        right: oldIds.slice(8).map((id, index) => entry(id, index + 8))
+    };
+    const t3Col = ["left", "center", "right"].find(col =>
+        raw[col].some(mod => mod.id === "t3"));
+    const t3Index = raw[t3Col].findIndex(mod => mod.id === "t3");
+
+    const migrated = H.merge({ v: 13, mods: raw }).mods;
+    for (const col of ["left", "center", "right"])
+        assert.deepEqual(migrated[col].filter(mod => mod.id !== "hermes"), raw[col],
+            `${col} entries changed while adding Hermes`);
+    assert.deepEqual(migrated[t3Col][t3Index + 1],
+        { id: "hermes", on: true, detail: "auto" });
+    const all = [...migrated.left, ...migrated.center, ...migrated.right];
+    assert.equal(all.filter(mod => mod.id === "hermes").length, 1);
+});
+
+test("an older layout that already places Hermes keeps that placement and flags", () => {
+    const raw = H.defaultMods();
+    raw.right = raw.right.filter(mod => mod.id !== "hermes");
+    raw.left.unshift({ id: "hermes", on: false, detail: "compact" });
+
+    const merged = H.merge({ v: 13, mods: raw }).mods;
+    assert.deepEqual(merged.left[0],
+        { id: "hermes", on: false, detail: "compact" });
+    assert.equal([...merged.left, ...merged.center, ...merged.right]
+        .filter(mod => mod.id === "hermes").length, 1);
 });
 
 test("schema 4 keeps its three retired ids retired", () => {
@@ -665,8 +711,9 @@ test("version one layouts insert usage after t3 with its column and enabled stat
             right: [{ id: "vol", on: true }]
         }
     }).mods;
-    assert.deepEqual(enabled.center.slice(0, 4), [
+    assert.deepEqual(enabled.center.slice(0, 5), [
         { id: "t3", on: true, detail: "auto" },
+        { id: "hermes", on: true, detail: "auto" },
         { id: "usage", on: true, detail: "auto" },
         { id: "indicators", on: true, detail: "auto" },
         { id: "clock", on: true, detail: "auto" }
@@ -680,10 +727,11 @@ test("version one layouts insert usage after t3 with its column and enabled stat
             right: [{ id: "vol", on: true }, { id: "t3", on: false }]
         }
     }).mods;
-    assert.deepEqual(disabled.right.slice(0, 4), [
+    assert.deepEqual(disabled.right.slice(0, 5), [
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: true, detail: "auto" },
         { id: "t3", on: false, detail: "auto" },
+        { id: "hermes", on: true, detail: "auto" },
         { id: "usage", on: false, detail: "auto" }
     ]);
 });
@@ -696,8 +744,9 @@ test("unversioned layouts receive the same composite t3 migration", () => {
             right: []
         }
     }).mods;
-    assert.deepEqual(mods.left.slice(0, 3), [
+    assert.deepEqual(mods.left.slice(0, 4), [
         { id: "t3", on: false, detail: "auto" },
+        { id: "hermes", on: true, detail: "auto" },
         { id: "usage", on: false, detail: "auto" },
         { id: "media", on: true, detail: "auto" }
     ]);

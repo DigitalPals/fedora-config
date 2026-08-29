@@ -826,7 +826,7 @@ test("git result summaries compress the steps and surface the PR url", () => {
 });
 
 test("error text is extracted from array-shaped Effect causes", () => {
-    // Exact Exit shape captured live from git.runStackedAction on thebeast.
+    // Exact Exit shape captured live from git.runStackedAction on a remote host.
     const exit = {
         _tag: "Failure",
         cause: [{ _tag: "Fail", error: { _tag: "GitCommandError",

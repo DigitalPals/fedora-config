@@ -11,6 +11,7 @@ BarPopoutWindow BarPopoutWindow.qml
 BarTooltip BarTooltip.qml
 Cluster Cluster.qml
 Divider Divider.qml
+HermesChip HermesChip.qml
 ModuleSlot ModuleSlot.qml
 PointerCheck PointerCheck.qml
 PopoutHost PopoutHost.qml

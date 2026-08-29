@@ -1,0 +1,77 @@
+# Hermes menubar client
+
+The Quickshell Hermes widget is a native remote-only conversation client backed
+by the lightweight local `hermes-menubar-bridge.service`. Hermes Agent itself
+is not installed or run on this workstation. The dropdown lists the remote
+WebUI's existing conversations directly. Opening the widget starts on **New
+chat**; choosing a historical conversation loads its transcript, and sending
+the first message in New chat creates a normal WebUI session.
+
+## Remote sign-in
+
+The remote origin is intentionally not tracked in inventory or embedded in the
+systemd unit. Enter it in the widget on first sign-in; the bridge then keeps the
+origin and its session cookies together in its private state file. The widget
+probes the public `/api/auth/status` endpoint and only reports **Connected**
+after Hermes confirms an authenticated session.
+
+When sign-in is required, open the Hermes popover and enter:
+
+- **URL:** the configured Hermes WebUI origin, including its port
+- **Password:** the password configured on that Hermes WebUI
+
+The password is used for one `POST /api/auth/login` request, cleared from the
+field immediately, and not retained by the bridge after that request. It is
+never written to inventory, a systemd environment, or the conversation cache.
+The resulting origin-bound cookie is stored at
+`~/.local/state/hermes-menubar/remote-webui-auth.json` with mode `0600`.
+
+An HTTP 302 pointing to `/login` means that there is no valid WebUI session; it
+must not be treated as agent connectivity. Expired cookies return the widget to
+the URL-and-password form automatically.
+
+## Activity and streaming
+
+Conversation history comes from `GET /api/sessions` and `GET /api/session`.
+Prompts use `POST /api/chat/start`, with the response consumed from Hermes'
+authenticated server-sent-event stream. The bar and conversation view
+translate those events into useful live states, including working, thinking,
+tool use, context compression, waiting for approval or clarification,
+interrupted, failed, and done. Stream reconnects resume with the last event ID
+and reconcile against Hermes' session and stream-status endpoints.
+
+The small Python bridge remains loopback-only on `ws://127.0.0.1:9120/ws`. It
+owns the remote cookie and never exposes it to QML; it does not contain or run
+the Hermes Agent model/runtime. Browser-originated turns are owned by the
+remote Hermes Gateway rather than imported into the long-running WebUI Python
+process. Updating the Agent checkout therefore cannot stale the WebUI process
+used by this widget.
+
+## Diagnostics
+
+```bash
+systemctl --user status hermes-menubar-bridge.service
+journalctl --user -u hermes-menubar-bridge.service -b --no-pager
+curl -fsS "${HERMES_WEBUI_ORIGIN%/}/api/auth/status" | jq
+```
+
+The public status request should be reachable even while signed out. A healthy
+password-protected server reports `auth_enabled: true`,
+`password_auth_enabled: true`, and `logged_in: false` until the widget has a
+valid cookie.
+
+The remote WebUI must keep gateway-backed chat enabled. On the WebUI host,
+check the non-secret settings that Hermes hot-reloads from its configuration:
+
+```bash
+hermes config get webui_chat_backend
+hermes config get webui_gateway_base_url
+hermes config get webui_gateway_use_runs_api
+```
+
+The expected values are `gateway`, the existing private Gateway API origin,
+and `true`. The WebUI reuses its existing `API_SERVER_KEY` internally; never put
+that credential in this repository or in the menubar bridge. A new
+`agent_runtime_stale` response means the remote WebUI has fallen back to its
+legacy in-process chat backend and should be treated as a routing-configuration
+regression, not as a reason to restart WebUI after every Agent update.

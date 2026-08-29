@@ -36,8 +36,9 @@ BarChip {
             return T3Code.doneCount + " done";
         return "idle";
     }
-    readonly property real detailSaving: labelText.visible
-        ? labelText.implicitWidth + spacing : 0
+    // Keep the expanded measurement available while the label is compacted;
+    // otherwise the fit pass forgets this saving and oscillates between chips.
+    readonly property real detailSaving: labelText.implicitWidth + spacing
 
     shape: "inner"
     hPadding: 9

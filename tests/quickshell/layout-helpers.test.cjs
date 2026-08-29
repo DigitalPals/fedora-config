@@ -18,6 +18,11 @@ test("calendar, weather, notifications, and status widgets remain separate pills
     const notificationGroup = right.find(group =>
         group.items.some(item => item.entry.id === "notifications"));
     assert.equal(notificationGroup.kind, "solo");
+    const agentGroup = right.find(group =>
+        group.items.some(item => item.entry.id === "hermes"));
+    assert.equal(agentGroup.kind, "chip");
+    assert.deepEqual(agentGroup.items.map(item => item.entry.id),
+        ["gh", "t3", "hermes", "usage"]);
     for (const id of ["vol", "wifi", "bt", "batt"]) {
         const group = right.find(candidate =>
             candidate.items.some(item => item.entry.id === id));
@@ -114,6 +119,11 @@ test("notification count participates in responsive compaction", () => {
         ]
     });
     assert.deepEqual(result.compact, ["notifications"]);
+});
+
+test("Hermes activity detail participates in responsive compaction", () => {
+    assert.ok(H.COMPACT_ORDER.includes("hermes"));
+    assert.ok(H.COMPACT_ORDER.indexOf("hermes") > H.COMPACT_ORDER.indexOf("t3"));
 });
 
 test("asymmetric center extents pin the clock while actions reveal on its left", () => {

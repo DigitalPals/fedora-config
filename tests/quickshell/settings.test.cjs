@@ -46,6 +46,9 @@ test("every connected output keeps a bar while popouts stay single-hosted", () =
         "focus and the retired monitor picker must not gate a bar window");
 
     assert.match(popouts, /property string hostScreenName/);
+    assert.match(popouts,
+        /target:\s*Screens[\s\S]{0,180}?onLayerSurfaceModelChanged[\s\S]{0,180}?!Screens\.byName\(root\.hostScreenName\)[\s\S]{0,100}?root\.close\(\)/,
+        "a popout must close before its removed output becomes a fallback surface");
     assert.match(bar, /Popouts\.toggle\(name, isle, anchorOf\(item\), outputName\)/,
         "pointer opens must identify the clicked bar's output");
     assert.match(window, /readonly property bool live:\s*bar\.visible && bar\.popoutHost/,
@@ -285,16 +288,18 @@ test("the three modules the redesign absorbed leave nothing behind", () => {
     assert.match(helpers, /RETIRED_MODULE_IDS = \["bell", "idle", "control"\]/);
 });
 
-test("T3 Code and grouped model usage are separate reorderable widgets", () => {
+test("T3 Code, Hermes Agent, and grouped model usage are separate reorderable widgets", () => {
     const helpers = read("Common/SettingsHelpers.js");
     const catalog = read("Common/WidgetCatalog.js");
     const bar = read("Bar/Bar.qml");
 
-    assert.match(helpers, /"gh", "t3", "usage"/,
-        "fresh layouts should keep the two widgets adjacent");
+    assert.match(helpers, /"gh", "t3", "hermes",\s*"usage"/,
+        "fresh layouts should keep the three agent widgets adjacent");
     assert.match(catalog, /t3:\s*\{ name: "T3 Code"/);
+    assert.match(catalog, /hermes:\s*\{ name: "Hermes Agent"/);
     assert.match(catalog, /usage:\s*\{ name: "Model usage"/);
     assert.match(bar, /t3:\s*"Modules\/T3\.qml"/);
+    assert.match(bar, /hermes:\s*"Modules\/Hermes\.qml"/);
     assert.match(bar, /usage:\s*"Modules\/Usage\.qml"/);
     assert.match(read("Bar/Modules/T3.qml"), /panelName:\s*"t3code"/);
     assert.match(read("Bar/Modules/Usage.qml"), /panelName:\s*"usage"/);
@@ -405,13 +410,14 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema thirteen keeps the classic menubar and enables Claude usage refresh", () => {
+test("schema fourteen keeps the classic menubar and adds Hermes Agent", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 13/);
+    assert.match(helpers, /var VERSION = 14/);
     assert.match(helpers, /"media", "indicators", "clock"/);
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibited:\s*true/);
-    assert.match(helpers, /"updates", "gh", "t3", "usage", "tray"/);
+    assert.match(helpers, /"updates", "gh", "t3", "hermes",\s*"usage", "tray"/);
+    assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers, /claudeAutoRefresh:\s*true/);
     assert.match(helpers, /mod\("tray", true\), mod\("notifications", true\), mod\("vol", true\)/);
     assert.match(helpers, /warmth:\s*3400/);
@@ -751,6 +757,11 @@ test("the module cog opens a per-module sub-page inside the Modules page", () =>
     assert.match(detail, /Settings\.setModuleDetail\(view\.moduleId/,
         "the detail policy control lives on the sub-page, stored in mods");
     assert.match(detail, /Settings\.setModuleOption/);
+    assert.match(detail, /case "hermes": return hermesOptions/);
+    assert.match(detail,
+        /id:\s*hermesOptions[\s\S]*?label:\s*"Status label"[\s\S]*?view\.opts\.showLabel/);
+    assert.match(detail,
+        /id:\s*hermesOptions[\s\S]*?label:\s*"Activity detail"[\s\S]*?value:\s*"full"[\s\S]*?value:\s*"verb"[\s\S]*?value:\s*"generic"/);
 });
 
 test("the settings store keeps its fixed literal state path", () => {

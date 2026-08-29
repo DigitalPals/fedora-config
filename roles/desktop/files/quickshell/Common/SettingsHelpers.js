@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 13;
+var VERSION = 14;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -16,13 +16,14 @@ var PALETTE_MODES = ["wallpaper", "fixed"];
 // a Control Panel toggle, and `control` is fixed bar furniture rather than a
 // configurable widget, so neither historical id returns to the schema.
 var MODULE_IDS = [
-    "ws", "media", "indicators", "clock", "weather", "updates", "gh", "t3", "usage", "tray",
+    "ws", "media", "indicators", "clock", "weather", "updates", "gh", "t3", "hermes",
+    "usage", "tray",
     "notifications", "vol", "wifi", "bt", "batt"
 ];
 
 var RETIRED_MODULE_IDS = ["bell", "idle", "control"];
 
-var DETAIL_IDS = ["media", "weather", "clock", "t3", "usage", "gh", "updates",
+var DETAIL_IDS = ["media", "weather", "clock", "t3", "hermes", "usage", "gh", "updates",
     "notifications", "vol", "batt"];
 var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
@@ -69,7 +70,7 @@ var BAR_COLOR_PRESETS = {
 // contract; `solo` modules bring their own independent pointer target.
 var MODULE_GROUPS = {
     ws: "solo", media: "solo", indicators: "solo", clock: "solo", weather: "solo",
-    updates: "solo", gh: "chip", t3: "chip", usage: "chip", tray: "solo",
+    updates: "solo", gh: "chip", t3: "chip", hermes: "chip", usage: "chip", tray: "solo",
     notifications: "solo",
     vol: "solo", wifi: "solo", bt: "solo", batt: "solo"
 };
@@ -86,7 +87,7 @@ function defaultMods() {
         left: [mod("ws", true), mod("media", true)],
         center: [mod("indicators", true), mod("clock", true), mod("weather", true)],
         right: [
-            mod("updates", true), mod("gh", true), mod("t3", true),
+            mod("updates", true), mod("gh", true), mod("t3", true), mod("hermes", true),
             mod("usage", true), mod("tray", true), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", false), mod("batt", true)
         ]
@@ -107,6 +108,7 @@ function defaultModOpts() {
         },
         weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
         t3: { showLabel: true },
+        hermes: { showLabel: true, activityDetail: "verb" },
         usage: {
             claude: true, claudeAutoRefresh: true, codex: true, kimi: true,
             warnAt: 25, critAt: 10
@@ -495,6 +497,12 @@ var MOD_OPT_CHECKS = {
         pollMins: function(v, d) { return intIn(v, 5, 60, 5, d); }
     },
     t3: { showLabel: boolIn },
+    hermes: {
+        showLabel: boolIn,
+        activityDetail: function(v, d) {
+            return enumIn(v, ["full", "verb", "generic"], d);
+        }
+    },
     usage: {
         claude: boolIn,
         claudeAutoRefresh: boolIn,
@@ -633,6 +641,31 @@ function migrateMods(raw, sourceVersion) {
         migrated.right.splice(notificationIndex, 0, {
             id: "notifications", on: true, detail: "auto"
         });
+    }
+
+    // Schema 14 adds the Hermes Agent client as its own chip and popover.
+    // Put it beside T3 in an older customized layout instead of silently
+    // appending it after whichever status widgets the user kept on the right.
+    // Every existing entry retains its column, ordering and saved flags.
+    var hermesPresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) {
+            return entry && entry.id === "hermes";
+        });
+    });
+    if ((typeof sourceVersion !== "number" || sourceVersion < 14)
+            && !hermesPresent) {
+        for (var k = 0; k < 3; k++) {
+            var t3Col = ["left", "center", "right"][k];
+            var hermesIndex = migrated[t3Col].findIndex(function(entry) {
+                return entry && entry.id === "t3";
+            });
+            if (hermesIndex === -1)
+                continue;
+            migrated[t3Col].splice(hermesIndex + 1, 0, {
+                id: "hermes", on: true, detail: "auto"
+            });
+            break;
+        }
     }
     return normalizeMods(migrated);
 }
