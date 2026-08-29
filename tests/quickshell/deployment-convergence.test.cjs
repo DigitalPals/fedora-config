@@ -201,3 +201,17 @@ test("the deployed Quickshell manifest excludes tracked paths deleted on disk", 
             `${taskName} must be deferred behind check-mode path normalization`);
     }
 });
+
+test("the retired Paseo shell widget leaves no bridge runtime behind", () => {
+    const tasks = read("roles/desktop/tasks/main.yml");
+    const cleanupAt = tasks.indexOf("Remove retired Paseo shell widget runtime");
+    const nextTaskAt = tasks.indexOf("\n- name:", cleanupAt + 1);
+
+    assert.ok(cleanupAt > 0, "Paseo retirement must be part of desktop convergence");
+    const cleanup = tasks.slice(cleanupAt, nextTaskAt);
+    assert.match(cleanup,
+        /path:\s*"\{\{ primary_home \}\}\/\.local\/share\/fedora-config\/paseo-bridge"/);
+    assert.match(cleanup, /state:\s*absent/);
+    assert.match(cleanup, /tags:\s*\[quickshell\]/,
+        "a targeted Quickshell deployment must remove the retired bridge too");
+});

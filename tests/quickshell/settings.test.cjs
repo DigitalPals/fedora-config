@@ -27,15 +27,21 @@ test("the settings IPC target is declared exactly once shell-wide", () => {
 
 test("every connected output keeps a bar while popouts stay single-hosted", () => {
     const shell = read("shell.qml");
+    const screens = read("Common/Screens.qml");
     const bar = read("Bar/Bar.qml");
     const window = read("Bar/BarPopoutWindow.qml");
     const popouts = read("Common/Popouts.qml");
     const barPage = read("Settings/BarLayoutPage.qml");
 
-    assert.match(shell, /Variants\s*\{[\s\S]*?model:\s*Quickshell\.screens[\s\S]*?Bar\s*\{/,
+    assert.match(shell, /Variants\s*\{[\s\S]*?model:\s*Screens\.layerSurfaceModel[\s\S]*?Bar\s*\{/,
         "bars must still be created from the live screen model");
-    assert.match(shell, /visible:\s*barScope\.modelData !== null/,
+    assert.match(shell, /visible:\s*barScope\.output !== null/,
         "each connected output's bar must remain mapped independently of focus");
+    assert.match(screens,
+        /layerSurfaceModel:\s*Quickshell\.screens\.map\([\s\S]*?screen\.x[\s\S]*?screen\.y[\s\S]*?screen\.width[\s\S]*?screen\.height/,
+        "persistent layer surfaces must be recreated when a surviving output moves");
+    assert.equal((shell.match(/model:\s*Screens\.layerSurfaceModel/g) ?? []).length, 2,
+        "both wallpaper and bar surfaces must use geometry-sensitive identities");
     assert.doesNotMatch(shell, /onFocusedScreen|barEnabled|Settings\.monitor/,
         "focus and the retired monitor picker must not gate a bar window");
 

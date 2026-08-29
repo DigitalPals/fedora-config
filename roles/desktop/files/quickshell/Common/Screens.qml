@@ -9,6 +9,16 @@ import Quickshell.Hyprland
 Singleton {
     id: root
 
+    // A surviving output can move when another output disappears. Hyprland
+    // keeps an already-mapped layer surface at its old global coordinates in
+    // that case, so include geometry in the Variants identity and make the
+    // shell remap its persistent wallpaper/bar surfaces at the new origin.
+    readonly property var layerSurfaceModel: Quickshell.screens.map(screen => ({
+        "screen": screen,
+        "geometry": screen.name + ":" + screen.x + ":" + screen.y + ":"
+            + screen.width + "x" + screen.height + "@" + screen.devicePixelRatio
+    }))
+
     readonly property var focused: {
         const screens = Quickshell.screens;
         const monitor = Hyprland.focusedMonitor;

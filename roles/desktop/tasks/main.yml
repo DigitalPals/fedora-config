@@ -284,6 +284,14 @@
   when: quickshell_lint.rc | default(0) != 0
   tags: [quickshell, quickshell-lint]
 
+- name: Remove retired Paseo shell widget runtime
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/share/fedora-config/paseo-bridge"
+    state: absent
+  tags: [quickshell]
+
 - name: Install durable updater backend used by Quickshell and the CLI
   become: true
   become_user: "{{ primary_user }}"

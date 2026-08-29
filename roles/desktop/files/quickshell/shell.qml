@@ -107,19 +107,18 @@ ShellRoot {
         }
     }
 
-    // Wallpaper on the background layer, one per output. Instantiated
-    // through Variants so outputs appearing/disappearing (dock, lid)
-    // create and destroy the windows instead of stranding them on Qt's
-    // placeholder screen.
+    // Wallpaper on the background layer, one per output. The model also
+    // changes identity when a surviving output moves, forcing the layer
+    // surface to remap instead of retaining its old global coordinates.
     Variants {
-        model: Quickshell.screens
+        model: Screens.layerSurfaceModel
 
         PanelWindow {
             id: wallpaperWindow
 
-            required property ShellScreen modelData
+            required property var modelData
 
-            screen: modelData
+            screen: modelData.screen
             anchors {
                 top: true
                 left: true
@@ -138,12 +137,12 @@ ShellRoot {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 cache: true
-                // modelData is briefly null while an output is torn down;
+                // screen is briefly null while an output is torn down;
                 // 0 falls back to the image's own size for that instant.
-                sourceSize.width: wallpaperWindow.modelData
-                    ? Math.ceil(wallpaperWindow.modelData.width * wallpaperWindow.modelData.devicePixelRatio) : 0
-                sourceSize.height: wallpaperWindow.modelData
-                    ? Math.ceil(wallpaperWindow.modelData.height * wallpaperWindow.modelData.devicePixelRatio) : 0
+                sourceSize.width: wallpaperWindow.screen
+                    ? Math.ceil(wallpaperWindow.screen.width * wallpaperWindow.screen.devicePixelRatio) : 0
+                sourceSize.height: wallpaperWindow.screen
+                    ? Math.ceil(wallpaperWindow.screen.height * wallpaperWindow.screen.devicePixelRatio) : 0
             }
         }
     }
@@ -152,15 +151,16 @@ ShellRoot {
     // output for its lifetime avoids layer-surface migration during focus
     // changes and lets hotplug create or destroy just that output's bar.
     Variants {
-        model: Quickshell.screens
+        model: Screens.layerSurfaceModel
 
         Scope {
             id: barScope
 
-            required property ShellScreen modelData
+            required property var modelData
+            readonly property ShellScreen output: modelData ? modelData.screen : null
             property string outputName: ""
 
-            Component.onCompleted: outputName = modelData ? modelData.name : ""
+            Component.onCompleted: outputName = output ? output.name : ""
             Component.onDestruction: {
                 if (Popouts.open && Popouts.hostScreenName === outputName)
                     Popouts.close();
@@ -168,13 +168,13 @@ ShellRoot {
 
             Bar {
                 id: bar
-                screen: barScope.modelData
-                visible: barScope.modelData !== null
+                screen: barScope.output
+                visible: barScope.output !== null
             }
 
             BarPopoutWindow {
                 bar: bar
-                screen: barScope.modelData
+                screen: barScope.output
             }
         }
     }
