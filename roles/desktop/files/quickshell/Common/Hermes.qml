@@ -46,6 +46,7 @@ Singleton {
     property string defaultModelProvider: ""
     property string newChatModel: ""
     property string newChatModelProvider: ""
+    property string defaultReasoningEffort: ""
     property var reasoningBySelection: ({})
     property var attachmentsByConversation: ({})
     property var commandCatalog: []
@@ -65,6 +66,8 @@ Singleton {
     readonly property var selectedHistory: HermesConversations.selectedHistory
     readonly property var selectedRequests: HermesConversations.selectedRequests
     readonly property string selectedError: HermesConversations.selectedError
+    readonly property bool selectedErrorRetryable:
+        HermesConversations.selectedErrorRetryable
     readonly property bool selectedLoading: HermesConversations.selectedLoading
     readonly property bool conversationsReady: HermesConversations.ready
     readonly property bool conversationsLoading: HermesConversations.loading
@@ -420,10 +423,10 @@ Singleton {
                 value.default_model, root.providerModel);
             root.defaultModelProvider = Helpers.firstString(value.activeProvider,
                 value.active_provider, root.providerId);
-            if (root.newChatModel === "")
-                root.newChatModel = root.defaultModel;
-            if (root.newChatModelProvider === "")
-                root.newChatModelProvider = root.defaultModelProvider;
+            // A reconnect or Hermes configuration change must restore the
+            // server's configured default for the next new conversation.
+            root.newChatModel = root.defaultModel;
+            root.newChatModelProvider = root.defaultModelProvider;
             const flattened = [];
             for (const group of root.modelGroups)
                 for (const model of (Array.isArray(group.models) ? group.models : []))
@@ -522,6 +525,8 @@ Singleton {
         const next = Object.assign({}, reasoningBySelection);
         next[selectionKey(provider, model)] = value;
         reasoningBySelection = next;
+        if (provider === defaultModelProvider && model === defaultModel)
+            defaultReasoningEffort = String(value?.effort ?? "");
     }
 
     function loadReasoning(conversationId, force) {
@@ -576,6 +581,14 @@ Singleton {
 
     function selectConversation(conversationId) {
         return HermesConversations.selectConversation(conversationId, false);
+    }
+
+    function dismissSelectedError() {
+        return HermesConversations.dismissError(selectedConversationId);
+    }
+
+    function retrySelectedError() {
+        return HermesConversations.retryError(selectedConversationId);
     }
 
     function setPopoverVisible(value) {
@@ -889,7 +902,14 @@ Singleton {
             sessionId: conversation.sessionId,
             model: nextModel,
             modelProvider: nextProvider
-        }, () => root.loadReasoning(conversationId, false), reason => {
+        }, result => {
+            const raw = result?.conversation ?? result?.session ?? result;
+            const accepted = HermesConversations.upsertConversation(raw);
+            if (accepted)
+                root.loadReasoning(conversationId, true);
+            else
+                root.loadReasoning(conversationId, false);
+        }, reason => {
             HermesConversations.updateConversation(conversationId, previous);
             HermesConversations.setError(conversationId, reason);
         }, {

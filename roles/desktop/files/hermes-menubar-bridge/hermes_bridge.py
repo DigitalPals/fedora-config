@@ -3029,13 +3029,39 @@ class HermesBridge:
 
     @staticmethod
     def sanitize_remote_model_catalog(raw: Any) -> dict[str, Any]:
-        """Bound the WebUI picker payload before it crosses loopback RPC."""
+        """Expose models only for the provider configured as active in WebUI."""
 
         value = raw if isinstance(raw, dict) else {}
+        default_model = str(
+            value.get("default_model") or value.get("defaultModel") or ""
+        ).strip()[:256]
+        active_provider = str(
+            value.get("active_provider") or value.get("activeProvider") or ""
+        ).strip()[:128]
+        badges = value.get(
+            "configured_model_badges", value.get("configuredModelBadges", [])
+        )
+        for badge in badges if isinstance(badges, list) else []:
+            if not isinstance(badge, dict):
+                continue
+            badge_model = str(
+                badge.get("model") or badge.get("model_id") or ""
+            ).strip()[:256]
+            badge_provider = str(
+                badge.get("provider") or badge.get("provider_id") or ""
+            ).strip()[:128]
+            primary = str(badge.get("role") or "").strip().lower() == "primary"
+            if not default_model and primary:
+                default_model = badge_model
+            if not active_provider and badge_provider and (
+                primary or badge_model == default_model
+            ):
+                active_provider = badge_provider
         groups: list[dict[str, Any]] = []
         model_count = 0
-        for candidate in value.get("groups", []):
-            if not isinstance(candidate, dict) or len(groups) >= 64:
+        raw_groups = value.get("groups", [])
+        for candidate in raw_groups if isinstance(raw_groups, list) else []:
+            if not isinstance(candidate, dict) or groups:
                 continue
             provider_id = str(
                 candidate.get("provider_id") or candidate.get("providerId")
@@ -3045,7 +3071,9 @@ class HermesBridge:
                 candidate.get("provider") or candidate.get("display_name")
                 or candidate.get("displayName") or provider_id
             ).strip()[:160]
-            if not provider_id:
+            if not provider_id or (
+                active_provider and provider_id != active_provider
+            ):
                 continue
             models: list[dict[str, Any]] = []
             rows: list[Any] = []
@@ -3073,16 +3101,29 @@ class HermesBridge:
                     model["supportsFastTier"] = row["supports_fast_tier"]
                 models.append(model)
                 model_count += 1
+            if default_model and default_model not in seen:
+                models.insert(0, {
+                    "id": default_model,
+                    "label": default_model,
+                })
             if models:
+                if not active_provider:
+                    active_provider = provider_id
                 groups.append({
                     "providerId": provider_id,
                     "provider": provider or provider_id,
                     "models": models,
                 })
+        if not groups and active_provider and default_model:
+            groups.append({
+                "providerId": active_provider,
+                "provider": active_provider,
+                "models": [{"id": default_model, "label": default_model}],
+            })
         return {
             "groups": groups,
-            "defaultModel": str(value.get("default_model") or "").strip()[:256],
-            "activeProvider": str(value.get("active_provider") or "").strip()[:128],
+            "defaultModel": default_model,
+            "activeProvider": active_provider,
         }
 
     @staticmethod
@@ -4399,8 +4440,17 @@ class HermesBridge:
         result = await self.remote_request(
             "POST", "/api/session/update", body, timeout=30
         )
-        conversation["model"] = model
-        conversation["model_provider"] = provider
+        session = result.get("session") if isinstance(result, dict) else None
+        accepted_model = str(
+            (session.get("model") or model)
+            if isinstance(session, dict) else model
+        ).strip()[:256] or model
+        accepted_provider = str(
+            (session.get("model_provider") or session.get("provider") or provider)
+            if isinstance(session, dict) else provider
+        ).strip()[:128] or provider
+        conversation["model"] = accepted_model
+        conversation["model_provider"] = accepted_provider
         conversation["updated_at"] = utc_now()
         self.registry.save()
         public = self.public_conversation(conversation)

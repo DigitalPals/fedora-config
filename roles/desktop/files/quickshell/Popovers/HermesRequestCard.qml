@@ -10,11 +10,15 @@ Rectangle {
 
     required property string conversationId
     required property var request
+    property int maxHeight: 280
     property string typedValue: ""
     property var selectedValue: null
     property var selectedValues: []
     property var answerDrafts: ({})
     property int questionIndex: 0
+    property bool detailExpanded: false
+    property string confirmDecision: ""
+    signal responseStarted(string requestId)
 
     readonly property string requestKey: conversationId + "|" + request.id
     readonly property bool pending: Hermes.actionPending(request.kind,
@@ -35,6 +39,12 @@ Rectangle {
         ? question.multiSelect === true : request.multiSelect === true
     readonly property string currentPrompt: question !== null
         ? question.prompt : (request.prompt || request.detail)
+    // Text.truncated observes wrapped visual lines, unlike character counts.
+    // Keep the disclosure visible while expanded so it can always be collapsed.
+    readonly property bool longPrompt: detailExpanded
+        || requestDetailText.truncated
+    readonly property bool hasApprovalDescriptions: approvalChoices.some(choice =>
+        choice.description !== "")
     readonly property var approvalChoices: {
         if (request.kind !== "approval")
             return [];
@@ -61,16 +71,22 @@ Rectangle {
             const label = value === "deny" ? "Deny"
                 : value === "allow_once" ? "Allow once"
                     : value === "allow_session" ? "This session" : "Always allow";
-            return { value: value, label: label };
+            return {
+                value: value,
+                label: label,
+                description: String(choice.description ?? choice.detail ?? "").trim()
+            };
         }).filter(choice => choice !== null);
     }
 
     width: parent ? parent.width : 0
-    height: content.implicitHeight + 16
+    height: Math.min(maxHeight, content.implicitHeight + 16)
     radius: HermesTheme.panelRadius
     color: HermesTheme.surfaceRaised
     border.width: 1
-    border.color: HermesTheme.amberBorder
+    border.color: requestFlick.activeFocus ? HermesTheme.focus
+        : HermesTheme.amberBorder
+    clip: true
 
     onRequestKeyChanged: {
         typedValue = "";
@@ -78,9 +94,18 @@ Rectangle {
         selectedValues = [];
         answerDrafts = ({});
         questionIndex = 0;
+        detailExpanded = false;
+        confirmDecision = "";
+        Qt.callLater(() => requestFlick.contentY = 0);
     }
 
     function allow(decision) {
+        if (decision === "allow_always" && confirmDecision !== decision) {
+            confirmDecision = decision;
+            return;
+        }
+        confirmDecision = "";
+        responseStarted(String(request.id ?? ""));
         Hermes.respondRequest(conversationId, request, {
             decision: decision,
             choice: decision
@@ -88,6 +113,7 @@ Rectangle {
     }
 
     function cancelRequest() {
+        responseStarted(String(request.id ?? ""));
         Hermes.respondRequest(conversationId, request, {
             decision: "deny",
             choice: "deny",
@@ -101,6 +127,7 @@ Rectangle {
         if (request.kind === "clarify") {
             const wireValue = Array.isArray(value) ? JSON.stringify(value) : value;
             if (questions.length === 0) {
+                responseStarted(String(request.id ?? ""));
                 Hermes.respondRequest(conversationId, request,
                     { answer: wireValue });
                 return;
@@ -108,7 +135,10 @@ Rectangle {
             saveCurrent(value);
             if (questionIndex < questions.length - 1) {
                 questionIndex++;
+                detailExpanded = false;
+                requestFlick.contentY = 0;
                 restoreCurrent();
+                focusQuestionStart();
                 return;
             }
             const answers = questions.map(question => ({
@@ -117,13 +147,18 @@ Rectangle {
                     ? JSON.stringify(answerDrafts[question.id])
                     : answerDrafts[question.id]
             }));
+            responseStarted(String(request.id ?? ""));
             Hermes.respondClarifyBatch(conversationId, request, answers);
         }
-        else if (request.kind === "sudo")
+        else if (request.kind === "sudo") {
+            responseStarted(String(request.id ?? ""));
             Hermes.respondRequest(conversationId, request, { decision: "allow", password: value });
-        else if (request.kind === "secret")
+        }
+        else if (request.kind === "secret") {
+            responseStarted(String(request.id ?? ""));
             Hermes.respondRequest(conversationId, request, { decision: "provide", value: value,
                 secret: value });
+        }
     }
 
     function saveCurrent(value) {
@@ -156,7 +191,10 @@ Rectangle {
         if (value !== null)
             saveCurrent(value);
         questionIndex--;
+        detailExpanded = false;
+        requestFlick.contentY = 0;
         restoreCurrent();
+        focusQuestionStart();
     }
 
     function chooseOption(value) {
@@ -176,13 +214,40 @@ Rectangle {
         selectedValue = null;
     }
 
+    function ensureVisible(item) {
+        if (!item || !requestFlick.interactive)
+            return;
+        Qt.callLater(() => {
+            if (!item || !item.visible)
+                return;
+            const point = item.mapToItem(requestFlick, 0, 0);
+            const margin = 8;
+            let next = requestFlick.contentY;
+            if (point.y < margin)
+                next += point.y - margin;
+            else if (point.y + item.height > requestFlick.height - margin)
+                next += point.y + item.height - requestFlick.height + margin;
+            requestFlick.contentY = Math.max(0, Math.min(next,
+                requestFlick.contentHeight - requestFlick.height));
+        });
+    }
+
+    function focusQuestionStart() {
+        Qt.callLater(() => {
+            requestFlick.contentY = 0;
+            requestFlick.forceActiveFocus();
+        });
+    }
+
     component Action: ActionButton {
+        id: action
         hPadding: 16
         fontFamily: HermesTheme.fontUi
         focusColor: HermesTheme.focus
         buttonRadius: HermesTheme.controlRadius
         tint: HermesTheme.textMuted
         fill: HermesTheme.hover
+        onActiveFocusChanged: if (activeFocus) root.ensureVisible(action)
     }
 
     Rectangle {
@@ -192,14 +257,53 @@ Rectangle {
         height: 2
         radius: 1
         color: HermesTheme.amber
+        z: 2
     }
 
-    Column {
-        id: content
-        x: 8
-        y: 8
-        width: parent.width - 16
-        spacing: 7
+    Flickable {
+        id: requestFlick
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: content.implicitHeight + 16
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+        activeFocusOnTab: interactive
+        clip: true
+        Accessible.role: Accessible.StaticText
+        Accessible.name: "Scrollable " + String(root.request.title ?? "Hermes request")
+
+        Keys.onPressed: event => {
+            const page = Math.max(40, requestFlick.height - 36);
+            if (event.key === Qt.Key_Down) {
+                requestFlick.contentY = Math.min(requestFlick.contentHeight
+                    - requestFlick.height, requestFlick.contentY + 32);
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Up) {
+                requestFlick.contentY = Math.max(0, requestFlick.contentY - 32);
+                event.accepted = true;
+            } else if (event.key === Qt.Key_PageDown) {
+                requestFlick.contentY = Math.min(requestFlick.contentHeight
+                    - requestFlick.height, requestFlick.contentY + page);
+                event.accepted = true;
+            } else if (event.key === Qt.Key_PageUp) {
+                requestFlick.contentY = Math.max(0, requestFlick.contentY - page);
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Home) {
+                requestFlick.contentY = 0;
+                event.accepted = true;
+            } else if (event.key === Qt.Key_End) {
+                requestFlick.contentY = Math.max(0,
+                    requestFlick.contentHeight - requestFlick.height);
+                event.accepted = true;
+            }
+        }
+
+        Column {
+            id: content
+            x: 8
+            y: 8
+            width: requestFlick.width - 16
+            spacing: 7
 
         Item {
             width: parent.width
@@ -245,17 +349,70 @@ Rectangle {
         }
 
         Text {
-            visible: text !== ""
+            id: requestDetailText
+            visible: root.currentPrompt !== ""
             width: parent.width
+            height: visible ? implicitHeight : 0
             text: root.currentPrompt
+            textFormat: Text.PlainText
             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-            maximumLineCount: 7
-            elide: Text.ElideRight
+            maximumLineCount: root.detailExpanded ? 100000 : 7
+            elide: root.detailExpanded ? Text.ElideNone : Text.ElideRight
             lineHeight: Theme.proseLineHeight
             font.family: root.request.kind === "approval"
                 ? HermesTheme.fontMono : HermesTheme.fontUi
             font.pixelSize: Theme.fontBody
             color: HermesTheme.textSecondary
+        }
+
+        Action {
+            visible: root.longPrompt
+            label: root.detailExpanded ? "Show less" : "Show full request"
+            enabled: !root.pending
+            onTriggered: {
+                root.detailExpanded = !root.detailExpanded;
+                if (root.detailExpanded)
+                    Qt.callLater(() => requestFlick.forceActiveFocus());
+            }
+        }
+
+        Column {
+            visible: root.request.kind === "approval"
+                && root.hasApprovalDescriptions
+            width: parent.width
+            spacing: 4
+
+            Repeater {
+                model: root.approvalChoices.filter(choice =>
+                    choice.description !== "")
+
+                delegate: Rectangle {
+                    id: approvalDetail
+                    required property var modelData
+
+                    width: parent.width
+                    height: approvalDetailText.implicitHeight + 10
+                    radius: HermesTheme.controlRadius
+                    color: HermesTheme.hover
+                    border.width: 1
+                    border.color: HermesTheme.border
+
+                    Text {
+                        id: approvalDetailText
+                        x: 7
+                        y: 5
+                        width: parent.width - 14
+                        text: approvalDetail.modelData.label + " — "
+                            + approvalDetail.modelData.description
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                        lineHeight: Theme.proseLineHeight
+                        font.family: HermesTheme.fontUi
+                        font.pixelSize: Theme.fontCaption
+                        color: HermesTheme.textSecondary
+                    }
+                }
+            }
         }
 
         Column {
@@ -287,6 +444,10 @@ Rectangle {
                         ? Accessible.CheckBox : Accessible.RadioButton
                     Accessible.name: modelData.label
                     Accessible.checked: selected
+                    Accessible.onPressAction: if (!root.pending)
+                        root.chooseOption(modelData.value)
+                    onActiveFocusChanged: if (activeFocus)
+                        root.ensureVisible(option)
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -376,6 +537,8 @@ Rectangle {
                 font.pixelSize: Theme.fontSecondary
                 color: HermesTheme.textPrimary
                 selectionColor: HermesTheme.accentSoft
+                onActiveFocusChanged: if (activeFocus)
+                    root.ensureVisible(valueInput)
                 onTextEdited: {
                     root.typedValue = text;
                     if (text !== "") {
@@ -410,14 +573,20 @@ Rectangle {
                 delegate: Action {
                     required property var modelData
                     visible: root.request.kind === "approval"
-                    label: modelData.label
+                    label: modelData.value === "allow_always"
+                            && root.confirmDecision === modelData.value
+                        ? "Confirm always" : modelData.label
                     enabled: !root.pending
                     tint: modelData.value === "deny" ? HermesTheme.red
                         : modelData.value === "allow_once"
                             ? HermesTheme.accentForeground : HermesTheme.textMuted
                     fill: modelData.value === "allow_once"
                         ? HermesTheme.accent : HermesTheme.hover
-                    onTriggered: root.allow(modelData.value)
+                    onTriggered: {
+                        if (modelData.value !== "allow_always")
+                            root.confirmDecision = "";
+                        root.allow(modelData.value);
+                    }
                 }
             }
 
@@ -450,6 +619,17 @@ Rectangle {
         }
 
         Text {
+            visible: root.confirmDecision === "allow_always"
+            width: parent.width
+            text: "Always allow persists beyond this one request. Select Confirm always to continue."
+            wrapMode: Text.WordWrap
+            lineHeight: Theme.proseLineHeight
+            font.family: HermesTheme.fontUi
+            font.pixelSize: Theme.fontCaption
+            color: HermesTheme.amber
+        }
+
+        Text {
             visible: root.failure !== ""
             width: parent.width
             text: root.failure
@@ -458,5 +638,15 @@ Rectangle {
             font.pixelSize: Theme.fontCaption
             color: HermesTheme.red
         }
+    }
+
+    }
+
+    ScrollChrome {
+        visible: requestFlick.interactive
+        anchors.fill: requestFlick
+        target: requestFlick
+        edgeColor: HermesTheme.surfaceRaised
+        thumbColor: HermesTheme.accent
     }
 }

@@ -12,9 +12,11 @@ Item {
 
     required property string conversationId
     property int maxHeight: 390
+    property int minHeight: 140
     property int visibleItems: 50
     property bool followTail: true
     property real pendingPrependHeight: -1
+    signal errorHandled()
 
     readonly property var conversation: conversationId === ""
         ? HermesConversations.newConversation
@@ -38,7 +40,8 @@ Item {
     }
 
     width: parent ? parent.width : 0
-    height: Math.max(140, Math.min(maxHeight, transcriptColumn.implicitHeight))
+    height: Math.max(minHeight, Math.min(maxHeight, transcriptColumn.implicitHeight
+        + errorBanner.height + (errorBanner.visible ? 5 : 0)))
 
     function scrollToEnd(force) {
         if (!followTail && force !== true)
@@ -96,7 +99,11 @@ Item {
 
     Flickable {
         id: transcriptFlick
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: errorBanner.visible ? errorBanner.top : parent.bottom
+        anchors.bottomMargin: errorBanner.visible ? 5 : 0
         contentWidth: width
         contentHeight: transcriptColumn.implicitHeight
         clip: true
@@ -527,11 +534,13 @@ Item {
                 kind: HermesConversations.selectedLoading ? "loading"
                     : Hermes.selectedError !== "" ? "error" : "empty"
                 title: HermesConversations.selectedLoading ? "Loading conversation…"
-                    : Hermes.selectedError !== "" ? Hermes.selectedError
+                    : Hermes.selectedError !== "" ? "Hermes hit a problem"
                         : root.conversationId === "" ? "Start a new chat"
                             : "No messages yet"
-                detail: HermesConversations.selectedLoading || Hermes.selectedError !== ""
-                    ? "" : root.conversationId === ""
+                detail: HermesConversations.selectedLoading ? ""
+                    : Hermes.selectedError !== ""
+                        ? "Details and available recovery actions are below."
+                        : root.conversationId === ""
                         ? "Your first message creates a fresh Hermes conversation."
                         : "Continue this historical conversation with its existing context."
                 fontFamily: HermesTheme.fontUi
@@ -547,7 +556,95 @@ Item {
         }
     }
 
+    // This stays outside the transcript Flickable so a failure remains visible
+    // with existing messages and while the reader is inspecting older history.
+    // As HermesTranscript precedes requests and the composer, it is also the
+    // final transcript element immediately above those interaction surfaces.
+    Rectangle {
+        id: errorBanner
+
+        visible: Hermes.selectedError !== ""
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: visible ? Math.max(42, errorMessage.implicitHeight + 12) : 0
+        radius: HermesTheme.rowRadius
+        color: HermesTheme.redSoft
+        border.width: 1
+        border.color: HermesTheme.redBorder
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: "Hermes error: " + Hermes.selectedError
+
+        Sym {
+            id: errorGlyph
+            x: 9
+            anchors.verticalCenter: parent.verticalCenter
+            name: "error"
+            size: Theme.iconSmall
+            symWeight: 500
+            color: HermesTheme.red
+        }
+
+        IconButton {
+            id: dismissError
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            controlSize: 28
+            symbol: "close"
+            accessibleName: "Dismiss Hermes error"
+            tint: HermesTheme.red
+            onTriggered: {
+                if (Hermes.dismissSelectedError())
+                    root.errorHandled();
+            }
+        }
+
+        ActionButton {
+            id: retryError
+            visible: Hermes.selectedErrorRetryable
+            anchors.right: dismissError.left
+            anchors.rightMargin: 3
+            anchors.verticalCenter: parent.verticalCenter
+            label: "Retry"
+            revealed: visible
+            enabled: Hermes.connected && !Hermes.selectedLoading
+                && root.history.loadingEarlier !== true
+            hPadding: 14
+            fontFamily: HermesTheme.fontUi
+            focusColor: HermesTheme.focus
+            buttonRadius: HermesTheme.controlRadius
+            tint: HermesTheme.red
+            fill: "transparent"
+            onTriggered: {
+                if (Hermes.retrySelectedError())
+                    root.errorHandled();
+            }
+        }
+
+        Text {
+            id: errorMessage
+            anchors.left: errorGlyph.right
+            anchors.leftMargin: 7
+            anchors.right: retryError.visible ? retryError.left : dismissError.left
+            anchors.rightMargin: 6
+            anchors.verticalCenter: parent.verticalCenter
+            text: Hermes.selectedError
+            textFormat: Text.PlainText
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            maximumLineCount: 3
+            elide: Text.ElideRight
+            lineHeight: Theme.proseLineHeight
+            font.family: HermesTheme.fontUi
+            font.pixelSize: Theme.fontCaption
+            color: HermesTheme.red
+        }
+    }
+
     ScrollChrome {
+        anchors.fill: transcriptFlick
         target: transcriptFlick
+        edgeColor: HermesTheme.canvas
+        thumbColor: HermesTheme.accent
     }
 }

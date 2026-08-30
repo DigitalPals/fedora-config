@@ -28,6 +28,13 @@ Rectangle {
     readonly property var reasoningOptions: Hermes.reasoningOptions(conversationId)
     readonly property var stagedAttachments: Hermes.attachments(conversationId)
     readonly property bool selectorsEnabled: editable && !working && !sending
+    // The model picker opens past the composer's lower edge. Its owner passes
+    // this extent up to the popout host, which grows a transparent input tail
+    // instead of forcing the menu back over the conversation.
+    readonly property real modelPickerOverflowHeight: modelSelect.expanded
+        ? modelSelect.popupHeight + 6 : 0
+    readonly property Item modelPickerOverflowItem: modelSelect.expanded
+        ? modelSelect.popupItem : null
 
     width: parent ? parent.width : 0
     height: composerContent.implicitHeight + 20
@@ -64,7 +71,7 @@ Rectangle {
     }
 
     function send() {
-        if (!editable || overLimit || (promptEdit.text.trim() === ""
+        if (!editable || working || overLimit || (promptEdit.text.trim() === ""
                 && stagedAttachments.length === 0))
             return;
         Hermes.submit(conversationId, promptEdit.text);
@@ -151,7 +158,9 @@ Rectangle {
                     selectByMouse: true
                     Accessible.name: "Message Hermes in "
                         + (root.conversation?.title ?? "new chat")
-                    Accessible.description: "Enter sends. Shift Enter inserts a newline."
+                    Accessible.description: root.working
+                        ? "Enter steers the active turn. Shift Enter inserts a newline."
+                        : "Enter sends. Shift Enter inserts a newline."
                     font.family: HermesTheme.fontUi
                     font.pixelSize: Theme.fontBody
                     color: HermesTheme.textPrimary
@@ -176,6 +185,8 @@ Rectangle {
                         if (event.modifiers & Qt.ShiftModifier
                                 || event.modifiers & Qt.ControlModifier)
                             root.insertNewline();
+                        else if (root.working)
+                            root.steer();
                         else
                             root.send();
                         event.accepted = true;
@@ -186,6 +197,7 @@ Rectangle {
                         text: root.conversation?.readOnly === true
                             ? "This conversation is read-only"
                             : root.blocked ? "Answer Hermes above…"
+                            : root.working ? "Steer Hermes while it works…"
                             : !Hermes.connected ? "Hermes bridge is offline"
                                 : !Hermes.bridgeReady ? "Waiting for Hermes…"
                                     : root.conversationId === ""
@@ -307,6 +319,7 @@ Rectangle {
                     provider: root.modelSelection.provider
                     model: root.modelSelection.model
                     label: Hermes.modelLabel(provider, model)
+                    openUpward: false
                     maxWidth: Math.max(92, actionRow.width - actionRow.trailingWidth
                         - (attachmentButton.visible ? attachmentButton.width + 4 : 0)
                         - (effortSelect.visible ? effortSelect.implicitWidth + 18 : 0))
@@ -390,9 +403,9 @@ Rectangle {
                 color: root.working
                     ? (primaryMouse.containsMouse ? HermesTheme.dangerHover
                         : HermesTheme.danger)
-                    : (primaryMouse.containsMouse ? HermesTheme.accentHover
-                        : HermesTheme.accent)
-                opacity: primaryMouse.enabled ? 1 : 0.35
+                    : !primaryMouse.enabled ? Theme.accentAlpha(0.35)
+                    : primaryMouse.containsMouse ? HermesTheme.accentHover
+                        : HermesTheme.accent
                 activeFocusOnTab: primaryMouse.enabled
                 border.width: activeFocus ? 1 : 0
                 border.color: HermesTheme.focus
@@ -424,7 +437,7 @@ Rectangle {
                     name: root.sending ? "more_horiz" : "arrow_upward"
                     size: Theme.iconMedium
                     symWeight: 520
-                    color: HermesTheme.accentForeground
+                    color: "white"
                 }
 
                 Rectangle {

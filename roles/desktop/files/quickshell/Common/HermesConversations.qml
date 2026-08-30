@@ -18,10 +18,12 @@ Singleton {
     property var historyByConversation: ({})
     property var requestsByConversation: ({})
     property var errorsByConversation: ({})
+    property var dismissedErrorSequencesByConversation: ({})
     property var loadingByConversation: ({})
     property var drafts: ({})
     property var streamIdsByConversation: ({})
     property int streamSequence: 0
+    property int errorSequence: 0
     property bool ready: false
     property bool loading: false
     property string error: ""
@@ -55,8 +57,11 @@ Singleton {
     readonly property var selectedSessionState: sessionStateFor(selectedConversationId)
     readonly property var selectedHistory: historyFor(selectedConversationId)
     readonly property var selectedRequests: requestsFor(selectedConversationId)
-    readonly property string selectedError:
-        errorsByConversation[selectedConversationId] ?? ""
+    readonly property var selectedErrorRecord:
+        errorRecordFor(selectedConversationId)
+    readonly property string selectedError: errorFor(selectedConversationId)
+    readonly property bool selectedErrorRetryable: selectedError !== ""
+        && selectedErrorRecord.retry !== ""
     readonly property bool selectedLoading:
         loadingByConversation[selectedConversationId] === true
     readonly property var counts: Helpers.counts(conversations)
@@ -167,9 +172,58 @@ Singleton {
             value === true ? true : undefined);
     }
 
-    function setError(conversationId, value) {
-        errorsByConversation = copyMap(errorsByConversation, conversationId,
-            typeof value === "string" && value !== "" ? value : undefined);
+    function errorRecordFor(conversationId) {
+        const value = errorsByConversation[conversationId];
+        return value && typeof value === "object" ? value : ({
+            message: "",
+            sequence: 0,
+            retry: ""
+        });
+    }
+
+    function errorFor(conversationId) {
+        const record = errorRecordFor(conversationId);
+        const dismissed = dismissedErrorSequencesByConversation[conversationId];
+        return record.message !== "" && dismissed !== record.sequence
+            ? record.message : "";
+    }
+
+    // Each occurrence gets a new sequence, even when its copy is identical.
+    // Dismissing one failure therefore remains stable across selection changes
+    // without swallowing a later failure from a new request or event.
+    function setError(conversationId, value, retry) {
+        const message = typeof value === "string" ? value.trim() : "";
+        if (message === "") {
+            errorsByConversation = copyMap(errorsByConversation,
+                conversationId, undefined);
+            return;
+        }
+        errorsByConversation = copyMap(errorsByConversation, conversationId, {
+            message: message,
+            sequence: ++errorSequence,
+            retry: retry === "refresh" || retry === "load-earlier" ? retry : ""
+        });
+    }
+
+    function dismissError(conversationId) {
+        const record = errorRecordFor(conversationId);
+        if (record.message === "" || errorFor(conversationId) === "")
+            return false;
+        dismissedErrorSequencesByConversation = copyMap(
+            dismissedErrorSequencesByConversation, conversationId,
+            record.sequence);
+        return true;
+    }
+
+    function retryError(conversationId) {
+        const record = errorRecordFor(conversationId);
+        if (errorFor(conversationId) === "")
+            return false;
+        if (record.retry === "refresh")
+            return refreshConversation(conversationId);
+        if (record.retry === "load-earlier")
+            return loadEarlier(conversationId);
+        return false;
     }
 
     function normalizedConversations(value) {
@@ -244,6 +298,8 @@ Singleton {
             conversationId, undefined);
         errorsByConversation = copyMap(errorsByConversation,
             conversationId, undefined);
+        dismissedErrorSequencesByConversation = copyMap(
+            dismissedErrorSequencesByConversation, conversationId, undefined);
         drafts = copyMap(drafts, conversationId, undefined);
         streamIdsByConversation = copyMap(streamIdsByConversation,
             conversationId, undefined);
@@ -350,7 +406,7 @@ Singleton {
     function refreshConversation(conversationId) {
         const conversation = conversationById(conversationId);
         if (!conversation || HermesConnection.state !== "connected")
-            return;
+            return false;
         setLoading(conversationId, true);
         setError(conversationId, "");
         let pending = 2;
@@ -366,7 +422,7 @@ Singleton {
             root.mergeHistory(conversationId, result);
             finish();
         }, reason => {
-            root.setError(conversationId, reason);
+            root.setError(conversationId, reason, "refresh");
             finish();
         }, { timeoutMs: 30000, fallback: "Could not load Hermes history" });
         HermesRpc.request("session.status", { sessionId: conversationId }, result => {
@@ -374,9 +430,10 @@ Singleton {
             finish();
         }, reason => {
             if (root.messagesFor(conversationId).length === 0)
-                root.setError(conversationId, reason);
+                root.setError(conversationId, reason, "refresh");
             finish();
         }, { fallback: "Could not load Hermes status" });
+        return true;
     }
 
     function loadEarlier(conversationId) {
@@ -385,6 +442,7 @@ Singleton {
         if (!conversation || state.loadingEarlier === true || state.hasMore !== true
                 || messagesFor(conversationId).length >= 250)
             return false;
+        setError(conversationId, "");
         historyByConversation = copyMap(historyByConversation, conversationId,
             Object.assign({}, state, { loadingEarlier: true }));
         HermesRpc.request("session.history", {
@@ -398,7 +456,7 @@ Singleton {
                 conversationId, Object.assign({}, root.historyFor(conversationId), {
                     loadingEarlier: false
                 }));
-            root.setError(conversationId, reason);
+            root.setError(conversationId, reason, "load-earlier");
         }, { timeoutMs: 30000, fallback: "Could not load earlier Hermes history" });
         return true;
     }

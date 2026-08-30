@@ -8,6 +8,8 @@ Item {
 
     required property string conversationId
     property bool expanded: false
+    property bool forceCompact: false
+    signal focusFallbackRequested()
     readonly property var sessionState:
         HermesConversations.sessionStateFor(conversationId)
     readonly property bool hasState: sessionState.warning !== ""
@@ -17,10 +19,15 @@ Item {
         || Object.keys(sessionState.context).length > 0
         || Object.keys(sessionState.usage).length > 0
     readonly property bool expandable: sessionState.reasoning !== ""
+        && !forceCompact
 
     width: parent ? parent.width : 0
     height: hasState ? strip.height : 0
     visible: hasState
+
+    onForceCompactChanged: if (forceCompact) expanded = false
+    onExpandableChanged: if (!expandable && strip.activeFocus)
+        focusFallbackRequested()
 
     function compactNumber(value) {
         const amount = Number(value) || 0;
@@ -69,12 +76,24 @@ Item {
         color: root.sessionState.warning !== "" ? HermesTheme.redSoft
             : HermesTheme.surfaceRaised
         border.width: 1
-        border.color: root.sessionState.warning !== "" ? HermesTheme.redBorder
+        border.color: activeFocus ? HermesTheme.focus
+            : root.sessionState.warning !== "" ? HermesTheme.redBorder
             : HermesTheme.border
         activeFocusOnTab: root.expandable
-        Accessible.role: Accessible.Button
+        Accessible.role: root.expandable ? Accessible.Button
+            : Accessible.StaticText
         Accessible.name: root.summary()
         Accessible.onPressAction: if (root.expandable) root.expanded = !root.expanded
+
+        Keys.onPressed: event => {
+            if (!root.expandable)
+                return;
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                root.expanded = !root.expanded;
+                event.accepted = true;
+            }
+        }
 
         Column {
             id: stripColumn

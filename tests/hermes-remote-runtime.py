@@ -293,14 +293,29 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
             return self.json_reply({
                 "active_provider": "openai-codex",
                 "default_model": "gpt-5.6-sol",
-                "groups": [{
-                    "provider": "OpenAI Codex",
-                    "provider_id": "openai-codex",
-                    "models": [
-                        {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol"},
-                        {"id": "gpt-5.4", "label": "GPT-5.4"},
-                    ],
+                "configured_model_badges": [{
+                    "model": "gpt-5.6-sol",
+                    "provider": "openai-codex",
+                    "role": "Primary",
                 }],
+                "groups": [
+                    {
+                        "provider": "OpenAI Codex",
+                        "provider_id": "openai-codex",
+                        "models": [
+                            {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol"},
+                            {"id": "gpt-5.4", "label": "GPT-5.4"},
+                        ],
+                    },
+                    {
+                        "provider": "Anthropic",
+                        "provider_id": "anthropic",
+                        "models": [{
+                            "id": "claude-opus-4-1",
+                            "label": "Claude Opus 4.1",
+                        }],
+                    },
+                ],
             })
         if parsed.path == "/api/reasoning":
             FAKE.reasoning_requests.append({

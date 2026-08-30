@@ -40,6 +40,37 @@ Item {
         providerSecretField.text = "";
     }
 
+    function focusFirstField() {
+        authFlick.contentY = 0;
+        if (remoteUrlField.visible)
+            remoteUrlField.forceInputFocus();
+        else if (backToChat.visible && backToChat.enabled)
+            backToChat.forceActiveFocus();
+        else if (advancedToggle.visible)
+            advancedToggle.forceActiveFocus();
+        else
+            authFlick.forceActiveFocus();
+    }
+
+    function ensureVisible(item) {
+        if (!item || !authFlick.interactive)
+            return;
+        Qt.callLater(() => {
+            if (!item || !item.visible)
+                return;
+            const point = item.mapToItem(authFlick.contentItem, 0, 0);
+            const margin = 10;
+            let next = authFlick.contentY;
+            if (point.y < authFlick.contentY + margin)
+                next = point.y - margin;
+            else if (point.y + item.height
+                    > authFlick.contentY + authFlick.height - margin)
+                next = point.y + item.height - authFlick.height + margin;
+            authFlick.contentY = Math.max(0, Math.min(next,
+                authFlick.contentHeight - authFlick.height));
+        });
+    }
+
     function syncRemoteUrl() {
         if (remoteUrlField.text.trim() === "" && Hermes.remoteOrigin !== "")
             remoteUrlField.text = Hermes.remoteOrigin;
@@ -81,6 +112,7 @@ Item {
                     ? "Remote session removed. The advanced local provider can now be used."
                     : "Remote session removed. Enter a remote WebUI URL to reconnect.";
             root.syncRemoteUrl();
+            Qt.callLater(() => root.focusFirstField());
         }, reason => root.remoteErrorText = reason);
     }
 
@@ -123,8 +155,10 @@ Item {
     onVisibleChanged: {
         if (!visible)
             clearSecret();
-        else
+        else {
+            authFlick.contentY = 0;
             syncRemoteUrl();
+        }
     }
 
     Connections {
@@ -181,6 +215,7 @@ Item {
                 font.pixelSize: Theme.fontCaption
                 color: HermesTheme.textPrimary
                 onAccepted: field.accepted()
+                onActiveFocusChanged: if (activeFocus) root.ensureVisible(input)
 
                 Text {
                     visible: input.text === "" && !input.activeFocus
@@ -192,6 +227,11 @@ Item {
                 }
             }
         }
+    }
+
+    component AuthAction: ActionButton {
+        id: action
+        onActiveFocusChanged: if (activeFocus) root.ensureVisible(action)
     }
 
     component SectionRule: Rectangle {
@@ -209,6 +249,7 @@ Item {
     }
 
     Flickable {
+        id: authFlick
         anchors.fill: parent
         anchors.margins: 1
         contentWidth: width
@@ -366,7 +407,7 @@ Item {
                 width: parent.width
                 spacing: 8
 
-                ActionButton {
+                AuthAction {
                     visible: !Hermes.remoteConnected
                     label: root.remoteSigningIn ? "Signing in…" : "Sign in to WebUI"
                     enabled: remoteUrlField.text.trim() !== ""
@@ -380,7 +421,8 @@ Item {
                     onTriggered: root.loginRemote()
                 }
 
-                ActionButton {
+                AuthAction {
+                    id: backToChat
                     visible: Hermes.remoteConnected
                     label: "Back to chat"
                     enabled: !root.remoteBusy
@@ -393,7 +435,7 @@ Item {
                     onTriggered: root.closeRequested()
                 }
 
-                ActionButton {
+                AuthAction {
                     visible: Hermes.remoteConfigured
                     label: root.remoteSigningOut ? "Clearing…"
                         : Hermes.remoteConnected ? "Sign out" : "Forget remote"
@@ -413,17 +455,21 @@ Item {
             }
 
             Rectangle {
+                id: advancedToggle
                 visible: Hermes.localBackendAvailable
                 width: parent.width
                 height: advancedRow.implicitHeight + 16
                 radius: HermesTheme.controlRadius
-                color: advancedMouse.containsMouse ? HermesTheme.hoverStrong : "transparent"
-                border.width: root.advancedOpen ? 1 : 0
-                border.color: HermesTheme.border
+                color: activeFocus || advancedMouse.containsMouse
+                    ? HermesTheme.hoverStrong : "transparent"
+                border.width: activeFocus || root.advancedOpen ? 1 : 0
+                border.color: activeFocus ? HermesTheme.focus : HermesTheme.border
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
                 Accessible.name: "Advanced local model-provider setup"
                 Accessible.onPressAction: root.advancedOpen = !root.advancedOpen
+                onActiveFocusChanged: if (activeFocus)
+                    root.ensureVisible(advancedToggle)
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                             || event.key === Qt.Key_Space) {
@@ -549,7 +595,7 @@ Item {
                     width: parent.width
                     spacing: 8
 
-                    ActionButton {
+                    AuthAction {
                         label: root.localBusy ? "Connecting…" : "Configure local provider"
                         enabled: providerUrlField.text.trim() !== "" && !root.localBusy
                         hPadding: 20
@@ -561,7 +607,7 @@ Item {
                         onTriggered: root.configureLocalProvider()
                     }
 
-                    ActionButton {
+                    AuthAction {
                         label: "Open full local setup"
                         enabled: !root.localBusy
                         hPadding: 18

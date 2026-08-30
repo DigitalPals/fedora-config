@@ -2,8 +2,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
-// Provider-aware Hermes model picker. It follows T3's compact provider rail +
-// searchable model list, while all catalog and mutation state remains Hermes-owned.
+// Searchable model list for the single provider configured in Hermes. Provider
+// selection belongs in Hermes' model setup, not in this conversation control.
 Item {
     id: root
 
@@ -16,11 +16,12 @@ Item {
     property real maxWidth: 1000
     signal selected(string provider, string model)
 
-    property string railProvider: ""
     property string query: ""
+    property int highlighted: 0
     readonly property var groups: Hermes.modelGroups
+    readonly property var configuredGroup: configuredModelGroup()
     readonly property var rows: modelRows()
-    readonly property int panelWidth: 336
+    readonly property int panelWidth: 292
     readonly property int panelHeight: 290
     readonly property int popupHeight: panelHeight
     readonly property Item popupItem: panel
@@ -29,39 +30,85 @@ Item {
     implicitHeight: trigger.implicitHeight
     z: expanded ? 100 : 0
 
+    function configuredModelGroup() {
+        const source = Array.isArray(groups) ? groups : [];
+        const configured = String(Hermes.defaultModelProvider ?? "");
+        return source.find(group =>
+            String(group.providerId ?? "") === configured) ?? source[0] ?? null;
+    }
+
     function modelRows() {
         const result = [];
         const needle = query.trim().toLowerCase();
-        for (const group of (Array.isArray(groups) ? groups : [])) {
-            const providerId = String(group.providerId ?? "");
-            if (needle === "" && railProvider !== "" && providerId !== railProvider)
+        const group = configuredGroup;
+        if (!group)
+            return result;
+        const providerId = String(group.providerId ?? "");
+        for (const candidate of (Array.isArray(group.models) ? group.models : [])) {
+            const id = String(candidate.id ?? "");
+            const name = String(candidate.label ?? id);
+            if (needle !== "" && (id + " " + name).toLowerCase()
+                    .indexOf(needle) < 0)
                 continue;
-            for (const candidate of (Array.isArray(group.models) ? group.models : [])) {
-                const id = String(candidate.id ?? "");
-                const name = String(candidate.label ?? id);
-                if (needle !== "" && (id + " " + name + " "
-                        + String(group.provider ?? providerId)).toLowerCase()
-                        .indexOf(needle) < 0)
-                    continue;
-                result.push({ providerId: providerId,
-                    provider: String(group.provider ?? providerId),
-                    id: id, label: name });
-            }
+            result.push({ providerId: providerId,
+                provider: String(group.provider ?? providerId),
+                id: id, label: name });
         }
         return result;
     }
 
     function open() {
-        railProvider = provider || (groups.length > 0
-            ? String(groups[0].providerId ?? "") : "");
         query = "";
+        highlighted = Math.max(0, rows.findIndex(candidate =>
+            String(candidate.id) === model));
         expanded = true;
-        searchInput.forceActiveFocus();
+        Qt.callLater(() => {
+            root.revealHighlighted();
+            searchInput.forceActiveFocus();
+        });
     }
 
-    function close() {
+    function close(restoreFocus, restoreIfHidden) {
         expanded = false;
         query = "";
+        if (restoreFocus === true)
+            Qt.callLater(() => trigger.forceActiveFocus());
+        else if (restoreIfHidden === true)
+            restoreTriggerIfFocusHidden();
+    }
+
+    function activate(row) {
+        if (!row)
+            return;
+        selected(String(row.providerId), String(row.id));
+        close(true);
+    }
+
+    function moveHighlight(delta) {
+        if (rows.length === 0)
+            return;
+        highlighted = (highlighted + delta + rows.length) % rows.length;
+        revealHighlighted();
+    }
+
+    function revealHighlighted() {
+        if (rows.length === 0)
+            return;
+        const rowTop = highlighted * 44;
+        if (rowTop < modelFlick.contentY)
+            modelFlick.contentY = rowTop;
+        else if (rowTop + 44 > modelFlick.contentY + modelFlick.height)
+            modelFlick.contentY = Math.max(0, rowTop + 44 - modelFlick.height);
+    }
+
+    function focusModelRow(index) {
+        if (rows.length === 0)
+            return;
+        highlighted = Math.max(0, Math.min(index, rows.length - 1));
+        revealHighlighted();
+        const item = modelRepeater.itemAt(highlighted);
+        if (item)
+            item.forceActiveFocus();
     }
 
     function containsPickerPoint(item, x, y) {
@@ -76,8 +123,30 @@ Item {
         return inButton || inPanel;
     }
 
-    onEnabledChanged: if (!enabled) close()
-    onVisibleChanged: if (!visible) close()
+    function itemBelongsTo(item, ancestor) {
+        let current = item;
+        while (current) {
+            if (current === ancestor)
+                return true;
+            current = current.parent;
+        }
+        return false;
+    }
+
+    function restoreTriggerIfFocusHidden() {
+        Qt.callLater(() => {
+            const focused = root.Window.window?.activeFocusItem ?? null;
+            if (!focused || root.itemBelongsTo(focused, panel))
+                trigger.forceActiveFocus();
+        });
+    }
+
+    onEnabledChanged: if (!enabled) close(false)
+    onVisibleChanged: if (!visible) close(false)
+    onRowsChanged: {
+        if (highlighted >= rows.length)
+            highlighted = Math.max(0, rows.length - 1);
+    }
 
     TapHandler {
         enabled: root.expanded && root.enabled && root.visible
@@ -86,7 +155,7 @@ Item {
         onTapped: eventPoint => {
             if (!root.containsPickerPoint(root, eventPoint.position.x,
                     eventPoint.position.y))
-                root.close();
+                root.close(false, true);
         }
     }
 
@@ -94,13 +163,13 @@ Item {
         id: trigger
         anchors.fill: parent
         text: root.label
-        accessibleDescription: "Provider and model"
+        accessibleDescription: "Hermes model"
         brand: Hermes.providerIcon(root.provider)
         tint: HermesTheme.textPrimary
         active: root.expanded
         maxWidth: root.maxWidth
         enabled: root.enabled
-        onTriggered: root.expanded ? root.close() : root.open()
+        onTriggered: root.expanded ? root.close(true) : root.open()
     }
 
     Rectangle {
@@ -118,85 +187,8 @@ Item {
         clip: true
 
         Rectangle {
-            id: providerRail
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: 44
-            color: HermesTheme.hover
-
-            Column {
-                width: parent.width
-                y: 6
-                spacing: 2
-
-                Repeater {
-                    model: root.groups
-
-                    delegate: Rectangle {
-                        id: providerRow
-                        required property var modelData
-                        readonly property string providerId:
-                            String(modelData.providerId ?? "")
-                        width: 40
-                        height: 36
-                        x: 2
-                        radius: HermesTheme.controlRadius
-                        color: root.railProvider === providerId
-                            ? Theme.chip
-                            : providerMouse.containsMouse ? HermesTheme.hoverStrong
-                                : "transparent"
-                        Accessible.role: Accessible.Button
-                        Accessible.name: String(modelData.provider ?? providerId)
-
-                        BrandIcon {
-                            visible: Hermes.providerIcon(providerRow.providerId) !== ""
-                            anchors.centerIn: parent
-                            width: 17
-                            height: 17
-                            name: Hermes.providerIcon(providerRow.providerId)
-                        }
-
-                        Text {
-                            visible: Hermes.providerIcon(providerRow.providerId) === ""
-                            anchors.centerIn: parent
-                            text: String(providerRow.modelData.provider
-                                ?? providerRow.providerId).slice(0, 1).toUpperCase()
-                            font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontBody
-                            font.weight: Theme.weightSemibold
-                            color: HermesTheme.textSecondary
-                        }
-
-                        Rectangle {
-                            visible: root.railProvider === providerRow.providerId
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 3
-                            height: 18
-                            radius: 2
-                            color: HermesTheme.accent
-                        }
-
-                        MouseArea {
-                            id: providerMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                root.railProvider = providerRow.providerId;
-                                root.query = "";
-                                searchInput.forceActiveFocus();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Rectangle {
             id: searchBox
-            anchors.left: providerRail.right
+            anchors.left: parent.left
             anchors.leftMargin: 8
             anchors.right: parent.right
             anchors.rightMargin: 8
@@ -226,12 +218,36 @@ Item {
                 anchors.rightMargin: 7
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.query
-                onTextEdited: root.query = text
+                onTextEdited: {
+                    root.query = text;
+                    root.highlighted = 0;
+                    modelFlick.contentY = 0;
+                }
+                selectByMouse: true
                 font.family: HermesTheme.fontUi
                 font.pixelSize: Theme.fontSecondary
                 color: HermesTheme.textPrimary
                 selectionColor: HermesTheme.accentSoft
                 selectedTextColor: HermesTheme.textPrimary
+                Accessible.role: Accessible.EditableText
+                Accessible.name: "Search Hermes models"
+
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Escape) {
+                        root.close(true);
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Down) {
+                        root.moveHighlight(1);
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Up) {
+                        root.moveHighlight(-1);
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Return
+                            || event.key === Qt.Key_Enter) {
+                        root.activate(root.rows[root.highlighted]);
+                        event.accepted = true;
+                    }
+                }
 
                 Text {
                     visible: searchInput.text === ""
@@ -244,7 +260,7 @@ Item {
 
         Flickable {
             id: modelFlick
-            anchors.left: providerRail.right
+            anchors.left: parent.left
             anchors.leftMargin: 4
             anchors.right: parent.right
             anchors.rightMargin: 4
@@ -275,11 +291,13 @@ Item {
                 }
 
                 Repeater {
+                    id: modelRepeater
                     model: root.rows
 
                     delegate: Rectangle {
                         id: modelRow
                         required property var modelData
+                        required property int index
                         readonly property bool selectedModel:
                             String(modelData.id) === root.model
                             && String(modelData.providerId) === root.provider
@@ -287,8 +305,42 @@ Item {
                         height: 44
                         radius: HermesTheme.controlRadius
                         color: selectedModel ? Theme.chip
-                            : modelMouse.containsMouse ? HermesTheme.hoverStrong
+                            : modelMouse.containsMouse || activeFocus
+                                || root.highlighted === index
+                                ? HermesTheme.hoverStrong
                                 : "transparent"
+                        border.width: activeFocus ? 1 : 0
+                        border.color: HermesTheme.focus
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: String(modelData.label ?? modelData.id ?? "")
+                            + ", " + String(modelData.provider ?? modelData.providerId ?? "")
+                        Accessible.selected: selectedModel
+                        Accessible.onPressAction: root.activate(modelData)
+                        onActiveFocusChanged: if (activeFocus) {
+                            root.highlighted = index;
+                            root.revealHighlighted();
+                        }
+
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Space) {
+                                root.activate(modelRow.modelData);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Down) {
+                                root.focusModelRow(modelRow.index + 1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Up) {
+                                if (modelRow.index === 0)
+                                    searchInput.forceActiveFocus();
+                                else
+                                    root.focusModelRow(modelRow.index - 1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Escape) {
+                                root.close(true);
+                                event.accepted = true;
+                            }
+                        }
 
                         Column {
                             anchors.left: parent.left
@@ -310,9 +362,7 @@ Item {
 
                             Text {
                                 width: parent.width
-                                text: root.query !== ""
-                                    ? String(modelRow.modelData.provider ?? "")
-                                    : String(modelRow.modelData.id ?? "")
+                                text: String(modelRow.modelData.id ?? "")
                                 elide: Text.ElideRight
                                 font.family: HermesTheme.fontUi
                                 font.pixelSize: Theme.fontMicro
@@ -336,11 +386,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                root.selected(String(modelRow.modelData.providerId),
-                                    String(modelRow.modelData.id));
-                                root.close();
-                            }
+                            onClicked: root.activate(modelRow.modelData)
                         }
                     }
                 }

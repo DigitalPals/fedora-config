@@ -23,14 +23,43 @@ Surface {
     readonly property int threadMaxHeight: Math.min(bodyBudget,
         Math.max(520, Math.round(root.availableHeight / 2)))
 
+    detachedOverflowHeight: !root.showingSetup
+        ? inbox.detachedOverflowHeight : 0
+    detachedOverflowItem: !root.showingSetup
+        ? inbox.detachedOverflowItem : null
+
     property bool setupOpen: false
     readonly property bool showingSetup: setupOpen
         || Hermes.bridgeReady && Hermes.setupRequired
 
+    onShowingSetupChanged: Qt.callLater(() => {
+        if (!root.visible)
+            return;
+        if (root.showingSetup)
+            authPanel.focusFirstField();
+        else
+            inbox.focusToolbar();
+    })
+
+    function openSetup() {
+        setupOpen = true;
+        Qt.callLater(() => authPanel.focusFirstField());
+    }
+
+    function closeSetup() {
+        setupOpen = false;
+        authPanel.clearSecret();
+        Qt.callLater(() => {
+            if (root.showingSetup)
+                authPanel.focusFirstField();
+            else
+                inbox.focusToolbar();
+        });
+    }
+
     function handleEscape(): bool {
         if (showingSetup && setupOpen && Hermes.agentReady) {
-            setupOpen = false;
-            authPanel.clearSecret();
+            closeSetup();
             return true;
         }
         return !showingSetup && inbox.handleEscape();
@@ -55,7 +84,10 @@ Surface {
 
     Item {
         id: header
-        visible: root.showingSetup || Hermes.isNewChat
+        // Conversation views own one compact toolbar. The branded/status
+        // header is reserved for connection setup, where that context is the
+        // page rather than a second row above New chat.
+        visible: root.showingSetup
         width: parent.width
         height: visible ? HermesTheme.headerHeight : 0
 
@@ -173,19 +205,11 @@ Surface {
                 tint: root.showingSetup ? HermesTheme.accent : HermesTheme.textMuted
                 enabled: Hermes.bridgeReady
                 onTriggered: {
-                    if (Hermes.agentReady)
-                        root.setupOpen = !root.setupOpen;
+                    if (root.showingSetup && root.setupOpen && Hermes.agentReady)
+                        root.closeSetup();
                     else
-                        root.setupOpen = true;
+                        root.openSetup();
                 }
-            }
-
-            IconButton {
-                symbol: "add_comment"
-                accessibleName: "New Hermes chat"
-                tint: Hermes.isNewChat ? HermesTheme.accent : HermesTheme.textMuted
-                enabled: Hermes.canOperate
-                onTriggered: Hermes.startNewChat()
             }
         }
     }
@@ -194,8 +218,9 @@ Surface {
         id: inbox
         visible: !root.showingSetup
         width: parent.width
-        height: visible ? Math.min(root.threadMaxHeight, implicitHeight) : 0
+        height: visible ? implicitHeight : 0
         maxHeight: root.threadMaxHeight
+        onSetupRequested: root.openSetup()
     }
 
     HermesAuthPanel {
@@ -204,16 +229,13 @@ Surface {
         width: parent.width
         height: visible ? authPanel.implicitHeight : 0
         maxHeight: root.bodyBudget
-        onConfigured: root.setupOpen = false
-        onCloseRequested: {
-            root.setupOpen = false;
-            clearSecret();
-        }
+        onConfigured: root.closeSetup()
+        onCloseRequested: root.closeSetup()
     }
 
     Item {
         id: footer
-        visible: root.showingSetup || Hermes.isNewChat
+        visible: root.showingSetup
         width: parent.width
         height: visible ? HermesTheme.footerHeight : 0
 

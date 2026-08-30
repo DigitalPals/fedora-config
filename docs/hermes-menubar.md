@@ -5,7 +5,11 @@ by the lightweight local `hermes-menubar-bridge.service`. Hermes Agent itself
 is not installed or run on this workstation. The dropdown lists the remote
 WebUI's existing conversations directly. Opening the widget starts on **New
 chat**; choosing a historical conversation loads its transcript, and sending
-the first message in New chat creates a normal WebUI session.
+the first message in New chat creates a normal WebUI session. When other
+conversations need attention, failed, are working, or have unread activity,
+New chat uses its otherwise-empty body for the three highest-priority shortcuts.
+The history menu becomes searchable once it contains more than six conversations
+and keeps request and unread counts visible in both places.
 
 ## Remote sign-in
 
@@ -61,14 +65,27 @@ transcript header. Long settled messages start collapsed and can be expanded
 in place. Stream reconnects resume with the last event ID and reconcile against
 Hermes' session and stream-status endpoints.
 
-The composer discovers provider/model choices from `GET /api/models` and the
-selected model's reasoning controls from `GET /api/reasoning`. Model changes on
-an existing conversation use `POST /api/session/update`; new sessions and chat
-starts carry the explicit model/provider choice. Reasoning effort changes use
-`POST /api/reasoning`. Catalog and reasoning responses are bounded and
-sanitized by the loopback bridge before QML receives them, and the controls
-disappear or disable themselves when the WebUI does not advertise usable
-choices.
+Normal conversation views use one toolbar: conversation switching stays in the
+title control, while connection status and endpoint details, setup, refresh,
+and conversation-specific actions live in its overflow. Failures remain in a
+dismissible banner above the composer even when the transcript already contains
+messages. Only history and
+status reload failures offer **Retry**; prompt and mutation failures are never
+replayed implicitly. Dismissal applies to one error occurrence, so the same
+message is shown again if a later operation fails independently.
+
+The composer reads Hermes' configured `active_provider` and `default_model`
+from `GET /api/models`; its picker lists only models for that provider. Provider
+changes remain in Hermes model setup, so unrelated catalog groups never appear
+as usable credentials in the conversation UI. The selected model's configured
+reasoning effort and supported effort ladder come from the model-scoped
+`GET /api/reasoning` response. Model changes on an existing conversation use
+`POST /api/session/update`, and the returned session is authoritative; new
+sessions and chat starts carry the explicit model/provider choice. Reasoning
+effort changes use `POST /api/reasoning`. Catalog and reasoning responses are
+bounded and sanitized by the loopback bridge before QML receives them, and the
+controls disappear or disable themselves when the WebUI does not advertise
+usable choices.
 
 The same composer supports up to 20 local file attachments per turn (20 MiB
 each). Quickshell only passes the selected absolute paths to the loopback
@@ -78,6 +95,11 @@ records to `POST /api/chat/start`. Local paths, cookie values, and uploaded
 bytes never enter the QML transcript or conversation registry. Persisted
 attachment metadata is reduced to filename, MIME type, size, and image status
 for display.
+
+During a live turn, Enter steers the active Hermes run; Shift+Enter or
+Ctrl+Enter inserts a newline, and the round primary action remains Stop. Approval
+cards retain server-provided decision descriptions, allow long request details
+to expand, and require a second explicit confirmation before **Always allow**.
 
 Writable conversations expose the WebUI's native advanced actions:
 
