@@ -51,6 +51,7 @@ class FakeRemote:
         self.sessions: dict[str, dict[str, Any]] = {}
         self.streams: dict[str, dict[str, Any]] = {}
         self.import_requests: list[dict[str, Any]] = []
+        self.external_import_requests: list[dict[str, Any]] = []
         self.new_requests: list[dict[str, Any]] = []
         self.rename_requests: list[dict[str, Any]] = []
         self.compress_requests: list[dict[str, Any]] = []
@@ -101,7 +102,7 @@ class FakeRemote:
     def session_snapshot(self, session_id: str) -> dict[str, Any]:
         with self.lock:
             session = self.sessions[session_id]
-            return {
+            snapshot = {
                 "session_id": session_id,
                 "title": session["title"],
                 "messages": [dict(message) for message in session["messages"]],
@@ -117,10 +118,20 @@ class FakeRemote:
                 ),
                 "model": session.get("model", "fixture/model"),
                 "model_provider": session.get("model_provider", "fixture-provider"),
-                "read_only": False,
+                "read_only": bool(session.get("read_only", False)),
                 "regeneration_revision": "fixture-revision-"
                 + str(len(session["messages"])),
             }
+            for key in (
+                "session_source",
+                "source_label",
+                "source_tag",
+                "raw_source",
+                "is_cli_session",
+            ):
+                if key in session:
+                    snapshot[key] = session[key]
+            return snapshot
 
     def start_stream(
         self,
@@ -287,6 +298,10 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                 for session_id in FAKE.sessions:
                     snapshot = FAKE.session_snapshot(session_id)
                     snapshot.pop("messages", None)
+                    # The real sidebar projection does not advertise that an
+                    # external transcript needs importing. That flag first
+                    # appears in the detailed session response.
+                    snapshot.pop("read_only", None)
                     rows.append(snapshot)
             return self.json_reply({"sessions": rows})
         if parsed.path == "/api/models":
@@ -492,6 +507,15 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
             )
         if not self.require_auth():
             return
+        if parsed.path == "/api/session/import_cli":
+            session_id = str(body.get("session_id") or "")
+            with FAKE.lock:
+                if session_id not in FAKE.sessions:
+                    return self.json_reply({"error": "not found"}, status=404)
+                FAKE.external_import_requests.append(dict(body))
+                FAKE.sessions[session_id]["read_only"] = False
+                session = FAKE.session_snapshot(session_id)
+            return self.json_reply({"session": session})
         if parsed.path == "/api/session/import":
             messages = body.get("messages")
             safe_messages = messages if isinstance(messages, list) else []
@@ -653,6 +677,10 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
             with FAKE.lock:
                 if session_id not in FAKE.sessions:
                     return self.json_reply({"error": "not found"}, status=404)
+                if FAKE.sessions[session_id].get("read_only") is True:
+                    return self.json_reply(
+                        {"error": "read-only imported session"}, status=409
+                    )
                 if regenerate:
                     expected = "fixture-revision-" + str(
                         len(FAKE.sessions[session_id]["messages"])
@@ -1049,6 +1077,13 @@ async def scenario() -> None:
         ],
     )
     historical_id = str(historical["session_id"])
+    with FAKE.lock:
+        FAKE.sessions[historical_id].update({
+            "session_source": "messaging",
+            "source_label": "Slack",
+            "source_tag": "slack",
+            "read_only": True,
+        })
     previous_remote_url = os.environ.get("HERMES_REMOTE_URL")
     try:
         with RunningServer() as remote, tempfile.TemporaryDirectory(
@@ -1208,6 +1243,37 @@ async def scenario() -> None:
                     assert history["history"]["limit"] == 80
                     assert history["history"]["hasMore"] is False
                     assert FAKE.session_queries[-1]["msg_limit"] == ["80"]
+                    assert FAKE.external_import_requests == [{
+                        "session_id": historical_id
+                    }]
+                    assert registry.conversations[historical_id]["read_only"] is False
+
+                    continued = await rpc(
+                        client,
+                        "continue-historical",
+                        "prompt.submit",
+                        {
+                            "sessionId": historical_id,
+                            "text": "Edited fixture history continuation",
+                        },
+                        events,
+                    )
+                    assert continued["accepted"] is True
+                    historical_stream = continued["streamId"]
+                    await wait_for_event(
+                        client,
+                        "message.complete",
+                        events,
+                        lambda payload: payload.get("streamId")
+                        == historical_stream,
+                    )
+                    await wait_for_stream_closed(
+                        bridge, historical_id, historical_stream
+                    )
+                    assert FAKE.chat_start_requests[-1]["session_id"] == historical_id
+                    assert FAKE.chat_start_requests[-1]["message"] == (
+                        "Edited fixture history continuation"
+                    )
 
                     new_default = await rpc(
                         client,

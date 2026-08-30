@@ -415,17 +415,9 @@ Singleton {
             if (pending <= 0)
                 root.setLoading(conversationId, false);
         };
-        HermesRpc.request("session.history", {
-            sessionId: conversationId,
-            limit: 80
+        const loadStatus = () => HermesRpc.request("session.status", {
+            sessionId: conversationId
         }, result => {
-            root.mergeHistory(conversationId, result);
-            finish();
-        }, reason => {
-            root.setError(conversationId, reason, "refresh");
-            finish();
-        }, { timeoutMs: 30000, fallback: "Could not load Hermes history" });
-        HermesRpc.request("session.status", { sessionId: conversationId }, result => {
             root.applyStatus(conversationId, result);
             finish();
         }, reason => {
@@ -433,6 +425,18 @@ Singleton {
                 root.setError(conversationId, reason, "refresh");
             finish();
         }, { fallback: "Could not load Hermes status" });
+        HermesRpc.request("session.history", {
+            sessionId: conversationId,
+            limit: 80
+        }, result => {
+            root.mergeHistory(conversationId, result);
+            finish();
+            loadStatus();
+        }, reason => {
+            root.setError(conversationId, reason, "refresh");
+            finish();
+            loadStatus();
+        }, { timeoutMs: 30000, fallback: "Could not load Hermes history" });
         return true;
     }
 

@@ -106,7 +106,8 @@ test("the transport reconciles native WebUI conversations without replaying prom
     assert.match(conversations,
         /HermesRpc\.request\("conversations\.list"/);
     assert.match(conversations,
-        /HermesRpc\.request\("session\.history"[\s\S]*?HermesRpc\.request\("session\.status"/);
+        /function refreshConversation[\s\S]*?const loadStatus = \(\) => HermesRpc\.request\("session\.status"[\s\S]*?HermesRpc\.request\("session\.history"[\s\S]*?root\.mergeHistory\(conversationId, result\);[\s\S]{0,100}?loadStatus\(\)/,
+        "status must wait for history to import an external transcript");
     assert.match(conversations, /"\/hermes-menubar\/client\.json"/);
     assert.match(facade, /function onOpened\(\) \{ root\.hello\(\); \}/);
 });

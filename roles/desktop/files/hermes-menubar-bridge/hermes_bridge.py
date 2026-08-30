@@ -4373,6 +4373,30 @@ class HermesBridge:
             timeout=30,
         )
         session = result.get("session")
+        if self.remote_session_needs_import(session):
+            # Hermes exposes CLI and messaging history as a read-only import
+            # until a WebUI client claims it. Mirror the WebUI sidebar's
+            # import_cli step before publishing the snapshot; otherwise QML
+            # sees readOnly=true and permanently disables the composer.
+            try:
+                await self.remote_request(
+                    "POST",
+                    "/api/session/import_cli",
+                    {"session_id": session_id},
+                    timeout=30,
+                )
+            except RpcFault:
+                # Import is a compatibility upgrade, not a prerequisite for
+                # reading history. Older WebUIs and genuinely non-importable
+                # transcripts must still open in their read-only form.
+                pass
+            else:
+                result = await self.remote_request(
+                    "GET",
+                    path,
+                    timeout=30,
+                )
+                session = result.get("session")
         payload = await self.apply_remote_session_snapshot(
             conversation,
             session,
@@ -4384,6 +4408,38 @@ class HermesBridge:
             if active_stream:
                 await self.start_remote_stream(conversation, session_id, active_stream)
         return payload
+
+    @staticmethod
+    def remote_session_needs_import(session: Any) -> bool:
+        """Match the WebUI's writable-import gate for external transcripts."""
+
+        if not isinstance(session, dict) or not bool(
+            session.get("read_only", session.get("is_read_only", False))
+        ):
+            return False
+        session_source = str(session.get("session_source") or "").strip().lower()
+        if session_source == "webui":
+            return False
+        if session.get("is_cli_session") is True or session_source == "cli":
+            return True
+        if session_source == "messaging":
+            return True
+        source = str(
+            session.get("raw_source")
+            or session.get("source_tag")
+            or session.get("source")
+            or ""
+        ).strip().lower()
+        return source in {
+            "weixin",
+            "telegram",
+            "discord",
+            "slack",
+            "email",
+            "wecom",
+            "wecom_callback",
+            "matrix",
+        }
 
     async def remote_session_status(
         self, conversation: dict[str, Any]
