@@ -1,42 +1,102 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for command in hyprctl jq socat timeout; do
+for command in hyprctl jq socat timeout mkfifo mktemp sleep; do
   if ! command -v "$command" >/dev/null; then
     printf 'external-monitor-toggle: waiting for %s\n' "$command" >&2
     exit 75
   fi
 done
 
-external_connected() {
-  for status in /sys/class/drm/card*-*/status; do
-    [[ -e $status ]] || continue
-    [[ $status == *-eDP-*/status ]] && continue
-    [[ $(<"$status") == connected ]] && return 0
-  done
-  return 1
-}
-lid_closed() {
-  for state in /proc/acpi/button/lid/*/state; do
-    [[ -r $state ]] || continue
-    [[ $(<"$state") == *closed* ]] && return 0
-  done
-  return 1
-}
-apply_state() {
-  local monitors
-  monitors=$(timeout 5s hyprctl monitors -j 2>/dev/null) || return 1
-  local edp_active=false xreal=false
-  jq -e '.[] | select(.name == "eDP-1") | select((.disabled // false) | not)' <<<"$monitors" >/dev/null && edp_active=true
-  jq -e '.[] | select(((.disabled // false) | not) and (((.description // "") | test("XREAL|Nreal";"i")) or ((.make // "") | test("XREAL|Nreal";"i"))))' <<<"$monitors" >/dev/null && xreal=true
+# The overrides make the state machine testable without touching live DRM or
+# lid state. Production uses the kernel paths and conservative settle times.
+drm_root=${EXTERNAL_MONITOR_TOGGLE_DRM_ROOT:-/sys/class/drm}
+lid_root=${EXTERNAL_MONITOR_TOGGLE_LID_ROOT:-/proc/acpi/button/lid}
+debounce_seconds=${EXTERNAL_MONITOR_TOGGLE_DEBOUNCE_SECONDS:-3}
+stability_seconds=${EXTERNAL_MONITOR_TOGGLE_STABILITY_SECONDS:-0.5}
+poll_seconds=${EXTERNAL_MONITOR_TOGGLE_POLL_SECONDS:-1}
 
-  if ! external_connected; then
-    $edp_active || timeout 5s hyprctl reload >/dev/null || true
-  elif lid_closed || $xreal; then
-    $edp_active && hyprctl eval 'hl.monitor({ output = "eDP-1", disabled = true })' >/dev/null || true
-  else
-    $edp_active || timeout 5s hyprctl reload >/dev/null || true
+for duration in "$debounce_seconds" "$stability_seconds" "$poll_seconds"; do
+  if [[ ! $duration =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    printf 'external-monitor-toggle: invalid duration %q\n' "$duration" >&2
+    exit 64
   fi
+done
+
+lid_state() {
+  local state saw_lid=false
+  for state in "$lid_root"/*/state; do
+    [[ -r $state ]] || continue
+    saw_lid=true
+    if [[ $(<"$state") == *closed* ]]; then
+      printf 'closed'
+      return
+    fi
+  done
+  if $saw_lid; then
+    printf 'open'
+  else
+    printf 'unknown'
+  fi
+}
+
+hardware_signature() {
+  local status connector
+  printf 'lid=%s' "$(lid_state)"
+  for status in "$drm_root"/card*-*/status; do
+    [[ -r $status ]] || continue
+    connector=${status%/status}
+    connector=${connector##*/}
+    printf '|%s=%s' "$connector" "$(<"$status")"
+  done
+}
+
+monitor_snapshot() {
+  timeout 5s hyprctl monitors all -j 2>/dev/null
+}
+
+active_external_names() {
+  jq -r '
+    [.[]
+      | select(.name != "eDP-1")
+      | select((.disabled // false) == false)
+      | select((.width // 0) > 0 and (.height // 0) > 0)
+      | .name]
+    | sort
+    | join(",")
+  ' <<<"$1"
+}
+
+edp_active() {
+  jq -e '
+    .[]
+    | select(.name == "eDP-1")
+    | select((.disabled // false) == false)
+  ' <<<"$1" >/dev/null
+}
+
+xreal_active() {
+  jq -e '
+    .[]
+    | select(.name != "eDP-1")
+    | select((.disabled // false) == false)
+    | select(
+        ((.description // "") | test("XREAL|Nreal"; "i"))
+        or ((.make // "") | test("XREAL|Nreal"; "i")))
+  ' <<<"$1" >/dev/null
+}
+
+enable_edp() {
+  printf 'external-monitor-toggle: enabling eDP-1 after stable lid/output state\n' >&2
+  timeout 5s hyprctl eval \
+    'hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = "auto", disabled = false })' \
+    >/dev/null
+}
+
+disable_edp() {
+  printf 'external-monitor-toggle: disabling eDP-1 after external output stabilized\n' >&2
+  timeout 5s hyprctl eval \
+    'hl.monitor({ output = "eDP-1", disabled = true })' >/dev/null
 }
 
 if [[ -z ${XDG_RUNTIME_DIR:-} || -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
@@ -52,25 +112,139 @@ if [[ ! -S $socket ]]; then
   printf 'external-monitor-toggle: waiting for Hyprland event socket %s\n' "$socket" >&2
   exit 75
 fi
-apply_state || exit 75
-upower_pid=""
-if command -v upower >/dev/null 2>&1; then
-  while read -r _line; do apply_state; done < <(upower --monitor) &
-  upower_pid=$!
-fi
-cleanup() {
-  [[ -z $upower_pid ]] || kill "$upower_pid" 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
-if ! socat -U - "UNIX-CONNECT:$socket" | while IFS= read -r line; do
-    case "$line" in
-      monitoradded'>>'*|monitorremoved'>>'*) sleep 2; apply_state || exit 75 ;;
-    esac
-  done; then
-  printf 'external-monitor-toggle: Hyprland event stream disconnected\n' >&2
-  exit 75
-fi
 
-# A clean EOF still means the long-lived watcher was lost. Ask systemd to
-# retry instead of silently leaving the monitor policy inactive.
+event_dir=$(mktemp -d "$XDG_RUNTIME_DIR/external-monitor-toggle.XXXXXX")
+event_pipe="$event_dir/events"
+mkfifo "$event_pipe"
+exec {event_fd}<>"$event_pipe"
+main_pid=$BASHPID
+watcher_pids=()
+
+emit_event() {
+  printf '%s\n' "$1" >&"$event_fd"
+}
+
+cleanup() {
+  [[ $BASHPID == "$main_pid" ]] || return
+  local pid
+  for pid in "${watcher_pids[@]}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+  for pid in "${watcher_pids[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
+  exec {event_fd}>&-
+  rm -f -- "$event_pipe"
+  rmdir -- "$event_dir" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+watch_hyprland_events() {
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      monitoradded'>>'*|monitorremoved'>>'*) emit_event monitor-changed ;;
+    esac
+  done < <(socat -U - "UNIX-CONNECT:$socket")
+  emit_event socket-closed
+}
+
+# UPower can announce dock power before DisplayPort exists, which caused the
+# old helper to reload eDP-1 immediately. Polling the actual lid/DRM state and
+# feeding changes into the same debounce queue avoids that independent path.
+watch_hardware_state() {
+  local previous current
+  previous=$(hardware_signature)
+  while sleep "$poll_seconds"; do
+    current=$(hardware_signature)
+    if [[ $current != "$previous" ]]; then
+      previous=$current
+      emit_event hardware-changed
+    fi
+  done
+}
+
+reconcile_state() {
+  local monitors second external_first external_second current_lid pending
+  local panel_active=false glasses_active=false
+
+  monitors=$(monitor_snapshot) || return 1
+  external_first=$(active_external_names "$monitors") || return 1
+
+  # A connector can enter Hyprland before its first modeset/page flip has
+  # settled. Require the same active output set twice, and abandon this pass if
+  # another event arrived while sampling it.
+  if [[ -n $external_first ]]; then
+    sleep "$stability_seconds"
+    second=$(monitor_snapshot) || return 1
+    external_second=$(active_external_names "$second") || return 1
+    if IFS= read -r -t 0.01 pending <&"$event_fd"; then
+      case "$pending" in
+        socket-closed) return 75 ;;
+        *) emit_event reconcile ; return 0 ;;
+      esac
+    fi
+    if [[ $external_second != "$external_first" ]]; then
+      emit_event reconcile
+      return 0
+    fi
+    monitors=$second
+  else
+    external_second=
+  fi
+
+  current_lid=$(lid_state)
+  edp_active "$monitors" && panel_active=true
+  xreal_active "$monitors" && glasses_active=true
+
+  if $glasses_active || [[ $current_lid == closed && -n $external_second ]]; then
+    if $panel_active; then
+      disable_edp
+    fi
+    return 0
+  fi
+
+  if [[ $current_lid == closed ]]; then
+    # The dock may still be enumerating. Preserve the current panel state: in
+    # particular, never turn a disabled eDP-1 on just to turn it off again when
+    # DP appears. Opening the lid is detected by the hardware watcher.
+    return 0
+  fi
+
+  if ! $panel_active; then
+    enable_edp
+  fi
+}
+
+watch_hyprland_events &
+watcher_pids+=("$!")
+watch_hardware_state &
+watcher_pids+=("$!")
+emit_event reconcile
+
+while IFS= read -r event <&"$event_fd"; do
+  if [[ $event == socket-closed ]]; then
+    printf 'external-monitor-toggle: Hyprland event stream disconnected\n' >&2
+    exit 75
+  fi
+
+  # Each new state event restarts the quiet period. Only one foreground worker
+  # ever calls hyprctl, so monitor changes cannot overlap each other.
+  while IFS= read -r -t "$debounce_seconds" event <&"$event_fd"; do
+    if [[ $event == socket-closed ]]; then
+      printf 'external-monitor-toggle: Hyprland event stream disconnected\n' >&2
+      exit 75
+    fi
+  done
+
+  if ! reconcile_state; then
+    printf 'external-monitor-toggle: state reconciliation failed\n' >&2
+    exit 75
+  fi
+done
+
+# The read/write FIFO descriptor keeps the loop open, so reaching this point
+# means the watcher itself failed unexpectedly. Ask systemd to retry.
 exit 75

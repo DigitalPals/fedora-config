@@ -119,8 +119,13 @@ test("external monitor watcher asks systemd to retry incomplete sessions", () =>
     assert.match(helper, /command -v "\$command"[\s\S]*exit 75/);
     assert.match(helper, /-z \$\{XDG_RUNTIME_DIR:-\}[\s\S]*exit 75/);
     assert.match(helper, /for _attempt in \{1\.\.12\}[\s\S]*\[\[ -S \$socket \]\]/);
-    assert.match(helper, /socat -U - "UNIX-CONNECT:\$socket" \| while/);
-    assert.match(helper, /clean EOF[\s\S]*exit 75/);
+    assert.match(helper,
+        /watch_hyprland_events\(\)[\s\S]*socat -U - "UNIX-CONNECT:\$socket"/);
+    assert.match(helper, /emit_event socket-closed[\s\S]*exit 75/);
+    assert.match(helper,
+        /while IFS= read -r -t "\$debounce_seconds"[\s\S]*reconcile_state/);
+    assert.doesNotMatch(helper, /upower --monitor|hyprctl reload/,
+        "power and monitor events must not race independent config reloads");
     assert.match(desktopTasks,
         /Description=Apply XPS lid and external display policy[\s\S]*StartLimitIntervalSec=0[\s\S]*Restart=on-failure[\s\S]*RestartSec=5/);
 
