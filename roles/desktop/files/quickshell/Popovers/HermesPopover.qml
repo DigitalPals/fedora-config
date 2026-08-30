@@ -12,14 +12,16 @@ Surface {
     surfaceColor: HermesTheme.canvas
     surfaceBorderColor: HermesTheme.borderStrong
 
-    availableWidth: 680 - Theme.barSideMargin * 2
+    availableWidth: 560 - Theme.barSideMargin * 2
     availableHeight: 900 - Theme.barTopMargin - Theme.barHeight - 16
     implicitWidth: Math.max(Theme.t3MinWidth,
-        Math.min(640, root.availableWidth))
+        Math.min(520, root.availableWidth))
 
-    readonly property int maxBodyHeight: Math.max(420, root.availableHeight
-        - root.padding * 2 - HermesTheme.headerHeight - footer.height
+    readonly property int bodyBudget: Math.max(420, root.availableHeight
+        - root.padding * 2 - header.height - footer.height
         - root.spacing * 2)
+    readonly property int threadMaxHeight: Math.min(bodyBudget,
+        Math.max(520, Math.round(root.availableHeight / 2)))
 
     property bool setupOpen: false
     readonly property bool showingSetup: setupOpen
@@ -53,8 +55,9 @@ Surface {
 
     Item {
         id: header
+        visible: root.showingSetup || Hermes.isNewChat
         width: parent.width
-        height: HermesTheme.headerHeight
+        height: visible ? HermesTheme.headerHeight : 0
 
         Rectangle {
             x: -root.padding
@@ -191,8 +194,8 @@ Surface {
         id: inbox
         visible: !root.showingSetup
         width: parent.width
-        height: visible ? root.maxBodyHeight : 0
-        maxHeight: root.maxBodyHeight
+        height: visible ? Math.min(root.threadMaxHeight, implicitHeight) : 0
+        maxHeight: root.threadMaxHeight
     }
 
     HermesAuthPanel {
@@ -200,7 +203,7 @@ Surface {
         visible: root.showingSetup
         width: parent.width
         height: visible ? authPanel.implicitHeight : 0
-        maxHeight: root.maxBodyHeight
+        maxHeight: root.bodyBudget
         onConfigured: root.setupOpen = false
         onCloseRequested: {
             root.setupOpen = false;
@@ -210,8 +213,9 @@ Surface {
 
     Item {
         id: footer
+        visible: root.showingSetup || Hermes.isNewChat
         width: parent.width
-        height: HermesTheme.footerHeight
+        height: visible ? HermesTheme.footerHeight : 0
 
         Rectangle {
             anchors.left: parent.left

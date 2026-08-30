@@ -41,6 +41,12 @@ Singleton {
     property var capabilities: ({})
     property var remoteContract: ({})
     property var models: []
+    property var modelGroups: []
+    property string defaultModel: ""
+    property string defaultModelProvider: ""
+    property string newChatModel: ""
+    property string newChatModelProvider: ""
+    property var reasoningBySelection: ({})
     property var commandCatalog: []
 
     readonly property var opts: Settings.modOpts.hermes ?? ({})
@@ -149,6 +155,7 @@ Singleton {
             root.refreshRemoteStatus();
             root.refreshProviderStatus();
             root.loadCommandCatalog();
+            root.loadModelCatalog();
             HermesConversations.refreshAll();
         }, reason => {
             root.bridgeError = reason;
@@ -402,6 +409,156 @@ Singleton {
         }, { timeoutMs: 15000, fallback: "Hermes command catalog unavailable" });
     }
 
+    function loadModelCatalog() {
+        if (!connected || !bridgeReady)
+            return;
+        HermesRpc.request("models.catalog", {}, result => {
+            const value = Helpers.object(result);
+            root.modelGroups = Array.isArray(value.groups) ? value.groups : [];
+            root.defaultModel = Helpers.firstString(value.defaultModel,
+                value.default_model, root.providerModel);
+            root.defaultModelProvider = Helpers.firstString(value.activeProvider,
+                value.active_provider, root.providerId);
+            if (root.newChatModel === "")
+                root.newChatModel = root.defaultModel;
+            if (root.newChatModelProvider === "")
+                root.newChatModelProvider = root.defaultModelProvider;
+            const flattened = [];
+            for (const group of root.modelGroups)
+                for (const model of (Array.isArray(group.models) ? group.models : []))
+                    flattened.push(model.id);
+            root.models = flattened;
+            root.loadReasoning("", true);
+        }, () => {
+            root.modelGroups = [];
+        }, { timeoutMs: 45000, fallback: "Hermes model catalog unavailable" });
+    }
+
+    function providerForModel(model) {
+        for (const group of modelGroups) {
+            const rows = Array.isArray(group.models) ? group.models : [];
+            if (rows.some(row => String(row.id ?? "") === model))
+                return String(group.providerId ?? "");
+        }
+        return "";
+    }
+
+    function modelSelection(conversationId) {
+        if (conversationId === "") {
+            const model = newChatModel || defaultModel;
+            return {
+                model: model,
+                provider: newChatModelProvider || providerForModel(model)
+                    || defaultModelProvider
+            };
+        }
+        const conversation = HermesConversations.conversationById(conversationId);
+        const model = Helpers.firstString(conversation?.model, defaultModel,
+            providerModel);
+        return {
+            model: model,
+            provider: Helpers.firstString(conversation?.modelProvider,
+                providerForModel(model), defaultModelProvider)
+        };
+    }
+
+    function selectionKey(provider, model) {
+        return String(provider ?? "") + "::" + String(model ?? "");
+    }
+
+    function modelLabel(provider, model) {
+        for (const group of modelGroups) {
+            if (provider !== "" && String(group.providerId ?? "") !== provider)
+                continue;
+            const found = (Array.isArray(group.models) ? group.models : [])
+                .find(row => String(row.id ?? "") === model);
+            if (found)
+                return Helpers.firstString(found.label, found.id, model);
+        }
+        return model || "Hermes";
+    }
+
+    function providerLabel(provider) {
+        const found = modelGroups.find(group =>
+            String(group.providerId ?? "") === provider);
+        return found ? Helpers.firstString(found.provider, found.providerId,
+            provider) : provider;
+    }
+
+    function providerIcon(provider) {
+        if (/claude|anthropic/i.test(provider))
+            return "claude";
+        if (/codex|openai|gpt/i.test(provider))
+            return "openai";
+        if (/kimi|moonshot/i.test(provider))
+            return "kimi";
+        if (/copilot|github/i.test(provider))
+            return "github";
+        return "";
+    }
+
+    function reasoningState(conversationId) {
+        const selection = modelSelection(conversationId);
+        const value = reasoningBySelection[selectionKey(selection.provider,
+            selection.model)];
+        return value && typeof value === "object" ? value : ({
+            effort: "", options: [], supportedEfforts: [],
+            supportsReasoningEffort: false, supportsThinkingToggle: false
+        });
+    }
+
+    function reasoningOptions(conversationId) {
+        const state = reasoningState(conversationId);
+        return (Array.isArray(state.options) ? state.options : []).map(value => ({
+            id: String(value),
+            label: value === "" ? "Default" : value === "none" ? "None"
+                : value === "xhigh" ? "XHigh"
+                    : value.charAt(0).toUpperCase() + value.slice(1)
+        }));
+    }
+
+    function cacheReasoning(provider, model, value) {
+        const next = Object.assign({}, reasoningBySelection);
+        next[selectionKey(provider, model)] = value;
+        reasoningBySelection = next;
+    }
+
+    function loadReasoning(conversationId, force) {
+        const selection = modelSelection(conversationId);
+        if (selection.model === "")
+            return "";
+        const key = selectionKey(selection.provider, selection.model);
+        if (force !== true && reasoningBySelection[key])
+            return key;
+        return HermesRpc.request("reasoning.get", {
+            model: selection.model,
+            modelProvider: selection.provider
+        }, result => root.cacheReasoning(selection.provider, selection.model,
+            Helpers.object(result)), () => {}, {
+            actionKey: HermesRpc.actionKey("reasoning-load", conversationId, key),
+            timeoutMs: 20000,
+            fallback: "Hermes reasoning controls unavailable"
+        });
+    }
+
+    function setReasoningEffort(conversationId, effort) {
+        const selection = modelSelection(conversationId);
+        if (selection.model === "")
+            return "";
+        const key = selectionKey(selection.provider, selection.model);
+        return HermesRpc.request("reasoning.set", {
+            model: selection.model,
+            modelProvider: selection.provider,
+            effort: String(effort ?? "")
+        }, result => root.cacheReasoning(selection.provider, selection.model,
+            Helpers.object(result)), reason =>
+            HermesConversations.setError(conversationId, reason), {
+            actionKey: HermesRpc.actionKey("reasoning", conversationId, key),
+            timeoutMs: 30000,
+            fallback: "Could not change Hermes reasoning effort"
+        });
+    }
+
     function refresh() {
         if (!connected) {
             reconnect();
@@ -438,7 +595,11 @@ Singleton {
             return "";
         if (conversationId === "") {
             HermesConversations.setError("", "");
-            return HermesConversations.createConversation(conversation => {
+            const selection = modelSelection("");
+            return HermesConversations.createConversation({
+                model: selection.model,
+                modelProvider: selection.provider
+            }, conversation => {
                 root.submit(conversation.id, prompt);
             }, reason => HermesConversations.setError("", reason));
         }
@@ -449,9 +610,15 @@ Singleton {
             return runCommand(conversationId, prompt);
         const key = HermesRpc.actionKey("prompt", conversationId, "");
         HermesConversations.setError(conversationId, "");
+        const selection = modelSelection(conversationId);
         return HermesRpc.request("prompt.submit", {
             sessionId: conversation.sessionId,
-            text: prompt
+            text: prompt,
+            model: selection.model,
+            modelProvider: selection.provider,
+            explicitModelPick: selection.model !== ""
+                && (selection.model !== defaultModel
+                    || selection.provider !== defaultModelProvider)
         }, result => {
             HermesConversations.setDraft(conversationId, "");
             // Some bridges return the accepted user message before the event
@@ -641,12 +808,39 @@ Singleton {
         });
     }
 
-    function setModel(conversationId, model) {
-        const conversation = HermesConversations.conversationById(conversationId);
-        if (!conversation || conversation.sessionId === "" || typeof model !== "string"
-                || model.trim() === "")
+    function setModel(conversationId, provider, model) {
+        if (typeof model !== "string" || model.trim() === "")
             return "";
-        return runCommand(conversationId, "/model " + model.trim());
+        const nextModel = model.trim();
+        const nextProvider = typeof provider === "string" ? provider.trim() : "";
+        if (conversationId === "") {
+            newChatModel = nextModel;
+            newChatModelProvider = nextProvider;
+            loadReasoning("", false);
+            return selectionKey(nextProvider, nextModel);
+        }
+        const conversation = HermesConversations.conversationById(conversationId);
+        if (!conversation || conversation.sessionId === "")
+            return "";
+        const previous = { model: conversation.model,
+            modelProvider: conversation.modelProvider };
+        HermesConversations.updateConversation(conversationId, {
+            model: nextModel,
+            modelProvider: nextProvider
+        });
+        const key = HermesRpc.actionKey("model", conversationId, "");
+        return HermesRpc.request("session.configure", {
+            sessionId: conversation.sessionId,
+            model: nextModel,
+            modelProvider: nextProvider
+        }, () => root.loadReasoning(conversationId, false), reason => {
+            HermesConversations.updateConversation(conversationId, previous);
+            HermesConversations.setError(conversationId, reason);
+        }, {
+            actionKey: key,
+            timeoutMs: 30000,
+            fallback: "Could not change the Hermes model"
+        });
     }
 
     function startNewChat() {
@@ -744,6 +938,7 @@ Singleton {
                 root.refreshRemoteStatus();
                 root.refreshProviderStatus();
                 root.loadCommandCatalog();
+                root.loadModelCatalog();
                 HermesConversations.refreshAll();
             } else if (normalized === "bridge-capabilities") {
                 const value = Helpers.object(payload);
@@ -765,8 +960,10 @@ Singleton {
                 root.applyProviderStatus(payload);
             } else if (normalized === "remote-status") {
                 root.applyRemoteStatus(payload);
-                if (root.remoteConnected)
+                if (root.remoteConnected) {
+                    root.loadModelCatalog();
                     HermesConversations.refreshAll();
+                }
             } else if (normalized === "remote-session-expired"
                     || normalized === "remote-expired") {
                 root.remoteChecked = true;

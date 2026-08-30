@@ -213,7 +213,7 @@ test("streaming, tools, requests, stop, steering, and private input use conversa
     assert.match(tool, /progress_activity/);
 });
 
-test("Hermes history projects prose, one tool activity line, pagination, and session state", () => {
+test("Hermes history projects prose, one tool activity line, pagination, and compact long messages", () => {
     const helpers = read("Common/HermesHelpers.js");
     const conversations = read("Common/HermesConversations.qml");
     const transcript = read("Popovers/HermesTranscript.qml");
@@ -235,7 +235,9 @@ test("Hermes history projects prose, one tool activity line, pagination, and ses
     assert.equal((transcript.match(/HermesToolCard\s*\{/g) || []).length, 1,
         "tool activity must render through one updating line");
     assert.match(transcript, /HermesConversations\.loadEarlier/);
-    assert.match(transcript, /sessionState\.reasoning/);
+    assert.match(transcript, /property bool longMessage:/);
+    assert.match(transcript, /maximumLineCount:[\s\S]{0,120}?14/);
+    assert.match(transcript, /ActionButton\s*\{[\s\S]{0,320}?"Show more"/);
     assert.match(transcript, /property string messageText:\s*String/,
         "optional remote text must not assign undefined to QString");
     assert.match(tool, /tool\.output/);
@@ -251,4 +253,36 @@ test("Hermes history projects prose, one tool activity line, pagination, and ses
     assert.match(bridge, /"session\.context"/);
     assert.match(bridge, /"session\.goal"/);
     assert.match(bridge, /"session\.warning"/);
+});
+
+test("Hermes uses the compact T3-style composer with live model and reasoning controls", () => {
+    const facade = read("Common/Hermes.qml");
+    const theme = read("Common/HermesTheme.qml");
+    const composer = read("Popovers/HermesComposer.qml");
+    const inbox = read("Popovers/HermesInboxPage.qml");
+    const popover = read("Popovers/HermesPopover.qml");
+    const strip = read("Popovers/HermesSessionStrip.qml");
+    const bridge = readRepo(
+        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
+
+    assert.match(theme, /readonly property color composerGlass:/);
+    assert.match(composer, /color:\s*HermesTheme\.composerGlass/);
+    assert.match(composer, /HermesModelPicker\s*\{/);
+    assert.match(composer, /HermesInlineSelect\s*\{/);
+    assert.match(composer, /text:\s*"Reasoning"/);
+    assert.match(composer, /radius:\s*width \/ 2/,
+        "the primary send/stop action should be circular");
+    assert.match(composer, /HermesTheme\.dangerForeground/);
+    assert.match(inbox, /HermesSessionStrip\s*\{/);
+    assert.match(strip, /HermesConversations\.sessionStateFor/);
+    assert.match(popover, /visible:\s*root\.showingSetup \|\| Hermes\.isNewChat/);
+    assert.match(popover, /threadMaxHeight/);
+    assert.match(facade, /HermesRpc\.request\("models\.catalog"/);
+    assert.match(facade, /HermesRpc\.request\("reasoning\.get"/);
+    assert.match(facade, /HermesRpc\.request\("reasoning\.set"/);
+    assert.match(facade, /HermesRpc\.request\("session\.configure"/);
+    assert.match(bridge, /"GET", "\/api\/models"/);
+    assert.match(bridge, /"POST", "\/api\/reasoning"/);
+    assert.match(bridge, /"POST", "\/api\/session\/update"/);
+    assert.match(bridge, /"explicit_model_pick"/);
 });

@@ -1275,6 +1275,9 @@ class ConversationRegistry:
             "updated_at": str(row.get("updated_at") or utc_now()),
             "created_at": str(row.get("created_at") or ""),
             "model": str(row.get("model") or "")[:256],
+            "model_provider": str(
+                row.get("model_provider") or row.get("modelProvider") or ""
+            )[:128],
             "source": str(
                 row.get("source")
                 or row.get("source_label")
@@ -1702,6 +1705,7 @@ class HermesBridge:
             "messageEditing": False,
             "regeneration": False,
             "modelSelection": False,
+            "reasoningEffort": False,
             "eventCatalog": [
                 "token",
                 "reasoning",
@@ -1785,6 +1789,7 @@ class HermesBridge:
             "title": conversation["title"],
             "profile": conversation["profile"] or None,
             "model": conversation.get("model") or None,
+            "modelProvider": conversation.get("model_provider") or None,
             "workspace": conversation.get("cwd") or None,
             "source": conversation.get("source") or None,
             "readOnly": bool(conversation.get("read_only", False)),
@@ -1844,6 +1849,7 @@ class HermesBridge:
             "messageEditing": remote.get("messageEditing") is True,
             "regeneration": remote.get("regeneration") is True,
             "modelSelection": remote.get("modelSelection") is True,
+            "reasoningEffort": remote.get("reasoningEffort") is True,
             "rawProxy": self.local_backend_enabled,
             "providerSetup": self.local_backend_enabled,
             "localBackend": self.local_backend_enabled,
@@ -2030,6 +2036,36 @@ class HermesBridge:
             return await self.validate_custom_provider(params)
         if method == "provider.custom.configure":
             return await self.configure_custom_provider(params)
+        if method == "models.catalog":
+            if self.remote_auth.base_url:
+                return await self.remote_model_catalog()
+            return {"groups": [], "defaultModel": self.provider_state.get("model", ""),
+                    "activeProvider": self.provider_state.get("provider", "")}
+        if method == "reasoning.get":
+            if not self.remote_auth.base_url:
+                raise RpcFault(-32601, "Reasoning controls require a remote Hermes WebUI")
+            return await self.remote_reasoning_state(params)
+        if method == "reasoning.set":
+            if not self.remote_auth.base_url:
+                raise RpcFault(-32601, "Reasoning controls require a remote Hermes WebUI")
+            effort = str(params.get("effort") or "").strip().lower()
+            if effort not in {"", "none", "minimal", "low", "medium", "high",
+                              "xhigh", "max", "ultra"}:
+                raise RpcFault(-32602, "Unsupported reasoning effort")
+            body: dict[str, Any] = {"effort": effort}
+            model = params.get("model")
+            provider = params.get("modelProvider", params.get("model_provider",
+                                                              params.get("provider")))
+            if isinstance(model, str) and model.strip():
+                body["model"] = model.strip()[:256]
+            if isinstance(provider, str) and provider.strip():
+                body["provider"] = provider.strip()[:128]
+            result = await self.remote_request(
+                "POST", "/api/reasoning", body, timeout=30
+            )
+            state = self.sanitize_remote_reasoning(result)
+            await self.update_remote_contract(reasoningEffort=len(state["options"]) > 1)
+            return state
         if method == "conversations.list":
             if (
                 self.remote_auth.base_url
@@ -2098,6 +2134,11 @@ class HermesBridge:
                     "upstream": upstream,
                 },
             )
+        if method == "session.configure":
+            conversation = self.resolve_conversation(params)
+            if not self.remote_auth.base_url:
+                raise RpcFault(-32601, "Session model controls require a remote Hermes WebUI")
+            return await self.remote_session_configure(conversation, params)
         if method == "prompt.submit":
             conversation = self.resolve_conversation(params)
             if conversation.get("read_only"):
@@ -2518,8 +2559,14 @@ class HermesBridge:
                     self.remote_auth.status,
                 )
             body: dict[str, Any] = {"worktree": False}
-            for key in ("profile", "workspace", "model"):
-                value = params.get(key)
+            for key, source_keys in (
+                ("profile", ("profile",)),
+                ("workspace", ("workspace",)),
+                ("model", ("model",)),
+                ("model_provider", ("modelProvider", "model_provider", "provider")),
+            ):
+                value = next((params.get(source) for source in source_keys
+                              if params.get(source) is not None), None)
                 if isinstance(value, str) and value.strip():
                     body[key] = value.strip()
             result = await self.remote_request(
@@ -2777,6 +2824,122 @@ class HermesBridge:
             },
         )
 
+    @staticmethod
+    def sanitize_remote_model_catalog(raw: Any) -> dict[str, Any]:
+        """Bound the WebUI picker payload before it crosses loopback RPC."""
+
+        value = raw if isinstance(raw, dict) else {}
+        groups: list[dict[str, Any]] = []
+        model_count = 0
+        for candidate in value.get("groups", []):
+            if not isinstance(candidate, dict) or len(groups) >= 64:
+                continue
+            provider_id = str(
+                candidate.get("provider_id") or candidate.get("providerId")
+                or candidate.get("id") or ""
+            ).strip()[:128]
+            provider = str(
+                candidate.get("provider") or candidate.get("display_name")
+                or candidate.get("displayName") or provider_id
+            ).strip()[:160]
+            if not provider_id:
+                continue
+            models: list[dict[str, Any]] = []
+            rows: list[Any] = []
+            for key in ("models", "extra_models", "extraModels"):
+                source = candidate.get(key)
+                if isinstance(source, list):
+                    rows.extend(source)
+            seen: set[str] = set()
+            for row in rows:
+                if not isinstance(row, dict) or model_count >= 1000:
+                    continue
+                model_id = str(
+                    row.get("id") or row.get("model") or row.get("slug") or ""
+                ).strip()[:256]
+                if not model_id or model_id in seen:
+                    continue
+                seen.add(model_id)
+                model: dict[str, Any] = {
+                    "id": model_id,
+                    "label": str(
+                        row.get("label") or row.get("name") or model_id
+                    ).strip()[:160] or model_id,
+                }
+                if isinstance(row.get("supports_fast_tier"), bool):
+                    model["supportsFastTier"] = row["supports_fast_tier"]
+                models.append(model)
+                model_count += 1
+            if models:
+                groups.append({
+                    "providerId": provider_id,
+                    "provider": provider or provider_id,
+                    "models": models,
+                })
+        return {
+            "groups": groups,
+            "defaultModel": str(value.get("default_model") or "").strip()[:256],
+            "activeProvider": str(value.get("active_provider") or "").strip()[:128],
+        }
+
+    @staticmethod
+    def sanitize_remote_reasoning(raw: Any) -> dict[str, Any]:
+        value = raw if isinstance(raw, dict) else {}
+        valid = {"", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
+        effort = str(value.get("reasoning_effort") or "").strip().lower()
+        if effort not in valid:
+            effort = ""
+        supported: list[str] = []
+        for candidate in value.get("supported_efforts", []):
+            normalized = str(candidate or "").strip().lower()
+            if normalized in valid and normalized not in {"", "none"} \
+                    and normalized not in supported:
+                supported.append(normalized)
+        supports_effort = value.get("supports_reasoning_effort") is True
+        supports_toggle = value.get("supports_thinking_toggle") is True
+        options = [""]
+        if supports_toggle or supports_effort:
+            options.append("none")
+        if supports_effort:
+            options.extend(supported)
+        return {
+            "effort": effort,
+            "options": options,
+            "supportedEfforts": supported,
+            "supportsReasoningEffort": supports_effort,
+            "supportsThinkingToggle": supports_toggle,
+            "showReasoning": value.get("show_reasoning") is not False,
+        }
+
+    @staticmethod
+    def remote_reasoning_path(params: dict[str, Any]) -> str:
+        pairs: list[str] = []
+        for source, target in (("model", "model"), ("modelProvider", "provider"),
+                               ("model_provider", "provider"), ("provider", "provider")):
+            value = params.get(source)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            if any(pair.startswith(target + "=") for pair in pairs):
+                continue
+            pairs.append(target + "=" + quote(value.strip()[:256], safe=""))
+        return "/api/reasoning" + ("?" + "&".join(pairs) if pairs else "")
+
+    async def remote_model_catalog(self) -> dict[str, Any]:
+        result = await self.remote_request("GET", "/api/models", timeout=45)
+        catalog = self.sanitize_remote_model_catalog(result)
+        await self.update_remote_contract(modelSelection=bool(catalog["groups"]))
+        return catalog
+
+    async def remote_reasoning_state(self, params: dict[str, Any]) -> dict[str, Any]:
+        result = await self.remote_request(
+            "GET", self.remote_reasoning_path(params), timeout=20
+        )
+        state = self.sanitize_remote_reasoning(result)
+        await self.update_remote_contract(
+            reasoningEffort=bool(state["options"] and len(state["options"]) > 1)
+        )
+        return state
+
     async def probe_remote_contract(self) -> dict[str, Any]:
         """Negotiate the read-only WebUI stream contract without guessing writes."""
 
@@ -2800,6 +2963,14 @@ class HermesBridge:
             ),
             fallbackPollMs=int(probe.get("fallbackPollMs") or 30000),
         )
+        try:
+            await self.remote_model_catalog()
+        except RpcFault:
+            await self.update_remote_contract(modelSelection=False)
+        try:
+            await self.remote_reasoning_state({})
+        except RpcFault:
+            await self.update_remote_contract(reasoningEffort=False)
         return dict(self.remote_contract)
 
     async def start_remote_observers(self) -> None:
@@ -3140,6 +3311,7 @@ class HermesBridge:
                 ) or utc_now(),
                 "created_at": self._remote_time(raw.get("created_at")),
                 "model": raw.get("model") or "",
+                "model_provider": raw.get("model_provider") or raw.get("provider") or "",
                 "source": raw.get("source_label") or raw.get("session_source")
                     or raw.get("source_tag") or "",
                 "read_only": bool(raw.get("read_only", False)),
@@ -3793,6 +3965,10 @@ class HermesBridge:
         conversation["model"] = str(
             session.get("model") or conversation.get("model") or ""
         )[:256]
+        conversation["model_provider"] = str(
+            session.get("model_provider") or session.get("provider")
+            or conversation.get("model_provider") or ""
+        )[:128]
         conversation["profile"] = str(
             session.get("profile") or conversation.get("profile") or ""
         )[:128]
@@ -3919,6 +4095,39 @@ class HermesBridge:
             },
         )
 
+    async def remote_session_configure(
+        self, conversation: dict[str, Any], params: dict[str, Any]
+    ) -> dict[str, Any]:
+        session_id = await self.ensure_remote_session(conversation)
+        model = str(params.get("model") or "").strip()[:256]
+        provider = str(
+            params.get("modelProvider") or params.get("model_provider")
+            or params.get("provider") or ""
+        ).strip()[:128]
+        if not model:
+            raise RpcFault(-32602, "model is required")
+        body: dict[str, Any] = {
+            "session_id": session_id,
+            "workspace": conversation.get("cwd") or "",
+            "model": model,
+            "model_provider": provider or None,
+        }
+        result = await self.remote_request(
+            "POST", "/api/session/update", body, timeout=30
+        )
+        conversation["model"] = model
+        conversation["model_provider"] = provider
+        conversation["updated_at"] = utc_now()
+        self.registry.save()
+        public = self.public_conversation(conversation)
+        await self.update_remote_contract(modelSelection=True)
+        await self.broadcast_event(
+            "conversation.updated", {"conversation": public, **public}
+        )
+        return self.routed_payload(
+            conversation, {"conversation": public, "upstream": result, **public}
+        )
+
     async def remote_prompt_submit(
         self,
         conversation: dict[str, Any],
@@ -3928,11 +4137,31 @@ class HermesBridge:
         session_id = await self.ensure_remote_session(conversation)
         await self.set_conversation_status(conversation, "working", "Hermes is working…")
         previously_had_messages = conversation["has_messages"]
+        body: dict[str, Any] = {
+            "session_id": session_id,
+            "message": text.strip(),
+        }
+        model = str(params.get("model") or conversation.get("model") or "").strip()
+        provider = str(
+            params.get("modelProvider") or params.get("model_provider")
+            or params.get("provider") or conversation.get("model_provider") or ""
+        ).strip()
+        if model:
+            body["model"] = model[:256]
+        if provider:
+            body["model_provider"] = provider[:128]
+        if conversation.get("cwd"):
+            body["workspace"] = str(conversation["cwd"])[:4096]
+        if conversation.get("profile"):
+            body["profile"] = str(conversation["profile"])[:128]
+        if params.get("explicitModelPick") is True \
+                or params.get("explicit_model_pick") is True:
+            body["explicit_model_pick"] = True
         try:
             result = await self.remote_request(
                 "POST",
                 "/api/chat/start",
-                {"session_id": session_id, "message": text.strip()},
+                body,
                 timeout=45,
             )
         except AmbiguousDelivery as fault:

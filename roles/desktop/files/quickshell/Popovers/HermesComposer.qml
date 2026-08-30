@@ -22,11 +22,15 @@ Rectangle {
     readonly property bool editable: Hermes.canOperate && conversation !== null
         && conversation.readOnly !== true && !sending
     readonly property bool overLimit: promptEdit.text.length > 120000
+    readonly property var modelSelection: Hermes.modelSelection(conversationId)
+    readonly property var reasoningState: Hermes.reasoningState(conversationId)
+    readonly property var reasoningOptions: Hermes.reasoningOptions(conversationId)
+    readonly property bool selectorsEnabled: editable && !working && !sending
 
     width: parent ? parent.width : 0
-    height: composerContent.implicitHeight + 18
-    radius: HermesTheme.panelRadius
-    color: HermesTheme.composer
+    height: composerContent.implicitHeight + 20
+    radius: HermesTheme.composerRadius
+    color: HermesTheme.composerGlass
     border.width: 1
     border.color: overLimit ? HermesTheme.redBorder
         : promptEdit.activeFocus ? HermesTheme.focus : HermesTheme.borderStrong
@@ -74,8 +78,14 @@ Rectangle {
         promptEdit.cursorPosition = promptEdit.text.length;
     }
 
-    onConversationIdChanged: syncDraft()
-    Component.onCompleted: syncDraft()
+    onConversationIdChanged: {
+        syncDraft();
+        Hermes.loadReasoning(conversationId, false);
+    }
+    Component.onCompleted: {
+        syncDraft();
+        Hermes.loadReasoning(conversationId, false);
+    }
 
     Connections {
         target: HermesConversations
@@ -84,14 +94,14 @@ Rectangle {
 
     Column {
         id: composerContent
-        x: 9
-        y: 9
-        width: parent.width - 18
+        x: 10
+        y: 10
+        width: parent.width - 20
         spacing: 7
 
         Item {
             width: parent.width
-            height: Math.max(54, Math.min(116, promptEdit.contentHeight + 6))
+            height: Math.max(58, Math.min(118, promptEdit.contentHeight + 8))
 
             Flickable {
                 id: promptFlick
@@ -161,56 +171,80 @@ Rectangle {
         }
 
         Item {
+            id: actionRow
             width: parent.width
             height: Theme.inlineActionHeight
+            readonly property real trailingWidth: primaryButton.width
+                + (steerButton.visible ? steerButton.width + 5 : 0)
+                + (workingIndicator.visible ? workingIndicator.width + 8 : 0)
 
             Row {
+                id: inlineSettings
                 anchors.left: parent.left
+                anchors.leftMargin: -6
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 6
+                spacing: 3
 
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.conversation?.model || "Hermes"
-                    elide: Text.ElideRight
-                    width: Math.min(implicitWidth, 150)
-                    font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
-                    color: HermesTheme.textFaint
+                HermesModelPicker {
+                    id: modelSelect
+                    conversationId: root.conversationId
+                    provider: root.modelSelection.provider
+                    model: root.modelSelection.model
+                    label: Hermes.modelLabel(provider, model)
+                    maxWidth: Math.max(92, actionRow.width - actionRow.trailingWidth
+                        - (effortSelect.visible ? effortSelect.implicitWidth + 18 : 0))
+                    enabled: root.selectorsEnabled && Hermes.modelGroups.length > 0
+                    onSelected: (provider, model) =>
+                        Hermes.setModel(root.conversationId, provider, model)
                 }
 
-                Text {
-                    visible: promptEdit.text.startsWith("/")
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "command"
-                    font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontMicro
-                    color: HermesTheme.accent
+                Item {
+                    visible: effortSelect.visible
+                    width: visible ? 11 : 0
+                    height: 26
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 1
+                        height: 14
+                        color: HermesTheme.border
+                    }
                 }
 
-                Text {
-                    visible: root.overLimit
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: promptEdit.text.length + "/120000"
-                    font.family: HermesTheme.fontMono
-                    font.pixelSize: Theme.fontMicro
-                    color: HermesTheme.red
+                HermesInlineSelect {
+                    id: effortSelect
+                    visible: root.reasoningOptions.length > 1
+                    text: "Reasoning"
+                    symbol: "psychology"
+                    value: String(root.reasoningState.effort ?? "")
+                    options: root.reasoningOptions
+                    menuWidth: 168
+                    maxWidth: 96
+                    enabled: root.selectorsEnabled
+                    onSelected: value =>
+                        Hermes.setReasoningEffort(root.conversationId, value)
                 }
             }
 
-            Text {
-                id: activityText
+            Sym {
+                id: workingIndicator
                 visible: root.working || root.sending
-                anchors.right: steerButton.visible ? steerButton.left : primaryButton.left
-                anchors.rightMargin: 9
+                anchors.right: steerButton.visible ? steerButton.left
+                    : primaryButton.left
+                anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(150, implicitWidth)
-                text: root.sending ? "sending…"
-                    : (root.conversation?.statusText || "Hermes is working…")
-                elide: Text.ElideRight
-                font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontMicro
+                name: "progress_activity"
+                size: Theme.iconLarge
+                symWeight: 400
                 color: HermesTheme.textFaint
+
+                RotationAnimation on rotation {
+                    running: workingIndicator.visible && !Theme.reducedMotion
+                    from: 0
+                    to: 360
+                    duration: 1100
+                    loops: Animation.Infinite
+                }
             }
 
             ActionButton {
@@ -235,9 +269,10 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Theme.inlineActionHeight
                 height: width
-                radius: HermesTheme.controlRadius
+                radius: width / 2
                 color: root.working
-                    ? (primaryMouse.containsMouse ? HermesTheme.red : HermesTheme.redSoft)
+                    ? (primaryMouse.containsMouse ? HermesTheme.dangerHover
+                        : HermesTheme.danger)
                     : (primaryMouse.containsMouse ? HermesTheme.accentHover
                         : HermesTheme.accent)
                 opacity: primaryMouse.enabled ? 1 : 0.35
@@ -267,14 +302,29 @@ Rectangle {
                 }
 
                 Sym {
+                    visible: !root.working
                     anchors.centerIn: parent
-                    name: root.stopping || root.sending ? "more_horiz"
-                        : root.working ? "stop" : "arrow_upward"
+                    name: root.sending ? "more_horiz" : "arrow_upward"
                     size: Theme.iconMedium
-                    fill: root.working ? 1 : 0
                     symWeight: 520
-                    color: root.working && !primaryMouse.containsMouse
-                        ? HermesTheme.red : HermesTheme.accentForeground
+                    color: HermesTheme.accentForeground
+                }
+
+                Rectangle {
+                    visible: root.working && !root.stopping
+                    anchors.centerIn: parent
+                    width: 8
+                    height: 8
+                    radius: 2
+                    color: HermesTheme.dangerForeground
+                }
+
+                Sym {
+                    visible: root.working && root.stopping
+                    anchors.centerIn: parent
+                    name: "more_horiz"
+                    size: Theme.iconMedium
+                    color: HermesTheme.dangerForeground
                 }
 
                 MouseArea {
@@ -293,6 +343,16 @@ Rectangle {
                     }
                 }
             }
+        }
+
+        Text {
+            visible: root.overLimit || promptEdit.text.startsWith("/")
+            width: parent.width
+            text: root.overLimit ? promptEdit.text.length + "/120000"
+                : "Slash command"
+            font.family: root.overLimit ? HermesTheme.fontMono : HermesTheme.fontUi
+            font.pixelSize: Theme.fontMicro
+            color: root.overLimit ? HermesTheme.red : HermesTheme.accent
         }
     }
 }

@@ -34,6 +34,7 @@ Singleton {
         title: "New chat",
         profile: "",
         model: "",
+        modelProvider: "",
         workspace: "",
         source: "webui",
         readOnly: false,
@@ -416,9 +417,10 @@ Singleton {
                 fallback: "Could not load Hermes conversations" });
     }
 
-    function createConversation(onSuccess, onFailure) {
+    function createConversation(options, onSuccess, onFailure) {
+        const createOptions = options && typeof options === "object" ? options : ({});
         const key = HermesRpc.actionKey("conversation-create", "", "");
-        return HermesRpc.request("conversations.create", {}, result => {
+        return HermesRpc.request("conversations.create", createOptions, result => {
             const raw = result?.conversation ?? result?.session ?? result;
             const conversation = root.upsertConversation(raw);
             if (!conversation) {

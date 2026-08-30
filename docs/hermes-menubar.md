@@ -55,9 +55,20 @@ translate those events into useful live states, including working, thinking,
 tool use, context compression, waiting for approval or clarification,
 interrupted, failed, and done. Reasoning, warnings, goals, todos, context usage,
 token metering, and unconsumed steering are retained as compact session state
-instead of synthetic transcript messages. Stream reconnects resume with the
-last event ID and reconcile against Hermes' session and stream-status
-endpoints.
+instead of synthetic transcript messages. The view docks their summary to the
+composer; reasoning detail can be expanded there without adding a second
+transcript header. Long settled messages start collapsed and can be expanded
+in place. Stream reconnects resume with the last event ID and reconcile against
+Hermes' session and stream-status endpoints.
+
+The composer discovers provider/model choices from `GET /api/models` and the
+selected model's reasoning controls from `GET /api/reasoning`. Model changes on
+an existing conversation use `POST /api/session/update`; new sessions and chat
+starts carry the explicit model/provider choice. Reasoning effort changes use
+`POST /api/reasoning`. Catalog and reasoning responses are bounded and
+sanitized by the loopback bridge before QML receives them, and the controls
+disappear or disable themselves when the WebUI does not advertise usable
+choices.
 
 After authentication the bridge reads the WebUI gateway-stream capability
 probe and publishes the negotiated contract to QML. It also supervises the
@@ -67,7 +78,9 @@ created by another client, background-task completions, and server-initiated
 turns without polling or replaying a prompt. Older WebUI versions degrade to
 manual/list refresh when a stream endpoint is genuinely unavailable. Features
 without an upstream capability signal—attachments, branching, message editing,
-regeneration, and model selection—remain disabled rather than being guessed.
+and regeneration—remain disabled rather than being guessed. Model selection
+and reasoning effort are enabled only after their discovery endpoints return a
+usable contract.
 
 The small Python bridge remains loopback-only on `ws://127.0.0.1:9120/ws`. It
 owns the remote cookie and never exposes it to QML; it does not contain or run

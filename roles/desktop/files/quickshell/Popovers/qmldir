@@ -13,10 +13,14 @@ FillSlider FillSlider.qml
 GitHubPopover GitHubPopover.qml
 HDivider HDivider.qml
 HermesAuthPanel HermesAuthPanel.qml
+HermesBarControl HermesBarControl.qml
 HermesComposer HermesComposer.qml
 HermesInboxPage HermesInboxPage.qml
+HermesInlineSelect HermesInlineSelect.qml
+HermesModelPicker HermesModelPicker.qml
 HermesPopover HermesPopover.qml
 HermesRequestCard HermesRequestCard.qml
+HermesSessionStrip HermesSessionStrip.qml
 HermesToolCard HermesToolCard.qml
 HermesTranscript HermesTranscript.qml
 IconButton IconButton.qml

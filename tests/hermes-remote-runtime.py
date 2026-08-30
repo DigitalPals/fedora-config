@@ -52,6 +52,9 @@ class FakeRemote:
         self.new_requests: list[dict[str, Any]] = []
         self.rename_requests: list[dict[str, Any]] = []
         self.compress_requests: list[dict[str, Any]] = []
+        self.session_update_requests: list[dict[str, Any]] = []
+        self.reasoning_requests: list[dict[str, Any]] = []
+        self.chat_start_requests: list[dict[str, Any]] = []
         self.approval_responses: list[dict[str, Any]] = []
         self.clarify_responses: list[dict[str, Any]] = []
         self.cancelled_streams: list[str] = []
@@ -106,7 +109,8 @@ class FakeRemote:
                     session["created_at"] + len(session["messages"])
                     if session["messages"] else None
                 ),
-                "model": "fixture/model",
+                "model": session.get("model", "fixture/model"),
+                "model_provider": session.get("model_provider", "fixture-provider"),
                 "read_only": False,
             }
 
@@ -223,6 +227,34 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                     snapshot.pop("messages", None)
                     rows.append(snapshot)
             return self.json_reply({"sessions": rows})
+        if parsed.path == "/api/models":
+            return self.json_reply({
+                "active_provider": "openai-codex",
+                "default_model": "gpt-5.6-sol",
+                "groups": [{
+                    "provider": "OpenAI Codex",
+                    "provider_id": "openai-codex",
+                    "models": [
+                        {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol"},
+                        {"id": "gpt-5.4", "label": "GPT-5.4"},
+                    ],
+                }],
+            })
+        if parsed.path == "/api/reasoning":
+            FAKE.reasoning_requests.append({
+                "method": "GET",
+                "model": self.query_value(query, "model"),
+                "provider": self.query_value(query, "provider"),
+            })
+            return self.json_reply({
+                "show_reasoning": False,
+                "reasoning_effort": "high",
+                "supported_efforts": [
+                    "minimal", "low", "medium", "high", "xhigh", "max"
+                ],
+                "supports_reasoning_effort": True,
+                "supports_thinking_toggle": True,
+            })
         if parsed.path == "/api/sessions/gateway/stream":
             return self.json_reply({
                 "enabled": False,
@@ -370,6 +402,13 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/session/new":
             FAKE.new_requests.append(dict(body))
             session = FAKE.create_session("New conversation", [])
+            with FAKE.lock:
+                stored = FAKE.sessions[str(session["session_id"])]
+                stored["model"] = str(body.get("model") or "fixture/model")
+                stored["model_provider"] = str(
+                    body.get("model_provider") or "fixture-provider"
+                )
+                session = FAKE.session_snapshot(str(session["session_id"]))
             return self.json_reply({"session": session})
         if parsed.path == "/api/session/delete":
             session_id = str(body.get("session_id") or "")
@@ -416,6 +455,29 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                     "session_id": session_id,
                 }
             )
+        if parsed.path == "/api/session/update":
+            session_id = str(body.get("session_id") or "")
+            with FAKE.lock:
+                if session_id not in FAKE.sessions:
+                    return self.json_reply({"error": "not found"}, status=404)
+                FAKE.session_update_requests.append(dict(body))
+                FAKE.sessions[session_id]["model"] = str(body.get("model") or "")
+                FAKE.sessions[session_id]["model_provider"] = str(
+                    body.get("model_provider") or ""
+                )
+                session = FAKE.session_snapshot(session_id)
+            return self.json_reply({"session": session})
+        if parsed.path == "/api/reasoning":
+            FAKE.reasoning_requests.append({"method": "POST", **dict(body)})
+            return self.json_reply({
+                "show_reasoning": body.get("effort") not in {"", "none"},
+                "reasoning_effort": str(body.get("effort") or ""),
+                "supported_efforts": [
+                    "minimal", "low", "medium", "high", "xhigh", "max"
+                ],
+                "supports_reasoning_effort": True,
+                "supports_thinking_toggle": True,
+            })
         if parsed.path == "/api/chat/start":
             session_id = str(body.get("session_id") or "")
             message = str(body.get("message") or "")
@@ -423,6 +485,7 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                 if session_id not in FAKE.sessions:
                     return self.json_reply({"error": "not found"}, status=404)
                 fault = FAKE.chat_start_faults.pop(message, None)
+                FAKE.chat_start_requests.append(dict(body))
             if fault is not None:
                 return self.json_reply(fault, status=409)
             stream_id = FAKE.start_stream(session_id, message)
@@ -835,6 +898,52 @@ async def scenario() -> None:
                     assert FAKE.password not in credentials
                     assert FAKE.password not in state_path.read_text(encoding="utf-8")
 
+                    catalog = await rpc(
+                        client, "models", "models.catalog", {}, events
+                    )
+                    assert catalog == {
+                        "groups": [{
+                            "providerId": "openai-codex",
+                            "provider": "OpenAI Codex",
+                            "models": [
+                                {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol"},
+                                {"id": "gpt-5.4", "label": "GPT-5.4"},
+                            ],
+                        }],
+                        "defaultModel": "gpt-5.6-sol",
+                        "activeProvider": "openai-codex",
+                    }
+                    reasoning = await rpc(
+                        client,
+                        "reasoning-get",
+                        "reasoning.get",
+                        {"model": "gpt-5.6-sol", "modelProvider": "openai-codex"},
+                        events,
+                    )
+                    assert reasoning["effort"] == "high"
+                    assert reasoning["options"] == [
+                        "", "none", "minimal", "low", "medium", "high",
+                        "xhigh", "max",
+                    ]
+                    changed_reasoning = await rpc(
+                        client,
+                        "reasoning-set",
+                        "reasoning.set",
+                        {
+                            "model": "gpt-5.6-sol",
+                            "modelProvider": "openai-codex",
+                            "effort": "max",
+                        },
+                        events,
+                    )
+                    assert changed_reasoning["effort"] == "max"
+                    assert FAKE.reasoning_requests[-1] == {
+                        "method": "POST",
+                        "model": "gpt-5.6-sol",
+                        "provider": "openai-codex",
+                        "effort": "max",
+                    }
+
                     listed = await rpc(
                         client,
                         "list-history",
@@ -888,7 +997,10 @@ async def scenario() -> None:
                         client,
                         "create",
                         "conversations.create",
-                        {},
+                        {
+                            "model": "gpt-5.6-sol",
+                            "modelProvider": "openai-codex",
+                        },
                         events,
                     )
                     conversation_id = created["id"]
@@ -896,9 +1008,33 @@ async def scenario() -> None:
                     assert conversation_id != historical_id
                     assert created["sessionId"] == conversation_id
                     assert registry.selected_conversation_id == conversation_id
-                    assert FAKE.new_requests[-1] == {"worktree": False}
+                    assert FAKE.new_requests[-1] == {
+                        "worktree": False,
+                        "model": "gpt-5.6-sol",
+                        "model_provider": "openai-codex",
+                    }
                     assert FAKE.import_requests == []
                     assert FAKE.rename_requests == []
+
+                    configured = await rpc(
+                        client,
+                        "configure-model",
+                        "session.configure",
+                        {
+                            "sessionId": conversation_id,
+                            "model": "gpt-5.4",
+                            "modelProvider": "openai-codex",
+                        },
+                        events,
+                    )
+                    assert configured["model"] == "gpt-5.4"
+                    assert configured["modelProvider"] == "openai-codex"
+                    assert FAKE.session_update_requests[-1] == {
+                        "session_id": conversation_id,
+                        "workspace": "",
+                        "model": "gpt-5.4",
+                        "model_provider": "openai-codex",
+                    }
 
                     accepted = await rpc(
                         client,
@@ -907,12 +1043,22 @@ async def scenario() -> None:
                         {
                             "sessionId": conversation_id,
                             "text": "List the fixture lights",
+                            "model": "gpt-5.4",
+                            "modelProvider": "openai-codex",
+                            "explicitModelPick": True,
                         },
                         events,
                     )
                     assert accepted["accepted"] is True
                     assert accepted["sessionId"] == conversation_id
                     stream_id = accepted["streamId"]
+                    assert FAKE.chat_start_requests[-1] == {
+                        "session_id": conversation_id,
+                        "message": "List the fixture lights",
+                        "model": "gpt-5.4",
+                        "model_provider": "openai-codex",
+                        "explicit_model_pick": True,
+                    }
 
                     approval = await wait_for_event(
                         client,
@@ -1057,6 +1203,8 @@ async def scenario() -> None:
                     assert bridge.remote_contract["historyPagination"] is True
                     assert bridge.remote_contract["sessionStream"] is True
                     assert bridge.remote_contract["globalSessionEvents"] is True
+                    assert bridge.remote_contract["modelSelection"] is True
+                    assert bridge.remote_contract["reasoningEffort"] is True
 
                     settled = await rpc(
                         client,

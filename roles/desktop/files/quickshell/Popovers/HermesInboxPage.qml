@@ -18,7 +18,8 @@ Item {
         .concat(Hermes.conversations)
 
     width: parent ? parent.width : 0
-    height: maxHeight
+    height: Math.min(maxHeight, implicitHeight)
+    implicitHeight: content.implicitHeight
 
     function handleEscape(): bool {
         if (confirmDelete) {
@@ -45,29 +46,37 @@ Item {
 
     Column {
         id: content
-        anchors.fill: parent
+        width: parent.width
         spacing: 5
 
         Rectangle {
             id: conversationHeader
             width: parent.width
-            height: 52
-            radius: HermesTheme.panelRadius
-            color: HermesTheme.surface
-            border.width: 1
-            border.color: root.pickerOpen ? HermesTheme.focus : HermesTheme.border
+            height: 42
+            radius: 0
+            color: "transparent"
+            border.width: 0
             z: 600
+
+            IconButton {
+                id: backButton
+                visible: !Hermes.isNewChat
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                controlSize: 32
+                symbol: "arrow_back"
+                accessibleName: "Back to new Hermes chat"
+                onTriggered: root.choose("")
+            }
 
             Rectangle {
                 id: pickerButton
-                anchors.left: parent.left
-                anchors.leftMargin: 4
+                anchors.left: backButton.visible ? backButton.right : parent.left
+                anchors.leftMargin: backButton.visible ? 7 : 0
                 anchors.right: headerActions.left
                 anchors.rightMargin: 4
                 anchors.top: parent.top
-                anchors.topMargin: 4
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: 4
                 radius: HermesTheme.controlRadius
                 color: pickerMouse.containsMouse || activeFocus
                     ? HermesTheme.hover : "transparent"
@@ -161,6 +170,7 @@ Item {
                 spacing: 1
 
                 IconButton {
+                    visible: Hermes.isNewChat
                     symbol: "add_comment"
                     accessibleName: "New Hermes chat"
                     controlSize: 30
@@ -462,8 +472,9 @@ Item {
             id: transcript
             width: parent.width
             conversationId: Hermes.selectedConversationId
-            maxHeight: Math.max(150, content.height - conversationHeader.height
-                - requestArea.height - composer.height - content.spacing * 3)
+            maxHeight: Math.max(140, root.maxHeight - conversationHeader.height
+                - requestArea.height - composerDock.implicitHeight
+                - content.spacing * 3)
         }
 
         Column {
@@ -494,10 +505,25 @@ Item {
             }
         }
 
-        HermesComposer {
-            id: composer
+        Item {
+            id: composerDock
             width: parent.width
-            conversationId: Hermes.selectedConversationId
+            implicitHeight: sessionStrip.height + composer.height
+
+            HermesSessionStrip {
+                id: sessionStrip
+                anchors.top: parent.top
+                width: parent.width
+                conversationId: Hermes.selectedConversationId
+            }
+
+            HermesComposer {
+                id: composer
+                anchors.top: sessionStrip.bottom
+                width: parent.width
+                z: 2
+                conversationId: Hermes.selectedConversationId
+            }
         }
     }
 }
