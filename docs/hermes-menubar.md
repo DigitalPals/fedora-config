@@ -70,17 +70,43 @@ sanitized by the loopback bridge before QML receives them, and the controls
 disappear or disable themselves when the WebUI does not advertise usable
 choices.
 
+The same composer supports up to 20 local file attachments per turn (20 MiB
+each). Quickshell only passes the selected absolute paths to the loopback
+bridge; the bridge opens regular files with a bounded read, uploads them with
+the saved WebUI cookie to `POST /api/upload`, and sends only the WebUI's upload
+records to `POST /api/chat/start`. Local paths, cookie values, and uploaded
+bytes never enter the QML transcript or conversation registry. Persisted
+attachment metadata is reduced to filename, MIME type, size, and image status
+for display.
+
+Writable conversations expose the WebUI's native advanced actions:
+
+- **Branch conversation** uses `POST /api/session/branch`; a message-level
+  branch retains the transcript through that message. Older WebUIs fall back
+  to `POST /api/session/duplicate` followed by a truncate of the new copy.
+- **Edit & resend** uses `POST /api/session/truncate` at the selected user's
+  absolute source row and submits the replacement as a new turn.
+- **Regenerate** fetches a fresh session snapshot and supplies its
+  `regeneration_revision` to `POST /api/chat/start`. The revision guard prevents
+  a stale client from replacing a newer turn.
+
+These actions follow the WebUI's server-side Gateway/Run integration, so the
+Gateway bearer key remains on the remote host rather than becoming a second
+menubar credential.
+
 After authentication the bridge reads the WebUI gateway-stream capability
 probe and publishes the negotiated contract to QML. It also supervises the
 always-on `/api/sessions/events` list-invalidation stream and the selected
 conversation's `/api/session/stream` channel. These recover conversations
 created by another client, background-task completions, and server-initiated
 turns without polling or replaying a prompt. Older WebUI versions degrade to
-manual/list refresh when a stream endpoint is genuinely unavailable. Features
-without an upstream capability signal—attachments, branching, message editing,
-and regeneration—remain disabled rather than being guessed. Model selection
-and reasoning effort are enabled only after their discovery endpoints return a
-usable contract.
+manual/list refresh when a stream endpoint is genuinely unavailable. Advanced
+write routes are discovered with empty validation requests that contain no
+session ID, file, or prompt and therefore cannot mutate remote state. A 400 or
+422 validation response confirms the route; a missing or retired route keeps
+the matching control hidden. Runtime 404/405/410/501 responses downgrade the
+capability immediately. Model selection and reasoning effort are enabled only
+after their read-only discovery endpoints return a usable contract.
 
 The small Python bridge remains loopback-only on `ws://127.0.0.1:9120/ws`. It
 owns the remote cookie and never exposes it to QML; it does not contain or run

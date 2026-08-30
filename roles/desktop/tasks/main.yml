@@ -84,6 +84,9 @@
       - python3
       # Durable JSON-RPC/WebSocket transport for the Hermes menubar bridge.
       - python3-websockets
+      # Native multi-file chooser used by the Hermes composer; selected files
+      # are uploaded by the loopback bridge, never by QML itself.
+      - zenity
       # Online Accounts stores Google OAuth credentials in the keyring;
       # Evolution Data Server exposes its calendar cache to Quickshell.
       - gnome-online-accounts

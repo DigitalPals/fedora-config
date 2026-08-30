@@ -47,6 +47,7 @@ Singleton {
     property string newChatModel: ""
     property string newChatModelProvider: ""
     property var reasoningBySelection: ({})
+    property var attachmentsByConversation: ({})
     property var commandCatalog: []
 
     readonly property var opts: Settings.modOpts.hermes ?? ({})
@@ -589,9 +590,61 @@ Singleton {
         HermesConversations.setDraft(conversationId, value);
     }
 
+    function attachments(conversationId) {
+        const value = attachmentsByConversation[conversationId];
+        return Array.isArray(value) ? value : [];
+    }
+
+    function stageAttachments(conversationId, paths) {
+        const current = attachments(conversationId).slice();
+        for (const raw of (Array.isArray(paths) ? paths : [])) {
+            const path = typeof raw === "string" ? raw.trim() : "";
+            if (path !== "" && !current.some(item => item.path === path)
+                    && current.length < 20) {
+                const pieces = path.split("/");
+                current.push({ path: path,
+                    name: pieces[pieces.length - 1] || "attachment" });
+            }
+        }
+        const next = Object.assign({}, attachmentsByConversation);
+        if (current.length > 0)
+            next[conversationId] = current;
+        else
+            delete next[conversationId];
+        attachmentsByConversation = next;
+    }
+
+    function removeAttachment(conversationId, path) {
+        const next = Object.assign({}, attachmentsByConversation);
+        const remaining = attachments(conversationId).filter(item =>
+            item.path !== path);
+        if (remaining.length > 0)
+            next[conversationId] = remaining;
+        else
+            delete next[conversationId];
+        attachmentsByConversation = next;
+    }
+
+    function moveAttachments(fromId, toId) {
+        const rows = attachments(fromId);
+        if (rows.length === 0)
+            return;
+        const next = Object.assign({}, attachmentsByConversation);
+        next[toId] = rows;
+        delete next[fromId];
+        attachmentsByConversation = next;
+    }
+
+    function clearAttachments(conversationId) {
+        const next = Object.assign({}, attachmentsByConversation);
+        delete next[conversationId];
+        attachmentsByConversation = next;
+    }
+
     function submit(conversationId, text) {
         const prompt = typeof text === "string" ? text.trim() : "";
-        if (prompt === "")
+        const staged = attachments(conversationId);
+        if (prompt === "" && staged.length === 0)
             return "";
         if (conversationId === "") {
             HermesConversations.setError("", "");
@@ -600,13 +653,14 @@ Singleton {
                 model: selection.model,
                 modelProvider: selection.provider
             }, conversation => {
+                root.moveAttachments("", conversation.id);
                 root.submit(conversation.id, prompt);
             }, reason => HermesConversations.setError("", reason));
         }
         const conversation = HermesConversations.conversationById(conversationId);
         if (!conversation || conversation.readOnly || conversation.sessionId === "")
             return "";
-        if (prompt[0] === "/")
+        if (prompt[0] === "/" && staged.length === 0)
             return runCommand(conversationId, prompt);
         const key = HermesRpc.actionKey("prompt", conversationId, "");
         HermesConversations.setError(conversationId, "");
@@ -616,11 +670,13 @@ Singleton {
             text: prompt,
             model: selection.model,
             modelProvider: selection.provider,
+            attachments: staged.map(item => item.path),
             explicitModelPick: selection.model !== ""
                 && (selection.model !== defaultModel
                     || selection.provider !== defaultModelProvider)
         }, result => {
             HermesConversations.setDraft(conversationId, "");
+            root.clearAttachments(conversationId);
             // Some bridges return the accepted user message before the event
             // stream catches up. Applying it is idempotent by message id.
             if (result && result.message)
@@ -843,12 +899,78 @@ Singleton {
         });
     }
 
+    function branchConversation(conversationId, keepCount, onSuccess) {
+        const conversation = HermesConversations.conversationById(conversationId);
+        if (!conversation || conversation.readOnly || conversation.status === "working"
+                || capabilities.branches !== true)
+            return "";
+        const params = { sessionId: conversation.sessionId };
+        if (typeof keepCount === "number" && keepCount >= 0)
+            params.keepCount = Math.floor(keepCount);
+        return HermesRpc.request("session.branch", params, result => {
+            const raw = result?.conversation ?? result?.session ?? result;
+            const branch = HermesConversations.upsertConversation(raw);
+            if (branch)
+                HermesConversations.selectConversation(branch.id, false);
+            onSuccess?.(branch);
+        }, reason => HermesConversations.setError(conversationId, reason), {
+            actionKey: HermesRpc.actionKey("branch", conversationId,
+                typeof keepCount === "number" ? String(keepCount) : "all"),
+            timeoutMs: 60000,
+            fallback: "Could not branch this Hermes conversation"
+        });
+    }
+
+    function editMessage(conversationId, message, text, onSuccess) {
+        const conversation = HermesConversations.conversationById(conversationId);
+        const nextText = typeof text === "string" ? text.trim() : "";
+        if (!conversation || !message || conversation.readOnly
+                || conversation.status === "working"
+                || capabilities.messageEditing !== true || nextText === "")
+            return "";
+        const selection = modelSelection(conversationId);
+        return HermesRpc.request("message.edit", {
+            sessionId: conversation.sessionId,
+            messageId: message.id,
+            sourceIndex: Number(message.sourceIndex),
+            text: nextText,
+            model: selection.model,
+            modelProvider: selection.provider,
+            explicitModelPick: selection.model !== ""
+                && (selection.model !== defaultModel
+                    || selection.provider !== defaultModelProvider)
+        }, result => {
+            onSuccess?.(result);
+        }, reason => HermesConversations.setError(conversationId, reason), {
+            actionKey: HermesRpc.actionKey("edit", conversationId, message.id),
+            timeoutMs: 60000,
+            fallback: "Could not edit this Hermes message"
+        });
+    }
+
+    function regenerate(conversationId) {
+        const conversation = HermesConversations.conversationById(conversationId);
+        if (!conversation || conversation.readOnly
+                || conversation.status === "working"
+                || capabilities.regeneration !== true)
+            return "";
+        return HermesRpc.request("message.regenerate", {
+            sessionId: conversation.sessionId
+        }, () => {}, reason => HermesConversations.setError(conversationId,
+            reason), {
+            actionKey: HermesRpc.actionKey("regenerate", conversationId, ""),
+            timeoutMs: 60000,
+            fallback: "Could not regenerate the Hermes response"
+        });
+    }
+
     function startNewChat() {
         return HermesConversations.selectConversation("", false);
     }
 
     function deleteConversation(conversationId, onFailure) {
         return HermesConversations.deleteConversation(conversationId, () => {
+            root.clearAttachments(conversationId);
             conversationDeleted(conversationId);
         }, onFailure);
     }

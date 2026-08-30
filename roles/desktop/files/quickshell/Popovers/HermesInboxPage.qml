@@ -439,6 +439,24 @@ Item {
                     spacing: 1
 
                     Entry {
+                        visible: Hermes.capabilities.branches === true
+                        height: visible ? 34 : 0
+                        label: Hermes.actionPending("branch",
+                            Hermes.selectedConversationId, "all")
+                            ? "Branching…" : "Branch conversation"
+                        symbol: "call_split"
+                        actionEnabled: root.conversation?.readOnly !== true
+                            && root.conversation?.status !== "working"
+                            && !Hermes.actionPending("branch",
+                                Hermes.selectedConversationId, "all")
+                        onTriggered: {
+                            root.actionsOpen = false;
+                            Hermes.branchConversation(
+                                Hermes.selectedConversationId, undefined);
+                        }
+                    }
+
+                    Entry {
                         label: "Compress context"
                         symbol: "compress"
                         actionEnabled: root.conversation?.readOnly !== true

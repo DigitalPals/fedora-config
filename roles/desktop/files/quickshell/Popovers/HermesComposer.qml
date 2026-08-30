@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell.Io
 import "../Common"
 
 // Persistent per-conversation composer. Enter sends, Shift/Ctrl+Enter adds a line,
@@ -25,6 +26,7 @@ Rectangle {
     readonly property var modelSelection: Hermes.modelSelection(conversationId)
     readonly property var reasoningState: Hermes.reasoningState(conversationId)
     readonly property var reasoningOptions: Hermes.reasoningOptions(conversationId)
+    readonly property var stagedAttachments: Hermes.attachments(conversationId)
     readonly property bool selectorsEnabled: editable && !working && !sending
 
     width: parent ? parent.width : 0
@@ -62,9 +64,27 @@ Rectangle {
     }
 
     function send() {
-        if (!editable || overLimit || promptEdit.text.trim() === "")
+        if (!editable || overLimit || (promptEdit.text.trim() === ""
+                && stagedAttachments.length === 0))
             return;
         Hermes.submit(conversationId, promptEdit.text);
+    }
+
+    function chooseAttachments() {
+        if (!editable || working || filePicker.running
+                || Hermes.capabilities.attachments !== true)
+            return;
+        filePicker.command = ["zenity", "--file-selection", "--multiple",
+            "--separator=\n", "--title=Attach files to Hermes"];
+        filePicker.running = true;
+    }
+
+    function acceptPickedAttachments(exitCode) {
+        if (exitCode !== 0)
+            return;
+        const paths = filePickerOutput.text.split("\n")
+            .map(value => value.trim()).filter(value => value !== "");
+        Hermes.stageAttachments(conversationId, paths);
     }
 
     function steer() {
@@ -90,6 +110,15 @@ Rectangle {
     Connections {
         target: HermesConversations
         function onDraftsChanged() { root.syncDraft(); }
+    }
+
+    Process {
+        id: filePicker
+
+        stdout: StdioCollector { id: filePickerOutput }
+        stderr: StdioCollector {}
+        onExited: code => Qt.callLater(() =>
+            root.acceptPickedAttachments(code))
     }
 
     Column {
@@ -170,6 +199,80 @@ Rectangle {
             }
         }
 
+        Flickable {
+            id: attachmentTray
+            visible: root.stagedAttachments.length > 0
+            width: parent.width
+            height: visible ? 28 : 0
+            contentWidth: attachmentRow.implicitWidth
+            contentHeight: height
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            Row {
+                id: attachmentRow
+                height: parent.height
+                spacing: 5
+
+                Repeater {
+                    model: root.stagedAttachments.map(item => Object.assign({}, item, {
+                        conversationId: root.conversationId,
+                        canRemove: root.editable && !root.working
+                    }))
+
+                    delegate: Rectangle {
+                        id: attachmentChip
+                        required property var modelData
+
+                        width: Math.min(190, attachmentName.implicitWidth + 38)
+                        height: 26
+                        radius: HermesTheme.controlRadius
+                        color: Theme.chip
+                        border.width: 1
+                        border.color: HermesTheme.border
+
+                        Sym {
+                            id: attachmentGlyph
+                            x: 7
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "attach_file"
+                            size: Theme.iconSmall
+                            color: HermesTheme.accent
+                        }
+
+                        Text {
+                            id: attachmentName
+                            anchors.left: attachmentGlyph.right
+                            anchors.leftMargin: 5
+                            anchors.right: removeAttachment.left
+                            anchors.rightMargin: 3
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: attachmentChip.modelData.name
+                            elide: Text.ElideMiddle
+                            font.family: HermesTheme.fontUi
+                            font.pixelSize: Theme.fontMicro
+                            color: HermesTheme.textSecondary
+                        }
+
+                        IconButton {
+                            id: removeAttachment
+                            anchors.right: parent.right
+                            anchors.rightMargin: 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            controlSize: 22
+                            symbol: "close"
+                            accessibleName: "Remove " + attachmentChip.modelData.name
+                            tint: HermesTheme.textFaint
+                            enabled: attachmentChip.modelData.canRemove
+                            onTriggered: Hermes.removeAttachment(
+                                attachmentChip.modelData.conversationId,
+                                attachmentChip.modelData.path)
+                        }
+                    }
+                }
+            }
+        }
+
         Item {
             id: actionRow
             width: parent.width
@@ -185,6 +288,19 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 3
 
+                IconButton {
+                    id: attachmentButton
+                    visible: Hermes.capabilities.attachments === true
+                    controlSize: 28
+                    symbol: filePicker.running ? "progress_activity" : "attach_file"
+                    accessibleName: "Attach files to Hermes"
+                    tint: root.stagedAttachments.length > 0
+                        ? HermesTheme.accent : HermesTheme.textMuted
+                    enabled: root.editable && !root.working && !filePicker.running
+                        && root.stagedAttachments.length < 20
+                    onTriggered: root.chooseAttachments()
+                }
+
                 HermesModelPicker {
                     id: modelSelect
                     conversationId: root.conversationId
@@ -192,6 +308,7 @@ Rectangle {
                     model: root.modelSelection.model
                     label: Hermes.modelLabel(provider, model)
                     maxWidth: Math.max(92, actionRow.width - actionRow.trailingWidth
+                        - (attachmentButton.visible ? attachmentButton.width + 4 : 0)
                         - (effortSelect.visible ? effortSelect.implicitWidth + 18 : 0))
                     enabled: root.selectorsEnabled && Hermes.modelGroups.length > 0
                     onSelected: (provider, model) =>
@@ -332,7 +449,8 @@ Rectangle {
                     anchors.fill: parent
                     enabled: root.working ? !root.stopping
                         : root.editable && !root.overLimit
-                            && promptEdit.text.trim() !== ""
+                            && (promptEdit.text.trim() !== ""
+                                || root.stagedAttachments.length > 0)
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {

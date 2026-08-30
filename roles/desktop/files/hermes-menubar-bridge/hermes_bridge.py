@@ -29,11 +29,13 @@ from http.cookiejar import Cookie, CookieJar
 import ipaddress
 import json
 import logging
+import mimetypes
 import os
 from pathlib import Path
 import random
 import re
 import signal
+import stat
 import sys
 import threading
 import time
@@ -63,6 +65,8 @@ MAX_PROVIDER_RESPONSE = 4 * 1024 * 1024
 MAX_REMOTE_AUTH_RESPONSE = 2 * 1024 * 1024
 MAX_REMOTE_SSE_EVENT = 4 * 1024 * 1024
 MAX_REMOTE_STREAM_EVENT = 4 * 1024 * 1024
+MAX_REMOTE_ATTACHMENT_BYTES = 20 * 1024 * 1024
+MAX_REMOTE_ATTACHMENTS = 20
 REMOTE_HISTORY_PAGE = 80
 REMOTE_HISTORY_MAX_MESSAGES = 250
 REMOTE_HISTORY_MAX_TOOLS = 250
@@ -557,15 +561,22 @@ class RemoteWebUIAuth:
         path: str,
         payload: dict[str, Any] | None,
         timeout: float,
+        *,
+        encoded_body: bytes | None = None,
+        content_type: str = "",
     ) -> dict[str, Any]:
         if not path.startswith("/") or "://" in path:
             raise RpcFault(-32602, "Remote Hermes API path is invalid")
-        body = None
+        body = encoded_body
         headers = {
             "Accept": "application/json",
             "User-Agent": "fedora-config-hermes-menubar-bridge/1",
         }
-        if payload is not None:
+        if encoded_body is not None:
+            if not content_type:
+                raise RpcFault(-32602, "Remote Hermes request content type is required")
+            headers["Content-Type"] = content_type
+        elif payload is not None:
             body = json.dumps(
                 payload, ensure_ascii=False, separators=(",", ":")
             ).encode("utf-8")
@@ -636,6 +647,12 @@ class RemoteWebUIAuth:
         else:
             error_type = ""
 
+        error_code = str(value.get("code") or "").strip().lower()
+        if re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", error_code):
+            data["errorCode"] = error_code
+        else:
+            error_code = ""
+
         if isinstance(value.get("retryable"), bool):
             data["retryable"] = value["retryable"]
 
@@ -676,6 +693,12 @@ class RemoteWebUIAuth:
                 "This Hermes session already has an active response; "
                 "the new prompt was not accepted."
             )
+        elif error_code == "stale_regeneration_revision":
+            message = "This conversation changed; refresh it before regenerating"
+        elif error_code == "unsupported_regeneration_backend":
+            message = "Regeneration is unavailable on this Hermes backend"
+        elif error_code == "invalid_regeneration_request":
+            message = "Hermes rejected the regeneration request"
         else:
             message = f"Remote Hermes returned HTTP {status_code}"
 
@@ -968,6 +991,145 @@ class RemoteWebUIAuth:
         return await asyncio.to_thread(
             self._request_json_sync, method, path, payload, timeout
         )
+
+    async def upload_file(
+        self,
+        path: str,
+        fields: dict[str, str],
+        filename: str,
+        data: bytes,
+        mime_type: str,
+        timeout: float = 60.0,
+    ) -> dict[str, Any]:
+        """Upload one bounded file with the saved WebUI session cookie."""
+
+        return await asyncio.to_thread(
+            self._upload_file_sync,
+            path,
+            fields,
+            filename,
+            data,
+            mime_type,
+            timeout,
+        )
+
+    async def probe_multipart_route(
+        self, path: str, timeout: float = 15.0
+    ) -> int:
+        """Return a multipart route's status after a fully consumed empty form."""
+
+        return await asyncio.to_thread(
+            self._probe_multipart_route_sync, path, timeout
+        )
+
+    def _probe_multipart_route_sync(self, path: str, timeout: float) -> int:
+        boundary = "----HermesMenubarProbe" + uuid.uuid4().hex
+        encoded = (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="session_id"\r\n\r\n'
+            "\r\n"
+            f"--{boundary}--\r\n"
+        ).encode("ascii")
+        with self._lock:
+            if not self.base_url:
+                raise RpcFault(-32040, "Remote Hermes is not configured")
+            try:
+                response = self._request(
+                    self.base_url,
+                    self.cookie_jar,
+                    "POST",
+                    path,
+                    None,
+                    timeout,
+                    encoded_body=encoded,
+                    content_type=f"multipart/form-data; boundary={boundary}",
+                )
+            except _RemoteAuthRequired as exc:
+                status = self._expire_session_locked(exc.status_code)
+                raise RemoteLoginFault(status["message"], status) from None
+            except _RemoteRedirectBlocked:
+                raise RpcFault(
+                    -32041, "Remote Hermes attempted a cross-origin redirect"
+                ) from None
+            except _RemoteTransportError:
+                raise RpcFault(-32042, "Remote Hermes is unreachable") from None
+            if response["status"] == 401:
+                status = self._expire_session_locked(401)
+                raise RemoteLoginFault(status["message"], status)
+            return int(response["status"])
+
+    def _upload_file_sync(
+        self,
+        path: str,
+        fields: dict[str, str],
+        filename: str,
+        data: bytes,
+        mime_type: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        if len(data) > MAX_REMOTE_ATTACHMENT_BYTES:
+            raise RpcFault(-32602, "Attachment is larger than 20 MiB")
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(filename).name)[:200]
+        if not safe_name or safe_name.strip(".") == "":
+            safe_name = "attachment"
+        boundary = "----HermesMenubar" + uuid.uuid4().hex
+        chunks: list[bytes] = []
+        for name, value in fields.items():
+            safe_field = re.sub(r"[^A-Za-z0-9_-]", "", str(name))[:80]
+            if not safe_field:
+                continue
+            chunks.extend([
+                f"--{boundary}\r\n".encode("ascii"),
+                (
+                    f'Content-Disposition: form-data; name="{safe_field}"\r\n\r\n'
+                ).encode("ascii"),
+                str(value).encode("utf-8"),
+                b"\r\n",
+            ])
+        chunks.extend([
+            f"--{boundary}\r\n".encode("ascii"),
+            (
+                'Content-Disposition: form-data; name="file"; '
+                f'filename="{safe_name}"\r\n'
+            ).encode("ascii"),
+            f"Content-Type: {mime_type or 'application/octet-stream'}\r\n\r\n".encode(
+                "ascii", errors="replace"
+            ),
+            data,
+            b"\r\n",
+            f"--{boundary}--\r\n".encode("ascii"),
+        ])
+        encoded = b"".join(chunks)
+
+        with self._lock:
+            if not self.base_url:
+                raise RpcFault(-32040, "Remote Hermes is not configured")
+            try:
+                response = self._request(
+                    self.base_url,
+                    self.cookie_jar,
+                    "POST",
+                    path,
+                    None,
+                    timeout,
+                    encoded_body=encoded,
+                    content_type=f"multipart/form-data; boundary={boundary}",
+                )
+            except _RemoteAuthRequired as exc:
+                status = self._expire_session_locked(exc.status_code)
+                raise RemoteLoginFault(status["message"], status) from None
+            except _RemoteRedirectBlocked:
+                raise RpcFault(
+                    -32041, "Remote Hermes attempted a cross-origin redirect"
+                ) from None
+            except _RemoteTransportError:
+                raise RpcFault(-32042, "Remote Hermes is unreachable") from None
+            if response["status"] == 401:
+                status = self._expire_session_locked(401)
+                raise RemoteLoginFault(status["message"], status)
+            if not 200 <= response["status"] < 300:
+                raise self._http_error_fault(response)
+            return self._json_response(response)
 
     def _request_json_sync(
         self,
@@ -1702,6 +1864,8 @@ class HermesBridge:
             "gatewaySessions": False,
             "attachments": False,
             "branches": False,
+            "nativeBranches": False,
+            "duplicateSessions": False,
             "messageEditing": False,
             "regeneration": False,
             "modelSelection": False,
@@ -1874,6 +2038,16 @@ class HermesBridge:
             features.append("persistent-session-events")
         if self.remote_contract.get("globalSessionEvents") is True:
             features.append("session-list-events")
+        for enabled, feature in (
+            (self.remote_contract.get("attachments"), "attachments"),
+            (self.remote_contract.get("branches"), "session-branches"),
+            (self.remote_contract.get("messageEditing"), "message-editing"),
+            (self.remote_contract.get("regeneration"), "regeneration"),
+            (self.remote_contract.get("modelSelection"), "model-selection"),
+            (self.remote_contract.get("reasoningEffort"), "reasoning-effort"),
+        ):
+            if enabled is True:
+                features.append(feature)
         if self.local_backend_enabled:
             features.extend(
                 ["raw-proxy", "provider-readiness", "custom-provider-setup"]
@@ -2139,17 +2313,46 @@ class HermesBridge:
             if not self.remote_auth.base_url:
                 raise RpcFault(-32601, "Session model controls require a remote Hermes WebUI")
             return await self.remote_session_configure(conversation, params)
+        if method in {"session.branch", "conversations.branch"}:
+            conversation = self.resolve_conversation(params)
+            if not self.remote_auth.base_url:
+                raise RpcFault(-32601, "Session branches require a remote Hermes WebUI")
+            if conversation.get("read_only"):
+                raise RpcFault(-32046, "This conversation is read-only")
+            return await self.remote_branch_conversation(conversation, params)
+        if method == "message.edit":
+            conversation = self.resolve_conversation(params)
+            if not self.remote_auth.base_url:
+                raise RpcFault(-32601, "Message editing requires a remote Hermes WebUI")
+            if conversation.get("read_only"):
+                raise RpcFault(-32046, "This conversation is read-only")
+            return await self.remote_edit_message(conversation, params)
+        if method in {"message.regenerate", "session.regenerate"}:
+            conversation = self.resolve_conversation(params)
+            if not self.remote_auth.base_url:
+                raise RpcFault(-32601, "Regeneration requires a remote Hermes WebUI")
+            if conversation.get("read_only"):
+                raise RpcFault(-32046, "This conversation is read-only")
+            return await self.remote_regenerate(conversation)
         if method == "prompt.submit":
             conversation = self.resolve_conversation(params)
             if conversation.get("read_only"):
                 raise RpcFault(-32046, "This conversation is read-only")
-            text = params.get("text")
-            if not isinstance(text, str) or not text.strip():
-                raise RpcFault(-32602, "text is required")
+            text = params.get("text", "")
+            if text is None:
+                text = ""
+            attachments = params.get("attachments")
+            has_attachments = isinstance(attachments, list) and bool(attachments)
+            if not isinstance(text, str) or (not text.strip() and not has_attachments):
+                raise RpcFault(-32602, "text or an attachment is required")
             if len(text.encode("utf-8")) > MAX_DOWNSTREAM_MESSAGE:
                 raise RpcFault(-32602, "prompt is too large")
             if self.remote_auth.base_url:
                 return await self.remote_prompt_submit(conversation, text, params)
+            if has_attachments:
+                raise RpcFault(-32601, "Attachments require a remote Hermes WebUI")
+            if not text.strip():
+                raise RpcFault(-32602, "text is required")
             runtime = await self.ensure_runtime(conversation)
             await self.set_conversation_status(conversation, "working", "Hermes is working…")
             upstream_params = {"session_id": runtime, "text": text}
@@ -2940,6 +3143,34 @@ class HermesBridge:
         )
         return state
 
+    async def remote_route_supported(
+        self, path: str, *, multipart: bool = False
+    ) -> bool:
+        """Probe a write route with an invalid, guaranteed non-mutating body."""
+
+        if multipart:
+            previous = self.remote_auth.status
+            try:
+                status_code = await self.remote_auth.probe_multipart_route(path)
+            except RemoteLoginFault:
+                await self.publish_remote_status(self.remote_auth.status, previous)
+                raise
+            return status_code in {200, 400, 409, 415, 422}
+        try:
+            await self.remote_request("POST", path, {}, timeout=15)
+            return True
+        except RpcFault as fault:
+            details = fault.data if isinstance(fault.data, dict) else {}
+            status_code = int(details.get("statusCode") or 0)
+            # These responses mean routing and validation both ran. The empty
+            # object cannot identify a session, file, or prompt to mutate.
+            return status_code in {400, 409, 415, 422}
+
+    async def downgrade_remote_action(self, capability: str, fault: RpcFault) -> None:
+        details = fault.data if isinstance(fault.data, dict) else {}
+        if int(details.get("statusCode") or 0) in {404, 405, 410, 501}:
+            await self.update_remote_contract(**{capability: False})
+
     async def probe_remote_contract(self) -> dict[str, Any]:
         """Negotiate the read-only WebUI stream contract without guessing writes."""
 
@@ -2971,6 +3202,25 @@ class HermesBridge:
             await self.remote_reasoning_state({})
         except RpcFault:
             await self.update_remote_contract(reasoningEffort=False)
+        route_support: dict[str, bool] = {
+            "attachments": await self.remote_route_supported(
+                "/api/upload", multipart=True
+            ),
+            "messageEditing": await self.remote_route_supported(
+                "/api/session/truncate"
+            ),
+            "regeneration": await self.remote_route_supported(
+                "/api/session/retry"
+            ),
+        }
+        native_branch = await self.remote_route_supported("/api/session/branch")
+        duplicate = await self.remote_route_supported("/api/session/duplicate")
+        route_support["nativeBranches"] = native_branch
+        route_support["duplicateSessions"] = duplicate
+        route_support["branches"] = native_branch or (
+            duplicate and route_support["messageEditing"]
+        )
+        await self.update_remote_contract(**route_support)
         return dict(self.remote_contract)
 
     async def start_remote_observers(self) -> None:
@@ -3547,6 +3797,34 @@ class HermesBridge:
         return bounded(text)
 
     @staticmethod
+    def _remote_attachments(value: Any) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        if not isinstance(value, list):
+            return rows
+        for item in value[:MAX_REMOTE_ATTACHMENTS]:
+            source = item if isinstance(item, dict) else {}
+            raw_name = (
+                source.get("name") or source.get("filename") or source.get("path")
+                if source else item
+            )
+            name = Path(str(raw_name or "attachment")).name.strip()[:200]
+            if not name:
+                name = "attachment"
+            mime_type = str(source.get("mime") or "").strip()[:160]
+            try:
+                size = max(0, min(MAX_REMOTE_ATTACHMENT_BYTES, int(source.get("size") or 0)))
+            except (TypeError, ValueError):
+                size = 0
+            rows.append({
+                "name": name,
+                "mime": mime_type,
+                "size": size,
+                "isImage": source.get("is_image") is True
+                or mime_type.startswith("image/"),
+            })
+        return rows
+
+    @staticmethod
     def _remote_tool_id(value: dict[str, Any]) -> str:
         return str(
             value.get("tool_call_id")
@@ -3752,6 +4030,9 @@ class HermesBridge:
                     "pending": pending,
                     "error": error,
                     "model": str(message.get("model") or "")[:256],
+                    "attachments": cls._remote_attachments(
+                        message.get("attachments")
+                    ),
                     "order": order,
                     "sourceIndex": offset + index,
                 }
@@ -3913,6 +4194,9 @@ class HermesBridge:
         pending_steer = session.get("pending_steer")
         if isinstance(pending_steer, str) and pending_steer.strip():
             state["pendingSteer"] = pending_steer.strip()[:2000]
+        regeneration_revision = session.get("regeneration_revision")
+        if isinstance(regeneration_revision, str) and regeneration_revision.strip():
+            state["regenerationRevision"] = regeneration_revision.strip()[:512]
         return state
 
     async def apply_remote_session_snapshot(
@@ -4128,6 +4412,345 @@ class HermesBridge:
             conversation, {"conversation": public, "upstream": result, **public}
         )
 
+    @staticmethod
+    def local_attachment(path_value: Any) -> tuple[str, bytes, str]:
+        """Read one user-selected regular file without following a final symlink."""
+
+        if not isinstance(path_value, str) or not path_value.strip():
+            raise RpcFault(-32602, "Attachment path is invalid")
+        candidate = Path(path_value).expanduser()
+        if not candidate.is_absolute():
+            raise RpcFault(-32602, "Attachment path must be absolute")
+        try:
+            resolved = candidate.resolve(strict=True)
+            descriptor = os.open(
+                resolved, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            )
+        except (OSError, RuntimeError) as exc:
+            raise RpcFault(-32602, "Attachment could not be opened") from exc
+        try:
+            details = os.fstat(descriptor)
+            if not stat.S_ISREG(details.st_mode):
+                raise RpcFault(-32602, "Attachment must be a regular file")
+            if details.st_size > MAX_REMOTE_ATTACHMENT_BYTES:
+                raise RpcFault(-32602, "Attachment is larger than 20 MiB")
+            chunks: list[bytes] = []
+            remaining = MAX_REMOTE_ATTACHMENT_BYTES + 1
+            while remaining > 0:
+                chunk = os.read(descriptor, min(1024 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            data = b"".join(chunks)
+            if len(data) > MAX_REMOTE_ATTACHMENT_BYTES:
+                raise RpcFault(-32602, "Attachment is larger than 20 MiB")
+        finally:
+            os.close(descriptor)
+        mime_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
+        return resolved.name[:200], data, mime_type[:160]
+
+    async def remote_upload_attachments(
+        self, session_id: str, raw_paths: Any
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if raw_paths in (None, []):
+            return [], []
+        if not isinstance(raw_paths, list):
+            raise RpcFault(-32602, "attachments must be a list")
+        if len(raw_paths) > MAX_REMOTE_ATTACHMENTS:
+            raise RpcFault(-32602, "A prompt can contain at most 20 attachments")
+
+        uploads: list[dict[str, Any]] = []
+        public: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for raw_path in raw_paths:
+            path_text = str(raw_path) if isinstance(raw_path, str) else ""
+            if not path_text or path_text in seen:
+                continue
+            seen.add(path_text)
+            filename, data, mime_type = self.local_attachment(path_text)
+            previous_status = self.remote_auth.status
+            try:
+                result = await self.remote_auth.upload_file(
+                    "/api/upload",
+                    {"session_id": session_id},
+                    filename,
+                    data,
+                    mime_type,
+                    timeout=90,
+                )
+            except RemoteLoginFault:
+                await self.publish_remote_status(
+                    self.remote_auth.status, previous_status
+                )
+                raise
+            except RpcFault as fault:
+                await self.downgrade_remote_action("attachments", fault)
+                raise
+            server_path = str(result.get("path") or "").strip()
+            uploaded_name = str(result.get("filename") or filename).strip()[:200]
+            if not server_path or len(server_path) > 4096:
+                raise RpcFault(-32045, "Remote Hermes returned an invalid upload")
+            try:
+                size = max(0, min(MAX_REMOTE_ATTACHMENT_BYTES, int(result.get("size") or len(data))))
+            except (TypeError, ValueError):
+                size = len(data)
+            uploaded_mime = str(result.get("mime") or mime_type).strip()[:160]
+            is_image = result.get("is_image") is True or uploaded_mime.startswith("image/")
+            uploads.append({
+                "name": uploaded_name or filename,
+                "filename": uploaded_name or filename,
+                "path": server_path,
+                "size": size,
+                "mime": uploaded_mime,
+                "is_image": is_image,
+            })
+            public.append({
+                "name": uploaded_name or filename,
+                "size": size,
+                "mime": uploaded_mime,
+                "isImage": is_image,
+            })
+        if uploads:
+            await self.update_remote_contract(attachments=True)
+        return uploads, public
+
+    async def remote_branch_conversation(
+        self, conversation: dict[str, Any], params: dict[str, Any]
+    ) -> dict[str, Any]:
+        session_id = await self.ensure_remote_session(conversation)
+        body: dict[str, Any] = {"session_id": session_id}
+        keep_value = params.get("keepCount", params.get("keep_count"))
+        if keep_value is not None:
+            try:
+                keep_count = int(keep_value)
+            except (TypeError, ValueError) as exc:
+                raise RpcFault(-32602, "keepCount must be an integer") from exc
+            if keep_count < 0:
+                raise RpcFault(-32602, "keepCount must be non-negative")
+            body["keep_count"] = keep_count
+        title = params.get("title")
+        if isinstance(title, str) and title.strip():
+            body["title"] = title.strip()[:80]
+        result: dict[str, Any] | None = None
+        native_branch = self.remote_contract.get("nativeBranches") is True
+        if native_branch:
+            try:
+                result = await self.remote_request(
+                    "POST", "/api/session/branch", body, timeout=45
+                )
+            except RpcFault as fault:
+                details = fault.data if isinstance(fault.data, dict) else {}
+                if int(details.get("statusCode") or 0) not in {404, 405, 410, 501}:
+                    raise
+                await self.update_remote_contract(nativeBranches=False)
+        if result is None:
+            if self.remote_contract.get("duplicateSessions") is not True \
+                    or self.remote_contract.get("messageEditing") is not True:
+                await self.update_remote_contract(branches=False)
+                raise RpcFault(-32601, "This Hermes WebUI does not support branches")
+            try:
+                duplicate = await self.remote_request(
+                    "POST",
+                    "/api/session/duplicate",
+                    {"session_id": session_id},
+                    timeout=60,
+                )
+            except RpcFault as fault:
+                details = fault.data if isinstance(fault.data, dict) else {}
+                if int(details.get("statusCode") or 0) in {404, 405, 410, 501}:
+                    await self.update_remote_contract(
+                        duplicateSessions=False, branches=False
+                    )
+                raise
+            duplicate_session = duplicate.get("session")
+            branch_id = str(
+                duplicate_session.get("session_id")
+                if isinstance(duplicate_session, dict) else ""
+            ).strip()
+            if not CONVERSATION_ID_PATTERN.fullmatch(branch_id):
+                raise RpcFault(-32045, "Remote Hermes returned an invalid branch")
+            try:
+                if "keep_count" in body:
+                    await self.remote_request(
+                        "POST",
+                        "/api/session/truncate",
+                        {
+                            "session_id": branch_id,
+                            "keep_count": body["keep_count"],
+                        },
+                        timeout=60,
+                    )
+                branch_title = str(
+                    body.get("title")
+                    or f"{conversation.get('title') or 'Untitled chat'} (fork)"
+                )[:80]
+                await self.remote_request(
+                    "POST",
+                    "/api/session/rename",
+                    {"session_id": branch_id, "title": branch_title},
+                    timeout=30,
+                )
+            except RpcFault:
+                with suppress(RpcFault):
+                    await self.remote_request(
+                        "POST",
+                        "/api/session/delete",
+                        {"session_id": branch_id},
+                        timeout=30,
+                    )
+                raise
+            result = {
+                "session_id": branch_id,
+                "title": branch_title,
+                "parent_session_id": session_id,
+                "fallback": "duplicate_truncate",
+            }
+        branch_id = str(result.get("session_id") or "").strip()
+        if not CONVERSATION_ID_PATTERN.fullmatch(branch_id):
+            raise RpcFault(-32045, "Remote Hermes returned an invalid branch")
+        snapshot = await self.remote_request(
+            "GET",
+            "/api/session?session_id=" + quote(branch_id, safe="")
+            + "&messages=1&expand_renderable=1&msg_limit="
+            + str(REMOTE_HISTORY_PAGE),
+            timeout=30,
+        )
+        session = snapshot.get("session")
+        if not isinstance(session, dict):
+            raise RpcFault(-32045, "Remote Hermes returned an invalid branch")
+        branch = self.remote_conversation_record(session)
+        self.registry.conversations[branch["id"]] = branch
+        self.conversation_by_remote_session[branch_id] = branch["id"]
+        await self.update_remote_contract(branches=True)
+        await self.select_conversation(branch)
+        await self.apply_remote_session_snapshot(branch, session)
+        public = self.public_conversation(branch)
+        await self.broadcast_event(
+            "conversation.created", {"conversation": public, **public}
+        )
+        return self.routed_payload(
+            branch,
+            {
+                "conversation": public,
+                "parentSessionId": session_id,
+                "upstream": result,
+                **public,
+            },
+        )
+
+    async def remote_edit_message(
+        self, conversation: dict[str, Any], params: dict[str, Any]
+    ) -> dict[str, Any]:
+        text = params.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise RpcFault(-32602, "Edited message text is required")
+        if len(text.encode("utf-8")) > MAX_DOWNSTREAM_MESSAGE:
+            raise RpcFault(-32602, "Edited message is too large")
+        source_value = params.get("sourceIndex", params.get("source_index"))
+        try:
+            keep_count = int(source_value)
+        except (TypeError, ValueError) as exc:
+            raise RpcFault(-32602, "Message source index is required") from exc
+        if keep_count < 0:
+            raise RpcFault(-32602, "Message source index is invalid")
+        session_id = await self.ensure_remote_session(conversation)
+        try:
+            truncated = await self.remote_request(
+                "POST",
+                "/api/session/truncate",
+                {"session_id": session_id, "keep_count": keep_count},
+                timeout=45,
+            )
+        except RpcFault as fault:
+            await self.downgrade_remote_action("messageEditing", fault)
+            raise
+        session = truncated.get("session")
+        if isinstance(session, dict):
+            await self.apply_remote_session_snapshot(conversation, session)
+        await self.update_remote_contract(messageEditing=True)
+        submit_params = dict(params)
+        submit_params["displayText"] = text.strip()
+        return await self.remote_prompt_submit(conversation, text, submit_params)
+
+    async def remote_regenerate(
+        self, conversation: dict[str, Any]
+    ) -> dict[str, Any]:
+        session_id = await self.ensure_remote_session(conversation)
+        snapshot = await self.remote_request(
+            "GET",
+            "/api/session?session_id=" + quote(session_id, safe="")
+            + "&messages=1&expand_renderable=1&msg_limit=1",
+            timeout=30,
+        )
+        session = snapshot.get("session")
+        revision = str(
+            session.get("regeneration_revision") if isinstance(session, dict) else ""
+            or ""
+        ).strip()
+        if not revision:
+            raise RpcFault(-32046, "This conversation has no response to regenerate")
+        await self.set_conversation_status(
+            conversation, "working", "Regenerating Hermes response…"
+        )
+        try:
+            result = await self.remote_request(
+                "POST",
+                "/api/chat/start",
+                {
+                    "session_id": session_id,
+                    "regenerate": True,
+                    "regeneration_revision": revision[:512],
+                },
+                timeout=45,
+            )
+        except AmbiguousDelivery as fault:
+            await self.set_conversation_status(
+                conversation,
+                "reconnecting",
+                "Checking Hermes after regeneration disconnected…",
+            )
+            await self.broadcast_event(
+                "session.error",
+                self.routed_payload(
+                    conversation,
+                    {
+                        "message": fault.message,
+                        "deliveryUnknown": True,
+                        "replayed": False,
+                    },
+                ),
+            )
+            raise
+        except RpcFault as fault:
+            await self.downgrade_remote_action("regeneration", fault)
+            await self.set_conversation_status(conversation, "error", fault.message)
+            raise
+        stream_id = str(result.get("stream_id") or "")
+        if not stream_id:
+            await self.set_conversation_status(conversation, "error", "Regeneration failed")
+            raise RpcFault(-32045, "Remote Hermes did not start regeneration")
+        await self.update_remote_contract(regeneration=True)
+        await self.broadcast_event(
+            "message.start",
+            self.routed_payload(
+                conversation,
+                {
+                    "id": f"remote-assistant-{stream_id}",
+                    "role": "assistant",
+                    "text": "",
+                    "streamId": stream_id,
+                },
+            ),
+        )
+        await self.start_remote_stream(conversation, session_id, stream_id)
+        with suppress(RpcFault):
+            await self.remote_history(conversation, {"limit": REMOTE_HISTORY_PAGE})
+        return self.routed_payload(
+            conversation,
+            {"accepted": True, "streamId": stream_id, "upstream": result},
+        )
+
     async def remote_prompt_submit(
         self,
         conversation: dict[str, Any],
@@ -4135,12 +4758,38 @@ class HermesBridge:
         params: dict[str, Any],
     ) -> dict[str, Any]:
         session_id = await self.ensure_remote_session(conversation)
+        uploaded: list[dict[str, Any]] = []
+        public_attachments: list[dict[str, Any]] = []
+        raw_attachments = params.get("attachments")
+        if isinstance(raw_attachments, list) and raw_attachments:
+            await self.set_conversation_status(
+                conversation, "working", "Uploading attachments…"
+            )
+            try:
+                uploaded, public_attachments = await self.remote_upload_attachments(
+                    session_id, raw_attachments
+                )
+            except RpcFault as fault:
+                await self.set_conversation_status(conversation, "error", fault.message)
+                raise
+        attachment_names = [str(row.get("name") or "Attachment") for row in uploaded]
+        agent_text = text.strip()
+        if uploaded:
+            attachment_note = ", ".join(attachment_names)
+            if agent_text:
+                agent_text += "\n\n[Attached files: " + attachment_note + "]"
+            else:
+                agent_text = (
+                    f"I've attached {len(uploaded)} file(s): {attachment_note}"
+                )
         await self.set_conversation_status(conversation, "working", "Hermes is working…")
         previously_had_messages = conversation["has_messages"]
         body: dict[str, Any] = {
             "session_id": session_id,
-            "message": text.strip(),
+            "message": agent_text,
         }
+        if uploaded:
+            body["attachments"] = uploaded
         model = str(params.get("model") or conversation.get("model") or "").strip()
         provider = str(
             params.get("modelProvider") or params.get("model_provider")
@@ -4222,6 +4871,10 @@ class HermesBridge:
         conversation["has_messages"] = True
         self.registry.save()
         display_text = str(params.get("displayText") or text).strip()
+        if not display_text and public_attachments:
+            display_text = "Attached " + ", ".join(
+                str(row.get("name") or "file") for row in public_attachments
+            )
         await self.broadcast_event(
             "message.created",
             self.routed_payload(
@@ -4230,6 +4883,7 @@ class HermesBridge:
                     "id": f"remote-user-{stream_id}",
                     "role": "user",
                     "text": display_text,
+                    "attachments": public_attachments,
                     "createdAt": utc_now(),
                 },
             ),

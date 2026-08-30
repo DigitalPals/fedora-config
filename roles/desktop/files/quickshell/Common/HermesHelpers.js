@@ -198,6 +198,24 @@ function normalizeRole(value) {
     return "metadata";
 }
 
+function normalizeAttachments(value) {
+    return array(value).slice(0, 20).map(function(raw) {
+        var item = object(raw);
+        var source = firstString(item.name, item.filename, item.path,
+            typeof raw === "string" ? raw : "attachment");
+        var pieces = source.replace(/\\/g, "/").split("/");
+        var name = pieces[pieces.length - 1] || "attachment";
+        var mime = firstString(item.mime, item.mimeType, item.mime_type);
+        return {
+            name: name.slice(0, 200),
+            mime: mime.slice(0, 160),
+            size: Math.max(0, Math.floor(number(item.size, 0))),
+            isImage: bool(item.isImage, bool(item.is_image,
+                mime.indexOf("image/") === 0))
+        };
+    });
+}
+
 function normalizeMessage(raw, index) {
     var value = object(raw);
     var nested = object(value.message);
@@ -221,6 +239,7 @@ function normalizeMessage(raw, index) {
         pending: bool(value.pending, false),
         error: firstString(value.error),
         model: firstString(value.model, value.modelName),
+        attachments: normalizeAttachments(value.attachments),
         parentId: firstString(value.parentId, value.parent_id,
             value.parentMessageId, value.parent_message_id),
         order: number(value.order, number(value.timelineOrder,
@@ -234,7 +253,8 @@ function renderableMessage(message) {
     if (!message || ["user", "assistant", "system"].indexOf(message.role) < 0)
         return false;
     return string(message.text).trim() !== "" || message.streaming === true
-        || message.pending === true || string(message.error).trim() !== "";
+        || message.pending === true || string(message.error).trim() !== ""
+        || array(message.attachments).length > 0;
 }
 
 function messageList(value) {

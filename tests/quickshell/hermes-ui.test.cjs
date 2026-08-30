@@ -286,3 +286,37 @@ test("Hermes uses the compact T3-style composer with live model and reasoning co
     assert.match(bridge, /"POST", "\/api\/session\/update"/);
     assert.match(bridge, /"explicit_model_pick"/);
 });
+
+test("Hermes exposes capability-gated attachments, branches, editing, and regeneration", () => {
+    const facade = read("Common/Hermes.qml");
+    const composer = read("Popovers/HermesComposer.qml");
+    const transcript = read("Popovers/HermesTranscript.qml");
+    const inbox = read("Popovers/HermesInboxPage.qml");
+    const helpers = read("Common/HermesHelpers.js");
+    const bridge = readRepo(
+        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
+
+    assert.match(composer, /Hermes\.capabilities\.attachments === true/);
+    assert.match(composer, /"zenity", "--file-selection", "--multiple"/);
+    assert.match(composer, /Hermes\.stageAttachments/);
+    assert.match(facade,
+        /"prompt\.submit"[\s\S]{0,300}?attachments:\s*staged\.map/);
+    assert.match(bridge, /multipart\/form-data; boundary=/);
+    assert.match(bridge, /MAX_REMOTE_ATTACHMENT_BYTES\s*=\s*20 \* 1024 \* 1024/);
+    assert.match(bridge, /O_NOFOLLOW/);
+    assert.match(bridge, /self\.remote_auth\.upload_file\(\s*"\/api\/upload"/);
+    assert.match(helpers, /function normalizeAttachments/);
+
+    assert.match(inbox, /Hermes\.capabilities\.branches === true/);
+    assert.match(transcript, /Hermes\.capabilities\.branches === true/);
+    assert.match(transcript, /Hermes\.capabilities\.messageEditing === true/);
+    assert.match(transcript, /Hermes\.capabilities\.regeneration === true/);
+    assert.match(facade, /HermesRpc\.request\("session\.branch"/);
+    assert.match(facade, /HermesRpc\.request\("message\.edit"/);
+    assert.match(facade, /HermesRpc\.request\("message\.regenerate"/);
+    assert.match(bridge, /"\/api\/session\/branch"/);
+    assert.match(bridge, /"\/api\/session\/truncate"/);
+    assert.match(bridge, /"regeneration_revision"/);
+    assert.match(bridge, /remote_route_supported/,
+        "older WebUIs must be probed before advanced controls appear");
+});

@@ -8,14 +8,15 @@ Item {
 
     required property string conversationId
     property bool expanded: false
-    readonly property var state:
+    readonly property var sessionState:
         HermesConversations.sessionStateFor(conversationId)
-    readonly property bool hasState: state.warning !== ""
-        || state.goalMessage !== "" || state.todos.length > 0
-        || state.pendingSteer !== "" || state.background !== ""
-        || state.reasoning !== "" || Object.keys(state.context).length > 0
-        || Object.keys(state.usage).length > 0
-    readonly property bool expandable: state.reasoning !== ""
+    readonly property bool hasState: sessionState.warning !== ""
+        || sessionState.goalMessage !== "" || sessionState.todos.length > 0
+        || sessionState.pendingSteer !== "" || sessionState.background !== ""
+        || sessionState.reasoning !== ""
+        || Object.keys(sessionState.context).length > 0
+        || Object.keys(sessionState.usage).length > 0
+    readonly property bool expandable: sessionState.reasoning !== ""
 
     width: parent ? parent.width : 0
     height: hasState ? strip.height : 0
@@ -31,32 +32,32 @@ Item {
     }
 
     function summary() {
-        if (state.warning !== "")
-            return state.warning;
-        if (state.pendingSteer !== "")
+        if (sessionState.warning !== "")
+            return sessionState.warning;
+        if (sessionState.pendingSteer !== "")
             return "Steering saved for the next turn";
-        if (state.goalMessage !== "")
-            return state.goalMessage;
-        const todo = state.todoSummary ?? ({});
-        const total = Number(todo.total) || state.todos.length;
+        if (sessionState.goalMessage !== "")
+            return sessionState.goalMessage;
+        const todo = sessionState.todoSummary ?? ({});
+        const total = Number(todo.total) || sessionState.todos.length;
         if (total > 0)
             return String(Number(todo.completed) || 0) + " of " + total
                 + " tasks complete";
-        const context = state.context ?? ({});
+        const context = sessionState.context ?? ({});
         const used = Number(context.lastPromptTokens ?? context.last_prompt_tokens) || 0;
         const length = Number(context.contextLength ?? context.context_length) || 0;
         if (used > 0 && length > 0)
             return "Context " + Math.min(100, Math.round(used / length * 100)) + "%";
-        const usage = state.usage ?? ({});
+        const usage = sessionState.usage ?? ({});
         const tokens = Number(usage.total_tokens)
             || Number(usage.input_tokens) + Number(usage.output_tokens);
         if (tokens > 0)
             return compactNumber(tokens) + " tokens this turn";
-        if (state.reasoningActive)
+        if (sessionState.reasoningActive)
             return "Hermes is reasoning…";
-        if (state.reasoning !== "")
+        if (sessionState.reasoning !== "")
             return "Reasoning available";
-        return state.background;
+        return sessionState.background;
     }
 
     Rectangle {
@@ -65,10 +66,10 @@ Item {
         width: Math.max(0, parent.width - 36)
         height: stripColumn.implicitHeight + 10
         radius: HermesTheme.panelRadius
-        color: root.state.warning !== "" ? HermesTheme.redSoft
+        color: root.sessionState.warning !== "" ? HermesTheme.redSoft
             : HermesTheme.surfaceRaised
         border.width: 1
-        border.color: root.state.warning !== "" ? HermesTheme.redBorder
+        border.color: root.sessionState.warning !== "" ? HermesTheme.redBorder
             : HermesTheme.border
         activeFocusOnTab: root.expandable
         Accessible.role: Accessible.Button
@@ -87,12 +88,13 @@ Item {
                 spacing: 7
 
                 Sym {
-                    name: root.state.warning !== "" ? "warning"
-                        : root.state.goalMessage !== "" ? "flag"
-                            : root.state.todos.length > 0 ? "checklist"
-                                : root.state.reasoningActive ? "psychology" : "info"
+                    name: root.sessionState.warning !== "" ? "warning"
+                        : root.sessionState.goalMessage !== "" ? "flag"
+                            : root.sessionState.todos.length > 0 ? "checklist"
+                                : root.sessionState.reasoningActive
+                                    ? "psychology" : "info"
                     size: Theme.iconSmall
-                    color: root.state.warning !== "" ? HermesTheme.red
+                    color: root.sessionState.warning !== "" ? HermesTheme.red
                         : HermesTheme.accent
                 }
 
@@ -102,7 +104,7 @@ Item {
                     elide: Text.ElideRight
                     font.family: HermesTheme.fontUi
                     font.pixelSize: Theme.fontCaption
-                    color: root.state.warning !== "" ? HermesTheme.red
+                    color: root.sessionState.warning !== "" ? HermesTheme.red
                         : HermesTheme.textSecondary
                 }
 
@@ -117,7 +119,7 @@ Item {
             Text {
                 visible: root.expanded && root.expandable
                 width: parent.width
-                text: root.state.reasoning
+                text: root.sessionState.reasoning
                 textFormat: Text.PlainText
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 maximumLineCount: 10

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
@@ -54,6 +56,10 @@ class FakeRemote:
         self.compress_requests: list[dict[str, Any]] = []
         self.session_update_requests: list[dict[str, Any]] = []
         self.reasoning_requests: list[dict[str, Any]] = []
+        self.upload_requests: list[dict[str, Any]] = []
+        self.branch_requests: list[dict[str, Any]] = []
+        self.duplicate_requests: list[dict[str, Any]] = []
+        self.truncate_requests: list[dict[str, Any]] = []
         self.chat_start_requests: list[dict[str, Any]] = []
         self.approval_responses: list[dict[str, Any]] = []
         self.clarify_responses: list[dict[str, Any]] = []
@@ -112,9 +118,18 @@ class FakeRemote:
                 "model": session.get("model", "fixture/model"),
                 "model_provider": session.get("model_provider", "fixture-provider"),
                 "read_only": False,
+                "regeneration_revision": "fixture-revision-"
+                + str(len(session["messages"])),
             }
 
-    def start_stream(self, session_id: str, message: str) -> str:
+    def start_stream(
+        self,
+        session_id: str,
+        message: str,
+        attachments: list[dict[str, Any]] | None = None,
+        *,
+        regeneration: bool = False,
+    ) -> str:
         with self.lock:
             session = self.sessions[session_id]
             self.stream_counter += 1
@@ -122,14 +137,39 @@ class FakeRemote:
             stream = {
                 "stream_id": stream_id,
                 "session_id": session_id,
-                "mode": "cancel" if message == self.cancel_prompt else "interactive",
+                "mode": "cancel" if message == self.cancel_prompt
+                    else "simple" if regeneration
+                    or message.startswith("Edited fixture")
+                    or message.startswith("Inspect attachment")
+                    else "interactive",
                 "approval": threading.Event(),
                 "clarify": threading.Event(),
                 "cancel": threading.Event(),
                 "finished": threading.Event(),
             }
             self.streams[stream_id] = stream
-            session["messages"].append({"role": "user", "content": message})
+            if regeneration:
+                assistant_index = next(
+                    (
+                        index for index in range(len(session["messages"]) - 1, -1, -1)
+                        if session["messages"][index].get("role") == "assistant"
+                    ),
+                    -1,
+                )
+                user_index = next(
+                    (
+                        index for index in range(assistant_index - 1, -1, -1)
+                        if session["messages"][index].get("role") == "user"
+                    ),
+                    -1,
+                )
+                if user_index >= 0:
+                    session["messages"] = session["messages"][: user_index + 1]
+            else:
+                user_message: dict[str, Any] = {"role": "user", "content": message}
+                if attachments:
+                    user_message["attachments"] = [dict(row) for row in attachments]
+                session["messages"].append(user_message)
             session["active_stream_id"] = stream_id
             session["agent_running"] = True
             return stream_id
@@ -193,6 +233,28 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError):
             value = {}
         return value if isinstance(value, dict) else {}
+
+    def read_multipart_upload(self) -> tuple[dict[str, str], str, bytes]:
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        raw = self.rfile.read(length)
+        header = (
+            "Content-Type: " + self.headers.get("Content-Type", "")
+            + "\r\nMIME-Version: 1.0\r\n\r\n"
+        ).encode("utf-8")
+        document = BytesParser(policy=policy.default).parsebytes(header + raw)
+        fields: dict[str, str] = {}
+        filename = ""
+        file_bytes = b""
+        for part in document.iter_parts():
+            name = str(part.get_param("name", header="content-disposition") or "")
+            candidate = part.get_filename()
+            payload = part.get_payload(decode=True) or b""
+            if candidate is not None:
+                filename = str(candidate)
+                file_bytes = payload
+            elif name:
+                fields[name] = payload.decode("utf-8", errors="replace")
+        return fields, filename, file_bytes
 
     def require_auth(self) -> bool:
         if FAKE.authenticated(self):
@@ -362,6 +424,30 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         parsed = urlsplit(self.path)
+        if parsed.path == "/api/upload":
+            if not self.require_auth():
+                return
+            if "multipart/form-data" not in self.headers.get("Content-Type", ""):
+                return self.json_reply({"error": "No boundary in Content-Type"}, status=400)
+            fields, filename, file_bytes = self.read_multipart_upload()
+            if not filename:
+                return self.json_reply({"error": "No file field in request"}, status=400)
+            session_id = fields.get("session_id", "")
+            with FAKE.lock:
+                if session_id not in FAKE.sessions:
+                    return self.json_reply({"error": "not found"}, status=404)
+                FAKE.upload_requests.append({
+                    "session_id": session_id,
+                    "filename": filename,
+                    "content": file_bytes,
+                })
+            return self.json_reply({
+                "filename": filename,
+                "path": "/fixture/attachments/" + filename,
+                "size": len(file_bytes),
+                "mime": "text/plain",
+                "is_image": False,
+            })
         body = self.read_json()
         if parsed.path == "/api/auth/login":
             password = body.get("password")
@@ -467,6 +553,73 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                 )
                 session = FAKE.session_snapshot(session_id)
             return self.json_reply({"session": session})
+        if parsed.path == "/api/session/branch":
+            session_id = str(body.get("session_id") or "")
+            if not session_id:
+                return self.json_reply({"error": "session_id is required"}, status=400)
+            with FAKE.lock:
+                if session_id not in FAKE.sessions:
+                    return self.json_reply({"error": "not found"}, status=404)
+                source = FAKE.sessions[session_id]
+                keep_value = body.get("keep_count")
+                keep_count = len(source["messages"]) if keep_value is None else int(keep_value)
+                messages = [dict(row) for row in source["messages"][:keep_count]]
+                FAKE.branch_requests.append(dict(body))
+                branch = FAKE.create_session(
+                    str(body.get("title") or source["title"] + " (fork)"),
+                    messages,
+                )
+                stored = FAKE.sessions[str(branch["session_id"])]
+                stored["model"] = source.get("model", "fixture/model")
+                stored["model_provider"] = source.get(
+                    "model_provider", "fixture-provider"
+                )
+            return self.json_reply({
+                "session_id": branch["session_id"],
+                "title": branch["title"],
+                "parent_session_id": session_id,
+            })
+        if parsed.path == "/api/session/duplicate":
+            session_id = str(body.get("session_id") or "")
+            if not session_id:
+                return self.json_reply({"error": "session_id is required"}, status=400)
+            with FAKE.lock:
+                if session_id not in FAKE.sessions:
+                    return self.json_reply({"error": "not found"}, status=404)
+                source = FAKE.sessions[session_id]
+                FAKE.duplicate_requests.append(dict(body))
+                duplicate = FAKE.create_session(
+                    source["title"] + " (copy)",
+                    [dict(row) for row in source["messages"]],
+                )
+                stored = FAKE.sessions[str(duplicate["session_id"])]
+                stored["model"] = source.get("model", "fixture/model")
+                stored["model_provider"] = source.get(
+                    "model_provider", "fixture-provider"
+                )
+                duplicate = FAKE.session_snapshot(str(duplicate["session_id"]))
+            return self.json_reply({"session": duplicate})
+        if parsed.path == "/api/session/truncate":
+            session_id = str(body.get("session_id") or "")
+            if not session_id:
+                return self.json_reply({"error": "session_id is required"}, status=400)
+            with FAKE.lock:
+                if session_id not in FAKE.sessions:
+                    return self.json_reply({"error": "not found"}, status=404)
+                keep_count = int(body.get("keep_count", -1))
+                if keep_count < 0:
+                    return self.json_reply({"error": "invalid keep_count"}, status=400)
+                FAKE.truncate_requests.append(dict(body))
+                FAKE.sessions[session_id]["messages"] = FAKE.sessions[session_id][
+                    "messages"
+                ][:keep_count]
+                session = FAKE.session_snapshot(session_id)
+            return self.json_reply({"ok": True, "session": session})
+        if parsed.path == "/api/session/retry":
+            session_id = str(body.get("session_id") or "")
+            if not session_id:
+                return self.json_reply({"error": "session_id is required"}, status=400)
+            return self.json_reply({"ok": True})
         if parsed.path == "/api/reasoning":
             FAKE.reasoning_requests.append({"method": "POST", **dict(body)})
             return self.json_reply({
@@ -480,15 +633,56 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
             })
         if parsed.path == "/api/chat/start":
             session_id = str(body.get("session_id") or "")
+            regenerate = body.get("regenerate") is True
             message = str(body.get("message") or "")
             with FAKE.lock:
                 if session_id not in FAKE.sessions:
                     return self.json_reply({"error": "not found"}, status=404)
+                if regenerate:
+                    expected = "fixture-revision-" + str(
+                        len(FAKE.sessions[session_id]["messages"])
+                    )
+                    if body.get("regeneration_revision") != expected:
+                        return self.json_reply(
+                            {"error": "stale regeneration revision"}, status=409
+                        )
+                    assistant_index = next(
+                        (
+                            index
+                            for index in range(
+                                len(FAKE.sessions[session_id]["messages"]) - 1,
+                                -1,
+                                -1,
+                            )
+                            if FAKE.sessions[session_id]["messages"][index].get("role")
+                            == "assistant"
+                        ),
+                        -1,
+                    )
+                    user_index = next(
+                        (
+                            index
+                            for index in range(assistant_index - 1, -1, -1)
+                            if FAKE.sessions[session_id]["messages"][index].get("role")
+                            == "user"
+                        ),
+                        -1,
+                    )
+                    message = (
+                        str(FAKE.sessions[session_id]["messages"][user_index].get("content") or "")
+                        if user_index >= 0 else ""
+                    )
                 fault = FAKE.chat_start_faults.pop(message, None)
                 FAKE.chat_start_requests.append(dict(body))
             if fault is not None:
                 return self.json_reply(fault, status=409)
-            stream_id = FAKE.start_stream(session_id, message)
+            stream_id = FAKE.start_stream(
+                session_id,
+                message,
+                body.get("attachments") if isinstance(body.get("attachments"), list)
+                else None,
+                regeneration=regenerate,
+            )
             return self.json_reply(
                 {
                     "ok": True,
@@ -552,6 +746,21 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                     raise AssertionError("fixture stream was not cancelled")
                 FAKE.finish_stream(stream_id)
                 emit("cancel", {"session_id": session_id, "cancelled": True})
+                return
+
+            if stream["mode"] == "simple":
+                emit("token", {"text": "Updated fixture reply"})
+                FAKE.finish_stream(stream_id, "Updated fixture reply")
+                emit(
+                    "done",
+                    {
+                        "session_id": session_id,
+                        "status": "complete",
+                        "usage": {"input_tokens": 2, "output_tokens": 3},
+                        "session": FAKE.session_snapshot(session_id),
+                    },
+                )
+                emit("stream_end", {"session_id": session_id})
                 return
 
             emit("token", {"text": "Fixture "})
@@ -1205,6 +1414,10 @@ async def scenario() -> None:
                     assert bridge.remote_contract["globalSessionEvents"] is True
                     assert bridge.remote_contract["modelSelection"] is True
                     assert bridge.remote_contract["reasoningEffort"] is True
+                    assert bridge.remote_contract["attachments"] is True
+                    assert bridge.remote_contract["branches"] is True
+                    assert bridge.remote_contract["messageEditing"] is True
+                    assert bridge.remote_contract["regeneration"] is True
 
                     settled = await rpc(
                         client,
@@ -1217,6 +1430,152 @@ async def scenario() -> None:
                         "user",
                         "assistant",
                     ]
+
+                    # Exercise the compatibility path used by WebUI releases
+                    # that have duplicate+truncate but no native branch route.
+                    bridge.remote_contract["nativeBranches"] = False
+                    branch_result = await rpc(
+                        client,
+                        "branch",
+                        "session.branch",
+                        {"sessionId": conversation_id},
+                        events,
+                    )
+                    branch_id = branch_result["sessionId"]
+                    assert branch_id != conversation_id
+                    assert branch_result["parentSessionId"] == conversation_id
+                    assert registry.selected_conversation_id == branch_id
+                    assert branch_result["upstream"]["fallback"] == (
+                        "duplicate_truncate"
+                    )
+                    assert FAKE.duplicate_requests[-1] == {
+                        "session_id": conversation_id
+                    }
+
+                    attachment_path = temporary_path / "fixture-note.txt"
+                    attachment_path.write_text(
+                        "attachment body from the runtime fixture\n",
+                        encoding="utf-8",
+                    )
+                    attachment_turn = await rpc(
+                        client,
+                        "attachment-prompt",
+                        "prompt.submit",
+                        {
+                            "sessionId": branch_id,
+                            "text": "Inspect attachment fixture",
+                            "attachments": [str(attachment_path)],
+                        },
+                        events,
+                    )
+                    attachment_stream = attachment_turn["streamId"]
+                    await wait_for_event(
+                        client,
+                        "message.complete",
+                        events,
+                        lambda payload: payload.get("streamId")
+                        == attachment_stream,
+                    )
+                    await wait_for_stream_closed(
+                        bridge, branch_id, attachment_stream
+                    )
+                    assert FAKE.upload_requests[-1] == {
+                        "session_id": branch_id,
+                        "filename": "fixture-note.txt",
+                        "content": b"attachment body from the runtime fixture\n",
+                    }
+                    attachment_request = FAKE.chat_start_requests[-1]
+                    assert attachment_request["session_id"] == branch_id
+                    assert attachment_request["message"] == (
+                        "Inspect attachment fixture\n\n"
+                        "[Attached files: fixture-note.txt]"
+                    )
+                    assert attachment_request["attachments"][0]["path"] == (
+                        "/fixture/attachments/fixture-note.txt"
+                    )
+                    assert str(attachment_path) not in json.dumps(
+                        attachment_request
+                    )
+
+                    branch_history = await rpc(
+                        client,
+                        "branch-history",
+                        "session.history",
+                        {"sessionId": branch_id},
+                        events,
+                    )
+                    branch_users = [
+                        message for message in branch_history["messages"]
+                        if message["role"] == "user"
+                    ]
+                    assert branch_users[-1]["attachments"] == [{
+                        "name": "fixture-note.txt",
+                        "mime": "text/plain",
+                        "size": 41,
+                        "isImage": False,
+                    }]
+                    edited = await rpc(
+                        client,
+                        "edit-message",
+                        "message.edit",
+                        {
+                            "sessionId": branch_id,
+                            "sourceIndex": branch_users[-1]["sourceIndex"],
+                            "text": "Edited fixture request",
+                        },
+                        events,
+                    )
+                    edited_stream = edited["streamId"]
+                    assert FAKE.truncate_requests[-1] == {
+                        "session_id": branch_id,
+                        "keep_count": branch_users[-1]["sourceIndex"],
+                    }
+                    await wait_for_event(
+                        client,
+                        "message.complete",
+                        events,
+                        lambda payload: payload.get("streamId") == edited_stream,
+                    )
+                    await wait_for_stream_closed(bridge, branch_id, edited_stream)
+
+                    regenerated = await rpc(
+                        client,
+                        "regenerate",
+                        "message.regenerate",
+                        {"sessionId": branch_id},
+                        events,
+                    )
+                    regenerated_stream = regenerated["streamId"]
+                    regeneration_request = FAKE.chat_start_requests[-1]
+                    assert regeneration_request == {
+                        "session_id": branch_id,
+                        "regenerate": True,
+                        "regeneration_revision": "fixture-revision-4",
+                    }
+                    await wait_for_event(
+                        client,
+                        "message.complete",
+                        events,
+                        lambda payload: payload.get("streamId")
+                        == regenerated_stream,
+                    )
+                    await wait_for_stream_closed(
+                        bridge, branch_id, regenerated_stream
+                    )
+                    await rpc(
+                        client,
+                        "delete-branch",
+                        "conversations.delete",
+                        {"sessionId": branch_id},
+                        events,
+                    )
+                    await rpc(
+                        client,
+                        "reselect-original",
+                        "conversations.select",
+                        {"sessionId": conversation_id},
+                        events,
+                    )
 
                     compressed = await rpc(
                         client,

@@ -30,6 +30,12 @@ Item {
         ? allTools[allTools.length - 1] : null
     readonly property bool working: conversation !== null
         && conversation.status === "working"
+    readonly property string latestAssistantId: {
+        for (let index = allMessages.length - 1; index >= 0; index--)
+            if (allMessages[index].role === "assistant")
+                return String(allMessages[index].id ?? "");
+        return "";
+    }
 
     width: parent ? parent.width : 0
     height: Math.max(140, Math.min(maxHeight, transcriptColumn.implicitHeight))
@@ -136,7 +142,22 @@ Item {
                     readonly property bool hovered: messageHover.hovered || activeFocus
                     readonly property bool longMessage: messageText.length > 1200
                         || messageText.split("\n").length > 12
+                    readonly property bool writable: root.conversationId !== ""
+                        && root.conversation?.readOnly !== true && !root.working
+                        && !message.streaming
+                    readonly property bool editPending: Hermes.actionPending("edit",
+                        root.conversationId, String(message.id ?? ""))
+                    readonly property bool regenerationPending:
+                        Hermes.actionPending("regenerate", root.conversationId, "")
                     property bool expanded: false
+                    property bool editing: false
+
+                    function submitEdit() {
+                        if (editPending || editArea.text.trim() === "")
+                            return;
+                        Hermes.editMessage(root.conversationId, message,
+                            editArea.text, () => timelineRow.editing = false);
+                    }
 
                     width: parent.width
                     height: messageColumn.implicitHeight + 12
@@ -181,18 +202,72 @@ Item {
                                     ? HermesTheme.textFaint : HermesTheme.accent
                             }
 
-                            IconButton {
-                                id: copyButton
-                                visible: timelineRow.hovered
+                            Row {
+                                id: messageActions
+                                visible: timelineRow.hovered || timelineRow.editing
                                 anchors.right: messageTime.left
                                 anchors.rightMargin: 2
                                 anchors.verticalCenter: parent.verticalCenter
-                                controlSize: Theme.chipInnerHeight
-                                symbol: "content_copy"
-                                accessibleName: "Copy message"
-                                tint: HermesTheme.textFaint
-                                onTriggered: Quickshell.clipboardText =
-                                    timelineRow.messageText
+                                spacing: 0
+
+                                IconButton {
+                                    visible: timelineRow.fromUser
+                                        && Hermes.capabilities.messageEditing === true
+                                    controlSize: Theme.chipInnerHeight
+                                    symbol: timelineRow.editPending
+                                        ? "more_horiz" : "edit"
+                                    accessibleName: "Edit and resend message"
+                                    tint: HermesTheme.textFaint
+                                    enabled: timelineRow.writable
+                                        && !timelineRow.editPending
+                                    onTriggered: {
+                                        timelineRow.editing = true;
+                                        editArea.text = timelineRow.messageText;
+                                        Qt.callLater(() => {
+                                            editArea.forceActiveFocus();
+                                            editArea.cursorPosition = editArea.text.length;
+                                        });
+                                    }
+                                }
+
+                                IconButton {
+                                    visible: !timelineRow.fromSystem
+                                        && Hermes.capabilities.branches === true
+                                    controlSize: Theme.chipInnerHeight
+                                    symbol: "call_split"
+                                    accessibleName: "Branch conversation from here"
+                                    tint: HermesTheme.textFaint
+                                    enabled: timelineRow.writable
+                                        && Number(timelineRow.message.sourceIndex) >= 0
+                                    onTriggered: Hermes.branchConversation(
+                                        root.conversationId,
+                                        Number(timelineRow.message.sourceIndex) + 1)
+                                }
+
+                                IconButton {
+                                    visible: !timelineRow.fromUser
+                                        && !timelineRow.fromSystem
+                                        && String(timelineRow.message.id ?? "")
+                                            === root.latestAssistantId
+                                        && Hermes.capabilities.regeneration === true
+                                    controlSize: Theme.chipInnerHeight
+                                    symbol: timelineRow.regenerationPending
+                                        ? "more_horiz" : "refresh"
+                                    accessibleName: "Regenerate Hermes response"
+                                    tint: HermesTheme.textFaint
+                                    enabled: timelineRow.writable
+                                        && !timelineRow.regenerationPending
+                                    onTriggered: Hermes.regenerate(root.conversationId)
+                                }
+
+                                IconButton {
+                                    controlSize: Theme.chipInnerHeight
+                                    symbol: "content_copy"
+                                    accessibleName: "Copy message"
+                                    tint: HermesTheme.textFaint
+                                    onTriggered: Quickshell.clipboardText =
+                                        timelineRow.messageText
+                                }
                             }
 
                             Text {
@@ -211,6 +286,7 @@ Item {
 
                         Text {
                             id: messageBody
+                            visible: !timelineRow.editing
                             width: parent.width
                             text: timelineRow.messageText !== ""
                                 ? timelineRow.messageText
@@ -230,6 +306,152 @@ Item {
                                 : timelineRow.fromUser ? HermesTheme.textPrimary
                                     : HermesTheme.textSecondary
                             onLinkActivated: link => Hermes.openExternalUrl(link)
+                        }
+
+                        Rectangle {
+                            visible: timelineRow.editing
+                            width: parent.width
+                            height: visible ? Math.max(96,
+                                Math.min(190, editArea.contentHeight + 45)) : 0
+                            radius: HermesTheme.controlRadius
+                            color: HermesTheme.composerGlass
+                            border.width: 1
+                            border.color: editArea.activeFocus
+                                ? HermesTheme.focus : HermesTheme.borderStrong
+
+                            Flickable {
+                                id: editFlick
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.bottom: editActions.top
+                                anchors.margins: 7
+                                contentWidth: width
+                                contentHeight: Math.max(height, editArea.contentHeight)
+                                clip: true
+                                boundsBehavior: Flickable.StopAtBounds
+
+                                TextEdit {
+                                    id: editArea
+                                    width: editFlick.width
+                                    height: Math.max(editFlick.height, contentHeight)
+                                    enabled: !timelineRow.editPending
+                                    wrapMode: TextEdit.Wrap
+                                    selectByMouse: true
+                                    font.family: HermesTheme.fontUi
+                                    font.pixelSize: Theme.fontSecondary
+                                    color: HermesTheme.textPrimary
+                                    selectionColor: HermesTheme.accentSoft
+                                    selectedTextColor: HermesTheme.textPrimary
+                                    Accessible.name: "Edited Hermes message"
+
+                                    Keys.onPressed: event => {
+                                        if (event.key === Qt.Key_Escape) {
+                                            timelineRow.editing = false;
+                                            event.accepted = true;
+                                        } else if ((event.key === Qt.Key_Return
+                                                || event.key === Qt.Key_Enter)
+                                                && (event.modifiers
+                                                    & Qt.ControlModifier)) {
+                                            timelineRow.submitEdit();
+                                            event.accepted = true;
+                                        }
+                                    }
+                                }
+                            }
+
+                            Row {
+                                id: editActions
+                                anchors.right: parent.right
+                                anchors.rightMargin: 6
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 5
+                                spacing: 5
+
+                                ActionButton {
+                                    label: "Cancel"
+                                    hPadding: 12
+                                    enabled: !timelineRow.editPending
+                                    fontFamily: HermesTheme.fontUi
+                                    focusColor: HermesTheme.focus
+                                    buttonRadius: HermesTheme.controlRadius
+                                    tint: HermesTheme.textMuted
+                                    fill: HermesTheme.hover
+                                    onTriggered: timelineRow.editing = false
+                                }
+
+                                ActionButton {
+                                    id: saveEdit
+                                    label: timelineRow.editPending
+                                        ? "Sending…" : "Save & resend"
+                                    hPadding: 12
+                                    enabled: !timelineRow.editPending
+                                        && editArea.text.trim() !== ""
+                                    fontFamily: HermesTheme.fontUi
+                                    focusColor: HermesTheme.focus
+                                    buttonRadius: HermesTheme.controlRadius
+                                    tint: HermesTheme.accent
+                                    fill: HermesTheme.accentSubtle
+                                    onTriggered: timelineRow.submitEdit()
+                                }
+                            }
+                        }
+
+                        Flickable {
+                            visible: Array.isArray(timelineRow.message.attachments)
+                                && timelineRow.message.attachments.length > 0
+                            width: parent.width
+                            height: visible ? 25 : 0
+                            contentWidth: persistedAttachmentRow.implicitWidth
+                            contentHeight: height
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            Row {
+                                id: persistedAttachmentRow
+                                height: parent.height
+                                spacing: 5
+
+                                Repeater {
+                                    model: timelineRow.message.attachments ?? []
+
+                                    delegate: Rectangle {
+                                        id: persistedAttachment
+                                        required property var modelData
+                                        width: Math.min(190,
+                                            persistedAttachmentLabel.implicitWidth + 26)
+                                        height: 24
+                                        radius: HermesTheme.controlRadius
+                                        color: Theme.chip
+                                        border.width: 1
+                                        border.color: HermesTheme.border
+
+                                        Sym {
+                                            id: persistedAttachmentGlyph
+                                            x: 6
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            name: persistedAttachment.modelData.isImage
+                                                ? "image" : "attach_file"
+                                            size: Theme.iconSmall
+                                            color: HermesTheme.accent
+                                        }
+
+                                        Text {
+                                            id: persistedAttachmentLabel
+                                            anchors.left: persistedAttachmentGlyph.right
+                                            anchors.leftMargin: 4
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 6
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: persistedAttachment.modelData.name
+                                            elide: Text.ElideMiddle
+                                            font.family: HermesTheme.fontUi
+                                            font.pixelSize: Theme.fontMicro
+                                            color: HermesTheme.textSecondary
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         ActionButton {
