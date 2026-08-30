@@ -12,6 +12,7 @@ import stat
 import sys
 import tempfile
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +86,9 @@ async def scenario() -> None:
             )
             bridge.start()
             assert bridge.gateway._runner is None
+            bounded_tool = bridge._remote_tool_text("x" * 8000)
+            assert len(bounded_tool) == BRIDGE.MAX_REMOTE_TOOL_DETAIL
+            assert bounded_tool.endswith("…")
 
             hello = await bridge.dispatch(
                 "bridge.hello", {"client": "fixture", "version": 1}
@@ -146,7 +150,7 @@ async def scenario() -> None:
                         ]
                     }
                 if method == "GET" and path.startswith("/api/session?session_id="):
-                    session_id = path.rsplit("=", 1)[1]
+                    session_id = parse_qs(urlsplit(path).query)["session_id"][0]
                     return {"session": sessions[session_id]}
                 if method == "GET" and path.startswith(
                     "/api/session/status?session_id="

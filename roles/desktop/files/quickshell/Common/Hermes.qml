@@ -39,6 +39,7 @@ Singleton {
     property string providerModel: ""
     property string providerError: ""
     property var capabilities: ({})
+    property var remoteContract: ({})
     property var models: []
     property var commandCatalog: []
 
@@ -53,6 +54,8 @@ Singleton {
     readonly property bool isNewChat: HermesConversations.isNewChat
     readonly property var selectedMessages: HermesConversations.selectedMessages
     readonly property var selectedTools: HermesConversations.selectedTools
+    readonly property var selectedSessionState: HermesConversations.selectedSessionState
+    readonly property var selectedHistory: HermesConversations.selectedHistory
     readonly property var selectedRequests: HermesConversations.selectedRequests
     readonly property string selectedError: HermesConversations.selectedError
     readonly property bool selectedLoading: HermesConversations.selectedLoading
@@ -176,6 +179,10 @@ Singleton {
             ? value.capabilities
             : value.features && typeof value.features === "object"
                 ? value.features : bridge.capabilities ?? ({});
+        remoteContract = value.remoteContract && typeof value.remoteContract === "object"
+            ? value.remoteContract : value.remote_contract
+                && typeof value.remote_contract === "object"
+                ? value.remote_contract : ({});
         models = Array.isArray(value.models) ? value.models
             : Array.isArray(backend.models) ? backend.models : [];
         applyProviderStatus(value.providerStatus ?? value.provider_status
@@ -738,6 +745,12 @@ Singleton {
                 root.refreshProviderStatus();
                 root.loadCommandCatalog();
                 HermesConversations.refreshAll();
+            } else if (normalized === "bridge-capabilities") {
+                const value = Helpers.object(payload);
+                if (value.capabilities && typeof value.capabilities === "object")
+                    root.capabilities = value.capabilities;
+                if (value.remoteContract && typeof value.remoteContract === "object")
+                    root.remoteContract = value.remoteContract;
             } else if (normalized === "bridge-connection") {
                 const value = Helpers.object(payload);
                 const connection = Helpers.firstString(value.connection,

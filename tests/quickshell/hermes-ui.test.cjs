@@ -212,3 +212,43 @@ test("streaming, tools, requests, stop, steering, and private input use conversa
     assert.match(bridge, /params\.get\("choice"\) or params\.get\("decision"\)/);
     assert.match(tool, /progress_activity/);
 });
+
+test("Hermes history projects prose, one tool activity line, pagination, and session state", () => {
+    const helpers = read("Common/HermesHelpers.js");
+    const conversations = read("Common/HermesConversations.qml");
+    const transcript = read("Popovers/HermesTranscript.qml");
+    const tool = read("Popovers/HermesToolCard.qml");
+    const bridge = readRepo(
+        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
+
+    assert.match(helpers, /function renderableMessage/);
+    assert.match(helpers, /return "metadata"/,
+        "unknown protocol roles must not default to assistant prose");
+    assert.match(helpers, /function transcriptItems/);
+    assert.match(conversations, /Helpers\.normalizeHistory/);
+    assert.match(conversations, /function loadEarlier/);
+    assert.match(conversations, /before:\s*Math\.max/);
+    assert.match(transcript, /model:\s*root\.shownItems/);
+    assert.match(transcript, /Helpers\.transcriptItems\(allMessages, \[\]\)/,
+        "persisted tool records must not become transcript rows");
+    assert.match(transcript, /property var latestTool:/);
+    assert.equal((transcript.match(/HermesToolCard\s*\{/g) || []).length, 1,
+        "tool activity must render through one updating line");
+    assert.match(transcript, /HermesConversations\.loadEarlier/);
+    assert.match(transcript, /sessionState\.reasoning/);
+    assert.match(transcript, /property string messageText:\s*String/,
+        "optional remote text must not assign undefined to QString");
+    assert.match(tool, /tool\.output/);
+    assert.match(tool, /property string toolName:\s*String/,
+        "optional historical tool labels must have a QString-safe fallback");
+    assert.match(tool, /implicitHeight:\s*30/);
+    assert.match(tool, /property string detailText:/);
+    assert.doesNotMatch(tool, /expanded|"INPUT"|"OUTPUT"/,
+        "tool activity must stay a single non-expanding line");
+    assert.match(bridge, /project_remote_transcript/);
+    assert.match(bridge, /msg_limit=/);
+    assert.match(bridge, /"session\.todos"/);
+    assert.match(bridge, /"session\.context"/);
+    assert.match(bridge, /"session\.goal"/);
+    assert.match(bridge, /"session\.warning"/);
+});

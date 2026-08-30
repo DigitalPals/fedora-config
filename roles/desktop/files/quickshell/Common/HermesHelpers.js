@@ -144,25 +144,41 @@ function sortedConversations(values) {
     });
 }
 
-function extractText(content) {
+function extractText(content, depth) {
+    var level = number(depth, 0);
+    if (level > 5)
+        return "";
     if (typeof content === "string")
         return content;
+    if (typeof content === "number" || typeof content === "boolean")
+        return String(content);
     if (Array.isArray(content)) {
-        var parts = [];
-        for (var i = 0; i < content.length; i++) {
-            var part = content[i];
-            if (typeof part === "string")
-                parts.push(part);
-            else if (part && typeof part === "object") {
-                var text = firstString(part.text, part.content, part.value);
-                if (text !== "")
-                    parts.push(text);
-            }
-        }
-        return parts.join("\n");
+        return content.map(function(part) {
+            return extractText(part, level + 1);
+        }).filter(function(part) { return part.trim() !== ""; }).join("\n");
     }
-    if (content && typeof content === "object")
-        return firstString(content.text, content.content, content.value);
+    if (!content || typeof content !== "object")
+        return "";
+
+    var type = compactState(content.type);
+    if (["tool-use", "tool-result", "function-call", "function-result"]
+            .indexOf(type) >= 0)
+        return "";
+    if (["image", "image-url", "input-image"].indexOf(type) >= 0)
+        return "[Image attachment]";
+    if (["file", "input-file", "attachment"].indexOf(type) >= 0) {
+        var name = firstString(content.filename, content.file_name, content.name);
+        return name !== "" ? "[File attachment: " + name + "]"
+            : "[File attachment]";
+    }
+    var keys = ["text", "content", "value", "input_text", "output_text"];
+    for (var i = 0; i < keys.length; i++) {
+        if (content[keys[i]] === undefined)
+            continue;
+        var text = extractText(content[keys[i]], level + 1);
+        if (text.trim() !== "")
+            return text;
+    }
     return "";
 }
 
@@ -174,7 +190,9 @@ function normalizeRole(value) {
         return "assistant";
     if (["tool", "system"].indexOf(role) >= 0)
         return role;
-    return role === "user" ? "user" : "assistant";
+    if (role === "user" || role === "assistant")
+        return role;
+    return "metadata";
 }
 
 function normalizeMessage(raw, index) {
@@ -201,8 +219,19 @@ function normalizeMessage(raw, index) {
         error: firstString(value.error),
         model: firstString(value.model, value.modelName),
         parentId: firstString(value.parentId, value.parent_id,
-            value.parentMessageId, value.parent_message_id)
+            value.parentMessageId, value.parent_message_id),
+        order: number(value.order, number(value.timelineOrder,
+            number(value.sourceIndex, number(index, 0) * 1000))),
+        sourceIndex: number(value.sourceIndex, number(value.source_index,
+            number(index, 0)))
     };
+}
+
+function renderableMessage(message) {
+    if (!message || ["user", "assistant", "system"].indexOf(message.role) < 0)
+        return false;
+    return string(message.text).trim() !== "" || message.streaming === true
+        || message.pending === true || string(message.error).trim() !== "";
 }
 
 function messageList(value) {
@@ -221,7 +250,7 @@ function messageList(value) {
 function normalizeMessages(value) {
     return messageList(value).map(function(message, index) {
         return normalizeMessage(message, index);
-    });
+    }).filter(renderableMessage);
 }
 
 function upsertById(values, item) {
@@ -268,22 +297,333 @@ function normalizeTool(raw, index) {
     if (Object.keys(call).length > 0)
         value = Object.assign({}, call, value);
     var status = compactState(value.status || value.state || "running");
+    var fn = object(value.function);
+    var input = toolDetail(value.input !== undefined ? value.input
+        : value.args !== undefined ? value.args
+            : value.arguments !== undefined ? value.arguments : fn.arguments);
+    var output = toolDetail(value.output !== undefined ? value.output
+        : value.result !== undefined ? value.result
+            : value.snippet !== undefined ? value.snippet
+                : value.preview !== undefined ? value.preview : "");
+    var error = firstString(value.error, value.errorMessage, value.error_message);
+    var explicitTerminal = typeof value.terminal === "boolean" ? value.terminal : null;
     return {
         id: firstString(value.id, value.toolCallId, value.tool_call_id,
             value.callId, value.call_id,
             "tool-" + number(index, 0)),
         name: firstString(value.name, value.toolName, value.tool_name,
-            value.function, "Tool"),
+            fn.name, typeof value.function === "string" ? value.function : "", "Tool"),
         label: firstString(value.label, value.title, value.description),
         status: status,
-        detail: firstString(value.detail, value.summary, value.command, value.path),
+        detail: firstString(value.detail, value.summary, value.command, value.path,
+            output),
+        input: input,
+        output: output,
         startedAt: firstString(value.startedAt, value.started_at,
             value.createdAt, value.created_at, value.timestamp),
         completedAt: firstString(value.completedAt, value.completed_at,
             value.updatedAt, value.updated_at),
-        error: firstString(value.error, value.errorMessage, value.error_message),
-        terminal: TERMINAL_TOOL_STATES.indexOf(status) >= 0
+        error: error,
+        order: number(value.order, number(value.timelineOrder,
+            number(value.sourceIndex, number(index, 0) * 1000 + 100))),
+        sourceIndex: number(value.sourceIndex, number(value.source_index, -1)),
+        historical: value.historical === true,
+        terminal: explicitTerminal !== null ? explicitTerminal
+            : TERMINAL_TOOL_STATES.indexOf(status) >= 0
     };
+}
+
+function toolDetail(value) {
+    var parsed = value;
+    if (typeof value === "string") {
+        var candidate = value.trim();
+        if (candidate !== "" && (candidate[0] === "{" || candidate[0] === "[")) {
+            try { parsed = JSON.parse(candidate); } catch (_error) {}
+        }
+    }
+    var text = "";
+    if (parsed && typeof parsed === "object") {
+        if (!Array.isArray(parsed)) {
+            var preferred = firstString(parsed.summary, parsed.message,
+                parsed.result, parsed.output, parsed.error);
+            if (preferred !== "")
+                text = preferred;
+        }
+        if (text === "") {
+            try { text = JSON.stringify(parsed, null, 2); }
+            catch (_error) { text = String(parsed); }
+        }
+    } else if (parsed !== undefined && parsed !== null) {
+        text = String(parsed);
+    }
+    return text.length > 4096 ? text.slice(0, 4095) + "…" : text;
+}
+
+function historicalTools(value) {
+    var rawMessages = messageList(value);
+    var data = object(value);
+    var results = {};
+    rawMessages.forEach(function(raw, index) {
+        var message = object(raw);
+        var role = normalizeRole(message.role || message.author || message.sender);
+        if (role === "tool") {
+            var resultId = firstString(message.tool_call_id, message.toolCallId,
+                message.tool_use_id, message.call_id, message.id);
+            if (resultId !== "")
+                results[resultId] = {
+                    output: toolDetail(message.content !== undefined
+                        ? message.content : message.result),
+                    failed: message.is_error === true || firstString(message.error) !== "",
+                    order: number(message.order, index * 1000 + 900)
+                };
+        }
+        array(message.content).forEach(function(part) {
+            var block = object(part);
+            if (compactState(block.type) !== "tool-result")
+                return;
+            var resultId = firstString(block.tool_use_id, block.tool_call_id);
+            if (resultId !== "")
+                results[resultId] = {
+                    output: toolDetail(block.content !== undefined
+                        ? block.content : block.result),
+                    failed: block.is_error === true || firstString(block.error) !== "",
+                    order: index * 1000 + 900
+                };
+        });
+    });
+
+    var tools = [];
+    var seen = {};
+    function addCall(raw, messageIndex, callIndex) {
+        var call = object(raw);
+        var fn = object(call.function);
+        var id = firstString(call.tool_call_id, call.toolCallId, call.tool_use_id,
+            call.tid, call.call_id, call.id,
+            "history-tool-" + messageIndex + "-" + callIndex);
+        if (seen[id])
+            return;
+        seen[id] = true;
+        var result = object(results[id]);
+        tools.push(normalizeTool({
+            id: id,
+            name: firstString(call.name, call.tool_name, fn.name, "Tool"),
+            args: call.args !== undefined ? call.args
+                : call.input !== undefined ? call.input
+                    : call.arguments !== undefined ? call.arguments : fn.arguments,
+            output: firstString(call.snippet, call.preview, call.result,
+                call.output, result.output),
+            status: result.failed || call.is_error === true || firstString(call.error) !== ""
+                ? "error" : call.done === false ? "interrupted" : "completed",
+            error: firstString(call.error),
+            order: number(call.order, messageIndex * 1000 + 100 + callIndex),
+            sourceIndex: messageIndex,
+            historical: true,
+            terminal: true
+        }, tools.length));
+    }
+
+    rawMessages.forEach(function(raw, messageIndex) {
+        var message = object(raw);
+        var calls = array(message.tool_calls).concat(array(message._partial_tool_calls));
+        array(message.content).forEach(function(part) {
+            if (compactState(object(part).type) === "tool-use")
+                calls.push(part);
+        });
+        calls.forEach(function(call, callIndex) {
+            addCall(call, messageIndex, callIndex);
+        });
+    });
+    array(data.tool_calls).forEach(function(call, index) {
+        var sourceIndex = number(object(call).assistant_msg_idx, rawMessages.length + index);
+        addCall(call, sourceIndex, index);
+    });
+    return tools;
+}
+
+function normalizeHistory(value) {
+    var data = object(value);
+    var explicit = array(data.tools).concat(array(data.toolActivity));
+    var projected = explicit.length > 0
+        ? explicit.map(function(tool, index) { return normalizeTool(tool, index); })
+        : historicalTools(value);
+    return {
+        messages: normalizeMessages(value),
+        tools: projected,
+        history: object(data.history),
+        sessionState: object(data.sessionState || data.session_state)
+    };
+}
+
+function transcriptItems(messages, tools) {
+    var result = [];
+    array(messages).forEach(function(message, index) {
+        result.push({
+            id: "message:" + firstString(message.id, String(index)),
+            kind: "message",
+            message: message,
+            tool: {},
+            order: number(message.order, index * 1000)
+        });
+    });
+    array(tools).forEach(function(tool, index) {
+        result.push({
+            id: "tool:" + firstString(tool.id, String(index)),
+            kind: "tool",
+            message: {},
+            tool: tool,
+            order: number(tool.order, (messages.length + index) * 1000 + 100)
+        });
+    });
+    return result.sort(function(a, b) {
+        if (a.order !== b.order)
+            return a.order - b.order;
+        if (a.kind !== b.kind)
+            return a.kind === "message" ? -1 : 1;
+        return a.id.localeCompare(b.id);
+    });
+}
+
+function emptySessionState() {
+    return {
+        reasoning: "",
+        reasoningActive: false,
+        warning: "",
+        goalState: "",
+        goalMessage: "",
+        todos: [],
+        todoSummary: {},
+        context: {},
+        usage: {},
+        pendingSteer: "",
+        background: "",
+        updatedAt: ""
+    };
+}
+
+function scalarProjection(raw, keys) {
+    var value = object(raw);
+    var result = {};
+    keys.forEach(function(key) {
+        var candidate = value[key];
+        if (typeof candidate === "string" || typeof candidate === "number"
+                || typeof candidate === "boolean")
+            result[key] = candidate;
+    });
+    return result;
+}
+
+function normalizeTodos(value) {
+    return array(value).slice(0, 100).map(function(raw, index) {
+        var todo = object(raw);
+        return {
+            id: firstString(todo.id, todo.todo_id, "todo-" + index),
+            content: firstString(todo.content, todo.text, todo.title,
+                "Untitled task").slice(0, 1000),
+            status: compactState(todo.status || todo.state || "pending")
+        };
+    });
+}
+
+function mergeSessionState(current, raw) {
+    var next = Object.assign(emptySessionState(), object(current));
+    var value = object(raw);
+    if (Array.isArray(value.todos))
+        next.todos = normalizeTodos(value.todos);
+    if (value.todoSummary && typeof value.todoSummary === "object")
+        next.todoSummary = scalarProjection(value.todoSummary,
+            ["total", "pending", "in_progress", "completed", "cancelled"]);
+    if (value.todo_summary && typeof value.todo_summary === "object")
+        next.todoSummary = scalarProjection(value.todo_summary,
+            ["total", "pending", "in_progress", "completed", "cancelled"]);
+    if (value.context && typeof value.context === "object")
+        next.context = Object.assign({}, next.context, scalarProjection(value.context,
+            ["contextLength", "thresholdTokens", "lastPromptTokens",
+             "postCompressionTokens", "context_length", "threshold_tokens",
+             "last_prompt_tokens", "post_compression_context_tokens_estimate"]));
+    if (value.usage && typeof value.usage === "object")
+        next.usage = Object.assign({}, next.usage, scalarProjection(value.usage,
+            ["input_tokens", "output_tokens", "total_tokens", "cached_tokens",
+             "cache_read_tokens", "tokens_per_second", "tps", "tool_calls",
+             "elapsed_seconds", "last_prompt_tokens", "context_length",
+             "threshold_tokens"]));
+    var pending = firstString(value.pendingSteer, value.pending_steer);
+    if (pending !== "")
+        next.pendingSteer = pending.slice(0, 2000);
+    next.updatedAt = firstString(value.updatedAt, value.updated_at, next.updatedAt);
+    return next;
+}
+
+function applySessionState(current, type, payload) {
+    var next = mergeSessionState(current, {});
+    var value = object(payload);
+    var event = compactState(type);
+    var kind = compactState(value.kind || event);
+
+    if (event === "turn-start" || event === "message-start"
+            || event === "assistant-start") {
+        next.reasoning = "";
+        next.reasoningActive = true;
+        next.warning = "";
+        next.pendingSteer = "";
+    }
+    if (event === "turn-complete" || event === "message-complete"
+            || event === "message-completed" || event === "assistant-complete")
+        next.reasoningActive = false;
+
+    if (kind === "reasoning" || event === "session-reasoning") {
+        var reasoning = typeof value.reasoning === "string" ? value.reasoning
+            : typeof value.text === "string" ? value.text
+                : typeof value.delta === "string" ? value.delta : "";
+        if (reasoning !== "") {
+            var combined = value.replace === true ? reasoning
+                : string(next.reasoning) + reasoning;
+            next.reasoning = combined.length > 12000
+                ? combined.slice(combined.length - 12000) : combined;
+        }
+        next.reasoningActive = value.active !== false;
+    } else if (kind === "warning" || event === "session-warning") {
+        next.warning = firstString(value.message, value.warning, value.detail,
+            "Hermes reported a warning").slice(0, 1000);
+    } else if (kind === "goal" || kind === "goal-continue"
+            || event === "session-goal") {
+        next.goalState = compactState(value.state || value.status
+            || (kind === "goal-continue" ? "continuing" : "active"));
+        next.goalMessage = firstString(value.message, value.text,
+            value.continuation_prompt, object(value.decision).message).slice(0, 2000);
+    } else if (kind === "todo-state" || kind === "todos"
+            || event === "session-todos") {
+        next.todos = normalizeTodos(value.todos);
+        next.todoSummary = scalarProjection(value.summary,
+            ["total", "pending", "in_progress", "completed", "cancelled"]);
+    } else if (kind === "context-status" || kind === "context"
+            || event === "session-context") {
+        var context = Object.assign({}, object(value.context), value);
+        next.context = Object.assign({}, next.context, scalarProjection(context,
+            ["contextLength", "thresholdTokens", "lastPromptTokens",
+             "postCompressionTokens", "context_length", "threshold_tokens",
+             "last_prompt_tokens", "post_compression_context_tokens_estimate"]));
+        if (value.prefill && typeof value.prefill === "object")
+            next.context.prefill = scalarProjection(value.prefill,
+                ["enabled", "message_count", "token_estimate", "source"]);
+    } else if (kind === "usage" || kind === "metering"
+            || event === "session-usage") {
+        var usage = Object.assign({}, object(value.usage), value);
+        next.usage = Object.assign({}, next.usage, scalarProjection(usage,
+            ["input_tokens", "output_tokens", "total_tokens", "cached_tokens",
+             "cache_read_tokens", "tokens_per_second", "tps", "tool_calls",
+             "elapsed_seconds", "last_prompt_tokens", "context_length",
+             "threshold_tokens"]));
+    } else if (kind === "pending-steer-leftover"
+            || event === "session-pending-steer") {
+        next.pendingSteer = firstString(value.text, value.message).slice(0, 2000);
+    } else if (kind === "bg-task-complete" || kind === "process-complete"
+            || event === "session-background") {
+        next.background = firstString(value.message, value.title,
+            value.process_name, "Background task completed").slice(0, 1000);
+    }
+    next.updatedAt = firstString(value.updatedAt, value.updated_at,
+        value.timestamp, value.ts, new Date().toISOString());
+    return next;
 }
 
 function applyToolEvent(values, type, payload) {
@@ -554,11 +894,18 @@ var exported = {
     normalizeConversation: normalizeConversation,
     sortedConversations: sortedConversations,
     extractText: extractText,
+    normalizeRole: normalizeRole,
     normalizeMessage: normalizeMessage,
     normalizeMessages: normalizeMessages,
     applyMessageEvent: applyMessageEvent,
     normalizeTool: normalizeTool,
     applyToolEvent: applyToolEvent,
+    historicalTools: historicalTools,
+    normalizeHistory: normalizeHistory,
+    transcriptItems: transcriptItems,
+    emptySessionState: emptySessionState,
+    mergeSessionState: mergeSessionState,
+    applySessionState: applySessionState,
     normalizeRequest: normalizeRequest,
     normalizeQuestion: normalizeQuestion,
     applyRequestEvent: applyRequestEvent,

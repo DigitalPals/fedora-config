@@ -52,6 +52,97 @@ test("id-less Hermes deltas accumulate under the stable id supplied by conversat
     assert.equal(messages[0].streaming, false);
 });
 
+test("persisted tool JSON becomes a chronological activity card, never Hermes prose", () => {
+    const history = H.normalizeHistory({
+        messages: [
+            {
+                id: "user-1",
+                role: "user",
+                content: [
+                    { type: "input_text", text: "List the lights" },
+                    { type: "input_image", image_url: "data:image/png;base64,secret" },
+                ],
+                order: 0,
+            },
+            {
+                id: "assistant-carrier",
+                role: "assistant",
+                content: "",
+                order: 1000,
+                tool_calls: [{
+                    id: "call-1",
+                    type: "function",
+                    function: {
+                        name: "ha_list_entities",
+                        arguments: JSON.stringify({ domain: "light" }),
+                    },
+                }],
+            },
+            {
+                role: "tool",
+                tool_call_id: "call-1",
+                content: JSON.stringify({ result: "Kitchen and office", count: 2 }),
+                order: 2000,
+            },
+            {
+                role: "session_meta",
+                content: JSON.stringify({ title: "Internal protocol row" }),
+                order: 3000,
+            },
+            {
+                id: "assistant-final",
+                role: "assistant",
+                content: [{ type: "output_text", text: { value: "Two lights found." } }],
+                order: 4000,
+            },
+        ],
+    });
+
+    assert.deepEqual(history.messages.map(message => message.id),
+        ["user-1", "assistant-final"]);
+    assert.equal(history.messages.some(message => message.text.includes("count")), false);
+    assert.equal(history.messages[0].text,
+        "List the lights\n[Image attachment]");
+    assert.equal(history.messages[1].text, "Two lights found.");
+    assert.equal(history.tools.length, 1);
+    assert.equal(history.tools[0].id, "call-1");
+    assert.equal(history.tools[0].name, "ha_list_entities");
+    assert.equal(history.tools[0].input.includes('"domain": "light"'), true);
+    assert.equal(history.tools[0].output, "Kitchen and office");
+    assert.deepEqual(H.transcriptItems(history.messages, history.tools)
+        .map(item => item.kind), ["message", "tool", "message"]);
+});
+
+test("tool detail and live session state are bounded and normalized", () => {
+    const tool = H.normalizeTool({
+        id: "large-tool",
+        status: "completed",
+        output: "x".repeat(8000),
+    }, 0);
+    assert.equal(tool.output.length, 4096);
+    assert.equal(tool.output.endsWith("…"), true);
+
+    let state = H.applySessionState({}, "session.reasoning", {
+        reasoning: "thinking ",
+    });
+    state = H.applySessionState(state, "session.reasoning", {
+        reasoning: "carefully",
+    });
+    state = H.applySessionState(state, "session.todos", {
+        todos: [{ id: "one", content: "Check lights", status: "in_progress" }],
+        summary: { total: 1, in_progress: 1, completed: 0 },
+    });
+    state = H.applySessionState(state, "session.context", {
+        context_length: 100000,
+        last_prompt_tokens: 25000,
+    });
+    assert.equal(state.reasoning, "thinking carefully");
+    assert.equal(state.todos[0].status, "in-progress");
+    assert.equal(state.todoSummary.total, 1);
+    assert.equal(state.context.context_length, 100000);
+    assert.equal(state.context.last_prompt_tokens, 25000);
+});
+
 test("tool and secret request snake_case payloads retain stable protocol ids", () => {
     const tool = H.normalizeTool({
         call_id: "call-42", tool_name: "ha_get_state", status: "running",

@@ -63,6 +63,11 @@ MAX_PROVIDER_RESPONSE = 4 * 1024 * 1024
 MAX_REMOTE_AUTH_RESPONSE = 2 * 1024 * 1024
 MAX_REMOTE_SSE_EVENT = 4 * 1024 * 1024
 MAX_REMOTE_STREAM_EVENT = 4 * 1024 * 1024
+REMOTE_HISTORY_PAGE = 80
+REMOTE_HISTORY_MAX_MESSAGES = 250
+REMOTE_HISTORY_MAX_TOOLS = 250
+MAX_REMOTE_TOOL_DETAIL = 4096
+MAX_REMOTE_REASONING = 12000
 DEFAULT_UPSTREAM = "http://127.0.0.1:9119"
 DEFAULT_LISTEN = "127.0.0.1"
 DEFAULT_PORT = 9120
@@ -1022,6 +1027,59 @@ class RemoteWebUIAuth:
                 raise self._http_error_fault(response)
             return self._json_response(response)
 
+    async def probe_contract(self, timeout: float = 10.0) -> dict[str, Any]:
+        """Read the WebUI's non-streaming SSE capability probe and server tag."""
+
+        return await asyncio.to_thread(self._probe_contract_sync, timeout)
+
+    def _probe_contract_sync(self, timeout: float) -> dict[str, Any]:
+        with self._lock:
+            if not self.base_url:
+                raise RpcFault(-32040, "Remote Hermes is not configured")
+            try:
+                response = self._request(
+                    self.base_url,
+                    self.cookie_jar,
+                    "GET",
+                    "/api/sessions/gateway/stream?probe=1",
+                    None,
+                    timeout,
+                )
+            except _RemoteAuthRequired as exc:
+                status = self._expire_session_locked(exc.status_code)
+                raise RemoteLoginFault(status["message"], status) from None
+            except _RemoteRedirectBlocked:
+                raise RpcFault(
+                    -32041, "Remote Hermes attempted a cross-origin redirect"
+                ) from None
+            except _RemoteTransportError:
+                raise RpcFault(-32042, "Remote Hermes is unreachable") from None
+
+            server = re.sub(
+                r"[^A-Za-z0-9._/ +()-]", "", str(response["headers"].get("Server", ""))
+            ).strip()[:128]
+            try:
+                value = self._json_response(response)
+            except RpcFault:
+                value = {}
+            session_path = str(value.get("session_stream_path") or "")
+            if not session_path.startswith("/api/") or "://" in session_path:
+                session_path = "/api/session/stream"
+            try:
+                fallback_poll_ms = int(value.get("fallback_poll_ms") or 30000)
+            except (TypeError, ValueError):
+                fallback_poll_ms = 30000
+            return {
+                "checked": True,
+                "probeStatus": int(response.get("status") or 0),
+                "server": server,
+                "gatewaySessions": value.get("ok") is True,
+                "gatewayWatcher": value.get("watcher_running") is True,
+                "sessionStream": value.get("session_stream_available") is True,
+                "sessionStreamPath": session_path,
+                "fallbackPollMs": max(5000, min(300000, fallback_poll_ms)),
+            }
+
     def _expire_session_locked(self, status_code: int = 401) -> dict[str, Any]:
         self.cookie_jar = CookieJar()
         if self.source == "persisted":
@@ -1625,6 +1683,51 @@ class HermesBridge:
         self.remote_stream_reasoning: dict[str, str] = {}
         self.remote_stream_completed: dict[str, str] = {}
         self.remote_stream_response_lock = threading.Lock()
+        self.remote_observer_tasks: dict[str, asyncio.Task[Any]] = {}
+        self.remote_observer_responses: dict[str, Any] = {}
+        self.remote_observer_response_lock = threading.Lock()
+        self.remote_observed_conversation_id = ""
+        self.remote_contract: dict[str, Any] = {
+            "checked": False,
+            "transport": "webui",
+            "contractVersion": 1,
+            "historyPagination": False,
+            "chatEventReplay": True,
+            "globalSessionEvents": False,
+            "sessionStream": False,
+            "sessionRunEvents": False,
+            "gatewaySessions": False,
+            "attachments": False,
+            "branches": False,
+            "messageEditing": False,
+            "regeneration": False,
+            "modelSelection": False,
+            "eventCatalog": [
+                "token",
+                "reasoning",
+                "tool",
+                "tool_complete",
+                "interim_assistant",
+                "approval",
+                "clarify",
+                "compressing",
+                "compressed",
+                "title",
+                "title_status",
+                "warning",
+                "apperror",
+                "cancel",
+                "done",
+                "stream_end",
+                "metering",
+                "context_status",
+                "goal",
+                "goal_continue",
+                "pending_steer_leftover",
+                "state_saved",
+                "todo_state",
+            ],
+        }
         self.watermarks: dict[str, int] = {}
         self.replay_epoch = ""
         self.conversation_locks: dict[str, asyncio.Lock] = {}
@@ -1657,6 +1760,7 @@ class HermesBridge:
             self.gateway.start()
 
     async def stop(self) -> None:
+        await self.stop_remote_observers()
         await self.stop_remote_streams()
         await self.gateway.stop()
         for client in list(self.clients):
@@ -1711,12 +1815,64 @@ class HermesBridge:
             ),
             "providerStatus": dict(self.provider_state),
             "remoteStatus": self.remote_auth.status,
+            "remoteContract": dict(self.remote_contract),
             "selectedConversationId": self.registry.selected_conversation_id,
             "conversations": [
                 self.public_conversation(conversation)
                 for conversation in self.registry.conversations.values()
             ],
         }
+
+    def bridge_capabilities(self) -> dict[str, Any]:
+        remote = self.remote_contract
+        return {
+            "conversations": True,
+            "streaming": True,
+            "tools": True,
+            "requests": True,
+            "eventReplay": True,
+            "historyPagination": remote.get("historyPagination") is True,
+            "sessionEvents": remote.get("sessionStream") is True,
+            "globalSessionEvents": remote.get("globalSessionEvents") is True,
+            "reasoning": True,
+            "goals": True,
+            "todos": True,
+            "usage": True,
+            "contextStatus": True,
+            "attachments": remote.get("attachments") is True,
+            "branches": remote.get("branches") is True,
+            "messageEditing": remote.get("messageEditing") is True,
+            "regeneration": remote.get("regeneration") is True,
+            "modelSelection": remote.get("modelSelection") is True,
+            "rawProxy": self.local_backend_enabled,
+            "providerSetup": self.local_backend_enabled,
+            "localBackend": self.local_backend_enabled,
+            "remoteWebUIAuth": True,
+        }
+
+    def bridge_features(self) -> list[str]:
+        features = [
+            "conversations",
+            "history",
+            "streaming",
+            "tool-progress",
+            "interactive-requests",
+            "event-replay",
+            "remote-webui-auth",
+            "structured-transcript",
+            "session-state",
+        ]
+        if self.remote_contract.get("historyPagination") is True:
+            features.append("history-pagination")
+        if self.remote_contract.get("sessionStream") is True:
+            features.append("persistent-session-events")
+        if self.remote_contract.get("globalSessionEvents") is True:
+            features.append("session-list-events")
+        if self.local_backend_enabled:
+            features.extend(
+                ["raw-proxy", "provider-readiness", "custom-provider-setup"]
+            )
+        return features
 
     async def client_handler(self, websocket: ServerConnection) -> None:
         request_path = getattr(getattr(websocket, "request", None), "path", "")
@@ -1795,31 +1951,9 @@ class HermesBridge:
                 "server": "fedora-config-hermes-menubar-bridge",
                 "bridgeVersion": str(BRIDGE_VERSION),
                 "backendStatus": self.connection,
-                "capabilities": {
-                    "conversations": True,
-                    "streaming": True,
-                    "tools": True,
-                    "requests": True,
-                    "eventReplay": True,
-                    "rawProxy": self.local_backend_enabled,
-                    "providerSetup": self.local_backend_enabled,
-                    "localBackend": self.local_backend_enabled,
-                    "remoteWebUIAuth": True,
-                },
+                "capabilities": self.bridge_capabilities(),
                 "models": [],
-                "features": [
-                    "conversations",
-                    "history",
-                    "streaming",
-                    "tool-progress",
-                    "interactive-requests",
-                    "event-replay",
-                    "remote-webui-auth",
-                ] + (
-                    ["raw-proxy", "provider-readiness", "custom-provider-setup"]
-                    if self.local_backend_enabled
-                    else []
-                ),
+                "features": self.bridge_features(),
                 "agentReady": (
                     self.remote_auth.status.get("state") == "connected"
                     if self.remote_auth.base_url
@@ -1844,6 +1978,10 @@ class HermesBridge:
             candidate = bool(params.get("url")) and status["url"] != self.remote_auth.base_url
             if not candidate:
                 await self.publish_remote_status(status, previous)
+                if status.get("state") == "connected":
+                    with suppress(RpcFault, RemoteLoginFault):
+                        await self.probe_remote_contract()
+                    await self.start_remote_observers()
             return status
         if method in {"remote.probe", "webui.auth.probe", "auth.probe"}:
             previous = self.remote_auth.status
@@ -1872,10 +2010,14 @@ class HermesBridge:
                 await self.publish_remote_status(failure, connecting)
                 raise
             await self.refresh_remote_conversations()
+            with suppress(RpcFault, RemoteLoginFault):
+                await self.probe_remote_contract()
+            await self.start_remote_observers()
             await self.publish_remote_status(status, connecting)
             return status
         if method in {"remote.logout", "webui.auth.logout", "auth.logout"}:
             previous = self.remote_auth.status
+            await self.stop_remote_observers()
             await self.stop_remote_streams()
             status = await self.remote_auth.logout()
             await self.publish_remote_status(status, previous)
@@ -1916,6 +2058,7 @@ class HermesBridge:
             if not str(params.get("sessionId") or params.get("session_id") or ""):
                 self.registry.selected_conversation_id = ""
                 self.registry.save()
+                await self.observe_remote_conversation("")
                 return {"selectedConversationId": ""}
             conversation = self.resolve_conversation(params)
             await self.select_conversation(conversation)
@@ -1924,7 +2067,7 @@ class HermesBridge:
             conversation = self.resolve_conversation(params)
             await self.select_conversation(conversation)
             if self.remote_auth.base_url:
-                return await self.remote_history(conversation)
+                return await self.remote_history(conversation, params)
             runtime = await self.ensure_runtime(conversation)
             result = await self.gateway.request(
                 "session.history", {"session_id": runtime}, timeout=30
@@ -2051,7 +2194,9 @@ class HermesBridge:
                 with suppress(RpcFault):
                     snapshot = await self.remote_request(
                         "GET",
-                        "/api/session?session_id=" + quote(session_id, safe=""),
+                        "/api/session?session_id=" + quote(session_id, safe="")
+                        + "&messages=1&expand_renderable=1&msg_limit="
+                        + str(REMOTE_HISTORY_PAGE),
                         timeout=30,
                     )
                     await self.apply_remote_session_snapshot(
@@ -2525,6 +2670,8 @@ class HermesBridge:
         if remote_session:
             self.conversation_by_remote_session.pop(remote_session, None)
         await self.stop_remote_stream(conversation_id)
+        if self.remote_observed_conversation_id == conversation_id:
+            await self.observe_remote_conversation("")
         self.registry.conversations.pop(conversation_id)
         if self.registry.selected_conversation_id == conversation_id:
             self.registry.selected_conversation_id = ""
@@ -2554,6 +2701,8 @@ class HermesBridge:
                 await self.ensure_runtime(conversation)
         public = self.public_conversation(conversation)
         await self.broadcast_event("conversation.selected", {"conversation": public, **public})
+        if self.remote_auth.base_url:
+            await self.observe_remote_conversation(conversation["id"])
 
     async def reset_conversation(self, conversation: dict[str, Any]) -> None:
         await self.stop_remote_stream(conversation["id"])
@@ -2610,6 +2759,327 @@ class HermesBridge:
         except RemoteLoginFault:
             await self.publish_remote_status(self.remote_auth.status, previous)
             raise
+
+    async def update_remote_contract(self, **patch: Any) -> None:
+        changed = False
+        for key, value in patch.items():
+            if self.remote_contract.get(key) != value:
+                self.remote_contract[key] = value
+                changed = True
+        if not changed:
+            return
+        await self.broadcast_event(
+            "bridge.capabilities",
+            {
+                "capabilities": self.bridge_capabilities(),
+                "features": self.bridge_features(),
+                "remoteContract": dict(self.remote_contract),
+            },
+        )
+
+    async def probe_remote_contract(self) -> dict[str, Any]:
+        """Negotiate the read-only WebUI stream contract without guessing writes."""
+
+        try:
+            probe = await self.remote_auth.probe_contract()
+        except RemoteLoginFault:
+            await self.publish_remote_status(self.remote_auth.status)
+            raise
+        except RpcFault:
+            await self.update_remote_contract(checked=True)
+            return dict(self.remote_contract)
+        await self.update_remote_contract(
+            checked=True,
+            server=str(probe.get("server") or "")[:128],
+            probeStatus=int(probe.get("probeStatus") or 0),
+            gatewaySessions=probe.get("gatewaySessions") is True,
+            gatewayWatcher=probe.get("gatewayWatcher") is True,
+            sessionStream=probe.get("sessionStream") is True,
+            sessionStreamPath=str(
+                probe.get("sessionStreamPath") or "/api/session/stream"
+            ),
+            fallbackPollMs=int(probe.get("fallbackPollMs") or 30000),
+        )
+        return dict(self.remote_contract)
+
+    async def start_remote_observers(self) -> None:
+        if (
+            not self.remote_auth.base_url
+            or self.remote_auth.status.get("state") != "connected"
+        ):
+            return
+        task = self.remote_observer_tasks.get("global")
+        if task is None or task.done():
+            task = asyncio.create_task(
+                self._remote_global_events_loop(self.remote_auth.base_url),
+                name="hermes-remote-session-list-events",
+            )
+            self.remote_observer_tasks["global"] = task
+            task.add_done_callback(HermesGateway._log_background_failure)
+        await self.observe_remote_conversation(
+            self.registry.selected_conversation_id
+        )
+
+    async def stop_remote_observer(self, key: str) -> None:
+        task = self.remote_observer_tasks.pop(key, None)
+        with self.remote_observer_response_lock:
+            response = self.remote_observer_responses.pop(key, None)
+        current = asyncio.current_task()
+        if task is not None and task is not current and not task.done():
+            task.cancel()
+        # Mark the asyncio reader cancelled before closing the blocking urllib
+        # response. Closing first can make its worker thread race through
+        # http.client with a cleared file pointer and surface a spurious
+        # ``NoneType.peek`` failure during an otherwise clean service stop.
+        if response is not None:
+            with suppress(Exception):
+                await asyncio.to_thread(response.close)
+        if task is not None and task is not current:
+            with suppress(asyncio.CancelledError, Exception):
+                await task
+
+    async def stop_remote_observers(self) -> None:
+        keys = set(self.remote_observer_tasks)
+        with self.remote_observer_response_lock:
+            keys.update(self.remote_observer_responses)
+        for key in keys:
+            await self.stop_remote_observer(key)
+        self.remote_observed_conversation_id = ""
+
+    async def observe_remote_conversation(self, conversation_id: str) -> None:
+        conversation_id = str(conversation_id or "")
+        if conversation_id == self.remote_observed_conversation_id:
+            task = self.remote_observer_tasks.get("session")
+            if not conversation_id or (task is not None and not task.done()):
+                return
+        await self.stop_remote_observer("session")
+        self.remote_observed_conversation_id = conversation_id
+        if (
+            not conversation_id
+            or self.remote_auth.status.get("state") != "connected"
+        ):
+            return
+        conversation = self.registry.conversations.get(conversation_id)
+        if conversation is None:
+            return
+        session_id = str(conversation.get("remote_session_id") or conversation_id)
+        task = asyncio.create_task(
+            self._remote_session_events_loop(
+                conversation_id, session_id, self.remote_auth.base_url
+            ),
+            name=f"hermes-remote-session-events-{conversation_id}",
+        )
+        self.remote_observer_tasks["session"] = task
+        task.add_done_callback(HermesGateway._log_background_failure)
+
+    async def _consume_observer_sse(
+        self,
+        response: Any,
+        callback: Callable[[str, str, dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        event_name = "message"
+        event_id = ""
+        data_lines: list[str] = []
+        event_size = 0
+
+        async def dispatch_event() -> None:
+            nonlocal event_name, event_id, data_lines, event_size
+            if data_lines:
+                try:
+                    parsed = json.loads("\n".join(data_lines))
+                except json.JSONDecodeError as exc:
+                    raise RpcFault(
+                        -32045, "Remote Hermes sent invalid observer event data"
+                    ) from exc
+                data = parsed if isinstance(parsed, dict) else {"value": parsed}
+                await callback(event_name, event_id, data)
+            event_name = "message"
+            event_id = ""
+            data_lines = []
+            event_size = 0
+
+        while True:
+            raw = await asyncio.to_thread(response.readline, MAX_REMOTE_SSE_EVENT + 1)
+            if not raw:
+                await dispatch_event()
+                return
+            if len(raw) > MAX_REMOTE_SSE_EVENT:
+                raise RpcFault(-32045, "Remote Hermes observer event is too large")
+            try:
+                line = raw.decode("utf-8").rstrip("\r\n")
+            except UnicodeDecodeError as exc:
+                raise RpcFault(-32045, "Remote Hermes observer event is not UTF-8") from exc
+            if not line:
+                await dispatch_event()
+                continue
+            if line.startswith(":"):
+                continue
+            field, separator, value = line.partition(":")
+            if not separator:
+                value = ""
+            elif value.startswith(" "):
+                value = value[1:]
+            if field == "event":
+                event_name = value[:256] or "message"
+            elif field == "id" and "\x00" not in value:
+                event_id = value[:1024]
+            elif field == "data":
+                event_size += len(raw)
+                if event_size > MAX_REMOTE_SSE_EVENT:
+                    raise RpcFault(-32045, "Remote Hermes observer event is too large")
+                data_lines.append(value)
+
+    async def _remote_global_events_loop(self, origin: str) -> None:
+        failures = 0
+        key = "global"
+        try:
+            while (
+                self.remote_auth.base_url == origin
+                and self.remote_auth.status.get("state") == "connected"
+            ):
+                response: Any = None
+                try:
+                    response = await asyncio.to_thread(
+                        self.remote_auth.open_sse,
+                        "/api/sessions/events",
+                        timeout=45,
+                    )
+                    with self.remote_observer_response_lock:
+                        self.remote_observer_responses[key] = response
+                    await self.update_remote_contract(globalSessionEvents=True)
+                    failures = 0
+
+                    async def handle(event: str, _event_id: str, _data: dict[str, Any]) -> None:
+                        if event.strip().lower().replace("-", "_") != "sessions_changed":
+                            return
+                        with suppress(RpcFault):
+                            await self.refresh_remote_conversations()
+
+                    await self._consume_observer_sse(response, handle)
+                except asyncio.CancelledError:
+                    raise
+                except RemoteLoginFault:
+                    await self.publish_remote_status(self.remote_auth.status)
+                    return
+                except RpcFault as fault:
+                    if "HTTP 404" in fault.message or "invalid event stream" in fault.message:
+                        await self.update_remote_contract(globalSessionEvents=False)
+                        return
+                    failures += 1
+                except (OSError, TimeoutError, UnicodeDecodeError):
+                    failures += 1
+                finally:
+                    with self.remote_observer_response_lock:
+                        if self.remote_observer_responses.get(key) is response:
+                            self.remote_observer_responses.pop(key, None)
+                    if response is not None:
+                        with suppress(Exception):
+                            await asyncio.to_thread(response.close)
+                await asyncio.sleep(min(30.0, 0.5 * (2 ** min(failures, 6))))
+        finally:
+            if self.remote_observer_tasks.get(key) is asyncio.current_task():
+                self.remote_observer_tasks.pop(key, None)
+
+    async def _remote_session_events_loop(
+        self, conversation_id: str, session_id: str, origin: str
+    ) -> None:
+        failures = 0
+        key = "session"
+        seen_background: list[str] = []
+        try:
+            while (
+                self.remote_observed_conversation_id == conversation_id
+                and self.remote_auth.base_url == origin
+                and self.remote_auth.status.get("state") == "connected"
+            ):
+                conversation = self.registry.conversations.get(conversation_id)
+                if conversation is None:
+                    return
+                response: Any = None
+                path = str(
+                    self.remote_contract.get("sessionStreamPath")
+                    or "/api/session/stream"
+                )
+                path += "?session_id=" + quote(session_id, safe="")
+                path += "&known_count=" + str(
+                    max(0, int(conversation.get("message_count") or 0))
+                )
+                try:
+                    response = await asyncio.to_thread(
+                        self.remote_auth.open_sse, path, timeout=45
+                    )
+                    with self.remote_observer_response_lock:
+                        self.remote_observer_responses[key] = response
+                    await self.update_remote_contract(sessionStream=True)
+                    failures = 0
+
+                    async def handle(event: str, event_id: str, data: dict[str, Any]) -> None:
+                        normalized = event.strip().lower().replace("-", "_")
+                        active = self.registry.conversations.get(conversation_id)
+                        if active is None:
+                            return
+                        if normalized == "server_turn_started":
+                            stream_id = str(data.get("stream_id") or data.get("streamId") or "")
+                            if stream_id:
+                                await self.set_conversation_status(
+                                    active, "working", "Hermes is working…"
+                                )
+                                await self.start_remote_stream(
+                                    active, session_id, stream_id
+                                )
+                            return
+                        if normalized in {
+                            "session_updated",
+                            "bg_task_complete",
+                            "process_complete",
+                        }:
+                            dedupe = str(
+                                data.get("event_id")
+                                or data.get("process_id")
+                                or event_id
+                                or f"{normalized}:{data.get('message_count', '')}"
+                            )
+                            if dedupe in seen_background:
+                                return
+                            seen_background.append(dedupe)
+                            del seen_background[:-64]
+                            if normalized != "session_updated":
+                                await self.broadcast_event(
+                                    "session.background",
+                                    self.routed_payload(
+                                        active,
+                                        {**data, "kind": normalized},
+                                    ),
+                                )
+                            with suppress(RpcFault):
+                                await self.remote_history(
+                                    active, {"limit": REMOTE_HISTORY_PAGE}
+                                )
+
+                    await self._consume_observer_sse(response, handle)
+                except asyncio.CancelledError:
+                    raise
+                except RemoteLoginFault:
+                    await self.publish_remote_status(self.remote_auth.status)
+                    return
+                except RpcFault as fault:
+                    if "HTTP 404" in fault.message or "invalid event stream" in fault.message:
+                        await self.update_remote_contract(sessionStream=False)
+                        return
+                    failures += 1
+                except (OSError, TimeoutError, UnicodeDecodeError):
+                    failures += 1
+                finally:
+                    with self.remote_observer_response_lock:
+                        if self.remote_observer_responses.get(key) is response:
+                            self.remote_observer_responses.pop(key, None)
+                    if response is not None:
+                        with suppress(Exception):
+                            await asyncio.to_thread(response.close)
+                await asyncio.sleep(min(30.0, 0.5 * (2 ** min(failures, 6))))
+        finally:
+            if self.remote_observer_tasks.get(key) is asyncio.current_task():
+                self.remote_observer_tasks.pop(key, None)
 
     @staticmethod
     def _remote_time(value: Any) -> str:
@@ -2723,6 +3193,7 @@ class HermesBridge:
         self.registry.conversations = incoming
         if self.registry.selected_conversation_id not in incoming:
             self.registry.selected_conversation_id = ""
+            await self.observe_remote_conversation("")
         self.conversation_by_remote_session = {
             session_id: session_id for session_id in incoming
         }
@@ -2820,23 +3291,465 @@ class HermesBridge:
             return
         await self.refresh_remote_conversations()
 
+    @classmethod
+    def _remote_content_text(cls, value: Any, depth: int = 0) -> str:
+        """Project structured message content without serializing protocol data.
+
+        Hermes accepts OpenAI and Anthropic content-part shapes.  Tool-use and
+        tool-result parts are intentionally excluded here: they are projected
+        into activity cards by :meth:`project_remote_transcript` instead of
+        becoming JSON chat bubbles.
+        """
+
+        if depth > 5:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, list):
+            parts = [cls._remote_content_text(part, depth + 1) for part in value]
+            return "\n".join(part for part in parts if part.strip())
+        if not isinstance(value, dict):
+            return ""
+
+        part_type = str(value.get("type") or "").strip().lower()
+        if part_type in {
+            "tool_use",
+            "tool_result",
+            "function_call",
+            "function_result",
+        }:
+            return ""
+        if part_type in {"image", "image_url", "input_image"}:
+            return "[Image attachment]"
+        if part_type in {"file", "input_file", "attachment"}:
+            name = str(
+                value.get("filename") or value.get("name") or value.get("file_name") or ""
+            ).strip()
+            return f"[File attachment: {name}]" if name else "[File attachment]"
+
+        for key in ("text", "content", "value", "input_text", "output_text"):
+            if key not in value:
+                continue
+            text = cls._remote_content_text(value[key], depth + 1)
+            if text.strip():
+                return text
+        return ""
+
+    @staticmethod
+    def _remote_tool_text(value: Any, limit: int = MAX_REMOTE_TOOL_DETAIL) -> str:
+        """Return a bounded, readable tool argument/result preview."""
+
+        def bounded(text: str) -> str:
+            if len(text) <= limit:
+                return text
+            if limit <= 0:
+                return ""
+            if limit == 1:
+                return "…"
+            return text[: limit - 1] + "…"
+
+        parsed = value
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate and candidate[0] in "[{":
+                with suppress(json.JSONDecodeError, TypeError):
+                    parsed = json.loads(candidate)
+        if isinstance(parsed, dict):
+            for key in ("summary", "message", "result", "output", "error"):
+                scalar = parsed.get(key)
+                if isinstance(scalar, str) and scalar.strip():
+                    text = scalar.strip()
+                    return bounded(text)
+        if isinstance(parsed, (dict, list)):
+            try:
+                text = json.dumps(parsed, ensure_ascii=False, indent=2, sort_keys=True)
+            except (TypeError, ValueError):
+                text = str(parsed)
+        elif parsed is None:
+            text = ""
+        else:
+            text = str(parsed)
+        text = text.strip()
+        return bounded(text)
+
+    @staticmethod
+    def _remote_tool_id(value: dict[str, Any]) -> str:
+        return str(
+            value.get("tool_call_id")
+            or value.get("toolCallId")
+            or value.get("tool_use_id")
+            or value.get("tid")
+            or value.get("call_id")
+            or value.get("id")
+            or ""
+        ).strip()
+
+    @classmethod
+    def _remote_tool_call(cls, value: Any) -> tuple[str, str, Any]:
+        if not isinstance(value, dict):
+            return "", "", None
+        function = value.get("function")
+        nested = function if isinstance(function, dict) else {}
+        tool_id = cls._remote_tool_id(value)
+        name = str(
+            nested.get("name")
+            or value.get("name")
+            or value.get("tool_name")
+            or value.get("function_name")
+            or "Tool"
+        ).strip()
+        arguments = value.get("args", value.get("input", value.get("arguments")))
+        if arguments is None:
+            arguments = nested.get("arguments")
+        if isinstance(arguments, str):
+            with suppress(json.JSONDecodeError, TypeError):
+                arguments = json.loads(arguments)
+        return tool_id, name or "Tool", arguments
+
+    @classmethod
+    def project_remote_transcript(
+        cls,
+        session_id: str,
+        messages: Any,
+        session_tool_calls: Any = None,
+        *,
+        offset: int = 0,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Split persisted history into prose messages and bounded tool cards."""
+
+        source = cls.display_messages({}, messages)
+        results: dict[str, dict[str, Any]] = {}
+        orphan_results: list[dict[str, Any]] = []
+
+        def note_result(
+            tool_id: str,
+            raw: Any,
+            source_index: int,
+            *,
+            name: str = "",
+            failed: bool = False,
+        ) -> None:
+            record = {
+                "id": tool_id,
+                "name": name,
+                "output": cls._remote_tool_text(raw),
+                "failed": failed,
+                "order": (offset + source_index) * 1000 + 900,
+                "sourceIndex": offset + source_index,
+            }
+            if tool_id:
+                results[tool_id] = record
+            else:
+                orphan_results.append(record)
+
+        for index, message in enumerate(source):
+            role = str(message.get("role") or "").strip().lower()
+            if role == "tool":
+                note_result(
+                    cls._remote_tool_id(message),
+                    message.get("content", message.get("result", message.get("output"))),
+                    index,
+                    name=str(message.get("name") or message.get("tool_name") or ""),
+                    failed=message.get("is_error") is True or bool(message.get("error")),
+                )
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if not isinstance(part, dict) or str(part.get("type") or "").lower() != "tool_result":
+                    continue
+                note_result(
+                    str(part.get("tool_use_id") or part.get("tool_call_id") or ""),
+                    part.get("content", part.get("result", part.get("output"))),
+                    index,
+                    failed=part.get("is_error") is True or bool(part.get("error")),
+                )
+
+        projected_messages: list[dict[str, Any]] = []
+        tools_by_id: dict[str, dict[str, Any]] = {}
+        tool_order: list[str] = []
+
+        def upsert_tool(tool: dict[str, Any]) -> None:
+            tool_id = str(tool.get("id") or "")
+            if not tool_id:
+                return
+            current = tools_by_id.get(tool_id)
+            if current is None:
+                tools_by_id[tool_id] = tool
+                tool_order.append(tool_id)
+                return
+            merged = dict(current)
+            for key, value in tool.items():
+                if value not in (None, "", [], {}):
+                    merged[key] = value
+            tools_by_id[tool_id] = merged
+
+        for index, message in enumerate(source):
+            raw_role = str(
+                message.get("role") or message.get("author") or message.get("sender") or ""
+            ).strip().lower().replace("-", "_")
+            role = {
+                "human": "user",
+                "me": "user",
+                "agent": "assistant",
+                "hermes": "assistant",
+                "model": "assistant",
+            }.get(raw_role, raw_role)
+            content = message.get(
+                "text",
+                message.get("content", message.get("delta", message.get("message"))),
+            )
+            text = cls._remote_content_text(content).strip()
+            streaming = message.get("streaming") is True or message.get("partial") is True
+            pending = message.get("pending") is True
+            error = str(message.get("error") or "").strip()[:500]
+            order = (offset + index) * 1000
+            message_id = str(
+                message.get("id")
+                or message.get("message_id")
+                or message.get("turn_id")
+                or message.get("item_id")
+                or f"remote-{session_id}-{offset + index}"
+            )
+
+            calls: list[Any] = []
+            for key in ("tool_calls", "_partial_tool_calls"):
+                value = message.get(key)
+                if isinstance(value, list):
+                    calls.extend(value)
+            if isinstance(content, list):
+                calls.extend(
+                    part
+                    for part in content
+                    if isinstance(part, dict)
+                    and str(part.get("type") or "").lower() == "tool_use"
+                )
+            for call_index, call in enumerate(calls):
+                tool_id, name, arguments = cls._remote_tool_call(call)
+                if not tool_id:
+                    tool_id = f"remote-tool-{session_id}-{offset + index}-{call_index}"
+                result = results.get(tool_id, {})
+                failed = bool(result.get("failed")) or (
+                    isinstance(call, dict)
+                    and (call.get("is_error") is True or bool(call.get("error")))
+                )
+                partial = isinstance(call, dict) and call.get("done") is False
+                upsert_tool(
+                    {
+                        "id": tool_id,
+                        "toolCallId": tool_id,
+                        "name": name,
+                        "label": str(call.get("label") or "") if isinstance(call, dict) else "",
+                        "status": "error" if failed else "interrupted" if partial else "completed",
+                        "input": cls._remote_tool_text(arguments),
+                        "output": str(result.get("output") or ""),
+                        "detail": str(result.get("output") or ""),
+                        "error": str(call.get("error") or "")[:500]
+                        if isinstance(call, dict) and failed
+                        else "",
+                        "order": order + 100 + call_index,
+                        "sourceIndex": offset + index,
+                        "historical": True,
+                        "terminal": True,
+                    }
+                )
+
+            if role not in {"user", "assistant", "system"}:
+                continue
+            # Empty assistant carrier rows exist solely to anchor tool_calls.
+            if not text and not streaming and not pending and not error:
+                continue
+            projected_messages.append(
+                {
+                    "id": message_id,
+                    "role": role,
+                    "text": text,
+                    "createdAt": cls._remote_time(
+                        message.get("created_at")
+                        or message.get("timestamp")
+                        or message.get("time")
+                    ),
+                    "updatedAt": cls._remote_time(
+                        message.get("updated_at")
+                        or message.get("timestamp")
+                        or message.get("time")
+                    ),
+                    "streaming": streaming,
+                    "pending": pending,
+                    "error": error,
+                    "model": str(message.get("model") or "")[:256],
+                    "order": order,
+                    "sourceIndex": offset + index,
+                }
+            )
+
+        sidecars = session_tool_calls if isinstance(session_tool_calls, list) else []
+        for sidecar_index, call in enumerate(sidecars):
+            if not isinstance(call, dict):
+                continue
+            tool_id, name, arguments = cls._remote_tool_call(call)
+            if not tool_id:
+                tool_id = f"remote-sidecar-tool-{session_id}-{sidecar_index}"
+            try:
+                assistant_index = int(call.get("assistant_msg_idx"))
+            except (TypeError, ValueError):
+                assistant_index = -1
+            result = results.get(tool_id, {})
+            output = call.get(
+                "snippet",
+                call.get("preview", call.get("result", call.get("output"))),
+            )
+            if not output:
+                output = result.get("output", "")
+            failed = call.get("is_error") is True or bool(call.get("error")) or bool(
+                result.get("failed")
+            )
+            sidecar_order = (
+                assistant_index * 1000 + 100 + sidecar_index
+                if assistant_index >= 0
+                else int(result.get("order") or (offset + len(source)) * 1000 + sidecar_index)
+            )
+            upsert_tool(
+                {
+                    "id": tool_id,
+                    "toolCallId": tool_id,
+                    "name": name,
+                    "label": str(call.get("label") or ""),
+                    "status": "error" if failed else "completed",
+                    "input": cls._remote_tool_text(arguments),
+                    "output": cls._remote_tool_text(output),
+                    "detail": cls._remote_tool_text(output),
+                    "error": str(call.get("error") or "")[:500] if failed else "",
+                    "order": sidecar_order,
+                    "sourceIndex": assistant_index,
+                    "historical": True,
+                    "terminal": True,
+                }
+            )
+
+        # Keep an unmatched role:tool result visible as an activity card rather
+        # than losing potentially useful history or rendering it as agent prose.
+        for orphan_index, result in enumerate(orphan_results):
+            tool_id = f"remote-orphan-tool-{session_id}-{result['sourceIndex']}-{orphan_index}"
+            upsert_tool(
+                {
+                    "id": tool_id,
+                    "toolCallId": tool_id,
+                    "name": result.get("name") or "Tool result",
+                    "label": "",
+                    "status": "error" if result.get("failed") else "completed",
+                    "input": "",
+                    "output": result.get("output") or "",
+                    "detail": result.get("output") or "",
+                    "error": "Tool failed" if result.get("failed") else "",
+                    "order": result.get("order") or 0,
+                    "sourceIndex": result.get("sourceIndex", -1),
+                    "historical": True,
+                    "terminal": True,
+                }
+            )
+
+        # A result can have a stable id while its assistant carrier was omitted
+        # by an older server. Preserve it as a named card as a final fallback.
+        for tool_id, result in results.items():
+            if tool_id in tools_by_id:
+                continue
+            upsert_tool(
+                {
+                    "id": tool_id,
+                    "toolCallId": tool_id,
+                    "name": result.get("name") or "Tool result",
+                    "label": "",
+                    "status": "error" if result.get("failed") else "completed",
+                    "input": "",
+                    "output": result.get("output") or "",
+                    "detail": result.get("output") or "",
+                    "error": "Tool failed" if result.get("failed") else "",
+                    "order": result.get("order") or 0,
+                    "sourceIndex": result.get("sourceIndex", -1),
+                    "historical": True,
+                    "terminal": True,
+                }
+            )
+
+        projected_messages.sort(key=lambda row: (row.get("order", 0), row["id"]))
+        tools = [tools_by_id[tool_id] for tool_id in tool_order]
+        tools.sort(key=lambda row: (row.get("order", 0), row["id"]))
+
+        if len(projected_messages) > REMOTE_HISTORY_MAX_MESSAGES:
+            projected_messages = projected_messages[-REMOTE_HISTORY_MAX_MESSAGES:]
+            floor = int(projected_messages[0].get("order") or 0)
+            tools = [tool for tool in tools if int(tool.get("order") or 0) >= floor]
+        if len(tools) > REMOTE_HISTORY_MAX_TOOLS:
+            tools = tools[-REMOTE_HISTORY_MAX_TOOLS:]
+        return {"messages": projected_messages, "tools": tools}
+
     def remote_display_messages(
         self, session_id: str, messages: Any
     ) -> list[dict[str, Any]]:
-        visible = self.display_messages({}, messages)
-        normalized: list[dict[str, Any]] = []
-        for index, message in enumerate(visible):
-            row = dict(message)
-            if not any(
-                row.get(key)
-                for key in ("id", "message_id", "turn_id", "item_id")
-            ):
-                row["id"] = f"remote-{session_id}-{index}"
-            normalized.append(row)
-        return normalized
+        """Compatibility wrapper returning only renderable prose messages."""
+
+        return self.project_remote_transcript(session_id, messages)["messages"]
+
+    @staticmethod
+    def remote_session_state(session: dict[str, Any]) -> dict[str, Any]:
+        """Extract the bounded, presentation-safe state attached to a session GET."""
+
+        state: dict[str, Any] = {}
+        todo_state = session.get("todo_state")
+        if isinstance(todo_state, dict):
+            todos = todo_state.get("todos")
+            summary = todo_state.get("summary")
+            state["todos"] = todos[:100] if isinstance(todos, list) else []
+            state["todoSummary"] = summary if isinstance(summary, dict) else {}
+            state["todoVersion"] = todo_state.get("version")
+            state["todoUpdatedAt"] = todo_state.get("ts")
+
+        context: dict[str, Any] = {}
+        for source, target in (
+            ("context_length", "contextLength"),
+            ("threshold_tokens", "thresholdTokens"),
+            ("last_prompt_tokens", "lastPromptTokens"),
+            ("post_compression_context_tokens_estimate", "postCompressionTokens"),
+        ):
+            value = session.get(source)
+            if isinstance(value, (int, float)) and value >= 0:
+                context[target] = value
+        if context:
+            state["context"] = context
+
+        journal = session.get("runtime_journal")
+        if isinstance(journal, dict):
+            state["runtimeJournal"] = {
+                key: journal[key]
+                for key in (
+                    "run_id",
+                    "stream_id",
+                    "status",
+                    "active",
+                    "started_at",
+                    "updated_at",
+                    "last_event_id",
+                )
+                if key in journal
+            }
+        active_stream = str(session.get("active_stream_id") or "")
+        if active_stream:
+            state["activeStreamId"] = active_stream[:1024]
+        pending_steer = session.get("pending_steer")
+        if isinstance(pending_steer, str) and pending_steer.strip():
+            state["pendingSteer"] = pending_steer.strip()[:2000]
+        return state
 
     async def apply_remote_session_snapshot(
-        self, conversation: dict[str, Any], session: Any
+        self,
+        conversation: dict[str, Any],
+        session: Any,
+        *,
+        history_mode: str = "replace",
+        requested_limit: int = REMOTE_HISTORY_PAGE,
     ) -> dict[str, Any]:
         if not isinstance(session, dict):
             raise RpcFault(-32045, "Remote Hermes returned an invalid session")
@@ -2848,15 +3761,31 @@ class HermesBridge:
             conversation["remote_session_id"] = session_id
             conversation["remote_origin"] = self.remote_auth.base_url
             self.conversation_by_remote_session[session_id] = conversation["id"]
-        messages = self.remote_display_messages(
-            session_id, session.get("messages", [])
+        try:
+            message_offset = max(0, int(session.get("_messages_offset") or 0))
+        except (TypeError, ValueError):
+            message_offset = 0
+        projection = self.project_remote_transcript(
+            session_id,
+            session.get("messages", []),
+            session.get("tool_calls", []),
+            offset=message_offset,
         )
+        messages = projection["messages"]
+        tools = projection["tools"]
         if any(
             str(row.get("role") or "") in {"user", "assistant"}
             for row in messages
         ):
             conversation["has_messages"] = True
-        conversation["message_count"] = len(messages)
+        raw_message_rows = session.get("messages")
+        raw_message_count = len(raw_message_rows) if isinstance(raw_message_rows, list) else 0
+        try:
+            conversation["message_count"] = max(
+                0, int(session.get("message_count", raw_message_count))
+            )
+        except (TypeError, ValueError):
+            conversation["message_count"] = raw_message_count
         conversation["title"] = str(
             session.get("title") or conversation.get("title") or "Untitled chat"
         )[:160]
@@ -2880,23 +3809,75 @@ class HermesBridge:
             session.get("last_message_at") or session.get("updated_at")
         ) or conversation.get("updated_at", "") or utc_now()
         self.registry.save()
-        payload = self.routed_payload(conversation, {"messages": messages})
-        await self.broadcast_event("message.snapshot", payload)
+        if any(
+            key in session
+            for key in ("_messages_truncated", "_messages_offset", "_msg_limit_max")
+        ):
+            await self.update_remote_contract(historyPagination=True)
+        truncated = session.get("_messages_truncated") is True or message_offset > 0
+        payload = self.routed_payload(
+            conversation,
+            {
+                "messages": messages,
+                "tools": tools,
+                "history": {
+                    "mode": "prepend" if history_mode == "prepend" else "replace",
+                    "hasMore": truncated,
+                    "offset": message_offset,
+                    "limit": requested_limit,
+                    "messageCount": conversation["message_count"],
+                    "serverLimit": session.get("_msg_limit_max"),
+                },
+                "sessionState": self.remote_session_state(session),
+            },
+        )
+        await self.broadcast_event(
+            "message.page" if history_mode == "prepend" else "message.snapshot",
+            payload,
+        )
         public = self.public_conversation(conversation)
         await self.broadcast_event(
             "conversation.updated", {"conversation": public, **public}
         )
         return payload
 
-    async def remote_history(self, conversation: dict[str, Any]) -> dict[str, Any]:
+    async def remote_history(
+        self, conversation: dict[str, Any], params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         session_id = await self.ensure_remote_session(conversation)
+        values = params or {}
+        try:
+            requested_limit = int(values.get("limit") or REMOTE_HISTORY_PAGE)
+        except (TypeError, ValueError):
+            requested_limit = REMOTE_HISTORY_PAGE
+        requested_limit = max(1, min(requested_limit, REMOTE_HISTORY_PAGE))
+        before_value = values.get(
+            "before", values.get("messageBefore", values.get("message_before"))
+        )
+        try:
+            before = max(0, int(before_value)) if before_value is not None else None
+        except (TypeError, ValueError):
+            before = None
+        path = (
+            "/api/session?session_id="
+            + quote(session_id, safe="")
+            + "&messages=1&expand_renderable=1&msg_limit="
+            + str(requested_limit)
+        )
+        if before is not None:
+            path += "&msg_before=" + str(before)
         result = await self.remote_request(
             "GET",
-            "/api/session?session_id=" + quote(session_id, safe=""),
+            path,
             timeout=30,
         )
         session = result.get("session")
-        payload = await self.apply_remote_session_snapshot(conversation, session)
+        payload = await self.apply_remote_session_snapshot(
+            conversation,
+            session,
+            history_mode="prepend" if before is not None else "replace",
+            requested_limit=requested_limit,
+        )
         if isinstance(session, dict):
             active_stream = str(session.get("active_stream_id") or "")
             if active_stream:
@@ -3545,12 +4526,12 @@ class HermesBridge:
         if event == "reasoning":
             chunk = str(data.get("text") or data.get("reasoning") or "")
             current = self.remote_stream_reasoning.get(conversation["id"], "")
-            remaining = max(0, MAX_REMOTE_STREAM_EVENT - len(current))
+            remaining = max(0, MAX_REMOTE_REASONING - len(current))
             if remaining:
                 current += chunk[:remaining]
                 self.remote_stream_reasoning[conversation["id"]] = current
             await self.broadcast_event(
-                "session.info",
+                "session.reasoning",
                 {
                     **base,
                     "kind": "reasoning",
@@ -3558,6 +4539,45 @@ class HermesBridge:
                     "status": "working",
                     "statusText": "Hermes is thinking…",
                 },
+            )
+            return False
+
+        if event == "warning":
+            await self.broadcast_event(
+                "session.warning",
+                {
+                    **base,
+                    "kind": "warning",
+                    "message": str(
+                        data.get("message") or data.get("warning") or data.get("detail")
+                        or "Hermes reported a warning"
+                    )[:1000],
+                },
+            )
+            return False
+
+        if event == "context_status":
+            await self.broadcast_event(
+                "session.context", {**base, "kind": "context_status"}
+            )
+            return False
+
+        if event == "todo_state":
+            await self.broadcast_event(
+                "session.todos", {**base, "kind": "todo_state"}
+            )
+            return False
+
+        if event in {"goal", "goal_continue"}:
+            await self.broadcast_event(
+                "session.goal", {**base, "kind": event}
+            )
+            return False
+
+        if event == "pending_steer_leftover":
+            await self.broadcast_event(
+                "session.pending_steer",
+                {**base, "kind": "pending_steer_leftover"},
             )
             return False
 
@@ -3691,7 +4711,9 @@ class HermesBridge:
             return False
 
         if event in {"usage", "metering"}:
-            await self.broadcast_event("session.usage", base)
+            await self.broadcast_event(
+                "session.usage", {**base, "kind": event}
+            )
             return False
 
         if event == "done":
@@ -3833,7 +4855,9 @@ class HermesBridge:
             try:
                 result = await self.remote_request(
                     "GET",
-                    "/api/session?session_id=" + quote(session_id, safe=""),
+                    "/api/session?session_id=" + quote(session_id, safe="")
+                    + "&messages=1&expand_renderable=1&msg_limit="
+                    + str(REMOTE_HISTORY_PAGE),
                     timeout=30,
                 )
                 snapshot = result.get("session")

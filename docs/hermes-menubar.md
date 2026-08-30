@@ -33,12 +33,41 @@ the URL-and-password form automatically.
 ## Activity and streaming
 
 Conversation history comes from `GET /api/sessions` and `GET /api/session`.
+The detail request uses WebUI's `msg_limit`/`msg_before` window contract, loads
+80 visible rows at a time, and keeps at most 250 renderable messages in the QML
+model. **Load earlier history** retrieves preceding windows without making a
+large tool-heavy session cross the loopback bridge in one response.
+
+History is projected at an explicit presentation boundary. Only non-empty
+user, assistant, and system prose becomes a message bubble. `role: tool`,
+`session_meta`, empty assistant tool-call carriers, and other protocol records
+never fall through to assistant Markdown. OpenAI `tool_calls`, Anthropic
+`tool_use`/`tool_result` blocks, and session-level tool summaries are joined by
+their call ID, but they do not accumulate as transcript rows. While a turn is
+active, one compact activity line follows the newest tool name, short detail,
+and status in place; it disappears when the turn settles. Structured text,
+image markers, and file markers are normalized without serializing arbitrary
+content objects into chat.
+
 Prompts use `POST /api/chat/start`, with the response consumed from Hermes'
 authenticated server-sent-event stream. The bar and conversation view
 translate those events into useful live states, including working, thinking,
 tool use, context compression, waiting for approval or clarification,
-interrupted, failed, and done. Stream reconnects resume with the last event ID
-and reconcile against Hermes' session and stream-status endpoints.
+interrupted, failed, and done. Reasoning, warnings, goals, todos, context usage,
+token metering, and unconsumed steering are retained as compact session state
+instead of synthetic transcript messages. Stream reconnects resume with the
+last event ID and reconcile against Hermes' session and stream-status
+endpoints.
+
+After authentication the bridge reads the WebUI gateway-stream capability
+probe and publishes the negotiated contract to QML. It also supervises the
+always-on `/api/sessions/events` list-invalidation stream and the selected
+conversation's `/api/session/stream` channel. These recover conversations
+created by another client, background-task completions, and server-initiated
+turns without polling or replaying a prompt. Older WebUI versions degrade to
+manual/list refresh when a stream endpoint is genuinely unavailable. Features
+without an upstream capability signal—attachments, branching, message editing,
+regeneration, and model selection—remain disabled rather than being guessed.
 
 The small Python bridge remains loopback-only on `ws://127.0.0.1:9120/ws`. It
 owns the remote cookie and never exposes it to QML; it does not contain or run

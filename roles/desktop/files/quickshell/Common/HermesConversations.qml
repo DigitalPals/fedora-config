@@ -14,6 +14,8 @@ Singleton {
     property string selectedConversationId: ""
     property var messagesByConversation: ({})
     property var toolsByConversation: ({})
+    property var sessionStateByConversation: ({})
+    property var historyByConversation: ({})
     property var requestsByConversation: ({})
     property var errorsByConversation: ({})
     property var loadingByConversation: ({})
@@ -49,6 +51,8 @@ Singleton {
         ? newConversation : conversationById(selectedConversationId)
     readonly property var selectedMessages: messagesFor(selectedConversationId)
     readonly property var selectedTools: toolsFor(selectedConversationId)
+    readonly property var selectedSessionState: sessionStateFor(selectedConversationId)
+    readonly property var selectedHistory: historyFor(selectedConversationId)
     readonly property var selectedRequests: requestsFor(selectedConversationId)
     readonly property string selectedError:
         errorsByConversation[selectedConversationId] ?? ""
@@ -92,6 +96,43 @@ Singleton {
     function toolsFor(conversationId) {
         const value = toolsByConversation[conversationId];
         return Array.isArray(value) ? value : [];
+    }
+
+    function sessionStateFor(conversationId) {
+        const value = sessionStateByConversation[conversationId];
+        return value && typeof value === "object"
+            ? value : Helpers.emptySessionState();
+    }
+
+    function historyFor(conversationId) {
+        const value = historyByConversation[conversationId];
+        return value && typeof value === "object" ? value : ({
+            hasMore: false,
+            offset: 0,
+            loadingEarlier: false,
+            atCapacity: false
+        });
+    }
+
+    function updateSessionState(conversationId, type, payload) {
+        sessionStateByConversation = copyMap(sessionStateByConversation,
+            conversationId, Helpers.applySessionState(
+                sessionStateFor(conversationId), type, payload));
+    }
+
+    function timelinePayload(conversationId, raw, kind) {
+        const value = Helpers.object(raw);
+        const id = Helpers.firstString(value.id, value.messageId,
+            value.message_id, value.toolCallId, value.tool_call_id,
+            value.callId, value.call_id);
+        const source = kind === "tool" ? toolsFor(conversationId)
+            : messagesFor(conversationId);
+        const current = id !== "" ? source.find(item => item.id === id) : null;
+        return Object.assign({}, value, {
+            order: typeof value.order === "number" ? value.order
+                : current && typeof current.order === "number" ? current.order
+                    : Date.now() * 1000 + (++streamSequence)
+        });
     }
 
     function requestsFor(conversationId) {
@@ -194,6 +235,10 @@ Singleton {
             conversationId, undefined);
         toolsByConversation = copyMap(toolsByConversation,
             conversationId, undefined);
+        sessionStateByConversation = copyMap(sessionStateByConversation,
+            conversationId, undefined);
+        historyByConversation = copyMap(historyByConversation,
+            conversationId, undefined);
         requestsByConversation = copyMap(requestsByConversation,
             conversationId, undefined);
         errorsByConversation = copyMap(errorsByConversation,
@@ -236,18 +281,68 @@ Singleton {
         return true;
     }
 
-    function mergeHistory(conversationId, value) {
-        let snapshot = Helpers.normalizeMessages(value);
-        const existing = messagesFor(conversationId);
-        for (const live of existing) {
-            const at = snapshot.findIndex(item => item.id === live.id);
-            if (at < 0)
-                snapshot.push(live);
-            else if (live.streaming === true)
-                snapshot[at] = live;
+    function mergeHistory(conversationId, value, modeOverride) {
+        const normalized = Helpers.normalizeHistory(value);
+        const history = normalized.history;
+        const mode = modeOverride || Helpers.firstString(history.mode, "replace");
+        const existingMessages = messagesFor(conversationId);
+        let snapshot = normalized.messages.slice();
+        if (mode === "prepend") {
+            for (const current of existingMessages) {
+                const at = snapshot.findIndex(item => item.id === current.id);
+                if (at < 0)
+                    snapshot.push(current);
+                else if (current.streaming === true)
+                    snapshot[at] = current;
+            }
+        } else {
+            for (const live of existingMessages) {
+                const at = snapshot.findIndex(item => item.id === live.id);
+                if (at < 0 && live.streaming === true)
+                    snapshot.push(live);
+                else if (at >= 0 && live.streaming === true)
+                    snapshot[at] = live;
+            }
         }
+        snapshot.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const overflowed = snapshot.length > 250;
+        if (overflowed)
+            snapshot = snapshot.slice(snapshot.length - 250);
+        const atCapacity = snapshot.length >= 250 && history.hasMore === true;
+
+        const existingTools = toolsFor(conversationId);
+        let tools = normalized.tools.slice();
+        for (const current of existingTools) {
+            const at = tools.findIndex(item => item.id === current.id);
+            if (at < 0 && (mode === "prepend" || !current.terminal))
+                tools.push(current);
+            else if (at >= 0 && !current.terminal)
+                tools[at] = current;
+        }
+        tools.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        if (snapshot.length > 0) {
+            const floor = snapshot[0].order ?? 0;
+            tools = tools.filter(tool => (tool.order ?? 0) >= floor);
+        }
+        if (tools.length > 250)
+            tools = tools.slice(tools.length - 250);
+
         messagesByConversation = copyMap(messagesByConversation,
             conversationId, snapshot);
+        toolsByConversation = copyMap(toolsByConversation,
+            conversationId, tools);
+        sessionStateByConversation = copyMap(sessionStateByConversation,
+            conversationId, Helpers.mergeSessionState(
+                sessionStateFor(conversationId), normalized.sessionState));
+        historyByConversation = copyMap(historyByConversation,
+            conversationId, {
+                hasMore: history.hasMore === true && !atCapacity,
+                offset: Math.max(0, Number(history.offset) || 0),
+                loadingEarlier: false,
+                atCapacity: atCapacity,
+                messageCount: Math.max(0, Number(history.messageCount) || 0),
+                limit: Math.max(1, Number(history.limit) || 80)
+            });
         transcriptChanged(conversationId);
     }
 
@@ -263,7 +358,10 @@ Singleton {
             if (pending <= 0)
                 root.setLoading(conversationId, false);
         };
-        HermesRpc.request("session.history", { sessionId: conversationId }, result => {
+        HermesRpc.request("session.history", {
+            sessionId: conversationId,
+            limit: 80
+        }, result => {
             root.mergeHistory(conversationId, result);
             finish();
         }, reason => {
@@ -278,6 +376,30 @@ Singleton {
                 root.setError(conversationId, reason);
             finish();
         }, { fallback: "Could not load Hermes status" });
+    }
+
+    function loadEarlier(conversationId) {
+        const conversation = conversationById(conversationId);
+        const state = historyFor(conversationId);
+        if (!conversation || state.loadingEarlier === true || state.hasMore !== true
+                || messagesFor(conversationId).length >= 250)
+            return false;
+        historyByConversation = copyMap(historyByConversation, conversationId,
+            Object.assign({}, state, { loadingEarlier: true }));
+        HermesRpc.request("session.history", {
+            sessionId: conversationId,
+            before: Math.max(0, Number(state.offset) || 0),
+            limit: 80
+        }, result => {
+            root.mergeHistory(conversationId, result, "prepend");
+        }, reason => {
+            root.historyByConversation = root.copyMap(root.historyByConversation,
+                conversationId, Object.assign({}, root.historyFor(conversationId), {
+                    loadingEarlier: false
+                }));
+            root.setError(conversationId, reason);
+        }, { timeoutMs: 30000, fallback: "Could not load earlier Hermes history" });
+        return true;
     }
 
     function refreshAll() {
@@ -396,10 +518,25 @@ Singleton {
         if (conversationId === "")
             return;
 
+        if (event === "message-snapshot" || event === "message-page"
+                || event === "session-history") {
+            mergeHistory(conversationId, payload,
+                event === "message-page" ? "prepend" : "replace");
+            return;
+        }
         if (event === "session-status" || event === "session-activity"
                 || event === "session-info" || event === "session-usage"
-                || event === "status" || event === "activity") {
-            applyStatus(conversationId, value);
+                || event === "session-reasoning" || event === "session-warning"
+                || event === "session-context" || event === "session-goal"
+                || event === "session-todos" || event === "session-pending-steer"
+                || event === "session-background" || event === "status"
+                || event === "activity") {
+            updateSessionState(conversationId, event, value);
+            if (event === "session-status" || event === "session-activity"
+                    || event === "session-info" || event === "status"
+                    || event === "activity")
+                applyStatus(conversationId, value);
+            transcriptChanged(conversationId);
             return;
         }
         if (event === "session-error" || event === "error") {
@@ -435,8 +572,14 @@ Singleton {
                     role: Helpers.firstString(value.role, "assistant")
                 });
             }
+            messagePayload = timelinePayload(conversationId, messagePayload, "message");
             let next = Helpers.applyMessageEvent(messagesFor(conversationId),
                 event, messagePayload);
+            if (event === "message-start" || event === "assistant-start")
+                updateSessionState(conversationId, "turn-start", value);
+            if (event === "message-complete" || event === "message-completed"
+                    || event === "assistant-complete")
+                updateSessionState(conversationId, "turn-complete", value);
             if (event === "message-complete" || event === "message-completed"
                     || event === "assistant-complete")
                 streamIdsByConversation = copyMap(streamIdsByConversation,
@@ -457,18 +600,20 @@ Singleton {
             return;
         }
         if (event.indexOf("tool-") === 0) {
+            const toolPayload = timelinePayload(conversationId, value, "tool");
             let nextTools = Helpers.applyToolEvent(toolsFor(conversationId),
-                event, value);
+                event, toolPayload);
             if (nextTools.length > 30)
                 nextTools = nextTools.slice(nextTools.length - 30);
             toolsByConversation = copyMap(toolsByConversation,
                 conversationId, nextTools);
             const tool = nextTools.find(item => item.id
-                === Helpers.normalizeTool(value, 0).id);
+                === Helpers.normalizeTool(toolPayload, 0).id);
             if (tool && !tool.terminal)
                 updateConversation(conversationId, { status: "working",
                     statusText: tool.label || tool.name,
                     updatedAt: new Date().toISOString() });
+            transcriptChanged(conversationId);
             return;
         }
         const requestEvent = event.indexOf("request-") === 0

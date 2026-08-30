@@ -57,6 +57,9 @@ class FakeRemote:
         self.cancelled_streams: list[str] = []
         self.protected_cookies: list[str] = []
         self.chat_start_faults: dict[str, dict[str, Any]] = {}
+        self.session_queries: list[dict[str, list[str]]] = []
+        self.global_event_connections = 0
+        self.session_event_connections = 0
 
     def authenticated(self, handler: BaseHTTPRequestHandler) -> bool:
         cookie = handler.headers.get("Cookie", "")
@@ -220,12 +223,46 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                     snapshot.pop("messages", None)
                     rows.append(snapshot)
             return self.json_reply({"sessions": rows})
+        if parsed.path == "/api/sessions/gateway/stream":
+            return self.json_reply({
+                "enabled": False,
+                "ok": False,
+                "watcher_running": False,
+                "fallback_poll_ms": 30000,
+                "scope": "gateway_sessions",
+                "session_stream_available": True,
+                "session_stream_path": "/api/session/stream",
+            }, status=404)
+        if parsed.path == "/api/sessions/events":
+            FAKE.global_event_connections += 1
+            return self.observer_stream("sessions_changed", {"reason": "fixture"})
+        if parsed.path == "/api/session/stream":
+            FAKE.session_event_connections += 1
+            return self.observer_stream("initial", {
+                "session_id": self.query_value(query, "session_id"),
+            })
         if parsed.path == "/api/session":
             session_id = self.query_value(query, "session_id")
             with FAKE.lock:
                 if session_id not in FAKE.sessions:
                     return self.json_reply({"error": "not found"}, status=404)
                 snapshot = FAKE.session_snapshot(session_id)
+                FAKE.session_queries.append(dict(query))
+                full_messages = snapshot["messages"]
+                try:
+                    limit = max(1, min(500, int(self.query_value(query, "msg_limit"))))
+                except ValueError:
+                    limit = len(full_messages) or 1
+                before_raw = self.query_value(query, "msg_before")
+                try:
+                    before = max(0, min(len(full_messages), int(before_raw)))
+                except ValueError:
+                    before = len(full_messages)
+                start = max(0, before - limit)
+                snapshot["messages"] = full_messages[start:before]
+                snapshot["_messages_offset"] = start
+                snapshot["_messages_truncated"] = start > 0
+                snapshot["_msg_limit_max"] = 500
             return self.json_reply({"session": snapshot})
         if parsed.path == "/api/session/status":
             session_id = self.query_value(query, "session_id")
@@ -271,6 +308,25 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                 return self.json_reply({"error": "not found"}, status=404)
             return self.stream_events(stream)
         self.json_reply({"error": "not found"}, status=404)
+
+    def observer_stream(self, event: str, data: dict[str, Any]) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        try:
+            self.wfile.write(
+                (f"event: {event}\ndata: " + json.dumps(data) + "\n\n").encode()
+            )
+            self.wfile.flush()
+            for _tick in range(8):
+                time.sleep(0.025)
+                self.wfile.write(b": keepalive\n\n")
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         parsed = urlsplit(self.path)
@@ -436,6 +492,12 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                 return
 
             emit("token", {"text": "Fixture "})
+            emit("reasoning", {"text": "Checking fixture entities. "})
+            emit("context_status", {
+                "session_id": session_id,
+                "context_length": 100000,
+                "last_prompt_tokens": 25000,
+            })
             emit(
                 "tool",
                 {
@@ -444,6 +506,19 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
                     "args": {"domain": "light"},
                 },
             )
+            emit("todo_state", {
+                "session_id": session_id,
+                "todos": [{
+                    "id": "fixture-todo",
+                    "content": "List fixture lights",
+                    "status": "completed",
+                }],
+                "summary": {"total": 1, "completed": 1, "pending": 0},
+            })
+            emit("warning", {
+                "type": "fixture",
+                "message": "Fixture fallback warning",
+            })
             emit(
                 "tool_complete",
                 {
@@ -478,6 +553,19 @@ class HermesRemoteHandler(BaseHTTPRequestHandler):
             if not stream["clarify"].wait(timeout=8):
                 raise AssertionError("fixture clarification was not answered")
             emit("token", {"text": "reply"})
+            emit("goal", {
+                "session_id": session_id,
+                "state": "continuing",
+                "message": "Fixture goal continues",
+            })
+            emit("pending_steer_leftover", {
+                "session_id": session_id,
+                "text": "Use the fixture office next",
+            })
+            emit("metering", {
+                "session_id": session_id,
+                "usage": {"input_tokens": 4, "output_tokens": 2},
+            })
             FAKE.finish_stream(stream_id, "Fixture reply")
             emit(
                 "done",
@@ -639,7 +727,33 @@ async def scenario() -> None:
     historical = FAKE.create_session(
         "Historical climate check",
         [
-            {"id": "history-user", "role": "user", "content": "Climate?"},
+            {
+                "id": "history-user",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Climate?"}],
+            },
+            {
+                "id": "history-tool-carrier",
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "history-tool-1",
+                    "type": "function",
+                    "function": {
+                        "name": "ha_get_state",
+                        "arguments": "{\"entity_id\":\"climate.office\"}",
+                    },
+                }],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "history-tool-1",
+                "content": "{\"result\":\"comfortable\",\"temperature\":21}",
+            },
+            {
+                "role": "session_meta",
+                "content": "{\"title\":\"protocol-only\"}",
+            },
             {
                 "id": "history-assistant",
                 "role": "assistant",
@@ -735,7 +849,7 @@ async def scenario() -> None:
                     row = listed["conversations"][0]
                     assert row["sessionId"] == historical_id
                     assert row["title"] == "Historical climate check"
-                    assert row["messageCount"] == 2
+                    assert row["messageCount"] == 5
                     assert row["model"] == "fixture/model"
 
                     history = await rpc(
@@ -750,6 +864,17 @@ async def scenario() -> None:
                         "user",
                         "assistant",
                     ]
+                    assert [message["id"] for message in history["messages"]] == [
+                        "history-user",
+                        "history-assistant",
+                    ]
+                    assert len(history["tools"]) == 1
+                    assert history["tools"][0]["id"] == "history-tool-1"
+                    assert history["tools"][0]["name"] == "ha_get_state"
+                    assert history["tools"][0]["output"] == "comfortable"
+                    assert history["history"]["limit"] == 80
+                    assert history["history"]["hasMore"] is False
+                    assert FAKE.session_queries[-1]["msg_limit"] == ["80"]
 
                     new_default = await rpc(
                         client,
@@ -872,6 +997,45 @@ async def scenario() -> None:
                     assert event_payload(tool_completions[-1])["toolCallId"] == (
                         "tool-remote-1"
                     )
+                    reasoning = events_of_type(
+                        events, "session.reasoning", conversation_id
+                    )
+                    warnings = events_of_type(
+                        events, "session.warning", conversation_id
+                    )
+                    contexts = events_of_type(
+                        events, "session.context", conversation_id
+                    )
+                    todos = events_of_type(
+                        events, "session.todos", conversation_id
+                    )
+                    goals = events_of_type(
+                        events, "session.goal", conversation_id
+                    )
+                    pending_steers = events_of_type(
+                        events, "session.pending_steer", conversation_id
+                    )
+                    usage_events = events_of_type(
+                        events, "session.usage", conversation_id
+                    )
+                    assert event_payload(reasoning[-1])["reasoning"] == (
+                        "Checking fixture entities. "
+                    )
+                    assert event_payload(warnings[-1])["message"] == (
+                        "Fixture fallback warning"
+                    )
+                    assert event_payload(contexts[-1])["context_length"] == 100000
+                    assert event_payload(todos[-1])["todos"][0]["id"] == (
+                        "fixture-todo"
+                    )
+                    assert event_payload(goals[-1])["kind"] == "goal"
+                    assert event_payload(pending_steers[-1])["text"] == (
+                        "Use the fixture office next"
+                    )
+                    assert any(
+                        event_payload(frame).get("kind") == "metering"
+                        for frame in usage_events
+                    )
                     for frame in deltas + tool_starts + tool_completions:
                         payload = event_payload(frame)
                         assert payload["conversationId"] == conversation_id
@@ -882,6 +1046,17 @@ async def scenario() -> None:
                         "Kitchen, Office"
                     )
                     assert local_gateway_calls == []
+                    for _attempt in range(100):
+                        if (FAKE.global_event_connections > 0
+                                and FAKE.session_event_connections > 0):
+                            break
+                        await asyncio.sleep(0.01)
+                    assert FAKE.global_event_connections > 0
+                    assert FAKE.session_event_connections > 0
+                    assert bridge.remote_contract["checked"] is True
+                    assert bridge.remote_contract["historyPagination"] is True
+                    assert bridge.remote_contract["sessionStream"] is True
+                    assert bridge.remote_contract["globalSessionEvents"] is True
 
                     settled = await rpc(
                         client,
