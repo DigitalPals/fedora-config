@@ -303,6 +303,8 @@ Singleton {
     property bool runSeen: false
     readonly property string runBackend:
         Quickshell.env("HOME") + "/.local/bin/fedora-config-update-run"
+    readonly property string updateClient:
+        Quickshell.shellDir + "/scripts/update-client"
     property bool runIncludedFlatpak: true
     property int dnfLogOffset: 0
     property int flatpakLogOffset: 0
@@ -382,7 +384,7 @@ Singleton {
         // Authentication belongs in a terminal. The durable backend status
         // poll below attaches this UI after the terminal starts the worker.
         const command = ["kitty", "--class", "fedora-config-update",
-            "fedora-config", "update"];
+            "bash", updateClient, "run"];
         if (!flatpakEnabled)
             command.push("--no-flatpak");
         statusGeneration++;
@@ -964,9 +966,7 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "45s",
-            Quickshell.env("HOME") + "/.local/share/fedora-config/current/update",
-            "--check", "--json"]
+        command: ["timeout", "45s", "bash", root.updateClient, "check"]
 
         stdout: StdioCollector {
             onStreamFinished: projectProc.body = text

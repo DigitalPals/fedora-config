@@ -250,3 +250,19 @@ test("the QML coordinator settles every check and backend command", () => {
     assert.match(popover, /Accessible\.name:[\s\S]{0,100}?Check for updates/);
     assert.match(popover, /onClicked:[\s\S]{0,100}?Updates\.check\(\)/);
 });
+
+test("the menu routes checks and runs through its deployment-aware client", () => {
+    const updates = read("Common/Updates.qml");
+
+    assert.match(updates,
+        /updateClient:\s*\n?\s*Quickshell\.shellDir \+ "\/scripts\/update-client"/);
+    assert.match(updates,
+        /\["kitty", "--class", "fedora-config-update",\s*\n?\s*"bash", updateClient, "run"\]/);
+    assert.match(updates,
+        /command: \["timeout", "45s", "bash", root\.updateClient, "check"\]/);
+    assert.doesNotMatch(updates, /"fedora-config", "update"/,
+        "Quickshell-only deployments do not install the public CLI");
+    assert.doesNotMatch(updates,
+        /Quickshell\.env\("HOME"\) \+ "\/\.local\/share\/fedora-config\/current\/update"/,
+        "the optional release runtime must not be an unconditional process");
+});
