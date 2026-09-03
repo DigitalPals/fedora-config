@@ -136,6 +136,7 @@
       - brave-browser
       - 1password
       - 1password-cli
+      - chatgpt
     state: present
   when: not ansible_check_mode
   tags: [browser]

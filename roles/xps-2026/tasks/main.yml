@@ -54,6 +54,35 @@
   when: not xps_2026_is_supported | bool
   tags: [always]
 
+- name: Read the internal-panel EDID product identifier
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/bash
+      - -c
+      - |
+        shopt -s nullglob
+        for edid in /sys/class/drm/card*-eDP-*/edid; do
+          [[ -r $edid ]] || continue
+          product=$(/usr/bin/od -An -tx1 -j8 -N2 "$edid") || continue
+          printf '%s\n' "${product//[[:space:]]/}"
+          exit 0
+        done
+        exit 1
+  register: xps_2026_internal_panel_product
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: xps_2026_is_supported | bool
+  tags: [always, xps-2026, hardware, backlight]
+
+- name: Record the XPS OLED backlight-interface gate
+  ansible.builtin.set_fact:
+    xps_2026_needs_vesa_backlight: >-
+      {{ xps_2026_is_supported | bool
+         and (xps_2026_internal_panel_product.stdout | default('') | trim)
+             in xps_2026_vesa_backlight_edid_products }}
+  tags: [always, xps-2026, hardware, backlight]
+
 - name: Detect a real fingerprint reader without mistaking the IPU7 USB bridge
   ansible.builtin.script: xps-fingerprint-detect
   register: xps_2026_fingerprint_probe
@@ -69,6 +98,12 @@
       {{ xps_2026_is_supported | bool
          and (xps_2026_fingerprint_probe.rc | default(1) | int) == 0 }}
   tags: [always, xps-2026, hardware, fingerprint]
+
+- name: Select the working backlight interface for the XPS OLED panel
+  ansible.builtin.import_tasks: backlight.yml
+  when:
+    - xps_2026_is_supported | bool
+    - xps_2026_needs_vesa_backlight | bool
 
 - name: Install explicit Panther Lake media and firmware support
   ansible.builtin.import_tasks: packages.yml

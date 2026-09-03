@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir } = require("./shell.cjs");
@@ -101,6 +102,41 @@ test("Podman inventory controls packages, helpers, keybindings, and desktop entr
         /Disable user Podman activation when Podman is disabled[\s\S]{0,600}?scope: user/);
     assert.match(packages,
         /Remove disabled Podman and Steam package families[\s\S]{0,600}?Reload systemd after application package removal/);
+});
+
+test("ChatGPT compensates for zero-scaled XWayland on HiDPI displays", () => {
+    const appDefaults = read("roles/apps/defaults/main.yml");
+    const appPackages = read("roles/apps/tasks/packages.yml");
+    const appRepos = read("roles/apps/tasks/repos.yml");
+    const repository = read("roles/apps/files/chatgpt.repo");
+    const repositoryKey = fs.readFileSync(path.join(
+        repo, "roles/apps/files/chatgpt-repository-key.asc"));
+    const dotfileTasks = read("roles/dotfiles/tasks/main.yml");
+    const launcher = read("roles/dotfiles/files/chatgpt.desktop");
+    const lookAndFeel = read("roles/desktop/files/looknfeel.lua");
+
+    assert.equal(crypto.createHash("sha256").update(repositoryKey).digest("hex"),
+        "6c8933f828af390b2457f9e2d234082d783d6e4bb1911615b4861c6c61f4ea5a",
+        "the in-tree key must remain byte-identical to OpenAI's reviewed installer key");
+    assert.match(appDefaults,
+        /apps_chatgpt_repository_key_fingerprint:\s*3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4/);
+    assert.match(appRepos,
+        /Install the reviewed ChatGPT repository key[\s\S]{0,900}?fingerprint:[\s\S]{0,200}?apps_chatgpt_repository_key_fingerprint/);
+    assert.match(appRepos,
+        /Install enabled signed vendor repository definitions[\s\S]{0,500}?- chatgpt/);
+    assert.match(appPackages,
+        /Install signed vendor applications[\s\S]{0,300}?- chatgpt/);
+    assert.match(repository, /^gpgcheck=1$/m);
+    assert.match(repository, /^repo_gpgcheck=1$/m);
+    assert.match(repository,
+        /^gpgkey=file:\/\/\/etc\/pki\/rpm-gpg\/RPM-GPG-KEY-chatgpt$/m);
+    assert.match(lookAndFeel, /xwayland\s*=\s*\{\s*force_zero_scaling\s*=\s*true\s*\}/,
+        "the launcher override is only needed while XWayland compositor scaling is disabled");
+    assert.match(dotfileTasks,
+        /Install MIME defaults and desktop launchers[\s\S]{0,800}?- chatgpt\.desktop/,
+        "the HiDPI launcher must be deployed as a per-user package override");
+    assert.match(launcher, /^Exec=chatgpt --force-device-scale-factor=2 %U$/m,
+        "ChatGPT should render at the compositor's 2x monitor scale");
 });
 
 test("disabled Docker and Tailscale retire activation and imported trust", () => {

@@ -26,6 +26,7 @@ apps_required_fedora_packages:
   - sushi
   - libreoffice
   - system-config-printer
+  - solaar
   - evince
   - file-roller
   - gnome-calculator
@@ -98,6 +99,11 @@ apps_steam_packages:
   - steam
   - gamemode
   - mangohud
+
+# OpenAI publishes this key inside the signed ChatGPT installer rather than at
+# a standalone URL. Keep the reviewed key in-tree and require its full
+# fingerprint before trusting packages or repository metadata.
+apps_chatgpt_repository_key_fingerprint: 3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4
 
 # Vendor keys are downloaded as pinned bytes and then fingerprint-checked
 # before any repository can consume them. Key rotation is an inventory review,

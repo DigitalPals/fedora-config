@@ -73,7 +73,7 @@ rust_toolchain: nightly-2026-08-23
 # working installed version when a network/update attempt fails; changing one
 # of these values is the explicit authorization to install different code.
 claude_code_version: "2.1.247"
-opencode_version: "1.18.22"
+opencode_version: "1.18.27"
 
 # The starter is copied only for a genuinely absent Neovim configuration. This
 # revision matches the starter already used by this machine; subsequent plugin

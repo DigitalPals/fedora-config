@@ -56,6 +56,26 @@
     - not ansible_check_mode
   tags: [browser]
 
+- name: Install the reviewed ChatGPT repository key
+  ansible.builtin.copy:
+    src: chatgpt-repository-key.asc
+    dest: /etc/pki/rpm-gpg/RPM-GPG-KEY-chatgpt
+    owner: root
+    group: root
+    mode: "0644"
+  register: apps_chatgpt_repo_key
+  tags: [browser]
+
+- name: Import the fingerprint-verified ChatGPT package key
+  ansible.builtin.rpm_key:
+    key: /etc/pki/rpm-gpg/RPM-GPG-KEY-chatgpt
+    fingerprint:
+      - "{{ apps_chatgpt_repository_key_fingerprint }}"
+    state: present
+  when: not ansible_check_mode
+  register: apps_chatgpt_rpm_key
+  tags: [browser]
+
 - name: Install enabled signed vendor repository definitions
   ansible.builtin.copy:
     src: "{{ item }}.repo"
@@ -66,6 +86,7 @@
   loop:
     - brave-browser
     - 1password
+    - chatgpt
   register: apps_vendor_repos
   tags: [browser]
 
@@ -108,12 +129,14 @@
   tags: [browser]
 
 - name: Refresh DNF metadata after repository changes
-  ansible.builtin.command: dnf -q makecache
+  ansible.builtin.command: dnf -q -y makecache
   changed_when: true
   when:
     - not ansible_check_mode
     - (apps_rpmfusion_free is defined and apps_rpmfusion_free is changed)
       or (apps_rpmfusion_nonfree is defined and apps_rpmfusion_nonfree is changed)
+      or (apps_chatgpt_repo_key is defined and apps_chatgpt_repo_key is changed)
+      or (apps_chatgpt_rpm_key is defined and apps_chatgpt_rpm_key is changed)
       or (apps_vendor_repos is defined and apps_vendor_repos is changed)
       or (apps_tailscale_repo is defined and apps_tailscale_repo is changed)
       or (apps_retired_tailscale_rpm_key is defined and apps_retired_tailscale_rpm_key is changed)

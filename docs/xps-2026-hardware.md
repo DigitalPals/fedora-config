@@ -9,6 +9,34 @@ Fedora's stock kernel remains the only kernel. This role does not build or
 install a kernel, `linux-ptl`, an i915/xe/DRM patch, `fred=on`, or a global
 Wi-Fi 7/EHT workaround.
 
+## Internal OLED backlight
+
+The LG 2880x1800 OLED panel with EDID product `30e4` accepts brightness writes
+through the Xe driver's default interface without changing its luminance; only
+the separate zero/off operation has an effect. The same XPS chassis can contain
+an IPS panel, so the role reads the internal eDP EDID and limits the workaround
+to that exact OLED product.
+
+For the affected panel, every installed Fedora boot entry receives
+`xe.enable_dpcd_backlight=1` through `grubby`. This makes Xe probe the standard
+VESA DPCD path, which the panel implements correctly. The kernel log's generic
+suggestion of `i915.enable_dpcd_backlight=3` is not used: Panther Lake runs the
+`xe` module here, and forcing the Intel HDR path leaves this panel frozen.
+`grubby --update-kernel=ALL` also updates `/etc/default/grub` and
+`/etc/kernel/cmdline`, so later Fedora kernel entries inherit the argument.
+
+The change takes effect only when Xe next loads. After applying the role,
+reboot normally and verify:
+
+```bash
+grep -o 'xe.enable_dpcd_backlight=[^ ]*' /proc/cmdline
+sudo cat /sys/module/xe/parameters/enable_dpcd_backlight
+brightnessctl set 40%
+```
+
+The first two commands should report `xe.enable_dpcd_backlight=1` and `1`; the
+last should visibly change panel luminance.
+
 ## Internal speakers
 
 SKU `0DB9` (plus Quattro-listed XPS 16 SKU `0DBA`) gets Omarchy Quattro's current

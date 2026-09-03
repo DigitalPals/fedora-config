@@ -283,7 +283,7 @@ else
 fi
 
 cmdline=$(</proc/cmdline)
-if grep -Eq 'iwlwifi[.]disable_11be|(^| )fred=on|xe[.](enable|force_probe)|enable_panel_replay|enable_psr' <<<"$cmdline"; then
+if grep -Eq 'iwlwifi[.]disable_11be|(^| )fred=on|xe[.](enable_guc|force_probe)|enable_panel_replay|enable_psr' <<<"$cmdline"; then
   fail "obsolete XPS kernel workaround is present: $cmdline"
 else
   pass 'no obsolete XPS kernel workarounds'
@@ -310,6 +310,36 @@ fi
 
 if $xps_2026; then
   pass "precise XPS 2026 hardware gate (SKU $product_sku)"
+
+  panel_product=""
+  for edid in /sys/class/drm/card*-eDP-*/edid; do
+    [[ -r $edid ]] || continue
+    panel_product=$(od -An -tx1 -j8 -N2 "$edid" | tr -d '[:space:]')
+    break
+  done
+  if [[ $panel_product == 30e4 ]]; then
+    check_root 'every boot entry enables the XPS OLED VESA backlight path' bash -c '
+      grubby --info=ALL | awk '\''
+        /^args=/ {
+          seen=1
+          if ($0 !~ /(^|[ "])xe[.]enable_dpcd_backlight=1([ "]|$)/)
+            bad=1
+          if ($0 ~ /(^|[ "])i915[.]enable_dpcd_backlight([= "]|$)/)
+            bad=1
+        }
+        END { exit (!seen || bad) }
+      '\''
+    '
+    if grep -Eq '(^| )xe[.]enable_dpcd_backlight=1( |$)' <<<"$cmdline"; then
+      pass 'XPS OLED VESA backlight path is active in this boot'
+      check_root 'xe loaded the requested DPCD backlight mode' \
+        grep -qx '1' /sys/module/xe/parameters/enable_dpcd_backlight
+    else
+      warn 'XPS OLED VESA backlight path is configured and awaits reboot'
+    fi
+  else
+    skip "XPS OLED backlight quirk not needed (EDID ${panel_product:-unavailable})"
+  fi
 
   check 'XPS performance TuneD profile is installed' \
     test -r /etc/tuned/profiles/xps-performance/tuned.conf
@@ -473,6 +503,7 @@ required_commands=(Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs
   voxtype localsend lazygit lazydocker mdview bun balena t3code-update hermes \
   git gh gcc g++ cmake rustup mold sccache node npm python3 claude opencode oh-my-posh \
   kitty nvim fish zoxide fzf eza jq rg fd dust bat btop glow fastfetch duf ffmpeg mpv yt-dlp imv brave-browser)
+required_commands+=(chatgpt)
 feature_enabled docker && required_commands+=(docker)
 feature_enabled podman && required_commands+=(podman distrobox)
 feature_enabled source_builds && required_commands+=(wayfreeze awww)
@@ -515,6 +546,16 @@ check 'Hermes remote credential is private when present' bash -c '
 ' _ "$primary_home"
 check 'Android sdkmanager' test -x "$HOME/Android/Sdk/cmdline-tools/latest/bin/sdkmanager"
 check 'Android platform-tools' test -x "$HOME/Android/Sdk/platform-tools/adb"
+
+check 'ChatGPT package is installed' rpm -q chatgpt
+check 'ChatGPT repository definition matches the reviewed configuration' \
+  cmp -s "$repo_root/roles/apps/files/chatgpt.repo" /etc/yum.repos.d/chatgpt.repo
+check 'ChatGPT repository key matches the reviewed OpenAI key' \
+  cmp -s "$repo_root/roles/apps/files/chatgpt-repository-key.asc" \
+  /etc/pki/rpm-gpg/RPM-GPG-KEY-chatgpt
+check 'ChatGPT launcher applies the 2x HiDPI scale' \
+  grep -qx 'Exec=chatgpt --force-device-scale-factor=2 %U' \
+  "$HOME/.local/share/applications/chatgpt.desktop"
 
 check 'Brave restore, Dutch spellcheck, and 1Password policy' \
   jq -e '.RestoreOnStartup == 1 and .SpellcheckLanguage == ["nl"] and (.ExtensionInstallForcelist | length == 1)' \

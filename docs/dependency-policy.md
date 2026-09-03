@@ -60,9 +60,10 @@ template, or a changed YOLO alias. It runs inside the Python stage of
    versions or an existing Distrobox until the replacement is proven and any
    data inside the box is accounted for.
 
-The current pins were taken from working installed versions and locally cached
-artifacts on 2026-08-27; this made clean installations reproducible without
-silently authorizing a speculative upgrade.
+The baseline pins were taken from working installed versions and locally
+cached artifacts on 2026-08-27; subsequent pin changes follow the review
+procedure above. This keeps clean installations reproducible without silently
+authorizing speculative upgrades.
 
 ## Intentionally moving channels
 

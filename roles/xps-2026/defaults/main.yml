@@ -8,6 +8,12 @@ xps_2026_speaker_skus:
   - 0DB9
   - 0DBA
 
+# LG's 2880x1800 OLED advertises both Intel HDR and VESA DPCD brightness
+# control, but only the VESA path changes panel luminance on this XPS. Keep
+# the quirk panel-specific: the same chassis is also sold with an IPS panel.
+xps_2026_vesa_backlight_edid_products:
+  - "30e4"
+
 # Supported values are low, mid, and high. They map to the current Synaptics
 # HID scale used by the 2026 XPS touchpad (10, 50, and 100 respectively).
 xps_2026_haptic_intensity: high
