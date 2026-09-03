@@ -771,8 +771,8 @@ require("node:fs").writeFileSync(
 test("the nightly launcher routes pending panel callbacks and preserves its fallback", () => {
     const updater = readRepo("roles/dotfiles/templates/t3code-update.j2");
     const launcher = readRepo("roles/dotfiles/templates/t3code-desktop.j2");
-    const desktop = readRepo("roles/dotfiles/files/t3code-nightly.desktop");
-    const mimeapps = readRepo("roles/dotfiles/files/mimeapps.list");
+    const desktop = readRepo("roles/dotfiles/templates/t3code-nightly.desktop.j2");
+    const mimeapps = readRepo("roles/dotfiles/templates/mimeapps.list.j2");
     const packages = readRepo("roles/desktop/tasks/main.yml");
 
     assert.match(updater, /select\(\.prerelease and \(\.tag_name \| contains\("-nightly\."\)\)\)/,
@@ -783,7 +783,7 @@ test("the nightly launcher routes pending panel callbacks and preserves its fall
     assert.match(launcher, /oauth-callback "\$1"/,
         "a pending browser sign-in must return to the panel instead of opening Nightly");
     assert.match(launcher, /\[\[ \$\{1-\} == t3code:\/\/app\/\* \]\]/);
-    assert.match(desktop, /^Exec=\/home\/john\/\.local\/bin\/t3code-desktop %U$/m);
+    assert.match(desktop, /^Exec=\{\{ primary_home \}\}\/\.local\/bin\/t3code-desktop %U$/m);
     assert.match(desktop, /^MimeType=x-scheme-handler\/t3code;$/m);
     assert.doesNotMatch(desktop, /x-scheme-handler\/t3code-dev/,
         "nightly is packaged and therefore uses the production scheme");

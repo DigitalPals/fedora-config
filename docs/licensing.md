@@ -28,29 +28,17 @@ terms. In particular:
 A repository-wide software license must not be presented as relicensing those
 third-party materials.
 
-## Large raster assets
+## Repository assets
 
-`assets/PROVENANCE.json` is the machine-readable inventory for every wallpaper
-and every other repository asset currently larger than 1 MiB. It records exact
-bytes, dimensions, media type, and the commit that first added the bytes.
+The undocumented screenshot, avatar, and wallpaper collection previously in
+the repository have been removed. A public installation starts without a
+bundled wallpaper and lets the user select their own directory.
 
-The current Git history contains no reliable creator, original source URL, or
-redistribution license for those files. All three fields are therefore `null`,
-and their rights status is explicitly `unknown-owner-action-required`. The
-author of the importing commit is evidence of repository introduction only;
-the manifest deliberately does not call that person the creator or rights
-holder.
-
-Before claiming that these assets may be redistributed, the owner must do one
-of the following for each record:
-
-1. establish the creator/rightsholder, canonical source, and license, retain
-   the evidence, fill all three provenance fields, and mark that record's
-   `rightsStatus` as `documented`; or
-2. replace it with an asset whose redistribution rights are documented; or
-3. remove it from the repository and managed wallpaper set.
-
-The same review should cover smaller repository-local artwork and brand assets
-before a repository-wide license is announced. `tests/repository-policy.py`
-checks that every asset over 1 MiB has a record and that its size and SHA-256
-have not drifted; it cannot establish legal rights.
+`assets/PROVENANCE.json` remains the machine-readable gate for every
+repository-distributed asset larger than 1 MiB. It is currently empty, and
+`tests/repository-policy.py` fails if a new large asset appears without a
+matching provenance record. Smaller brand artwork and third-party downloads
+remain covered by `assets/THIRD_PARTY_LICENSES.md`, their upstream notices, and
+the dependency policy. This technical check cannot establish legal rights;
+new redistributed artwork still needs a creator, source, and compatible
+license recorded before publication.

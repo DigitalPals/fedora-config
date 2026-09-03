@@ -3,6 +3,7 @@
   ansible.builtin.set_fact:
     apps_desired_required_fedora_packages: >-
       {{ apps_required_fedora_packages
+         + (features.developer_tools | bool | ternary(apps_developer_fedora_packages, []))
          + (features.podman | bool | ternary(apps_podman_packages, []))
          + (features.steam | bool | ternary(apps_steam_packages, [])) }}
 
@@ -49,6 +50,7 @@
     - podman-auto-update.timer
   when:
     - not features.podman | bool
+    - apps_feature_owned.podman | bool
     - not ansible_check_mode
 
 - name: Stop system Podman services when Podman is disabled
@@ -61,6 +63,7 @@
     - podman-restart.service
   when:
     - not features.podman | bool
+    - apps_feature_owned.podman | bool
     - not ansible_check_mode
 
 - name: Disable user Podman activation when Podman is disabled
@@ -79,6 +82,7 @@
     - podman-auto-update.timer
   when:
     - not features.podman | bool
+    - apps_feature_owned.podman | bool
     - not ansible_check_mode
 
 - name: Stop user Podman services when Podman is disabled
@@ -96,6 +100,7 @@
     - podman-restart.service
   when:
     - not features.podman | bool
+    - apps_feature_owned.podman | bool
     - not ansible_check_mode
 
 - name: Remove disabled Podman and Steam package families
@@ -107,7 +112,11 @@
     - { enabled: "{{ features.steam }}", packages: "{{ apps_steam_packages }}", label: Steam }
   loop_control:
     label: "{{ item.label }}"
-  when: not item.enabled | bool
+  when:
+    - not item.enabled | bool
+    - >-
+      (item.label == 'Podman' and apps_feature_owned.podman | bool)
+      or (item.label == 'Steam' and apps_feature_owned.steam | bool)
   notify:
     - Reload systemd after application package removal
     - Reload user systemd after application package removal
@@ -128,7 +137,9 @@
       - mesa-vulkan-drivers.i686
       - vulkan-loader.i686
     state: absent
-  when: not features.steam | bool
+  when:
+    - not features.steam | bool
+    - apps_feature_owned.steam | bool
 
 - name: Install signed vendor applications
   ansible.builtin.dnf:
@@ -138,7 +149,23 @@
       - 1password-cli
       - chatgpt
     state: present
-  when: not ansible_check_mode
+  when:
+    - features.proprietary_apps | bool
+    - not ansible_check_mode
+  tags: [browser]
+
+- name: Remove optional signed vendor applications when disabled
+  ansible.builtin.dnf:
+    name:
+      - brave-browser
+      - 1password
+      - 1password-cli
+      - chatgpt
+    state: absent
+  when:
+    - not features.proprietary_apps | bool
+    - apps_feature_owned.proprietary_apps | bool
+    - not ansible_check_mode
   tags: [browser]
 
 - name: Stop and disable Tailscale before removing it
@@ -149,19 +176,33 @@
   failed_when: false
   when:
     - not features.tailscale | bool
+    - apps_feature_owned.tailscale | bool
     - not ansible_check_mode
 
-- name: Converge the Tailscale package
+- name: Install the Tailscale package when selected
   ansible.builtin.dnf:
     name: tailscale
-    state: "{{ features.tailscale | bool | ternary('present', 'absent') }}"
-  when: not ansible_check_mode
+    state: present
+  when:
+    - features.tailscale | bool
+    - not ansible_check_mode
+
+- name: Remove the Fedora Config-owned Tailscale package when deselected
+  ansible.builtin.dnf:
+    name: tailscale
+    state: absent
+  when:
+    - not features.tailscale | bool
+    - apps_feature_owned.tailscale | bool
+    - not ansible_check_mode
 
 - name: Remove retired Google Chrome package
   ansible.builtin.dnf:
     name: google-chrome-stable
     state: absent
-  when: not ansible_check_mode
+  when:
+    - cleanup_legacy_xps_artifacts | bool
+    - not ansible_check_mode
   tags: [browser]
 
 - name: Enable Tailscale without authorizing the node

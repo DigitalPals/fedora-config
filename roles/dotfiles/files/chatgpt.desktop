@@ -2,7 +2,7 @@
 Name=ChatGPT
 Comment=ChatGPT by OpenAI
 GenericName=AI assistant
-Exec=chatgpt --force-device-scale-factor=2 %U
+Exec=chatgpt %U
 Icon=chatgpt
 Type=Application
 Terminal=false

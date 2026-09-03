@@ -203,11 +203,16 @@ sudo mokutil --import /etc/pki/akmods/certs/public_key.der
 ```
 
 Choose a temporary password, reboot, and use the firmware MOK manager to enroll
-the key. Then rerun `./update --full --tags xps-2026`. The role does not disable
-Secure Boot. A DKMS update made while old camera modules are loaded is not
-force-unloaded: the camera and relay stay disabled behind the transaction marker.
-Reboot normally, then rerun `./update --full --tags xps-2026`; that post-reboot
-pass validates, commits, and starts the new signed modules.
+the key. Then rerun the role from the active release:
+
+```bash
+ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags xps-2026
+```
+
+The role does not disable Secure Boot. A DKMS update made while old camera
+modules are loaded is not force-unloaded: the camera and relay stay disabled
+behind the transaction marker. Reboot normally, then rerun the same command;
+that post-reboot pass validates, commits, and starts the new signed modules.
 
 `kernel-devel-matched` keeps builds tied to Fedora's installed kernel. Diagnose
 the complete path with:

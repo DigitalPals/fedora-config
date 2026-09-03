@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<zone target="DROP">
+  <short>Fedora Config</short>
+  <description>Strict workstation policy managed by Fedora Config</description>
+{% if features.local_network_services | bool %}
+{% for rule in firewall_ports if rule.feature is not defined or features[rule.feature] | bool %}
+  <!-- {{ rule.comment }} -->
+  <port port="{{ rule.port }}" protocol="{{ rule.protocol }}"/>
+{% endfor %}
+{% endif %}
+{% if features.tailscale | bool %}
+  <interface name="tailscale0"/>
+{% endif %}
+</zone>

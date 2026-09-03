@@ -1,4 +1,22 @@
 ---
+- name: Inspect the generic camera relay configuration backup
+  ansible.builtin.stat:
+    path: /var/lib/fedora-config/backups/system/etc/v4l2-relayd.d/icamerasrc.conf
+  register: xps_2026_disabled_camera_relay_backup
+  tags: [xps-2026, hardware, camera]
+
+- name: Restore Fedora's generic camera relay configuration
+  ansible.builtin.copy:
+    src: /var/lib/fedora-config/backups/system/etc/v4l2-relayd.d/icamerasrc.conf
+    dest: /etc/v4l2-relayd.d/icamerasrc.conf
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  when: xps_2026_disabled_camera_relay_backup.stat.exists
+  notify: Reload XPS 2026 systemd
+  tags: [xps-2026, hardware, camera]
+
 - name: Stop and disable the managed IPU7 camera entrypoint
   ansible.builtin.systemd_service:
     name: xps-ipu7-camera.service

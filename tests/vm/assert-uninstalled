@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() {
+  printf 'Fedora VM uninstall assertion failed: %s\n' "$*" >&2
+  exit 1
+}
+
+assert_content() {
+  local path=$1 expected=$2
+  [[ -f $path ]] || fail "$path was not restored"
+  [[ $(<"$path") == "$expected" ]] || fail "$path did not retain its original content"
+}
+
+assert_content /home/fedora/.config/hypr/bindings.lua 'original Hyprland bindings'
+assert_content /home/fedora/.config/quickshell/shell.qml 'original Quickshell root'
+assert_content /home/fedora/.local/bin/spotify 'original Spotify helper'
+assert_content /home/fedora/.config/systemd/user/quickshell.service 'original user unit'
+assert_content /etc/gdm/custom.conf $'[daemon]\n# original GDM configuration'
+assert_content /etc/sudoers.d/10-wheel-nopasswd '# original sudo policy'
+assert_content /etc/polkit-1/rules.d/49-wheel-local.rules '// original Polkit policy'
+[[ ! -e /var/lib/AccountsService/users/fedora ]] ||
+  fail 'an AccountsService record created by Fedora Config remains after uninstall'
+
+for path in \
+  /usr/local/bin/hyprland-quickshell \
+  /usr/share/wayland-sessions/hyprland-quickshell.desktop \
+  /usr/local/libexec/fedora-config-session-action \
+  /usr/local/libexec/fedora-config-system-snapshot \
+  /etc/sysctl.d/60-fedora-config-hardening.conf \
+  /home/fedora/.config/hypr/features.lua \
+  /home/fedora/.local/bin/fedora-config \
+  /home/fedora/.local/state/fedora-config \
+  /home/fedora/.local/share/fedora-config \
+  /var/lib/fedora-config; do
+  [[ ! -e $path && ! -L $path ]] || fail "$path remains after uninstall"
+done
+
+for unit in quickshell.service hypridle.service hyprpolkitagent.service; do
+  [[ ! -L /home/fedora/.config/systemd/user/hyprland-session.target.wants/$unit ]] \
+    || fail "$unit remains enabled after uninstall"
+done
+
+[[ -f /etc/tuned/ppd.conf ]] || fail 'the Fedora TuneD PPD configuration was removed'
+grep -q '^performance=xps-performance$' /etc/tuned/ppd.conf &&
+  fail 'the XPS TuneD mapping remains on generic hardware'
+
+printf 'Fedora VM uninstall restored adopted files and removed project state\n'

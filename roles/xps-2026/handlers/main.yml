@@ -1,4 +1,9 @@
 ---
+- name: Restart XPS TuneD PPD bridge
+  ansible.builtin.systemd_service:
+    name: tuned-ppd.service
+    state: restarted
+
 - name: Reload XPS 2026 systemd
   ansible.builtin.systemd_service:
     daemon_reload: true

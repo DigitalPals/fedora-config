@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Repository entry point for the durable updater shared with Quickshell.
+# Repository entry point for project and system updates.
 set -euo pipefail
 
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-exec "$repo_dir/assets/scripts/xps-update-run" run --repo "$repo_dir" "$@"
+export FEDORA_CONFIG_SOURCE_DIR="$repo_dir"
+export FEDORA_CONFIG_UPDATE_BACKEND="${FEDORA_CONFIG_UPDATE_BACKEND:-$repo_dir/assets/scripts/fedora-config-update-run}"
+exec "$repo_dir/assets/scripts/fedora-config-release-update" "$@"

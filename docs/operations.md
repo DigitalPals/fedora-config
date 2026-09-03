@@ -8,28 +8,28 @@ table in the README links here instead of duplicating these details.
 
 | Command | Behavior |
 | --- | --- |
-| `./bootstrap` | Ensures `ansible-core` exists, then runs `ansible-playbook site.yml`. It includes the `boot` role and does **not** run `tests/run` first. |
+| `./install` | Detects machine defaults, asks first-run questions, saves `/etc/fedora-config/config.yml`, installs `ansible-core` when needed, and applies `site.yml`. Later runs reuse the saved answers. |
+| `./bootstrap` | Compatibility alias for `./install`. |
 | `./tests/run` | Runs all required source-tree checks without inspecting or changing the live machine. |
 | `./verify` | Runs complete source and non-destructive installed-system checks. Use `--source`, `--system`, or `--quick` for a narrower scope and `--json` for automation. |
-| `./update` | Starts one durable user-service worker for Fedora and system Flatpak updates, then attaches the terminal to its log. |
-| `./update --full` | Updates packages, runs `tests/run`, and applies `site.yml --skip-tags boot`. |
+| `./update` | Resolves and verifies the selected GitHub release channel, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. |
+| `./update --system-only` | Skips the project release check and updates Fedora packages and system Flatpaks only. |
+| `./uninstall` | Removes Fedora Config-owned services and configuration, restores first-adoption backups, and retains installed applications. Pass `--keep-user-data` to retain backup/updater state after restoration. |
 
-Run `./tests/run` before a direct `./bootstrap` when changing the repository.
-Use `./bootstrap --check --diff` to inspect an Ansible change, but remember that
-commands which cannot meaningfully support check mode may be skipped.
-
-Extra arguments to `bootstrap` go directly to `ansible-playbook`. Extra
-Ansible arguments to `update` are accepted only after `--full`, for example:
+For repository development, run Ansible directly after the source gate. The
+saved installer configuration is deliberately supplied explicitly:
 
 ```bash
-./update --full --check --diff
-./update --full --tags desktop,dotfiles
+./tests/run
+ansible-playbook site.yml -e @/etc/fedora-config/config.yml --check --diff
+ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags desktop,dotfiles
 ```
 
-`./update --full` intentionally supplies `--skip-tags boot`, even if another
-Ansible argument selects a boot-related tag. Apply reviewed Plymouth/initramfs
-changes with `./bootstrap --tags boot`, then allow its handler to finish before
-rebooting.
+The public release updater applies a candidate through the lower-level durable
+worker with `--full --skip-tests --repo <verified-stage>`. That internal path
+always supplies `--skip-tags boot`; public updates therefore do not rebuild
+Plymouth or initramfs unexpectedly. Apply reviewed boot-role changes directly
+with Ansible, then allow its handler to finish before rebooting.
 
 `./verify --help` is the authoritative verification interface. Scope flags are
 mutually exclusive, unknown arguments fail before any check runs, and
@@ -51,35 +51,63 @@ narrow tags are development tools, not independent installation profiles;
 their prerequisites can live in an earlier role.
 
 Every invocation still executes tasks tagged `always`. That includes fresh
-fact gathering, the feature contract, Fedora/architecture/user/hardware
-validation, and hardware-role detection. A partial tag run is therefore not a
-way to bypass the Fedora 44 Dell XPS safety contract. Do not add
+fact gathering, the feature contract, Fedora/architecture/user validation,
+and precise XPS-role detection. A partial tag run is therefore not a way to
+bypass the Fedora 44 and architecture support contract. Do not add
 `--skip-tags always`; it removes the checks that make a targeted run safe.
+
+## Release updater lifecycle
+
+`fedora-config update` follows the channel saved in
+`~/.local/share/fedora-config/channel` (`stable` by default, or `beta` after
+`--channel beta`). A project release is accepted only when GitHub marks it
+immutable, its release and asset attestations verify, the downloaded SHA-256
+matches GitHub metadata, and its manifest supports the current Fedora release,
+architecture, configuration schema, and updater version.
+
+The verified archive is extracted into a new versioned directory. Any
+configuration migration is backed up, the candidate is applied, and the
+`current` symlink changes only after Ansible succeeds. Failure restores the
+pre-migration configuration. The active release plus two recent release
+directories are retained as recovery material; filesystem rollback remains the
+supported way to reverse system package changes.
+
+Useful release commands are:
+
+```bash
+fedora-config update --check
+fedora-config update --check --json
+fedora-config update --channel beta
+fedora-config update --channel stable
+fedora-config update --no-packages
+fedora-config update --system-only
+```
 
 ## Durable updater lifecycle
 
-The updater worker is a transient `systemd --user` service. Closing the
-terminal, pressing Ctrl+C while attached, or restarting Quickshell only
-detaches the observer; the package transaction continues. At most one worker
-can own the update lock.
+The package/configuration worker is normally a transient user service. When
+sudo needs interactive authentication it starts a transient system service
+instead, after authorization, so closing the terminal or restarting
+Quickshell does not abandon the transaction. Pressing Ctrl+C while attached
+only detaches the observer. At most one worker can own the update lock.
 
 Use the installed backend to inspect or control it:
 
 ```bash
-xps-update-run status
-xps-update-run status --json
-xps-update-run attach
-xps-update-run log-dir
-xps-update-run cancel
-xps-update-run dismiss
+fedora-config-update-run status
+fedora-config-update-run status --json
+fedora-config-update-run attach
+fedora-config-update-run log-dir
+fedora-config-update-run cancel
+fedora-config-update-run dismiss
 ```
 
-Each command accepts a run ID where documented by `xps-update-run --help`.
+Each command accepts a run ID where documented by `fedora-config-update-run --help`.
 `cancel` is explicit and terminates an active worker; Ctrl+C during `attach`
 does not. `dismiss` only changes the completed status shown by the UI and does
 not delete its logs.
 
-Run state lives under `~/.local/state/xps-update/`. Each run has a private
+Run state lives under `~/.local/state/fedora-config/update/`. Each run has a private
 directory under `logs/<run-id>/` containing:
 
 - `status.json`: atomic machine-readable phase, result, component exit codes,
@@ -91,7 +119,7 @@ directory under `logs/<run-id>/` containing:
   `ansible.log`, plus their exit-code files when that phase ran.
 
 The twenty newest valid run directories are retained. For a worker that looks
-stuck, start with `xps-update-run status --json`, inspect `run.log`, then use
+stuck, start with `fedora-config-update-run status --json`, inspect `run.log`, then use
 the `unit` field with `systemctl --user status <unit>` and
 `journalctl --user -u <unit>`. If the unit disappeared without final status,
 the next status read marks the run failed with phase `abandoned` instead of
@@ -100,7 +128,7 @@ blocking all future updates.
 ## Update recovery points
 
 Before package work starts, the updater requires
-`/usr/local/libexec/xps-system-snapshot` on the managed Btrfs layout. It saves a
+`/usr/local/libexec/fedora-config-system-snapshot` on the managed Btrfs layout. It saves a
 read-only snapshot of the `root` subvolume and a matching archive of `/boot`
 (including the mounted EFI tree), then retains the five newest pairs. `/home`
 is a separate subvolume and is intentionally outside system rollback. A
@@ -110,8 +138,8 @@ root the step records that no filesystem recovery point was required.
 List retained IDs and descriptions with:
 
 ```bash
-sudo xps-system-snapshot list
-xps-update-run status --json | jq -r .snapshotId
+sudo fedora-config-system-snapshot list
+fedora-config-update-run status --json | jq -r .snapshotId
 ```
 
 Rollback is deliberately a rescue operation, never an automatic action from a
@@ -123,15 +151,15 @@ names are placeholders and must be replaced with the values from `lsblk`:
 ```bash
 mount -o subvolid=5 /dev/mapper/ROOT_CRYPT /mnt
 ID=20260903T120000Z-1234
-test -d "/mnt/xps-snapshots/root/$ID"
-test -f "/mnt/xps-snapshots/boot/$ID.tar"
-btrfs subvolume snapshot "/mnt/xps-snapshots/root/$ID" /mnt/root.recovered
+test -d "/mnt/fedora-config-snapshots/root/$ID"
+test -f "/mnt/fedora-config-snapshots/boot/$ID.tar"
+btrfs subvolume snapshot "/mnt/fedora-config-snapshots/root/$ID" /mnt/root.recovered
 mv /mnt/root "/mnt/root.failed-$ID"
 mv /mnt/root.recovered /mnt/root
 mount /dev/BOOT_PARTITION /mnt/root/boot
 mount /dev/EFI_PARTITION /mnt/root/boot/efi
 tar --acls --xattrs --selinux --numeric-owner \
-  --extract --file "/mnt/xps-snapshots/boot/$ID.tar" --directory /mnt/root
+  --extract --file "/mnt/fedora-config-snapshots/boot/$ID.tar" --directory /mnt/root
 sync
 ```
 
@@ -141,7 +169,7 @@ and user session are confirmed healthy; deleting it is a separate, explicit
 space-reclamation decision. These recovery points do not replace backups:
 they share the same physical Btrfs filesystem and cannot survive device loss.
 
-Ansible's `xps` callback is intentionally compact: unchanged and skipped tasks
+Ansible's `fedora_config` callback is intentionally compact: unchanged and skipped tasks
 are quiet, changes are one line, and failures include a bounded diagnostic.
 Pass `-v` to use the stock verbose callback behavior. A full updater run keeps
 the callback's complete emitted stream in `ansible.log`; it does not recreate
@@ -151,7 +179,7 @@ compatibility with callback event objects.
 
 ## Shutdown and reboot expectations
 
-Do not shut down or reboot while `xps-update-run status` reports `queued` or
+Do not shut down or reboot while `fedora-config-update-run status` reports `queued` or
 `running`. A durable user service survives a terminal or shell restart, not a
 machine power cycle. Wait for a terminal state (`done`, `failed`, or
 `cancelled`), or cancel deliberately and confirm the terminal state first.
@@ -182,9 +210,9 @@ Python fixtures, XPS hardware integration, Plymouth layout, the durable
 updater, screenshot/brightness workflows, and Btrfs snapshot retention.
 
 The GitHub workflow runs the same `./tests/run` command in a Fedora 44
-container. `./update --full` stops before Ansible if this gate fails. The
-`--skip-tests` updater option is an emergency override and should be recorded
-with the reason it was needed; it is not the normal deployment path.
+container. The lower-level worker stops before Ansible if this gate fails.
+`--skip-tests` is reserved for an already verified release candidate and is
+not part of the public command interface.
 
 The weekly and manually dispatchable `Fedora VM convergence` workflow adds a
 slower system boundary: it checksum-verifies the pinned official Fedora 44

@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+updater=$repo_root/assets/scripts/fedora-config-release-update
+fixture=$(mktemp -d)
+trap 'rm -rf -- "$fixture"' EXIT
+mkdir -p "$fixture/bin" "$fixture/source" "$fixture/data" \
+  "$fixture/release/fedora-config-1.2.3/tests" \
+  "$fixture/release/fedora-config-1.2.3/scripts"
+
+printf '0.0.0\n' >"$fixture/source/VERSION"
+printf '%s\n' '---' 'config_schema_version: 0' 'primary_user: tester' >"$fixture/config.yml"
+cp -- "$fixture/config.yml" "$fixture/config.original.yml"
+printf '%s\n' '---' >"$fixture/release/fedora-config-1.2.3/site.yml"
+printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/install"
+printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/verify"
+printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/tests/run"
+chmod 0755 "$fixture/release/fedora-config-1.2.3/install" \
+  "$fixture/release/fedora-config-1.2.3/verify" \
+  "$fixture/release/fedora-config-1.2.3/tests/run"
+cp "$repo_root/scripts/migrate-config" \
+  "$fixture/release/fedora-config-1.2.3/scripts/migrate-config"
+printf '1.2.3\n' >"$fixture/release/fedora-config-1.2.3/VERSION"
+fedora_release=$(source /etc/os-release; printf '%s' "$VERSION_ID")
+jq -n --arg fedora "$fedora_release" --arg architecture "$(uname -m)" \
+  '{product:"fedora-config",version:"1.2.3",configSchema:1,
+    supportedFedora:[$fedora],architectures:[$architecture],minimumUpdater:"0.1.0"}' \
+  >"$fixture/release/fedora-config-1.2.3/release-manifest.json"
+tar --create --zstd --file "$fixture/release.tar.zst" \
+  --directory "$fixture/release" fedora-config-1.2.3
+digest=$(sha256sum "$fixture/release.tar.zst" | awk '{print $1}')
+
+release_json() {
+  jq -n --arg digest "sha256:$digest" --argjson immutable "$1" \
+    '{tag_name:"v1.2.3",draft:false,prerelease:false,immutable:$immutable,
+      assets:[{name:"fedora-config-1.2.3.tar.zst",
+      browser_download_url:"https://example.invalid/release.tar.zst",digest:$digest}]}' \
+    >"$fixture/release.json"
+}
+release_json true
+
+cat >"$fixture/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=
+for ((i=1; i<=$#; i++)); do
+  if [[ ${!i} == -o ]]; then ((i++)); output=${!i}; fi
+done
+[[ -n $output ]]
+if [[ $* == *api.github.com* ]]; then
+  cp -- "$MOCK_RELEASE_JSON" "$output"
+else
+  cp -- "$MOCK_RELEASE_ARCHIVE" "$output"
+fi
+EOF
+cat >"$fixture/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$MOCK_GH_LOG"
+EOF
+cat >"$fixture/bin/backend" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >"$MOCK_BACKEND_LOG"
+[[ ${MOCK_BACKEND_FAIL:-false} != true ]] || exit 42
+EOF
+cat >"$fixture/bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$@"
+EOF
+chmod 0755 "$fixture/bin/curl" "$fixture/bin/gh" "$fixture/bin/backend" \
+  "$fixture/bin/sudo"
+
+export PATH="$fixture/bin:$PATH"
+export XDG_DATA_HOME="$fixture/data"
+export FEDORA_CONFIG_SOURCE_DIR="$fixture/source"
+export FEDORA_CONFIG_FILE="$fixture/config.yml"
+export FEDORA_CONFIG_UPDATE_BACKEND="$fixture/bin/backend"
+export FEDORA_CONFIG_GITHUB_REPO=example/fedora-config
+export MOCK_RELEASE_JSON="$fixture/release.json"
+export MOCK_RELEASE_ARCHIVE="$fixture/release.tar.zst"
+export MOCK_GH_LOG="$fixture/gh.log"
+export MOCK_BACKEND_LOG="$fixture/backend.log"
+
+check=$($updater --check --json)
+[[ $(jq -r .available <<<"$check") == true ]]
+[[ $(jq -r .availableVersion <<<"$check") == 1.2.3 ]]
+
+# SemVer precedence, rather than version-sort punctuation rules, determines
+# whether a prerelease is actually newer than the installed source.
+jq '.tag_name = "v1.2.3-beta.1" |
+    .assets[0].name = "fedora-config-1.2.3-beta.1.tar.zst"' \
+  "$fixture/release.json" >"$fixture/release-prerelease.json"
+mv -- "$fixture/release-prerelease.json" "$fixture/release.json"
+printf '1.2.3\n' >"$fixture/source/VERSION"
+check=$($updater --check --json)
+[[ $(jq -r .available <<<"$check") == false ]]
+printf '1.2.2\n' >"$fixture/source/VERSION"
+check=$($updater --check --json)
+[[ $(jq -r .available <<<"$check") == true ]]
+
+release_json true
+printf '0.0.0\n' >"$fixture/source/VERSION"
+
+export MOCK_BACKEND_FAIL=true
+if $updater --no-packages >/dev/null 2>"$fixture/apply-failed.err"; then
+  echo 'failed release apply was accepted' >&2
+  exit 1
+fi
+cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
+[[ ! -e $fixture/data/fedora-config/current ]]
+grep -F 'Restored the pre-update installer configuration after failure.' \
+  "$fixture/apply-failed.err" >/dev/null
+
+# A staged candidate is untrusted cache: the next attempt must replace it from
+# the newly verified archive instead of accepting locally modified contents.
+touch "$fixture/data/fedora-config/releases/1.2.3/UNTRUSTED"
+mkdir -p "$fixture/data/fedora-config/releases/1.2.3-beta.1" \
+  "$fixture/data/fedora-config/releases/1.2.2" \
+  "$fixture/data/fedora-config/releases/1.2.1" \
+  "$fixture/data/fedora-config/releases/not-a-version"
+export MOCK_BACKEND_FAIL=false
+$updater --no-packages >/dev/null
+[[ -d $fixture/data/fedora-config/releases/1.2.3 ]]
+[[ ! -e $fixture/data/fedora-config/releases/1.2.3/UNTRUSTED ]]
+[[ -d $fixture/data/fedora-config/releases/1.2.3-beta.1 ]]
+[[ -d $fixture/data/fedora-config/releases/1.2.2 ]]
+[[ ! -e $fixture/data/fedora-config/releases/1.2.1 ]]
+[[ -d $fixture/data/fedora-config/releases/not-a-version ]]
+[[ $(readlink "$fixture/data/fedora-config/current") == releases/1.2.3 ]]
+[[ $(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["config_schema_version"])' "$fixture/config.yml") == 1 ]]
+grep -F -- 'run --full --skip-tests --repo' "$fixture/backend.log" >/dev/null
+grep -F -- '--no-packages -- -e' "$fixture/backend.log" >/dev/null
+grep -F -- 'release verify v1.2.3 --repo example/fedora-config' "$fixture/gh.log" >/dev/null
+grep -F -- 'release verify-asset v1.2.3' "$fixture/gh.log" >/dev/null
+
+release_json false
+if $updater --check >/dev/null 2>"$fixture/mutable.err"; then
+  echo 'mutable release was accepted' >&2
+  exit 1
+fi
+grep -F 'refusing mutable GitHub release' "$fixture/mutable.err" >/dev/null
+
+echo 'GitHub releases are compatibility-checked, verified, staged, and activated after apply'

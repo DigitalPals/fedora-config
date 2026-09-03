@@ -1,0 +1,796 @@
+#!/usr/bin/env bash
+# Durable updater shared by the repository CLI and Quickshell.
+
+set -uo pipefail
+umask 077
+
+state_root="${XDG_STATE_HOME:-$HOME/.local/state}/fedora-config/update"
+log_shelf="$state_root/logs"
+current_file="$state_root/current"
+runtime_root="${XDG_RUNTIME_DIR:-$state_root/runtime}"
+lock_file="$runtime_root/update.lock"
+boot_id_file="${FEDORA_CONFIG_UPDATE_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
+script_path="$(readlink -f -- "$0")"
+mkdir -p -- "$log_shelf" "$runtime_root"
+chmod 0700 -- "$state_root" "$log_shelf" "$runtime_root" 2>/dev/null || true
+
+usage() {
+  cat <<'EOF'
+Usage:
+  fedora-config-update-run run [OPTIONS] [ANSIBLE_ARGS...]
+  fedora-config-update-run start [--json] [OPTIONS] [ANSIBLE_ARGS...]
+  fedora-config-update-run status [--json] [RUN_ID]
+  fedora-config-update-run attach [RUN_ID]
+  fedora-config-update-run cancel [RUN_ID]
+  fedora-config-update-run dismiss [RUN_ID]
+  fedora-config-update-run log-dir [RUN_ID]
+
+Update Fedora packages and system Flatpaks. The worker runs as a transient
+user service, so closing a terminal or reloading Quickshell does not abandon
+the transaction. Only one CLI or panel update can run at a time.
+
+Options for run/start:
+  -f, --full        Also run site.yml with --skip-tags boot
+      --skip-tests  Skip repository checks before a full configuration run
+      --no-packages Skip Fedora and Flatpak updates (requires --full)
+      --no-flatpak  Skip the system Flatpak update
+  -h, --help        Show this help message and exit
+
+ANSIBLE_ARGS require --full and are passed verbatim to ansible-playbook.
+
+Examples:
+  ./update
+  ./update --full
+  ./update --full --check --diff
+  fedora-config-update-run status
+  fedora-config-update-run attach
+  fedora-config-update-run cancel
+EOF
+}
+
+valid_id() { [[ ${1:-} =~ ^[0-9]{8}-[0-9]{6}-[0-9]+-[0-9]+$ ]]; }
+
+current_id() {
+  local id=""
+  [[ -r $current_file ]] && IFS= read -r id < "$current_file"
+  valid_id "$id" && printf '%s\n' "$id"
+}
+
+resolve_id() {
+  local id=${1:-}
+  [[ -n $id ]] || id=$(current_id)
+  valid_id "$id" || {
+    printf 'fedora-config-update-run: no update run is available\n' >&2
+    return 1
+  }
+  printf '%s\n' "$id"
+}
+
+status_path() { printf '%s/%s/status.json\n' "$log_shelf" "$1"; }
+
+current_boot_id() {
+  local id=""
+  [[ -r $boot_id_file ]] && IFS= read -r id < "$boot_id_file"
+  [[ -n $id ]] || return 1
+  printf '%s\n' "$id"
+}
+
+valid_reboot_recommendation() {
+  case ${1:-} in
+    pending|checking|recommended|not-needed|unavailable) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Recommendations belong to one boot. Missing fields are legacy records, and
+# a record from an earlier boot is no longer evidence that this boot should be
+# restarted. Normalize both cases at the status boundary without rewriting a
+# status file that an active worker may be replacing concurrently.
+status_reboot_recommendation() {
+  local file=$1 expected_boot=$2 recorded_boot recommendation
+  recommendation="unavailable"
+  if [[ -n $expected_boot && -r $file ]]; then
+    recorded_boot=$(jq -r '.bootId // empty' "$file" 2>/dev/null || true)
+    if [[ $recorded_boot == "$expected_boot" ]]; then
+      recommendation=$(jq -r '.rebootRecommendation // "unavailable"' \
+        "$file" 2>/dev/null || printf unavailable)
+      valid_reboot_recommendation "$recommendation" \
+        || recommendation="unavailable"
+    fi
+  fi
+  printf '%s\n' "$recommendation"
+}
+
+status_state() {
+  local file
+  file=$(status_path "$1")
+  [[ -r $file ]] || return 1
+  jq -er '.state | strings' "$file" 2>/dev/null
+}
+
+is_active() { [[ ${1:-} == queued || ${1:-} == running ]]; }
+
+unit_active_state() {
+  local unit=$1 system_unit=${2:-false}
+  if [[ $system_unit == true ]]; then
+    systemctl show "$unit" --property=ActiveState --value 2>/dev/null
+  else
+    systemctl --user show "$unit" --property=ActiveState --value 2>/dev/null
+  fi
+}
+
+report_existing_run() {
+  local id=$1 state=$2 json_mode=$3
+  if [[ $json_mode == true ]]; then
+    json_status "$id" | jq '. + {existing: true}'
+  else
+    printf 'An update is already %s.\n%s\n' "$state" "$id"
+  fi
+}
+
+repair_stale_status() {
+  local id=$1 file state unit active_state started now temporary system_unit
+  file=$(status_path "$id")
+  [[ -r $file ]] || return 0
+  state=$(jq -r '.state // "unknown"' "$file" 2>/dev/null || printf unknown)
+  is_active "$state" || return 0
+  unit=$(jq -r '.unit // empty' "$file" 2>/dev/null || true)
+  system_unit=$(jq -r '.systemUnit // false' "$file" 2>/dev/null || printf false)
+  active_state=""
+  if [[ -n $unit ]] && ! active_state=$(unit_active_state "$unit" "$system_unit"); then
+    printf 'fedora-config-update-run: cannot inspect %s; preserving %s status\n' \
+      "$unit" "$state" >&2
+    return 0
+  fi
+  case $active_state in
+    active|activating|reloading|deactivating) return 0 ;;
+  esac
+  # Allow the small interval between publishing "queued" and systemd-run
+  # registering the transient unit. A stale record from a crash/reboot is
+  # older than this and must not block every subsequent update forever.
+  started=$(jq -r '.startedAt // 0' "$file" 2>/dev/null || printf 0)
+  now=$(date +%s)
+  if [[ $state == queued && $started =~ ^[0-9]+$ ]] && (( now - started < 10 )); then
+    return 0
+  fi
+  temporary="$file.$$.abandoned"
+  jq --argjson now "$now" \
+    '.state = "failed" | .phase = "abandoned" |
+     .message = "The update worker disappeared before recording completion" |
+     .finishedAt = $now | .exitCode = 125' "$file" > "$temporary"
+  mv -f -- "$temporary" "$file"
+}
+
+prune_logs() {
+  local keep_id=${1:-} dir id
+  local -a ids=()
+  while IFS= read -r id; do
+    valid_id "$id" && ids+=("$id")
+  done < <(find "$log_shelf" -mindepth 1 -maxdepth 1 -type d \
+    -printf '%f\n' 2>/dev/null | sort -r)
+  # Keep the twenty newest runs. Old malformed directories and the current
+  # run are never inferred as deletion targets.
+  for (( index=20; index<${#ids[@]}; index++ )); do
+    id=${ids[index]}
+    [[ $id == "$keep_id" ]] && continue
+    dir="$log_shelf/$id"
+    [[ -d $dir && $dir != "$log_shelf" ]] && rm -rf -- "$dir"
+  done
+}
+
+atomic_text() {
+  local target=$1 value=$2 temporary
+  temporary="${target}.$$.tmp"
+  printf '%s\n' "$value" > "$temporary"
+  mv -f -- "$temporary" "$target"
+}
+
+json_status() {
+  local id=${1:-} file dnf_bytes=0 flatpak_bytes=0 boot_id recommendation
+  boot_id=$(current_boot_id || true)
+  [[ -n $id ]] || id=$(current_id || true)
+  if ! valid_id "$id"; then
+    jq -cn --arg bootId "$boot_id" \
+      '{state: "idle", id: "", bootId: $bootId,
+        rebootRecommendation: "unavailable"}'
+    return
+  fi
+  repair_stale_status "$id"
+  file=$(status_path "$id")
+  if [[ ! -r $file ]]; then
+    jq -n --arg id "$id" --arg bootId "$boot_id" \
+      '{id: $id, state: "unknown", bootId: $bootId,
+        rebootRecommendation: "unavailable"}'
+    return 1
+  fi
+  [[ ! -r $log_shelf/$id/dnf.log ]] || dnf_bytes=$(wc -c < "$log_shelf/$id/dnf.log")
+  [[ ! -r $log_shelf/$id/flatpak.log ]] || flatpak_bytes=$(wc -c < "$log_shelf/$id/flatpak.log")
+  recommendation=$(status_reboot_recommendation "$file" "$boot_id")
+  jq --argjson dnfBytes "$dnf_bytes" --argjson flatpakBytes "$flatpak_bytes" \
+    --arg bootId "$boot_id" --arg rebootRecommendation "$recommendation" \
+    '. + {dnfBytes: $dnfBytes, flatpakBytes: $flatpakBytes,
+      bootId: $bootId, rebootRecommendation: $rebootRecommendation}' "$file"
+}
+
+human_status() {
+  json_status "${1:-}" | jq -r 'if .state == "idle" then "No update run is recorded."
+    else "\(.id): \(.state)\(if .phase then " (" + .phase + ")" else "" end)\nlogs: \(.logDir)" end'
+}
+
+write_status() {
+  local state=$1 phase=$2 message=${3:-} exit_code=${4:-0} finished=0
+  local temporary="$run_dir/.status.$$.tmp"
+  local status_boot_id=${boot_id:-} status_reboot=${reboot_recommendation:-unavailable}
+  valid_reboot_recommendation "$status_reboot" || status_reboot="unavailable"
+  [[ $state == queued || $state == running ]] || finished=$(date +%s)
+  jq -n --arg id "$run_id" --arg state "$state" --arg phase "$phase" \
+    --arg message "$message" --arg logDir "$run_dir" --arg unit "$unit_name" \
+    --arg bootId "$status_boot_id" --arg rebootRecommendation "$status_reboot" \
+    --argjson startedAt "$started_at" --argjson finishedAt "$finished" \
+    --argjson systemUnit "${system_unit:-false}" \
+    --argjson exitCode "$exit_code" --argjson full "$full" \
+    --argjson flatpak "$with_flatpak" --argjson dnfDone "$dnf_done" \
+    --argjson flatpakDone "$flatpak_done" --argjson dnfRc "$dnf_rc" \
+    --argjson flatpakRc "$flatpak_rc" --argjson testsRc "$tests_rc" \
+    --argjson ansibleRc "$ansible_rc" --arg snapshotId "${snapshot_id:-}" \
+    '{id: $id, state: $state, phase: $phase, message: $message,
+      logDir: $logDir, unit: $unit, systemUnit: $systemUnit, startedAt: $startedAt,
+      finishedAt: $finishedAt, exitCode: $exitCode, full: $full,
+      flatpak: $flatpak, dnfDone: $dnfDone, flatpakDone: $flatpakDone,
+      dnfRc: $dnfRc, flatpakRc: $flatpakRc, testsRc: $testsRc,
+      ansibleRc: $ansibleRc, snapshotId: $snapshotId, bootId: $bootId,
+      rebootRecommendation: $rebootRecommendation}' > "$temporary"
+  mv -f -- "$temporary" "$run_dir/status.json"
+  if [[ -n ${FEDORA_CONFIG_UPDATE_OWNER_UID:-} ]]; then
+    chown "${FEDORA_CONFIG_UPDATE_OWNER_UID}:${FEDORA_CONFIG_UPDATE_OWNER_GID}" \
+      "$run_dir/status.json" 2>/dev/null || true
+  fi
+}
+
+parse_options() {
+  full=false; skip_tests=false; with_packages=true; with_flatpak=true; json=false; repo=""
+  system_unit=${FEDORA_CONFIG_UPDATE_SYSTEM_UNIT:-false}
+  ansible_args=()
+  while (( $# )); do
+    case $1 in
+      -f|--full) full=true ;;
+      --skip-tests) skip_tests=true ;;
+      --no-packages) with_packages=false; with_flatpak=false ;;
+      --no-flatpak) with_flatpak=false ;;
+      --json) json=true ;;
+      --system-unit) system_unit=true ;;
+      --repo)
+        shift
+        [[ $# -gt 0 ]] || { printf 'fedora-config-update-run: --repo needs a path\n' >&2; return 2; }
+        repo=$1
+        ;;
+      -h|--help) usage; return 10 ;;
+      --) shift; ansible_args+=("$@"); break ;;
+      *) ansible_args+=("$1") ;;
+    esac
+    shift
+  done
+  if (( ${#ansible_args[@]} > 0 )) && [[ $full != true ]]; then
+    printf 'fedora-config-update-run: Ansible arguments require --full\n\n' >&2
+    usage >&2
+    return 2
+  fi
+  if [[ $with_packages == false && $full != true ]]; then
+    printf 'fedora-config-update-run: --no-packages requires --full\n' >&2
+    return 2
+  fi
+  if [[ $full == true ]]; then
+    [[ -n $repo ]] || repo=$PWD
+    repo=$(readlink -f -- "$repo")
+    if [[ ! -f $repo/site.yml || ! -x $repo/tests/run ]]; then
+      printf 'fedora-config-update-run: --full requires the configuration repository path\n' >&2
+      return 2
+    fi
+  fi
+}
+
+start_run() {
+  parse_options "$@"
+  local parse_rc=$?
+  [[ $parse_rc -eq 0 ]] || { [[ $parse_rc -eq 10 ]] && return 0; return "$parse_rc"; }
+  if [[ ${FEDORA_CONFIG_UPDATE_ASSUME_USER_UNIT:-0} != 1 \
+        && $system_unit != true ]] && ! sudo -n true >/dev/null 2>&1; then
+    if [[ $json == true || ! -t 0 ]]; then
+      printf 'fedora-config-update-run: authentication is required; run `fedora-config update` in a terminal\n' >&2
+      return 77
+    fi
+    printf 'Authenticate once to start the durable system update worker.\n'
+    sudo -v || return
+    system_unit=true
+  fi
+  exec 9>"$lock_file"
+  local active_id active_state=""
+
+  # The worker owns this lock for its complete package/test/Ansible lifetime.
+  # A client must never wait for that transaction and then launch another one;
+  # resolve the already-published run immediately and let callers attach.
+  if ! flock -n 9; then
+    active_id=$(current_id || true)
+    if [[ -n $active_id ]]; then
+      repair_stale_status "$active_id"
+      active_state=$(status_state "$active_id" || true)
+    fi
+    if is_active "$active_state"; then
+      report_existing_run "$active_id" "$active_state" "$json"
+      return 3
+    fi
+    printf 'fedora-config-update-run: update lock is held but no active run is readable\n' >&2
+    return 4
+  fi
+
+  active_id=$(current_id || true)
+  if [[ -n $active_id ]]; then
+    repair_stale_status "$active_id"
+    active_state=$(status_state "$active_id" || true)
+  fi
+  if is_active "$active_state"; then
+    report_existing_run "$active_id" "$active_state" "$json"
+    return 3
+  fi
+
+  local run_id unit_name run_dir started_at dnf_done=false flatpak_done=false
+  local dnf_rc=0 flatpak_rc=0 tests_rc=0 ansible_rc=0
+  local boot_id reboot_recommendation snapshot_id=""
+  boot_id=$(current_boot_id || true)
+  reboot_recommendation="pending"
+  if [[ -n $active_id ]]; then
+    reboot_recommendation=$(status_reboot_recommendation \
+      "$(status_path "$active_id")" "$boot_id")
+    [[ $reboot_recommendation == recommended ]] \
+      || reboot_recommendation="pending"
+  fi
+  run_id="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
+  unit_name="fedora-config-update-$run_id.service"
+  run_dir="$log_shelf/$run_id"
+  mkdir -p -- "$run_dir"
+  : > "$run_dir/dnf.log"; : > "$run_dir/flatpak.log"; : > "$run_dir/run.log"
+  started_at=$(date +%s)
+  write_status queued queued "Waiting for the update worker" 0
+  atomic_text "$current_file" "$run_id"
+  prune_logs "$run_id"
+
+  local worker_args=("$script_path" _worker "$run_id")
+  [[ $system_unit == true ]] && worker_args+=(--system-unit)
+  [[ $full == true ]] && worker_args+=(--full --repo "$repo")
+  [[ $skip_tests == true ]] && worker_args+=(--skip-tests)
+  [[ $with_packages == true ]] || worker_args+=(--no-packages)
+  [[ $with_flatpak == true ]] || worker_args+=(--no-flatpak)
+  (( ${#ansible_args[@]} == 0 )) || worker_args+=(-- "${ansible_args[@]}")
+  local launch_rc=0
+  if [[ $system_unit == true ]]; then
+    sudo systemd-run --system --quiet --collect --unit="$unit_name" \
+      --property=Type=exec \
+      --setenv="HOME=$HOME" \
+      --setenv="XDG_STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}" \
+      --setenv="XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+      --setenv="FEDORA_CONFIG_UPDATE_OWNER_UID=$(id -u)" \
+      --setenv="FEDORA_CONFIG_UPDATE_OWNER_GID=$(id -g)" \
+      -- "${worker_args[@]}" || launch_rc=$?
+  else
+    systemd-run --user --quiet --collect --unit="$unit_name" \
+      --property=Type=exec -- "${worker_args[@]}" || launch_rc=$?
+  fi
+  if ((launch_rc != 0)); then
+    write_status failed launch "Could not start the update worker" 125
+    [[ $json == true ]] && json_status "$run_id" | jq '. + {existing: false}' \
+      || printf 'fedora-config-update-run: could not start the update worker\n' >&2
+    return 1
+  fi
+  [[ $json == true ]] && json_status "$run_id" | jq '. + {existing: false}' \
+    || printf '%s\n' "$run_id"
+}
+
+tagged_command() {
+  local tag=$1 logfile=$2 rcfile=$3
+  shift 3
+  set +e
+  stdbuf -oL -eL "$@" 2>&1 | tee "$logfile" \
+    | sed -u "s/^/[$tag] /" >> "$run_dir/run.log"
+  printf '%s\n' "${PIPESTATUS[0]}" > "$rcfile"
+  return 0
+}
+
+worker_finalized=false
+
+worker_cancelled() {
+  write_status cancelled cancelled "Update cancelled" 130
+  worker_finalized=true
+  exit 130
+}
+
+worker_exit_fallback() {
+  local rc=$?
+  [[ $worker_finalized == true ]] && return
+  # This catches interpreter/tool failures and SIGKILL's next status read
+  # repairs the one case in which no shell trap can run.
+  write_status failed internal "Update worker exited unexpectedly (status $rc)" \
+    "$([[ $rc -eq 0 ]] && printf 125 || printf '%s' "$rc")" 2>/dev/null || true
+}
+
+check_reboot_recommendation() {
+  local carried_recommendation=false output_file error_file rc parsed=""
+  [[ $reboot_recommendation == recommended ]] \
+    && carried_recommendation=true
+
+  if [[ -z $boot_id ]]; then
+    reboot_recommendation="unavailable"
+    return 0
+  fi
+
+  reboot_recommendation="checking"
+  write_status running reboot-check \
+    "Checking whether Fedora recommends a reboot" 0
+  output_file="$run_dir/reboot.json"
+  error_file="$run_dir/reboot.err"
+  timeout 30s env LC_ALL=C dnf --quiet --cacheonly needs-restarting --json \
+    > "$output_file" 2> "$error_file"
+  rc=$?
+  if [[ $rc -eq 0 || $rc -eq 1 ]]; then
+    parsed=$(jq -r '
+      if type != "array" then error("expected an array") else
+        [.[] | select(type == "object" and .type == "reboot"
+          and (.reboot_required | type) == "boolean")
+          | .reboot_required]
+        | if length == 1 then .[0] else error("expected one reboot result") end
+      end
+    ' "$output_file" 2>/dev/null) || parsed=""
+  fi
+
+  if [[ $rc -eq 1 && $parsed == true ]]; then
+    reboot_recommendation="recommended"
+  elif [[ $rc -eq 0 && $parsed == false ]]; then
+    reboot_recommendation="not-needed"
+  elif [[ $carried_recommendation == true ]]; then
+    # A missing plugin, timeout, or malformed response cannot erase a
+    # recommendation already established during this boot.
+    reboot_recommendation="recommended"
+  else
+    reboot_recommendation="unavailable"
+  fi
+}
+
+worker() {
+  run_id=${1:-}; shift || true
+  valid_id "$run_id" || exit 2
+  parse_options "$@" || exit $?
+  run_dir="$log_shelf/$run_id"; unit_name="fedora-config-update-$run_id.service"
+  started_at=$(jq -r '.startedAt // 0' "$run_dir/status.json" 2>/dev/null || printf 0)
+  [[ $started_at =~ ^[0-9]+$ ]] || started_at=$(date +%s)
+  dnf_done=false; flatpak_done=false; dnf_rc=0; flatpak_rc=0; tests_rc=0; ansible_rc=0
+  snapshot_id=""
+  boot_id=$(current_boot_id || true)
+  reboot_recommendation=$(status_reboot_recommendation \
+    "$run_dir/status.json" "$boot_id")
+  [[ $reboot_recommendation == recommended ]] \
+    || reboot_recommendation="pending"
+  trap worker_cancelled INT TERM
+  trap worker_exit_fallback EXIT
+  exec 9>"$lock_file"
+  # start_run publishes the queued state while holding this same lock. Wait for
+  # that short critical section to end, then retain the lock for the complete
+  # package/test/Ansible lifecycle.
+  flock 9
+
+  # Cancellation can win before systemd-run has registered this transient
+  # unit. The durable intent closes the interval between an inactive unit
+  # query and registration; never begin package work once it is published.
+  if [[ -e $run_dir/cancel.requested ]]; then
+    worker_cancelled
+  fi
+
+  # Also honor an already-published terminal state instead of resurrecting the
+  # run as `running`.
+  local published_state
+  published_state=$(status_state "$run_id" || true)
+  if [[ $published_state != queued ]]; then
+    worker_finalized=true
+    [[ $published_state == cancelled ]] && exit 130
+    printf 'fedora-config-update-run: refusing worker for run %s in state %s\n' \
+      "$run_id" "${published_state:-unknown}" >&2
+    exit 125
+  fi
+
+  write_status running snapshot "Creating a pre-update recovery point" 0
+  printf 'Fedora Config update %s started at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
+  # Keep run state and logs private, but do not pass that 0077 umask through
+  # sudo. DNF5 rewrites its shared system-state TOML files using the process
+  # umask; making them root-only breaks every later unprivileged dnf query.
+  local -a privileged_package
+  if ((EUID == 0)); then
+    privileged_package=(sh -c 'umask 022; exec "$@"' fedora-config-update-package)
+  else
+    privileged_package=(sudo -n sh -c \
+      'umask 022; exec "$@"' fedora-config-update-package)
+  fi
+  local snapshot_helper=/usr/local/libexec/fedora-config-system-snapshot snapshot_rc=0
+  if [[ -x $snapshot_helper ]]; then
+    tagged_command snapshot "$run_dir/snapshot.log" "$run_dir/snapshot.rc" \
+      "${privileged_package[@]}" "$snapshot_helper" create "update $run_id"
+    snapshot_rc=$(<"$run_dir/snapshot.rc")
+    if ((snapshot_rc != 0)); then
+      write_status failed snapshot "Could not create the pre-update recovery point" "$snapshot_rc"
+      worker_finalized=true
+      exit "$snapshot_rc"
+    fi
+    snapshot_id=$(tail -n 1 "$run_dir/snapshot.log")
+    [[ $snapshot_id == skipped:* ]] && snapshot_id=""
+  else
+    if [[ $(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) == btrfs ]]; then
+      write_status failed snapshot "Btrfs recovery helper is not installed" 127
+      worker_finalized=true
+      exit 127
+    fi
+    printf '[snapshot] non-Btrfs root; no filesystem recovery point created\n' \
+      >>"$run_dir/run.log"
+  fi
+  local dnf_pid="" flatpak_pid=""
+  if [[ $with_packages == true ]]; then
+    write_status running packages "Updating system packages and Flatpaks" 0
+    tagged_command dnf "$run_dir/dnf.log" "$run_dir/dnf.rc" \
+      "${privileged_package[@]}" dnf -y upgrade --refresh &
+    dnf_pid=$!
+    if [[ $with_flatpak == true ]]; then
+      tagged_command flatpak "$run_dir/flatpak.log" "$run_dir/flatpak.rc" \
+        "${privileged_package[@]}" flatpak update --system --noninteractive &
+      flatpak_pid=$!
+    else
+      printf '0\n' > "$run_dir/flatpak.rc"; flatpak_done=true
+    fi
+    wait "$dnf_pid" || true
+    dnf_rc=$(<"$run_dir/dnf.rc"); dnf_done=true
+    write_status running packages "System package update finished" 0
+    if [[ -n $flatpak_pid ]]; then
+      wait "$flatpak_pid" || true
+      flatpak_rc=$(<"$run_dir/flatpak.rc"); flatpak_done=true
+      write_status running packages "Package phase finished" 0
+    fi
+  else
+    printf '0\n' > "$run_dir/dnf.rc"
+    printf '0\n' > "$run_dir/flatpak.rc"
+    dnf_done=true
+    flatpak_done=true
+  fi
+  if (( dnf_rc != 0 )); then
+    write_status failed packages "dnf exited with status $dnf_rc" "$dnf_rc"
+    worker_finalized=true
+    exit "$dnf_rc"
+  fi
+
+  if [[ $full == true ]]; then
+    cd -- "$repo" || {
+      write_status failed tests "Could not enter repository directory" 1
+      worker_finalized=true
+      exit 1
+    }
+    if [[ $skip_tests == true ]]; then
+      printf '[tests] repository checks skipped (--skip-tests)\n' >> "$run_dir/run.log"
+    else
+      write_status running tests "Running repository checks" 0
+      tagged_command tests "$run_dir/tests.log" "$run_dir/tests.rc" ./tests/run
+      tests_rc=$(<"$run_dir/tests.rc")
+      if (( tests_rc != 0 )); then
+        write_status failed tests "Repository checks exited with status $tests_rc" "$tests_rc"
+        worker_finalized=true
+        exit "$tests_rc"
+      fi
+    fi
+    write_status running ansible "Applying the managed configuration" 0
+    # Keep the complete stream even when the configured callback is compact.
+    tagged_command ansible "$run_dir/ansible.log" "$run_dir/ansible.rc" \
+      ansible-playbook site.yml --skip-tags boot "${ansible_args[@]}"
+    ansible_rc=$(<"$run_dir/ansible.rc")
+    if (( ansible_rc != 0 )); then
+      write_status failed ansible "Ansible exited with status $ansible_rc" "$ansible_rc"
+      worker_finalized=true
+      exit "$ansible_rc"
+    fi
+  fi
+
+  check_reboot_recommendation
+
+  local message="Update completed"
+  (( flatpak_rc == 0 )) || message="Update completed; Flatpak reported status $flatpak_rc"
+  printf 'Fedora Config update %s finished at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
+  write_status done complete "$message" 0
+  worker_finalized=true
+}
+
+attach_run() {
+  local id file state exit_code tail_pid attach_interrupted=false
+  id=$(resolve_id "${1:-}") || return
+  file="$log_shelf/$id/run.log"; [[ -e $file ]] || : > "$file"
+  tail -n +1 -F -- "$file" & tail_pid=$!
+  detach_attach() {
+    attach_interrupted=true
+    kill "$tail_pid" 2>/dev/null || true
+  }
+  trap 'kill "$tail_pid" 2>/dev/null || true' EXIT
+  trap detach_attach INT TERM
+  while :; do
+    if [[ $attach_interrupted == true ]]; then
+      wait "$tail_pid" 2>/dev/null || true
+      trap - EXIT INT TERM
+      printf '\nDetached from update %s; the worker is still running.\n' "$id"
+      return 130
+    fi
+    repair_stale_status "$id"
+    state=$(status_state "$id" || printf unknown)
+    is_active "$state" || break
+    sleep 1
+  done
+  sleep 1
+  kill "$tail_pid" 2>/dev/null || true; wait "$tail_pid" 2>/dev/null || true
+  trap - EXIT INT TERM
+  exit_code=$(jq -r '.exitCode // 1' "$(status_path "$id")" 2>/dev/null || printf 1)
+  printf '\nUpdate %s: %s (logs: %s)\n' "$id" "$state" "$log_shelf/$id"
+  return "$exit_code"
+}
+
+load_status_globals() {
+  local id=$1 file
+  file=$(status_path "$id")
+  run_id=$id; run_dir="$log_shelf/$id"; unit_name=$(jq -r '.unit // empty' "$file")
+  started_at=$(jq -r '.startedAt // 0' "$file"); full=$(jq -r '.full // false' "$file")
+  with_flatpak=$(jq -r '.flatpak // true' "$file"); dnf_done=$(jq -r '.dnfDone // false' "$file")
+  flatpak_done=$(jq -r '.flatpakDone // false' "$file"); dnf_rc=$(jq -r '.dnfRc // 0' "$file")
+  flatpak_rc=$(jq -r '.flatpakRc // 0' "$file"); tests_rc=$(jq -r '.testsRc // 0' "$file")
+  ansible_rc=$(jq -r '.ansibleRc // 0' "$file")
+  system_unit=$(jq -r '.systemUnit // false' "$file")
+  snapshot_id=$(jq -r '.snapshotId // empty' "$file")
+  boot_id=$(current_boot_id || true)
+  reboot_recommendation=$(status_reboot_recommendation "$file" "$boot_id")
+}
+
+cancel_run() {
+  local id state unit active_state next_active_state intent system_unit
+  id=$(resolve_id "${1:-}") || return; state=$(status_state "$id" || true)
+  is_active "$state" || { printf 'fedora-config-update-run: %s is not active (%s)\n' "$id" "${state:-unknown}" >&2; return 1; }
+  unit=$(jq -r '.unit // empty' "$(status_path "$id")")
+  system_unit=$(jq -r '.systemUnit // false' "$(status_path "$id")")
+  [[ -n $unit ]] || unit="fedora-config-update-$id.service"
+
+  # Publish intent before inspecting the unit. If start_run has not registered
+  # it yet, the eventual worker observes this marker under the transaction
+  # lock and exits before package work. If it is already registered, the
+  # active-unit path below still stops and verifies it synchronously.
+  intent="$log_shelf/$id/cancel.requested"
+  atomic_text "$intent" "$(date +%s)"
+
+  if ! active_state=$(unit_active_state "$unit" "$system_unit"); then
+    printf 'fedora-config-update-run: cancellation intent recorded, but %s could not be inspected; outcome is not yet verified\n' \
+      "$unit" >&2
+    return 1
+  fi
+  case $active_state in
+    active|activating|reloading|deactivating)
+      if [[ $system_unit == true ]]; then
+        sudo systemctl stop "$unit" >/dev/null 2>&1 || {
+          printf 'fedora-config-update-run: could not stop %s; update remains active\n' "$unit" >&2
+          return 1
+        }
+      elif ! systemctl --user stop "$unit" >/dev/null 2>&1; then
+          printf 'fedora-config-update-run: could not stop %s; update remains active\n' "$unit" >&2
+          return 1
+      fi
+      # systemctl stop is synchronous, but verify the ownership boundary before
+      # publishing a terminal record. A worker proven stopped can no longer
+      # overwrite the synthetic status if its TERM trap did not get to run.
+      for _ in {1..20}; do
+        if ! next_active_state=$(unit_active_state "$unit" "$system_unit"); then
+          printf 'fedora-config-update-run: could not verify %s stopped\n' "$unit" >&2
+          return 1
+        fi
+        case $next_active_state in
+          inactive|failed) break ;;
+        esac
+        sleep 0.05
+      done
+      case $next_active_state in
+        inactive|failed) ;;
+        *)
+          printf 'fedora-config-update-run: %s is still %s; update remains active\n' \
+            "$unit" "${next_active_state:-unknown}" >&2
+          return 1
+          ;;
+      esac
+      ;;
+    inactive|failed)
+      if [[ $state != queued ]]; then
+        repair_stale_status "$id"
+        state=$(status_state "$id" || true)
+        printf 'fedora-config-update-run: %s has no active worker (%s)\n' \
+          "$id" "${state:-unknown}" >&2
+        return 1
+      fi
+      # start_run publishes queued before systemd-run registers the unit. Mark
+      # that narrow window terminal; a subsequently registered worker checks
+      # the status under the transaction lock and refuses package work.
+      ;;
+    *)
+      printf 'fedora-config-update-run: unexpected unit state for %s: %s\n' \
+        "$unit" "${active_state:-unknown}" >&2
+      return 1
+      ;;
+  esac
+
+  state=$(status_state "$id" || true)
+  if is_active "$state"; then
+    load_status_globals "$id"
+    write_status cancelled cancelled "Update cancelled" 130
+  elif [[ $state != cancelled ]]; then
+    printf 'fedora-config-update-run: %s finished as %s before cancellation\n' \
+      "$id" "${state:-unknown}" >&2
+    return 1
+  fi
+  printf 'Cancelled update %s.\n' "$id"
+}
+
+dismiss_run() {
+  local id state file temporary
+  id=$(resolve_id "${1:-}") || return; file=$(status_path "$id")
+  state=$(status_state "$id" || true)
+  is_active "$state" && { printf 'fedora-config-update-run: an active run cannot be dismissed\n' >&2; return 1; }
+  temporary="$file.$$.tmp"; jq '.state = "dismissed"' "$file" > "$temporary"
+  mv -f -- "$temporary" "$file"
+}
+
+read_log() {
+  local id=${1:-} name=${2:-} offset=${3:-0} count=${4:-} file
+  valid_id "$id" || return 2
+  [[ $name == dnf || $name == flatpak || $name == run || $name == tests || $name == ansible ]] || return 2
+  [[ $offset =~ ^[0-9]+$ ]] || return 2
+  [[ -z $count || $count =~ ^[0-9]+$ ]] || return 2
+  file="$log_shelf/$id/$name.log"; [[ -r $file ]] || return 0
+  if [[ -n $count ]]; then
+    dd if="$file" iflag=skip_bytes,count_bytes skip="$offset" count="$count" \
+      status=none
+  else
+    tail -c "+$((offset + 1))" -- "$file"
+  fi
+}
+
+run_client() {
+  local output rc id existing
+  local argument
+  for argument in "$@"; do
+    if [[ $argument == -h || $argument == --help ]]; then
+      usage
+      return 0
+    fi
+  done
+  if output=$(start_run --json "$@"); then
+    rc=0
+  else
+    rc=$?
+  fi
+  [[ -n $output ]] || return "$rc"
+  id=$(jq -er '.id' <<< "$output") || return 1
+  existing=$(jq -r '.existing // false' <<< "$output")
+  [[ $existing == true ]] \
+    && printf 'An update is already active; attaching to %s.\n' "$id" \
+    || printf 'Started durable update %s. Ctrl+C detaches; `fedora-config-update-run cancel` cancels.\n' "$id"
+  attach_run "$id"
+}
+
+command=${1:-run}; shift || true
+case $command in
+  run) run_client "$@" ;;
+  start) start_run "$@" ;;
+  status)
+    json=false; [[ ${1:-} == --json ]] && { json=true; shift; }
+    [[ $json == true ]] && json_status "${1:-}" || human_status "${1:-}"
+    ;;
+  attach) attach_run "${1:-}" ;;
+  cancel) cancel_run "${1:-}" ;;
+  dismiss) dismiss_run "${1:-}" ;;
+  log-dir) id=$(resolve_id "${1:-}") || exit; printf '%s/%s\n' "$log_shelf" "$id" ;;
+  read-log) read_log "${1:-}" "${2:-}" "${3:-0}" "${4:-}" ;;
+  _worker) worker "$@" ;;
+  -h|--help|help) usage ;;
+  *) printf 'fedora-config-update-run: unknown command %s\n\n' "$command" >&2; usage >&2; exit 2 ;;
+esac

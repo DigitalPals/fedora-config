@@ -28,7 +28,7 @@
 - name: Download checksum-pinned vendor repository keys
   ansible.builtin.get_url:
     url: "{{ item.url }}"
-    dest: "/etc/pki/rpm-gpg/XPS-{{ item.name }}.asc"
+    dest: "/etc/pki/rpm-gpg/FEDORA-CONFIG-{{ item.name }}.asc"
     checksum: "{{ item.checksum }}"
     owner: root
     group: root
@@ -44,7 +44,7 @@
 
 - name: Import fingerprint-verified vendor package keys
   ansible.builtin.rpm_key:
-    key: "/etc/pki/rpm-gpg/XPS-{{ item.name }}.asc"
+    key: "/etc/pki/rpm-gpg/FEDORA-CONFIG-{{ item.name }}.asc"
     fingerprint:
       - "{{ item.fingerprint }}"
     state: present
@@ -64,6 +64,7 @@
     group: root
     mode: "0644"
   register: apps_chatgpt_repo_key
+  when: features.proprietary_apps | bool
   tags: [browser]
 
 - name: Import the fingerprint-verified ChatGPT package key
@@ -72,7 +73,9 @@
     fingerprint:
       - "{{ apps_chatgpt_repository_key_fingerprint }}"
     state: present
-  when: not ansible_check_mode
+  when:
+    - features.proprietary_apps | bool
+    - not ansible_check_mode
   register: apps_chatgpt_rpm_key
   tags: [browser]
 
@@ -88,6 +91,47 @@
     - 1password
     - chatgpt
   register: apps_vendor_repos
+  when: features.proprietary_apps | bool
+  tags: [browser]
+
+- name: Remove disabled signed vendor repository definitions and keys
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/yum.repos.d/brave-browser.repo
+    - /etc/yum.repos.d/1password.repo
+    - /etc/yum.repos.d/chatgpt.repo
+    - /etc/pki/rpm-gpg/FEDORA-CONFIG-brave-browser.asc
+    - /etc/pki/rpm-gpg/FEDORA-CONFIG-1password.asc
+    - /etc/pki/rpm-gpg/RPM-GPG-KEY-chatgpt
+  register: apps_retired_proprietary_repos
+  when:
+    - not features.proprietary_apps | bool
+    - apps_feature_owned.proprietary_apps | bool
+  tags: [browser]
+
+- name: Remove imported proprietary package keys when disabled
+  ansible.builtin.rpm_key:
+    key: "{{ item.fingerprint }}"
+    state: absent
+  loop: "{{ apps_vendor_repo_keys | rejectattr('name', 'equalto', 'tailscale') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - not features.proprietary_apps | bool
+    - apps_feature_owned.proprietary_apps | bool
+    - not ansible_check_mode
+  tags: [browser]
+
+- name: Remove imported ChatGPT package key when disabled
+  ansible.builtin.rpm_key:
+    key: "{{ apps_chatgpt_repository_key_fingerprint }}"
+    state: absent
+  when:
+    - not features.proprietary_apps | bool
+    - apps_feature_owned.proprietary_apps | bool
+    - not ansible_check_mode
   tags: [browser]
 
 - name: Converge the optional Tailscale repository definition
@@ -108,6 +152,7 @@
     state: absent
   when:
     - not features.tailscale | bool
+    - apps_feature_owned.tailscale | bool
     - not ansible_check_mode
   register: apps_retired_tailscale_rpm_key
 
@@ -117,8 +162,10 @@
     state: absent
   loop:
     - /etc/yum.repos.d/tailscale.repo
-    - /etc/pki/rpm-gpg/XPS-tailscale.asc
-  when: not features.tailscale | bool
+    - /etc/pki/rpm-gpg/FEDORA-CONFIG-tailscale.asc
+  when:
+    - not features.tailscale | bool
+    - apps_feature_owned.tailscale | bool
   register: apps_retired_tailscale_repo
 
 - name: Remove retired Google Chrome repository definition
@@ -126,6 +173,7 @@
     path: /etc/yum.repos.d/google-chrome.repo
     state: absent
   register: apps_retired_vendor_repos
+  when: cleanup_legacy_xps_artifacts | bool
   tags: [browser]
 
 - name: Refresh DNF metadata after repository changes
@@ -142,4 +190,5 @@
       or (apps_retired_tailscale_rpm_key is defined and apps_retired_tailscale_rpm_key is changed)
       or (apps_retired_tailscale_repo is defined and apps_retired_tailscale_repo is changed)
       or (apps_retired_vendor_repos is defined and apps_retired_vendor_repos is changed)
+      or (apps_retired_proprietary_repos is defined and apps_retired_proprietary_repos is changed)
   tags: [browser]

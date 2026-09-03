@@ -77,21 +77,21 @@ prune_version_dirs() {
 }
 emit_changed() { echo "CHANGED: $*"; }
 emit_unchanged() { echo "UNCHANGED: $*"; }
-xps_restorecon() { return 0; }
+fedora_config_restorecon() { return 0; }
 ''',
     )
 
 
 def render_installer(source: Path, destination: Path, root: Path, common: Path) -> None:
     rendered = source.read_text().replace(
-        "source /usr/local/libexec/xps-common.sh",
+        "source /usr/local/libexec/fedora-config-common.sh",
         f"source {shlex.quote(str(common))}",
     )
     replacements = {
-        "/var/cache/xps-upstream": str(root / "cache"),
-        "/var/lib/xps-upstream": str(root / "state"),
-        "/opt/xps-apps": str(root / "apps"),
-        "/opt/xps-builds": str(root / "builds"),
+        "/var/cache/fedora-config-upstream": str(root / "cache"),
+        "/var/lib/fedora-config-upstream": str(root / "state"),
+        "/opt/fedora-config-apps": str(root / "apps"),
+        "/opt/fedora-config-builds": str(root / "builds"),
         "/usr/local/share/fonts": str(root / "fonts"),
         "/usr/local/bin": str(root / "bin"),
     }
@@ -152,7 +152,7 @@ exit 2
 
 
 def test_prune_count() -> None:
-    common = ROOT / "roles/apps/files/xps-common.sh"
+    common = ROOT / "roles/apps/files/fedora-config-common.sh"
     for current_name, expected in (
         ("v5", {"v3", "v4", "v5"}),
         ("v1", {"v1", "v4", "v5"}),
@@ -276,7 +276,7 @@ def test_github_font_payload_and_post_commit_warning() -> None:
         make_zip(asset, {"LICENSE.txt": b"license only\n"})
         digest = hashlib.sha256(asset.read_bytes()).hexdigest()
         manifest = f"tag=v1 checksum=sha256:{digest}"
-        (old / ".xps-release").write_text(manifest + "\n")
+        (old / ".fedora-config-release").write_text(manifest + "\n")
         release_json(release, "v1", "fonts.zip", digest)
         argv = [
             str(installer),
@@ -415,7 +415,7 @@ def test_android_command_tools_rollback() -> None:
         common_stub(common)
         template = (ROOT / "roles/apps/templates/android-sdk-update.j2").read_text()
         rendered = template.replace("{{ primary_home }}", str(home)).replace(
-            "source /usr/local/libexec/xps-common.sh",
+            "source /usr/local/libexec/fedora-config-common.sh",
             f"source {shlex.quote(str(common))}",
         )
         installer = root / "android-sdk-update"
@@ -499,7 +499,7 @@ def android_legacy_layout_fixture(*, fail_after_activation: bool) -> None:
         common_stub(common)
         template = (ROOT / "roles/apps/templates/android-sdk-update.j2").read_text()
         rendered = template.replace("{{ primary_home }}", str(home)).replace(
-            "source /usr/local/libexec/xps-common.sh",
+            "source /usr/local/libexec/fedora-config-common.sh",
             f"source {shlex.quote(str(common))}",
         )
         installer = root / "android-sdk-update"
@@ -621,7 +621,7 @@ def test_t3code_metadata_rollback() -> None:
         common_stub(common)
         installer = root / "t3code-update"
         rendered = (ROOT / "roles/dotfiles/templates/t3code-update.j2").read_text().replace(
-            "source /usr/local/libexec/xps-common.sh",
+            "source /usr/local/libexec/fedora-config-common.sh",
             f"source {shlex.quote(str(common))}",
         )
         executable(installer, rendered.removeprefix("#!/usr/bin/env bash\n"))
@@ -711,7 +711,7 @@ def test_font_archive_checksum_contract() -> None:
     assert "apps_pinned_font_archive_marker:" in health_block
     assert "apps_pinned_font_archive_payload:" in health_block
     assert "item.version\n      ~" not in health_block
-    assert ".xps-archive-{{ item.checksum | regex_replace('^sha256:', '') }}" in tasks
+    assert ".fedora-config-archive-{{ item.checksum | regex_replace('^sha256:', '') }}" in tasks
     assert 'creates: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/{{ item.expected_font }}"' not in tasks
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Repo checks: everything verifiable from the source tree alone, without
-# touching the running machine (that is tests/verify-xps). Fast enough to gate
+# touching the running machine (that is tests/verify-system). Fast enough to gate
 # a deploy — `verify` runs it ahead of the machine checks and `update --full`
 # runs it before ansible-playbook. Every stage runs even if an earlier one
 # fails; the exit status is nonzero when any of them did.
@@ -343,6 +343,8 @@ stage_python_helpers() {
       && python3 tests/shell-health.py \
       && python3 tests/repository-policy.py \
       && python3 tests/installer-convergence.py \
+      && python3 tests/user-adoption.py \
+      && python3 tests/firefox-policy.py \
       && python3 tests/quickshell-deployment.py \
       && python3 tests/cybex-deployment.py \
       && python3 tests/hermes-bridge.py \
@@ -370,7 +372,7 @@ tasks = Path("roles/desktop/tasks/main.yml").read_text()
 finalize = Path("roles/finalize/tasks/main.yml").read_text()
 autostart = Path("roles/desktop/files/autostart.lua").read_text()
 bindings = Path("roles/desktop/files/bindings.lua").read_text()
-look = Path("roles/desktop/files/looknfeel.lua").read_text()
+look = Path("roles/desktop/templates/looknfeel.lua.j2").read_text()
 theme = Path("roles/desktop/files/quickshell/Common/Theme.qml").read_text()
 live_helpers = Path("tests/lib/quickshell-live").read_text()
 snapshot = Path("tests/t3-contract-snapshot").read_text()
@@ -484,6 +486,8 @@ speaker_manager = Path("roles/xps-2026/files/xps-speaker-tuning").read_text()
 camera_tasks = Path("roles/xps-2026/tasks/camera.yml").read_text()
 camera_role = Path("roles/xps-2026/tasks/main.yml").read_text()
 camera_disabled = Path("roles/xps-2026/tasks/camera-disabled.yml").read_text()
+power_tasks = Path("roles/xps-2026/tasks/power.yml").read_text()
+uninstall_tasks = Path("roles/uninstall/tasks/main.yml").read_text()
 sleep_hook = Path("roles/xps-2026/files/camera/xps-ipu7-camera-sleep").read_text()
 camera_init = Path("roles/xps-2026/files/camera/xps-ipu7-camera-init").read_text()
 relay_override = Path("roles/xps-2026/files/camera/v4l2-relayd-override.conf").read_text()
@@ -495,6 +499,14 @@ assert "wait_for_speaker()" in speaker_manager
 assert "speaker_stable_samples=4" in speaker_manager
 assert "speaker=$(wait_for_speaker)" in speaker_manager
 assert "path: /etc/v4l2-relayd.d/icamerasrc.conf\n    state: absent" in camera_tasks
+assert "backups/system/etc/v4l2-relayd.d/icamerasrc.conf" in camera_tasks
+assert "backups/system/etc/v4l2-relayd.d/icamerasrc.conf" in camera_disabled
+assert "backups/system/etc/tuned/ppd.conf" in power_tasks
+assert "Restore system configuration preserved before XPS adoption" in uninstall_tasks
+system_removal = uninstall_tasks.split(
+    "- name: Remove project-owned system files", 1
+)[1].split("- name: Inspect system configuration preserved", 1)[0]
+assert "/etc/tuned/ppd.conf" not in system_removal
 assert "xps-ipu7-camera-resume.service.j2" in camera_tasks
 assert "systemd-run" not in sleep_hook
 assert "systemctl stop xps-ipu7-camera-resume.service" in sleep_hook
@@ -785,11 +797,14 @@ stage_update_backend() {
     fi
   done
   t0=$(now_ms)
-  out=$(bash tests/xps-update-run 2>&1) || rc=$?
+  out=$(bash tests/fedora-config-update-run 2>&1) || rc=$?
+  if ((rc == 0)); then
+    out=$(bash tests/release-update 2>&1) || rc=$?
+  fi
   elapsed=$(( $(now_ms) - t0 ))
 
   if ((rc == 0)); then
-    pass 'updater' "durable state/lock/log fixture $(took "$elapsed")"
+    pass 'updater' "durable worker and verified release activation $(took "$elapsed")"
   else
     fail 'updater' 'durable backend fixture failed'
     excerpt "${out:-unknown failure}"

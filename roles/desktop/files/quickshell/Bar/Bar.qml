@@ -767,7 +767,7 @@ PanelWindow {
 
     // ---- the slab ------------------------------------------------------
     // One continuous surface. In glass mode the compositor supplies the blur
-    // behind its tint (see roles/desktop/files/looknfeel.lua); solid mode uses
+    // behind its tint (see roles/desktop/templates/looknfeel.lua.j2); solid mode uses
     // the same selected menubar color at full opacity.
     Item {
         id: slabLayer

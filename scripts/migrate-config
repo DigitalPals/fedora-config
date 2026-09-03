@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Validate and migrate persistent Fedora Config installer answers."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+import sys
+
+import yaml
+
+
+CURRENT_SCHEMA = 1
+FEATURE_DEFAULTS = {
+    "developer_tools": False,
+    "connected_widgets": False,
+    "proprietary_apps": False,
+    "tailscale": False,
+    "docker": False,
+    "podman": False,
+    "steam": False,
+    "private_hooks": False,
+    "apple_display": False,
+    "source_builds": False,
+    "local_network_services": False,
+}
+BOOLEAN_KEYS = {
+    "manage_system_identity",
+    "manage_personal_dotfiles",
+    "cleanup_legacy_xps_artifacts",
+    "passwordless_wheel",
+    "passwordless_local_polkit",
+    "gdm_autologin",
+    "start_optional_hardware_services",
+    "allow_insecure_sccache_transport",
+    "xps_2026_camera_enabled",
+}
+STRING_KEYS = {
+    "primary_user",
+    "primary_group",
+    "primary_home",
+    "machine_hostname",
+    "machine_timezone",
+    "machine_locale",
+    "regional_locale",
+    "machine_keyboard_layout",
+}
+OPTIONAL_STRING_KEYS = {"machine_keyboard_variant"}
+
+
+def migrate(document: object) -> dict:
+    if not isinstance(document, dict):
+        raise ValueError("configuration root must be a mapping")
+    result = dict(document)
+    schema = result.get("config_schema_version", 0)
+    if not isinstance(schema, int) or isinstance(schema, bool):
+        raise ValueError("config_schema_version must be an integer")
+    if schema > CURRENT_SCHEMA:
+        raise ValueError(
+            f"configuration schema {schema} is newer than this installer supports"
+        )
+
+    # Schema 0 was the pre-public inventory shape. Preserve its explicit
+    # answers while filling every newly public feature with a conservative value.
+    if schema == 0:
+        result["config_schema_version"] = 1
+        result.setdefault("cleanup_legacy_xps_artifacts", True)
+
+    result.setdefault("cleanup_legacy_xps_artifacts", False)
+
+    features = result.setdefault("features", {})
+    if not isinstance(features, dict):
+        raise ValueError("features must be a mapping")
+    for key, default in FEATURE_DEFAULTS.items():
+        features.setdefault(key, default)
+    for key, value in features.items():
+        if key in FEATURE_DEFAULTS and not isinstance(value, bool):
+            raise ValueError(f"features.{key} must be a boolean")
+
+    for key in BOOLEAN_KEYS:
+        if key in result and not isinstance(result[key], bool):
+            raise ValueError(f"{key} must be a boolean")
+    for key in STRING_KEYS:
+        if key in result and (not isinstance(result[key], str) or not result[key]):
+            raise ValueError(f"{key} must be a non-empty string")
+    for key in OPTIONAL_STRING_KEYS:
+        if key in result and not isinstance(result[key], str):
+            raise ValueError(f"{key} must be a string")
+
+    result.setdefault("machine_keyboard_layout", "us")
+    result.setdefault("machine_keyboard_variant", "")
+
+    result["config_schema_version"] = CURRENT_SCHEMA
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config", type=Path)
+    args = parser.parse_args()
+    try:
+        document = yaml.safe_load(args.config.read_text())
+        migrated = migrate(document)
+    except (OSError, ValueError, yaml.YAMLError) as error:
+        print(f"migrate-config: {error}", file=sys.stderr)
+        return 1
+    yaml.safe_dump(migrated, sys.stdout, sort_keys=False, explicit_start=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

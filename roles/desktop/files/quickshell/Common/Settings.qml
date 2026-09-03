@@ -24,7 +24,21 @@ Singleton {
     readonly property string filePath:
         Quickshell.env("HOME") + "/.local/state/quickshell/shell-settings.json"
 
-    readonly property var defaults: SettingsHelpers.defaults()
+    readonly property bool connectedWidgetsConfigured:
+        Quickshell.env("FEDORA_CONFIG_CONNECTED_WIDGETS") === "1"
+    readonly property var defaults: {
+        const value = SettingsHelpers.defaults();
+        if (connectedWidgetsConfigured) {
+            for (const column of ["left", "center", "right"])
+                value.mods[column] = value.mods[column].map(entry => ({
+                    id: entry.id,
+                    on: ["gh", "t3", "hermes", "usage"].indexOf(entry.id) !== -1
+                        ? true : entry.on,
+                    detail: entry.detail
+                }));
+        }
+        return value;
+    }
     readonly property var fontChoices: SettingsHelpers.FONT_CHOICES
     readonly property var barColorChoices: SettingsHelpers.BAR_COLOR_CHOICES
 
@@ -244,7 +258,7 @@ Singleton {
         resetSnapshot = previous;
         resetLabel = label || (keys.length === 1 ? "Setting" : "Settings");
         for (const key of keys)
-            root[key] = key === "mods" ? SettingsHelpers.defaultMods()
+            root[key] = key === "mods" ? SettingsHelpers.clone(defaults.mods)
                 : key === "modOpts" ? SettingsHelpers.defaultModOpts()
                 : defaults[key];
         announcement = resetLabel + " reset. Undo available for eight seconds.";

@@ -36,7 +36,7 @@ def render_user_updater(values: dict) -> str:
 
 def inventory() -> dict:
     result = subprocess.run(
-        ["ansible-inventory", "-i", "inventory/hosts.yml", "--host", "xps"],
+        ["ansible-inventory", "-i", "inventory/hosts.yml", "--host", "workstation"],
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -68,7 +68,7 @@ def verify_dependency_policy(values: dict) -> None:
 
     hermes_tasks = (ROOT / "roles/desktop/tasks/hermes-menubar.yml").read_text()
     assert "hermes-agent-removed-v1" in hermes_tasks
-    assert '"{{ primary_home }}/.local/share/xps-user-tools/hermes"' in hermes_tasks
+    assert '"{{ primary_home }}/.local/share/fedora-config-user-tools/hermes"' in hermes_tasks
     assert '"{{ primary_home }}/.hermes"' in hermes_tasks
     assert '"{{ primary_home }}/.local/bin/hermes"' in hermes_tasks
     assert "raw.githubusercontent.com/NousResearch/hermes-agent" not in hermes_tasks
@@ -158,15 +158,16 @@ def verify_dependency_policy(values: dict) -> None:
     assert "rg --files . -g '*.py'" in runner
     assert "rg -l '^#!.*python' -g '!*.j2' ." in runner
 
-    verifier = (ROOT / "tests/verify-xps").read_text()
+    verifier = (ROOT / "tests/verify-system").read_text()
     assert not re.search(
         r"required_commands=\([^)]*\bhermes\b", verifier, re.DOTALL
     ), "the retired local Hermes runtime cannot also be a required command"
-    assert "local Hermes Agent runtime is absent" in verifier
+    assert "local connected-service runtimes are absent" in verifier
 
     fish = (ROOT / "roles/dotfiles/files/fish-config.fish").read_text()
-    assert "alias codex='codex --dangerously-bypass-approvals-and-sandbox'" in fish
-    assert "alias claude='claude --dangerously-skip-permissions'" in fish
+    assert "--dangerously-bypass-approvals-and-sandbox" not in fish
+    assert "--dangerously-skip-permissions" not in fish
+    assert "alias update='fedora-config update'" in fish
 
 
 def verify_user_updater_runtime(values: dict) -> None:
@@ -278,7 +279,10 @@ def verify_user_updater_runtime(values: dict) -> None:
 def verify_asset_provenance() -> None:
     document = json.loads((ROOT / "assets/PROVENANCE.json").read_text())
     assert document["schemaVersion"] == 1
-    assert document["rightsPolicy"]["status"] == "unknown-owner-action-required"
+    assert document["rightsPolicy"]["status"] in {
+        "unknown-owner-action-required",
+        "resolved-no-undocumented-large-assets",
+    }
     records = {entry["path"]: entry for entry in document["assets"]}
     assert len(records) == len(document["assets"]), "duplicate provenance path"
 

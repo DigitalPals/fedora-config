@@ -42,6 +42,14 @@ Surface {
                 sub: Updates.namesLabel(Updates.flatpakNames, Updates.flatpakCount),
                 count: Updates.flatpakCount
             });
+        if (Updates.projectAvailable)
+            out.push({
+                key: "fedora-config",
+                glyph: "deployed_code_update",
+                name: "Fedora Config",
+                sub: "Release " + Updates.projectVersion,
+                count: 1
+            });
         return out;
     }
 

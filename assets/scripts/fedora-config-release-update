@@ -1,0 +1,352 @@
+#!/usr/bin/env bash
+# Resolve, verify, stage, and activate immutable Fedora Config GitHub releases.
+set -euo pipefail
+umask 077
+
+readonly updater_version=0.1.0
+github_repo=${FEDORA_CONFIG_GITHUB_REPO:-DigitalPals/fedora-config}
+channel=${FEDORA_CONFIG_CHANNEL:-stable}
+channel_explicit=false
+[[ -n ${FEDORA_CONFIG_CHANNEL:-} ]] && channel_explicit=true
+source_dir=${FEDORA_CONFIG_SOURCE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}
+config_file=${FEDORA_CONFIG_FILE:-/etc/fedora-config/config.yml}
+data_root=${XDG_DATA_HOME:-$HOME/.local/share}/fedora-config
+releases_root=$data_root/releases
+backend=${FEDORA_CONFIG_UPDATE_BACKEND:-$HOME/.local/bin/fedora-config-update-run}
+command_name=run
+with_packages=true
+with_flatpak=true
+json=false
+backend_args=()
+
+usage() {
+  cat <<'EOF'
+Usage: fedora-config update [--check] [--channel stable|beta] [--system-only]
+                            [--no-packages] [--no-flatpak] [--json]
+
+By default, check GitHub for a verified Fedora Config release, stage and apply
+it when newer, and then update Fedora packages and system Flatpaks.
+
+  --check        Only report whether a compatible project release is available
+  --channel      Save and use the stable or beta release channel
+  --system-only  Skip the project release check and update system packages only
+  --no-packages  Apply only a project release; do not update Fedora/Flatpak
+  --no-flatpak   Skip system Flatpak updates
+  --json         Emit machine-readable output for --check
+EOF
+}
+
+while (($#)); do
+  case $1 in
+    --check) command_name=check ;;
+    --channel)
+      shift
+      [[ $# -gt 0 ]] || { echo 'update: --channel needs stable or beta' >&2; exit 2; }
+      channel=$1
+      channel_explicit=true
+      ;;
+    --system-only) command_name=system-only ;;
+    --no-packages) with_packages=false ;;
+    --no-flatpak) with_flatpak=false ;;
+    --json) json=true ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; backend_args+=("$@"); break ;;
+    *) backend_args+=("$1") ;;
+  esac
+  shift
+done
+
+if [[ $command_name == system-only ]]; then
+  args=(run)
+  [[ $with_flatpak == true ]] || args+=(--no-flatpak)
+  exec "$backend" "${args[@]}" "${backend_args[@]}"
+fi
+
+for required_command in curl gh jq python3 sha256sum tar; do
+  command -v "$required_command" >/dev/null 2>&1 || {
+    printf 'update: required command is missing: %s\n' "$required_command" >&2
+    exit 2
+  }
+done
+gh release verify --help >/dev/null 2>&1 && gh release verify-asset --help >/dev/null 2>&1 || {
+  echo 'update: this GitHub CLI is too old; upgrade gh before project updates' >&2
+  exit 2
+}
+[[ -r $config_file ]] || {
+  printf 'update: saved installer configuration is missing: %s\n' "$config_file" >&2
+  exit 2
+}
+
+mkdir -p -- "$releases_root" "$data_root"
+if [[ $channel_explicit == false && -r $data_root/channel ]]; then
+  channel=$(tr -d '[:space:]' <"$data_root/channel")
+fi
+[[ $channel == stable || $channel == beta ]] || {
+  printf 'update: unsupported channel %s\n' "$channel" >&2
+  exit 2
+}
+if [[ $channel_explicit == true || ! -e $data_root/channel ]]; then
+  printf '%s\n' "$channel" >"$data_root/channel"
+fi
+
+current_version=0.0.0
+[[ -r $source_dir/VERSION ]] && current_version=$(tr -d '[:space:]' <"$source_dir/VERSION")
+
+release_json=$(mktemp)
+archive=$(mktemp --suffix=.tar.zst)
+cleanup() { rm -f -- "$release_json" "$archive"; }
+trap cleanup EXIT
+
+fetch_release() {
+  local api="https://api.github.com/repos/$github_repo/releases"
+  if [[ $channel == stable ]]; then
+    api+="/latest"
+    curl --fail --silent --show-error --location --retry 3 \
+      -H 'Accept: application/vnd.github+json' "$api" -o "$release_json"
+  else
+    curl --fail --silent --show-error --location --retry 3 \
+      -H 'Accept: application/vnd.github+json' "$api?per_page=30" -o "$release_json"
+    jq -e '[.[] | select(.draft == false and .prerelease == true)] | first' \
+      "$release_json" >"$release_json.selected"
+    mv -f -- "$release_json.selected" "$release_json"
+  fi
+
+  tag=$(jq -er '.tag_name | select(test("^v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*)?$"))' "$release_json")
+  release_version=${tag#v}
+  asset_name="fedora-config-$release_version.tar.zst"
+  asset_url=$(jq -er --arg name "$asset_name" \
+    '.assets[] | select(.name == $name) | .browser_download_url' "$release_json")
+  asset_digest=$(jq -er --arg name "$asset_name" \
+    '.assets[] | select(.name == $name) | .digest | select(test("^sha256:[0-9a-f]{64}$"))' "$release_json")
+  immutable=$(jq -r '.immutable // false' "$release_json")
+  [[ $immutable == true ]] || {
+    printf 'update: refusing mutable GitHub release %s\n' "$tag" >&2
+    return 1
+  }
+}
+
+version_newer() {
+  python3 - "$1" "$2" <<'PY'
+import re
+import sys
+
+pattern = re.compile(
+    r"^(?P<major>0|[1-9][0-9]*)[.]"
+    r"(?P<minor>0|[1-9][0-9]*)[.]"
+    r"(?P<patch>0|[1-9][0-9]*)"
+    r"(?:-(?P<pre>[0-9A-Za-z-]+(?:[.][0-9A-Za-z-]+)*))?$"
+)
+
+
+def parse(value):
+    match = pattern.fullmatch(value)
+    if match is None:
+        raise SystemExit(2)
+    core = tuple(int(match.group(name)) for name in ("major", "minor", "patch"))
+    prerelease = match.group("pre")
+    identifiers = None if prerelease is None else prerelease.split(".")
+    return core, identifiers
+
+
+def newer(candidate, current):
+    candidate_core, candidate_pre = parse(candidate)
+    current_core, current_pre = parse(current)
+    if candidate_core != current_core:
+        return candidate_core > current_core
+    if candidate_pre is None or current_pre is None:
+        return candidate_pre is None and current_pre is not None
+    for left, right in zip(candidate_pre, current_pre):
+        if left == right:
+            continue
+        left_numeric = left.isdigit()
+        right_numeric = right.isdigit()
+        if left_numeric and right_numeric:
+            return int(left) > int(right)
+        if left_numeric != right_numeric:
+            return not left_numeric
+        return left > right
+    return len(candidate_pre) > len(current_pre)
+
+
+raise SystemExit(0 if newer(sys.argv[1], sys.argv[2]) else 1)
+PY
+}
+
+compatible_manifest() {
+  local tree=$1 expected_version=$2 fedora architecture schema minimum_updater
+  fedora=$(source /etc/os-release; printf '%s' "$VERSION_ID")
+  architecture=$(uname -m)
+  schema=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1])).get("config_schema_version", 0))' "$config_file")
+  jq -e --arg version "$expected_version" --arg fedora "$fedora" \
+    --arg architecture "$architecture" --argjson schema "$schema" \
+    '.product == "fedora-config"
+     and .version == $version
+     and (.configSchema | type == "number") and .configSchema >= $schema
+     and (.supportedFedora | index($fedora)) != null
+     and (.architectures | index($architecture)) != null' \
+    "$tree/release-manifest.json" >/dev/null || return 1
+  minimum_updater=$(jq -er '.minimumUpdater | select(test("^[0-9]+[.][0-9]+[.][0-9]+$"))' \
+    "$tree/release-manifest.json") || return 1
+  [[ $minimum_updater == "$updater_version" ]] \
+    || version_newer "$updater_version" "$minimum_updater"
+}
+
+fetch_release
+available=false
+version_newer "$release_version" "$current_version" && available=true
+
+if [[ $command_name == check ]]; then
+  if [[ $json == true ]]; then
+    jq -cn --arg current "$current_version" --arg availableVersion "$release_version" \
+      --arg channel "$channel" --argjson available "$available" \
+      '{currentVersion:$current,availableVersion:$availableVersion,channel:$channel,available:$available}'
+  elif [[ $available == true ]]; then
+    printf 'Fedora Config %s is available (installed: %s, channel: %s).\n' \
+      "$release_version" "$current_version" "$channel"
+  else
+    printf 'Fedora Config %s is current on the %s channel.\n' "$current_version" "$channel"
+  fi
+  exit 0
+fi
+
+candidate=
+config_backup=
+if [[ $available == true ]]; then
+  printf 'Downloading Fedora Config %s...\n' "$release_version"
+  curl --fail --silent --show-error --location --retry 3 \
+    "$asset_url" -o "$archive"
+  actual_digest=sha256:$(sha256sum "$archive" | awk '{print $1}')
+  [[ $actual_digest == "$asset_digest" ]] || {
+    echo 'update: downloaded release digest does not match GitHub metadata' >&2
+    exit 1
+  }
+  gh release verify "$tag" --repo "$github_repo" >/dev/null
+  gh release verify-asset "$tag" "$archive" --repo "$github_repo" >/dev/null
+
+  stage=$(mktemp -d "$releases_root/.stage.$release_version.XXXXXX")
+  trap 'rm -f -- "$release_json" "$archive"; [[ -z ${stage:-} ]] || rm -rf -- "$stage"' EXIT
+  tar --extract --zstd --file "$archive" --directory "$stage" --strip-components=1
+  [[ -x $stage/install && -x $stage/verify && -r $stage/release-manifest.json ]] || {
+    echo 'update: release archive is incomplete' >&2
+    exit 1
+  }
+  [[ $(tr -d '[:space:]' <"$stage/VERSION") == "$release_version" ]] || {
+    echo 'update: release version does not match its tag' >&2
+    exit 1
+  }
+  compatible_manifest "$stage" "$release_version" || {
+    printf 'update: Fedora Config %s is incompatible with this system or saved configuration\n' "$release_version" >&2
+    exit 1
+  }
+  candidate="$releases_root/$release_version"
+  [[ $candidate == "$releases_root/"* \
+      && $release_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] || {
+    echo 'update: unsafe release staging path' >&2
+    exit 1
+  }
+  # Every attempt replaces an old candidate with the freshly downloaded and
+  # verified tree. A cached directory is not trusted merely because its name
+  # matches the release version.
+  [[ ! -e $candidate && ! -L $candidate ]] || rm -rf -- "$candidate"
+  mv -- "$stage" "$candidate"
+  stage=
+fi
+
+if [[ -n $candidate ]]; then
+  migrated_config=$(mktemp)
+  "$candidate/scripts/migrate-config" "$config_file" >"$migrated_config"
+  if ! cmp -s -- "$config_file" "$migrated_config"; then
+    config_backup="$data_root/config-before-$release_version.yml"
+    cp -- "$config_file" "$config_backup"
+    sudo install -m 0644 "$migrated_config" "$config_file"
+  fi
+  rm -f -- "$migrated_config"
+fi
+
+if [[ -n $candidate ]]; then
+  update_args=(run --full --skip-tests --repo "$candidate")
+  [[ $with_packages == true ]] || update_args+=(--no-packages)
+  [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
+  update_args+=(-- -e "@$config_file")
+elif [[ $with_packages == true ]]; then
+  update_args=(run)
+  [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
+else
+  echo 'Fedora Config is already current.'
+  exit 0
+fi
+set +e
+"$backend" "${update_args[@]}" "${backend_args[@]}"
+backend_rc=$?
+set -e
+if ((backend_rc != 0)); then
+  if [[ -n $config_backup ]]; then
+    sudo install -m 0644 "$config_backup" "$config_file"
+    printf 'Restored the pre-update installer configuration after failure.\n' >&2
+  fi
+  exit "$backend_rc"
+fi
+
+if [[ -n $candidate ]]; then
+  ln -sfn "releases/$release_version" "$data_root/current.new"
+  mv -Tf -- "$data_root/current.new" "$data_root/current"
+  printf 'Activated Fedora Config %s.\n' "$release_version"
+
+  # Retain the active release and two recent fallbacks. Only directories with
+  # release-version names under the dedicated store are eligible for pruning.
+  mapfile -t installed_releases < <(
+    find "$releases_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+      | python3 -c '
+import functools
+import re
+import sys
+
+pattern = re.compile(
+    r"^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)"
+    r"(?:-([0-9A-Za-z-]+(?:[.][0-9A-Za-z-]+)*))?$"
+)
+
+
+def parse(value):
+    match = pattern.fullmatch(value)
+    if match is None:
+        return None
+    return tuple(int(match.group(index)) for index in range(1, 4)), (
+        None if match.group(4) is None else match.group(4).split(".")
+    )
+
+
+def compare(left, right):
+    left_core, left_pre = parse(left)
+    right_core, right_pre = parse(right)
+    if left_core != right_core:
+        return (left_core > right_core) - (left_core < right_core)
+    if left_pre is None or right_pre is None:
+        return (left_pre is None) - (right_pre is None)
+    for left_id, right_id in zip(left_pre, right_pre):
+        if left_id == right_id:
+            continue
+        left_numeric = left_id.isdigit()
+        right_numeric = right_id.isdigit()
+        if left_numeric and right_numeric:
+            return (int(left_id) > int(right_id)) - (int(left_id) < int(right_id))
+        if left_numeric != right_numeric:
+            return -1 if left_numeric else 1
+        return (left_id > right_id) - (left_id < right_id)
+    return (len(left_pre) > len(right_pre)) - (len(left_pre) < len(right_pre))
+
+
+versions = [line.strip() for line in sys.stdin if parse(line.strip()) is not None]
+for version in sorted(versions, key=functools.cmp_to_key(compare), reverse=True):
+    print(version)
+'
+  )
+  if ((${#installed_releases[@]} > 3)); then
+    for old_release in "${installed_releases[@]:3}"; do
+      old_path="$releases_root/$old_release"
+      [[ $old_path == "$releases_root/"* && $old_release != "$release_version" ]] \
+        || continue
+      rm -rf -- "$old_path"
+    done
+  fi
+fi

@@ -48,7 +48,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 qs_live_begin
-./bootstrap --tags quickshell
+ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags quickshell
 qs_live_wait_ipc 20 popouts close >/dev/null
 qs ipc call popouts toggle t3code      # or: audio, control, wifi, notifications, …
 qs ipc call settings open notifications
@@ -270,7 +270,7 @@ command is rejected deliberately. For example:
     "name": "Open notes",
     "subtitle": "Open the notes folder in Nautilus",
     "keywords": ["documents", "writing"],
-    "command": ["nautilus", "/home/john/Documents/Notes"]
+    "command": ["nautilus", "/home/alex/Documents/Notes"]
   }
 ]
 ```

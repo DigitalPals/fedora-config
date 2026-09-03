@@ -46,7 +46,7 @@ Singleton {
         actionError = "";
         actionOutput = "";
         actionInFlight = action;
-        sessionAction.command = ["/usr/local/libexec/xps-session-action", action];
+        sessionAction.command = ["/usr/local/libexec/fedora-config-session-action", action];
         sessionAction.running = true;
         return true;
     }

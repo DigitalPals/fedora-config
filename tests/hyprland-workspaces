@@ -3,7 +3,13 @@ set -euo pipefail
 
 cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-FEDORA_MONITORS_CONFIG=roles/desktop/files/monitors.lua luajit <<'LUA'
+rendered=$(mktemp)
+trap 'rm -f -- "$rendered"' EXIT
+awk '/^{% if fedora_config_xps_2026 \| bool %}$/ { next }
+     /^{% else %}$/ { exit }
+     { print }' roles/desktop/templates/monitors.lua.j2 >"$rendered"
+
+FEDORA_MONITORS_CONFIG=$rendered luajit <<'LUA'
 local config = assert(os.getenv("FEDORA_MONITORS_CONFIG"))
 local monitors = {}
 local rules = {}

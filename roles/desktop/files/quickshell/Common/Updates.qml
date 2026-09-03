@@ -27,6 +27,8 @@ Singleton {
 
     property int dnfCount: 0
     property int flatpakCount: 0
+    property bool projectAvailable: false
+    property string projectVersion: ""
     property var dnfNames: []
     property var flatpakNames: []
     property bool ran: false
@@ -38,22 +40,26 @@ Singleton {
 
     property bool dnfDone: true
     property bool flatpakDone: true
-    readonly property bool busy: !dnfDone || !flatpakDone
+    property bool projectDone: true
+    readonly property bool busy: !dnfDone || !flatpakDone || !projectDone
 
     // Results stay private until both commands finish. Publishing each stream
     // as it closes makes total briefly describe a half-completed check and can
     // fire a notification for a state that never existed.
     property var nextDnfNames: []
     property var nextFlatpakNames: []
+    property bool nextProjectAvailable: false
+    property string nextProjectVersion: ""
     property string dnfError: ""
     property string flatpakError: ""
+    property string projectError: ""
     property bool checkingFlatpak: false
     property bool checkAgain: false
     property bool initialized: false
     property int checkFailureCount: 0
     property string lastLoggedCheckError: ""
 
-    readonly property int total: dnfCount + flatpakCount
+    readonly property int total: dnfCount + flatpakCount + (projectAvailable ? 1 : 0)
     readonly property bool flatpakEnabled: Settings.modOpts.updates.flatpak
 
     // Once the count has been non-zero and then falls to zero, the panel says
@@ -72,6 +78,8 @@ Singleton {
             parts.push("dnf " + dnfCount);
         if (flatpakCount > 0)
             parts.push("flatpak " + flatpakCount);
+        if (projectAvailable)
+            parts.push("Fedora Config " + projectVersion);
         return parts.join(" · ");
     }
 
@@ -120,14 +128,19 @@ Singleton {
         error = "";
         dnfError = "";
         flatpakError = "";
+        projectError = "";
         nextDnfNames = [];
         nextFlatpakNames = [];
+        nextProjectAvailable = false;
+        nextProjectVersion = "";
         checkingFlatpak = flatpakEnabled;
         dnfDone = false;
         flatpakDone = !checkingFlatpak;
+        projectDone = false;
         dnfProc.running = true;
         if (checkingFlatpak)
             flatpakProc.running = true;
+        projectProc.running = true;
     }
 
     // Automatic work waits for NetworkManager's global connected state.
@@ -172,16 +185,38 @@ Singleton {
         finishCheck();
     }
 
+    function finishProject(exitCode, body, errText) {
+        if (exitCode === 0) {
+            try {
+                const data = JSON.parse(body);
+                nextProjectAvailable = data.available === true;
+                nextProjectVersion = typeof data.availableVersion === "string"
+                    ? data.availableVersion : "";
+            } catch (exception) {
+                projectError = "Fedora Config update check returned invalid data";
+            }
+        } else {
+            projectError = ProcHelpers.commandError("Fedora Config update check",
+                exitCode, errText, ({ 124: "Fedora Config update check timed out" }));
+            logCheckError(projectError);
+        }
+        projectDone = true;
+        finishCheck();
+    }
+
     function finishCheck() {
         if (!dnfDone || !flatpakDone)
+            return;
+        if (!projectDone)
             return;
 
         const previousTotal = total;
         const nextDnfCount = dnfError === "" ? nextDnfNames.length : dnfCount;
         const nextFlatpakCount = !checkingFlatpak ? 0
             : flatpakError === "" ? nextFlatpakNames.length : flatpakCount;
-        const nextTotal = nextDnfCount + nextFlatpakCount;
-        const errors = [dnfError, flatpakError].filter(value => value !== "");
+        const nextTotal = nextDnfCount + nextFlatpakCount
+            + (projectError === "" && nextProjectAvailable ? 1 : 0);
+        const errors = [dnfError, flatpakError, projectError].filter(value => value !== "");
         const complete = errors.length === 0;
 
         if (dnfError === "") {
@@ -191,6 +226,10 @@ Singleton {
         if (!checkingFlatpak || flatpakError === "") {
             flatpakNames = checkingFlatpak ? nextFlatpakNames : [];
             flatpakCount = nextFlatpakCount;
+        }
+        if (projectError === "") {
+            projectAvailable = nextProjectAvailable;
+            projectVersion = nextProjectVersion;
         }
 
         error = errors.join(" · ");
@@ -263,7 +302,7 @@ Singleton {
     // The finished panel has been opened; closing it then retires `done`.
     property bool runSeen: false
     readonly property string runBackend:
-        Quickshell.env("HOME") + "/.local/bin/xps-update-run"
+        Quickshell.env("HOME") + "/.local/bin/fedora-config-update-run"
     property bool runIncludedFlatpak: true
     property int dnfLogOffset: 0
     property int flatpakLogOffset: 0
@@ -281,11 +320,13 @@ Singleton {
     // backend has already returned the new durable run.
     property int statusGeneration: 0
     property bool startPending: false
+    property string startPreviousStamp: ""
+    property int startPollCount: 0
 
     readonly property int runPercent: UpdatesHelpers.runPercent(
         dnfCur, dnfTotal, fpCur, fpTotal)
     readonly property int runPkgCount: upCount + addCount + delCount
-    readonly property string runLogLabel: "xps-update/logs/" + runStamp
+    readonly property string runLogLabel: "fedora-config/update/logs/" + runStamp
 
     ListModel {
         id: feedModel
@@ -336,18 +377,20 @@ Singleton {
     }
 
     function run() {
-        if (runActive || runStartProc.running)
+        if (runActive)
             return;
-        statusGeneration++;
-        startPending = true;
-        resetRun("", Date.now(), flatpakEnabled);
-        if (!rebootRecommended)
-            rebootRecommendation = "pending";
-        const command = [runBackend, "start", "--json"];
+        // Authentication belongs in a terminal. The durable backend status
+        // poll below attaches this UI after the terminal starts the worker.
+        const command = ["kitty", "--class", "fedora-config-update",
+            "fedora-config", "update"];
         if (!flatpakEnabled)
             command.push("--no-flatpak");
-        runStartProc.command = command;
-        runStartProc.running = true;
+        statusGeneration++;
+        startPreviousStamp = runStamp;
+        startPollCount = 0;
+        startPending = true;
+        resetRun("", Date.now(), flatpakEnabled);
+        Quickshell.execDetached(command);
     }
 
     function dnfLine(line) {
@@ -605,7 +648,7 @@ Singleton {
     function openLog(file) {
         Quickshell.execDetached(["kitty", "--title", "Update log", "bash",
             "-c", "exec less -R \"${XDG_STATE_HOME:-$HOME/.local/state}/"
-            + "xps-update/logs/" + runStamp + "/" + file + "\""]);
+            + "fedora-config/update/logs/" + runStamp + "/" + file + "\""]);
     }
 
     Timer {
@@ -645,52 +688,6 @@ Singleton {
         }
     }
 
-    // The updater owns the privileged transaction in a transient user service.
-    // These short-lived processes are clients only: a shell hot reload can
-    // discard them without discarding the worker, its lock, or its logs.
-    Process {
-        id: runStartProc
-        property string body: ""
-        property string errText: ""
-        property bool exitSeen: false
-        property int lastExit: 0
-
-        stdout: StdioCollector {
-            onStreamFinished: runStartProc.body = text
-        }
-        stderr: StdioCollector {
-            onStreamFinished: runStartProc.errText = text.trim()
-        }
-        onExited: (exitCode, exitStatus) => {
-            runStartProc.exitSeen = true;
-            runStartProc.lastExit = exitCode;
-        }
-        onRunningChanged: {
-            if (running) {
-                body = "";
-                errText = "";
-                exitSeen = false;
-                lastExit = 0;
-                return;
-            }
-            if (!exitSeen && body === "" && errText === ""
-                    && !root.startPending)
-                return;
-            root.startPending = false;
-            try {
-                root.applyBackendStatus(JSON.parse(body));
-            } catch (error) {
-                root.runDnfDone = true;
-                root.runFpDone = true;
-                root.runDnfRc = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
-                root.backendMessage = errText !== "" ? errText
-                    : "The update service could not be started";
-                root.backendTerminalState = "failed";
-                root.maybeFinishBackendRun();
-            }
-        }
-    }
-
     Process {
         id: runStatusProc
         property int requestGeneration: 0
@@ -719,6 +716,21 @@ Singleton {
             }
             if (!exitSeen && body === "" && errText === "")
                 return;
+            if (root.startPending && exitSeen && lastExit === 0) {
+                try {
+                    const pending = JSON.parse(body);
+                    if (typeof pending.id === "string" && pending.id !== ""
+                            && pending.id !== root.startPreviousStamp
+                            && pending.state !== "idle"
+                            && pending.state !== "dismissed") {
+                        root.startPending = false;
+                        root.applyBackendStatus(pending);
+                        return;
+                    }
+                } catch (error) {
+                    // The next poll retries malformed or partial status.
+                }
+            }
             if (UpdatesHelpers.acceptsStatusResponse(root.statusGeneration,
                     requestGeneration, root.startPending, exitSeen, lastExit)) {
                 try {
@@ -807,7 +819,7 @@ Singleton {
     }
 
     function refreshRunStatus() {
-        if (runStatusProc.running || startPending)
+        if (runStatusProc.running)
             return;
         runStatusProc.requestGeneration = statusGeneration;
         runStatusProc.command = [runBackend, "status", "--json"];
@@ -817,10 +829,22 @@ Singleton {
     Timer {
         id: statusPoll
         interval: 1000
-        running: root.runActive && !root.startPending
+        running: root.runActive
         repeat: true
         triggeredOnStart: true
-        onTriggered: root.refreshRunStatus()
+        onTriggered: {
+            if (root.startPending && ++root.startPollCount > 300) {
+                root.startPending = false;
+                root.runDnfDone = true;
+                root.runFpDone = true;
+                root.runDnfRc = ProcHelpers.NOT_STARTED;
+                root.backendMessage = "The update terminal did not publish a new run";
+                root.backendTerminalState = "failed";
+                root.maybeFinishBackendRun();
+                return;
+            }
+            root.refreshRunStatus();
+        }
     }
 
     Timer {
@@ -927,6 +951,43 @@ Singleton {
                 lastExit = 0;
             } else {
                 root.finishFlatpak(exitSeen ? lastExit : ProcHelpers.NOT_STARTED,
+                    body, errText);
+            }
+        }
+    }
+
+    Process {
+        id: projectProc
+
+        property string body: ""
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["timeout", "45s",
+            Quickshell.env("HOME") + "/.local/share/fedora-config/current/update",
+            "--check", "--json"]
+
+        stdout: StdioCollector {
+            onStreamFinished: projectProc.body = text
+        }
+
+        stderr: StdioCollector {
+            onStreamFinished: projectProc.errText = text
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            projectProc.exitSeen = true;
+            projectProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else {
+                root.finishProject(exitSeen ? lastExit : ProcHelpers.NOT_STARTED,
                     body, errText);
             }
         }

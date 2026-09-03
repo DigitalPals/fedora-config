@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Session actions shared by Quickshell and other desktop entry points.
+# Locking is delegated to one systemd unit, so idle, suspend, and manual lock
+# requests cannot accumulate competing hyprlock processes.
+set -euo pipefail
+
+action=${1:-}
+
+session_id() {
+  if [[ -n ${XDG_SESSION_ID:-} ]]; then
+    printf '%s\n' "$XDG_SESSION_ID"
+    return
+  fi
+  loginctl show-user "$(id -u)" -p Display --value
+}
+
+locked() {
+  local session
+  session=$(session_id)
+  [[ -n $session ]] &&
+    [[ $(loginctl show-session "$session" -p LockedHint --value 2>/dev/null) == yes ]]
+}
+
+ensure_locked() {
+  local i
+  if locked; then
+    return 0
+  fi
+
+  systemctl --user reset-failed fedora-config-session-lock.service >/dev/null 2>&1 || true
+  systemctl --user start fedora-config-session-lock.service
+
+  # Do not use a fixed sleep: suspend is allowed only after the compositor has
+  # told logind that the ext-session-lock is active. A failed locker therefore
+  # leaves the machine awake and returns an actionable error to the caller.
+  for ((i = 0; i < 80; i++)); do
+    if locked; then
+      return 0
+    fi
+    if ! systemctl --user is-active --quiet fedora-config-session-lock.service; then
+      printf 'The lock screen exited before the session was secured.\n' >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+
+  printf 'The lock screen did not secure the session within eight seconds.\n' >&2
+  systemctl --user stop fedora-config-session-lock.service >/dev/null 2>&1 || true
+  return 1
+}
+
+case $action in
+  lock)
+    ensure_locked
+    ;;
+  suspend)
+    ensure_locked
+    systemctl suspend
+    ;;
+  logout)
+    hyprctl dispatch exit
+    ;;
+  reboot)
+    systemctl reboot
+    ;;
+  shutdown)
+    systemctl poweroff
+    ;;
+  *)
+    printf 'Usage: fedora-config-session-action <lock|suspend|logout|reboot|shutdown>\n' >&2
+    exit 2
+    ;;
+esac

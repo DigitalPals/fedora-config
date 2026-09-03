@@ -1,0 +1,14 @@
+---
+- name: Remove Fedora Config-managed desktop configuration
+  hosts: workstation
+  gather_facts: true
+  become: true
+  vars:
+    fedora_config_keep_user_data: false
+  pre_tasks:
+    - name: Verify the selected user exists
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ primary_user }}"
+  roles:
+    - role: uninstall

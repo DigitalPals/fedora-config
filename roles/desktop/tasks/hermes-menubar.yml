@@ -16,6 +16,7 @@
 
 - name: Remove the retired local Hermes Agent deployment once
   when:
+    - cleanup_legacy_xps_artifacts | bool
     - not ansible_check_mode
     - not hermes_agent_removal_marker.stat.exists
   tags: [quickshell, hermes-menubar]
@@ -67,7 +68,7 @@
         - "{{ primary_home }}/.local/bin/hermes"
         - "{{ primary_home }}/.local/bin/hermes-agent"
         - "{{ primary_home }}/.local/bin/hermes-acp"
-        - "{{ primary_home }}/.local/share/xps-user-tools/hermes"
+        - "{{ primary_home }}/.local/share/fedora-config-user-tools/hermes"
         - "{{ primary_home }}/.hermes"
       notify: Reload user systemd
 

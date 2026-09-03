@@ -85,7 +85,7 @@ function defaultMods() {
     }
     return {
         left: [mod("ws", true), mod("media", true)],
-        center: [mod("indicators", true), mod("clock", true), mod("weather", true)],
+        center: [mod("indicators", true), mod("clock", true), mod("weather", false)],
         right: [
             mod("updates", true), mod("gh", false), mod("t3", false), mod("hermes", false),
             mod("usage", false), mod("tray", true), mod("notifications", true), mod("vol", true),
@@ -106,13 +106,13 @@ function defaultModOpts() {
             seconds: false, showDate: true, dateFormat: "ddd dd",
             showEvents: true, daysAhead: 14, pollMins: 15
         },
-        weather: { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 },
+        weather: { place: "", lat: 0, lon: 0, pollMins: 20 },
         t3: { showLabel: true },
         hermes: { showLabel: true, activityDetail: "verb" },
         usage: {
             source: "cliproxy",
-            cliproxyUrl: "https://10.10.0.235:8317/management.html",
-            cliproxyTlsVerify: false,
+            cliproxyUrl: "",
+            cliproxyTlsVerify: true,
             claude: true, claudeAutoRefresh: true, codex: true, kimi: true,
             xai: true,
             warnAt: 25, critAt: 10
@@ -130,7 +130,7 @@ function defaultModOpts() {
 
 function defaults() {
     return {
-        wall: "snow-capped-mountains-with-full-moon-lo.jpg",
+        wall: "",
         wallDir: "~/Pictures/Wallpapers",
         shuffle: "Off",
         themeMode: "dark",

@@ -53,7 +53,8 @@ test("the live bar keeps borderless hug corners visual-only and attached square"
 
 test("Hyprland and shell surfaces share the hug corner radius", () => {
     const theme = fs.readFileSync(path.join(shellDir, "Common/Theme.qml"), "utf8");
-    const look = fs.readFileSync(path.resolve(shellDir, "../looknfeel.lua"), "utf8");
+    const look = fs.readFileSync(
+        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
     const surfaceRadius = theme.match(/readonly property int surfaceRadius:\s*(\d+)/);
     const windowRadius = look.match(/decoration\s*=\s*\{[\s\S]*?rounding\s*=\s*(\d+)/);
 

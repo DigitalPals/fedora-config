@@ -1,8 +1,18 @@
 local mainMod = "SUPER"
 local terminal = "kitty"
-local browser = "brave-browser-stable --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --restore-last-session --hide-crash-restore-bubble"
 local home = os.getenv("HOME")
 local features = require("features")
+local browser = "firefox"
+local privateBrowser = "firefox --private-window"
+if features.proprietary_apps then
+  browser = "brave-browser-stable --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --restore-last-session --hide-crash-restore-bubble"
+  privateBrowser = browser .. " --incognito"
+end
+
+local function web_app(url)
+  if features.proprietary_apps then return browser .. " --app=" .. url end
+  return browser .. " " .. url
+end
 
 local previous = rawget(_G, "__fedora_hypr_binds") or {}
 for _, keybind in ipairs(previous) do
@@ -38,21 +48,29 @@ bind(mainMod .. " + A", hl.dsp.exec_cmd("qs ipc call popouts toggle control"))
 bind(mainMod .. " + K", hl.dsp.exec_cmd("qs ipc call session keys"))
 bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus --new-window"))
 bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
-bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(browser .. " --incognito"))
-bind(mainMod .. " + M", hl.dsp.exec_cmd(browser .. " --app=https://app.slack.com/client/T0AF1HJGFAP/C0AF4GFJY4V"))
+bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(privateBrowser))
+bind(mainMod .. " + M", hl.dsp.exec_cmd(web_app("https://app.slack.com/")))
 bind(mainMod .. " + P", hl.dsp.exec_cmd(home .. "/.local/bin/portal-launcher"))
 bind(mainMod .. " + S", hl.dsp.exec_cmd("spotify"))
-bind(mainMod .. " + SHIFT + SLASH", hl.dsp.exec_cmd("1password"))
-bind(mainMod .. " + D", hl.dsp.exec_cmd(terminal .. " -e lazydocker"))
-bind(mainMod .. " + T", hl.dsp.exec_cmd("t3code-desktop"))
+if features.proprietary_apps then
+  bind(mainMod .. " + SHIFT + SLASH", hl.dsp.exec_cmd("1password"))
+end
+if features.developer_tools then
+  bind(mainMod .. " + D", hl.dsp.exec_cmd(terminal .. " -e lazydocker"))
+end
+if features.connected_widgets then
+  bind(mainMod .. " + T", hl.dsp.exec_cmd("t3code-desktop"))
+end
 bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd(terminal .. " -e btop"))
-bind(mainMod .. " + W", hl.dsp.exec_cmd(browser .. " --app=https://web.whatsapp.com/"))
-bind(mainMod .. " + Y", hl.dsp.exec_cmd(browser .. " --app=https://youtube.com/"))
-bind(mainMod .. " + SHIFT + P", hl.dsp.exec_cmd(browser .. " --app=https://photos.google.com/"))
-bind(mainMod .. " + SHIFT + X", hl.dsp.exec_cmd(browser .. " --app=https://x.com/"))
-bind(mainMod .. " + CTRL + X", hl.dsp.exec_cmd("voxtype --model base --language en record toggle"))
-bind("F9", hl.dsp.exec_cmd("voxtype --model base --language en record toggle"))
-bind("SHIFT + F9", hl.dsp.exec_cmd("voxtype --model base --language nl record toggle"))
+bind(mainMod .. " + W", hl.dsp.exec_cmd(web_app("https://web.whatsapp.com/")))
+bind(mainMod .. " + Y", hl.dsp.exec_cmd(web_app("https://youtube.com/")))
+bind(mainMod .. " + SHIFT + P", hl.dsp.exec_cmd(web_app("https://photos.google.com/")))
+bind(mainMod .. " + SHIFT + X", hl.dsp.exec_cmd(web_app("https://x.com/")))
+if features.developer_tools then
+  bind(mainMod .. " + CTRL + X", hl.dsp.exec_cmd("voxtype --model base --language en record toggle"))
+  bind("F9", hl.dsp.exec_cmd("voxtype --model base --language en record toggle"))
+  bind("SHIFT + F9", hl.dsp.exec_cmd("voxtype --model base --language nl record toggle"))
+end
 
 bind(mainMod .. " + C", function() send_shortcut_once("CTRL", "Insert") end)
 bind(mainMod .. " + V", function() send_shortcut_once("SHIFT", "Insert") end)
@@ -83,13 +101,25 @@ bind("Print", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot region"))
 bind("SHIFT + Print", hl.dsp.exec_cmd(home .. "/.local/bin/screenshot fullscreen"))
 bind(mainMod .. " + SHIFT + O", hl.dsp.exec_cmd(home .. "/.local/bin/screen-ocr"))
 
-bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("/usr/local/libexec/xps-speaker-tuning control up || wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
-bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("/usr/local/libexec/xps-speaker-tuning control down || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"), { locked = true, repeating = true })
+local volumeUp = "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"
+local volumeDown = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
+local volumeMute = "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+if features.xps_2026 then
+  volumeUp = "/usr/local/libexec/xps-speaker-tuning control up || " .. volumeUp
+  volumeDown = "/usr/local/libexec/xps-speaker-tuning control down || " .. volumeDown
+  volumeMute = "/usr/local/libexec/xps-speaker-tuning control mute || " .. volumeMute
+end
+bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd(volumeUp), { locked = true, repeating = true })
+bind("XF86AudioLowerVolume", hl.dsp.exec_cmd(volumeDown), { locked = true, repeating = true })
 bind("XF86MonBrightnessUp", hl.dsp.exec_cmd(home .. "/.local/bin/brightness-control up 5"), { locked = true, repeating = true })
 bind("XF86MonBrightnessDown", hl.dsp.exec_cmd(home .. "/.local/bin/brightness-control down 5"), { locked = true, repeating = true })
-bind("XF86AudioMute", hl.dsp.exec_cmd("/usr/local/libexec/xps-speaker-tuning control mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
-bind("XF86AudioMicMute", hl.dsp.exec_cmd("voxtype --model base --language en record toggle"), { locked = true })
-bind("SHIFT + XF86AudioMicMute", hl.dsp.exec_cmd("voxtype --model base --language nl record toggle"), { locked = true })
+bind("XF86AudioMute", hl.dsp.exec_cmd(volumeMute), { locked = true })
+if features.developer_tools then
+  bind("XF86AudioMicMute", hl.dsp.exec_cmd("voxtype --model base --language en record toggle"), { locked = true })
+  bind("SHIFT + XF86AudioMicMute", hl.dsp.exec_cmd("voxtype --model base --language nl record toggle"), { locked = true })
+else
+  bind("XF86AudioMicMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true })
+end
 bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
 bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
 bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })

@@ -160,6 +160,22 @@ sudo dnf install -y ansible-core git
 cd /home/fedora/fedora-config
 export ANSIBLE_FORCE_COLOR=0
 export PYTHONDONTWRITEBYTECODE=1
+
+# Exercise first-adoption rollback with real collisions, not only an empty
+# cloud-user home. Each file is overwritten during convergence and must be
+# recovered byte-for-byte by the uninstaller.
+install -d -m 0755 /home/fedora/.config/hypr \
+  /home/fedora/.config/quickshell /home/fedora/.local/bin \
+  /home/fedora/.config/systemd/user
+printf 'original Hyprland bindings\n' >/home/fedora/.config/hypr/bindings.lua
+printf 'original Quickshell root\n' >/home/fedora/.config/quickshell/shell.qml
+printf 'original Spotify helper\n' >/home/fedora/.local/bin/spotify
+printf 'original user unit\n' >/home/fedora/.config/systemd/user/quickshell.service
+sudo install -d -m 0755 /etc/gdm /etc/sudoers.d /etc/polkit-1/rules.d
+printf '[daemon]\n# original GDM configuration\n' | sudo tee /etc/gdm/custom.conf >/dev/null
+printf '# original sudo policy\n' | sudo tee /etc/sudoers.d/10-wheel-nopasswd >/dev/null
+printf '// original Polkit policy\n' | sudo tee /etc/polkit-1/rules.d/49-wheel-local.rules >/dev/null
+
 playbook=(ansible-playbook -i inventory/hosts.yml site.yml
   -e @tests/vm/convergence-vars.yml --tags "$tags")
 "${playbook[@]}" | tee /tmp/fedora-config-first.log
@@ -170,6 +186,9 @@ grep -F 'no configuration changes' /tmp/fedora-config-second.log >/dev/null || {
   exit 1
 }
 sudo tests/vm/assert-converged
+ansible-playbook -i inventory/hosts.yml uninstall.yml \
+  -e @tests/vm/convergence-vars.yml | tee /tmp/fedora-config-uninstall.log
+sudo tests/vm/assert-uninstalled
 GUEST
 
-printf 'Fedora 44 VM converged twice with a zero-change second pass\n'
+printf 'Fedora 44 VM converged twice, then restored first-adoption files on uninstall\n'

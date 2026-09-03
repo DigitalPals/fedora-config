@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+# Interactive public installer for Fedora Config.
+set -euo pipefail
+
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+cd -- "$repo_dir"
+# shellcheck source=scripts/ui.sh
+source scripts/ui.sh
+
+config_path=${FEDORA_CONFIG_FILE:-/etc/fedora-config/config.yml}
+non_interactive=false
+reconfigure=false
+check_only=false
+ansible_args=()
+
+usage() {
+  cat <<'EOF'
+Usage: ./install [--reconfigure] [--non-interactive] [--check] [-- ANSIBLE_ARGS...]
+
+Configure and install the Fedora Config Hyprland/Quickshell desktop. A normal
+first run asks questions and writes the answers to /etc/fedora-config/config.yml.
+Later runs reuse those answers unless --reconfigure is supplied.
+
+  --reconfigure      Ask the installation questions again
+  --non-interactive  Generate conservative detected answers without prompting
+  --check            Show the generated configuration; do not write or install
+  -h, --help         Show this help
+EOF
+}
+
+while (($#)); do
+  case $1 in
+    --reconfigure) reconfigure=true ;;
+    --non-interactive) non_interactive=true ;;
+    --check) check_only=true ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; ansible_args+=("$@"); break ;;
+    *) ansible_args+=("$1") ;;
+  esac
+  shift
+done
+
+[[ -r /etc/fedora-release ]] || {
+  echo "Fedora Config supports Fedora only." >&2
+  exit 1
+}
+
+if [[ -r $config_path && $reconfigure == false ]]; then
+  if [[ $check_only == true ]]; then
+    cat -- "$config_path"
+    exit 0
+  fi
+  ui_header 'Fedora Config'
+  printf 'Using saved installation choices from %s\n' "$config_path"
+  sudo -v
+  if ! command -v ansible-playbook >/dev/null 2>&1; then
+    run_step 'Install ansible-core' /tmp/fedora-config-bootstrap-ansible.log \
+      sudo dnf -y install ansible-core
+  fi
+  migrated_config=$(mktemp)
+  trap 'rm -f -- "$migrated_config"' EXIT
+  "$repo_dir/scripts/migrate-config" "$config_path" >"$migrated_config"
+  if ! cmp -s -- "$config_path" "$migrated_config"; then
+    sudo install -m 0644 "$migrated_config" "$config_path"
+    printf 'Migrated saved installation choices to schema 1.\n'
+  fi
+  exec ansible-playbook site.yml -e "@$config_path" "${ansible_args[@]}"
+fi
+
+if [[ $non_interactive == false && ! -t 0 ]]; then
+  echo "install: interactive setup needs a terminal (or use --non-interactive)" >&2
+  exit 2
+fi
+
+detected_user=${SUDO_USER:-${USER:-}}
+if [[ -z $detected_user || $detected_user == root ]]; then
+  detected_user=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 { print $1; exit }')
+fi
+[[ -n $detected_user ]] || {
+  echo "install: could not detect a desktop user" >&2
+  exit 1
+}
+
+detected_hostname=$(hostnamectl --static 2>/dev/null || hostname)
+detected_timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
+detected_timezone=${detected_timezone:-UTC}
+detected_locale=$(locale | sed -n 's/^LANG=//p' | tr -d '"' | head -n1)
+detected_locale=${detected_locale:-en_US.UTF-8}
+[[ $detected_locale == C || $detected_locale == C.* || $detected_locale == POSIX ]] \
+  && detected_locale=en_US.UTF-8
+detected_regional=$detected_locale
+detected_keyboard_layout=$(localectl show --property=X11Layout --value 2>/dev/null || true)
+detected_keyboard_layout=${detected_keyboard_layout:-us}
+detected_keyboard_variant=$(localectl show --property=X11Variant --value 2>/dev/null || true)
+
+valid_user() {
+  local account home
+  [[ $1 != root ]] || return 1
+  account=$(getent passwd "$1") || return 1
+  home=$(cut -d: -f6 <<<"$account")
+  [[ $home == /* && $home != / && -d $home ]]
+}
+valid_hostname() { [[ $1 =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$ ]]; }
+valid_locale() { [[ $1 =~ ^[A-Za-z][A-Za-z0-9_@.-]+$ ]]; }
+valid_timezone() { [[ $1 != /* && $1 != *..* && -e /usr/share/zoneinfo/$1 ]]; }
+valid_keyboard_layout() { [[ $1 =~ ^[A-Za-z0-9_,-]+$ ]]; }
+valid_keyboard_variant() { [[ -z $1 || $1 =~ ^[A-Za-z0-9_,-]+$ ]]; }
+
+ask_text() {
+  local variable=$1 prompt=$2 default=$3 validator=$4 answer
+  while true; do
+    read -r -p "$prompt [$default]: " answer
+    answer=${answer:-$default}
+    if "$validator" "$answer"; then
+      printf -v "$variable" '%s' "$answer"
+      return
+    fi
+    printf 'Invalid value: %s\n' "$answer" >&2
+  done
+}
+
+ask_bool() {
+  local variable=$1 prompt=$2 default=${3:-} answer suffix=' [y/n]: '
+  [[ $default == true ]] && suffix=' [Y/n]: '
+  [[ $default == false ]] && suffix=' [y/N]: '
+  while true; do
+    read -r -p "$prompt$suffix" answer
+    answer=${answer,,}
+    if [[ -z $answer && -n $default ]]; then
+      printf -v "$variable" '%s' "$default"
+      return
+    fi
+    case $answer in
+      y|yes) printf -v "$variable" true; return ;;
+      n|no) printf -v "$variable" false; return ;;
+      *) echo 'Please answer yes or no.' >&2 ;;
+    esac
+  done
+}
+
+if [[ $non_interactive == true ]]; then
+  primary_user=$detected_user
+  machine_hostname=$detected_hostname
+  machine_timezone=$detected_timezone
+  machine_locale=$detected_locale
+  regional_locale=$detected_regional
+  machine_keyboard_layout=$detected_keyboard_layout
+  machine_keyboard_variant=$detected_keyboard_variant
+  developer_tools=false
+  steam=false
+  docker=false
+  podman=false
+  tailscale=false
+  connected_widgets=false
+  proprietary_apps=false
+  passwordless_wheel=false
+  passwordless_local_polkit=false
+  gdm_autologin=false
+  local_network_services=false
+  manage_personal_dotfiles=false
+else
+  ui_header 'Fedora Config setup'
+  echo 'Detected values are offered in brackets. No inventory editing is required.'
+  echo
+  ask_text primary_user 'Desktop username' "$detected_user" valid_user
+  selected_home=$(getent passwd "$primary_user" | cut -d: -f6)
+  ask_text machine_hostname 'Hostname' "$detected_hostname" valid_hostname
+  ask_text machine_timezone 'Timezone' "$detected_timezone" valid_timezone
+  ask_text machine_locale 'Language locale' "$detected_locale" valid_locale
+  ask_text regional_locale 'Regional locale' "$detected_regional" valid_locale
+  ask_text machine_keyboard_layout 'Keyboard layout' "$detected_keyboard_layout" valid_keyboard_layout
+  ask_text machine_keyboard_variant 'Keyboard variant (blank for default)' "$detected_keyboard_variant" valid_keyboard_variant
+  echo
+  ask_bool developer_tools 'Install developer and Android tooling?' false
+  ask_bool steam 'Install gaming tools and Steam?' false
+  ask_bool docker 'Install and enable Docker?' false
+  ask_bool podman 'Install Podman and Distrobox?' false
+  ask_bool tailscale 'Install and enable Tailscale?' false
+  ask_bool connected_widgets 'Enable optional connected-service widgets?' false
+  ask_bool proprietary_apps 'Install Brave, 1Password, and ChatGPT packages?' false
+  ask_bool local_network_services 'Open feature-selected local-network firewall ports?' false
+  echo
+  echo 'The following choices relax local authentication. Review each explicitly.'
+  ask_bool passwordless_wheel 'Allow the wheel group to use sudo without a password?'
+  ask_bool passwordless_local_polkit 'Authorize active local wheel users through Polkit without a password?'
+  ask_bool gdm_autologin 'Automatically log this user into Hyprland from GDM?' false
+  echo
+  if [[ -e $selected_home/.gitconfig || -e $selected_home/.ssh/config \
+        || -e $selected_home/.config/fish/config.fish \
+        || -e $selected_home/.config/kitty/kitty.conf ]]; then
+    ask_bool manage_personal_dotfiles \
+      'Install the opinionated shell/application dotfiles alongside existing configuration?' false
+  else
+    ask_bool manage_personal_dotfiles \
+      'Install the opinionated shell and application dotfiles?' true
+  fi
+fi
+
+primary_home=$(getent passwd "$primary_user" | cut -d: -f6)
+primary_group=$(id -gn "$primary_user")
+[[ -n $primary_home && -d $primary_home ]] || {
+  echo "install: $primary_user has no usable home directory" >&2
+  exit 1
+}
+
+temporary_config=$(mktemp)
+trap 'rm -f -- "$temporary_config"' EXIT
+yaml_string() { printf "'%s'" "${1//\'/\'\'}"; }
+cat >"$temporary_config" <<EOF
+---
+config_schema_version: 1
+primary_user: $(yaml_string "$primary_user")
+primary_group: $(yaml_string "$primary_group")
+primary_home: $(yaml_string "$primary_home")
+machine_hostname: $(yaml_string "$machine_hostname")
+machine_timezone: $(yaml_string "$machine_timezone")
+machine_locale: $(yaml_string "$machine_locale")
+regional_locale: $(yaml_string "$regional_locale")
+machine_keyboard_layout: $(yaml_string "$machine_keyboard_layout")
+machine_keyboard_variant: $(yaml_string "$machine_keyboard_variant")
+manage_system_identity: true
+manage_personal_dotfiles: $manage_personal_dotfiles
+cleanup_legacy_xps_artifacts: false
+passwordless_wheel: $passwordless_wheel
+passwordless_local_polkit: $passwordless_local_polkit
+gdm_autologin: $gdm_autologin
+start_optional_hardware_services: true
+allow_insecure_sccache_transport: false
+xps_2026_camera_enabled: true
+features:
+  developer_tools: $developer_tools
+  connected_widgets: $connected_widgets
+  proprietary_apps: $proprietary_apps
+  tailscale: $tailscale
+  docker: $docker
+  podman: $podman
+  steam: $steam
+  private_hooks: false
+  apple_display: false
+  source_builds: false
+  local_network_services: $local_network_services
+EOF
+
+if [[ $check_only == true ]]; then
+  cat -- "$temporary_config"
+  exit 0
+fi
+
+ui_header 'Installation summary'
+printf 'User: %s (%s)\nHost: %s\nTimezone: %s\n' \
+  "$primary_user" "$primary_home" "$machine_hostname" "$machine_timezone"
+printf 'Developer tools: %s  Gaming: %s  Docker: %s  Podman: %s  Tailscale: %s\n' \
+  "$developer_tools" "$steam" "$docker" "$podman" "$tailscale"
+printf 'Passwordless sudo: %s  Passwordless Polkit: %s  Autologin: %s\n' \
+  "$passwordless_wheel" "$passwordless_local_polkit" "$gdm_autologin"
+if [[ $non_interactive == true ]]; then
+  confirmed=true
+else
+  ask_bool confirmed 'Apply this configuration?' false
+fi
+[[ $confirmed == true ]] || { echo 'Installation cancelled.'; exit 0; }
+
+sudo -v
+sudo install -d -m 0755 /etc/fedora-config
+sudo install -m 0644 "$temporary_config" "$config_path"
+if ! command -v ansible-playbook >/dev/null 2>&1; then
+  run_step 'Install ansible-core' /tmp/fedora-config-bootstrap-ansible.log \
+    sudo dnf -y install ansible-core
+fi
+exec ansible-playbook site.yml -e "@$config_path" "${ansible_args[@]}"

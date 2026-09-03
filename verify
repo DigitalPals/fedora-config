@@ -65,7 +65,7 @@ source_output=''
 system_output=''
 source_command=(./tests/run)
 $quick && source_command+=(--quick)
-system_command=(./tests/verify-xps)
+system_command=(./tests/verify-system)
 $require_hyprland && system_command+=(--require-hyprland)
 
 if $json; then

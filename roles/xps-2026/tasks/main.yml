@@ -109,6 +109,10 @@
   ansible.builtin.import_tasks: packages.yml
   when: xps_2026_is_supported | bool
 
+- name: Configure XPS 2026 power management
+  ansible.builtin.import_tasks: power.yml
+  when: xps_2026_is_supported | bool
+
 - name: Configure the XPS 2026 internal-speaker tuning
   ansible.builtin.import_tasks: speaker.yml
   when:

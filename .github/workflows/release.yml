@@ -1,0 +1,114 @@
+name: Qualified immutable release
+
+on:
+  push:
+    tags:
+      # The build step applies the strict SemVer regex before publishing.
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: Source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container:
+      image: fedora:44
+    steps:
+      - name: Install source-test dependencies
+        run: |
+          dnf install -y \
+            ansible-core python3-ansible-lint python3-ruff ShellCheck yamllint \
+            curl dbus-daemon dnf5-plugins findutils git gnupg2 jq luajit \
+            nodejs24 python3 python3-websockets qt6-qtdeclarative-devel \
+            qt6-qtwebsockets-devel ripgrep
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Configure the fingerprint-verified Hyprland COPR
+        run: |
+          curl --fail --location --retry 3 --output /tmp/hyprland-copr.gpg \
+            https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
+          echo '581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  /tmp/hyprland-copr.gpg' | sha256sum --check
+          install -m 0644 /tmp/hyprland-copr.gpg /etc/pki/rpm-gpg/FEDORA-CONFIG-sdegler-hyprland-copr.gpg
+          install -m 0644 roles/desktop/templates/hyprland-copr.repo.j2 \
+            '/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo'
+          dnf install -y quickshell
+      - run: ./tests/run
+
+  vm:
+    name: Generic Fedora VM install
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y cloud-image-utils qemu-system-x86 qemu-utils
+          if test -e /dev/kvm; then sudo chmod a+rw /dev/kvm; fi
+      - run: ./tests/fedora-vm-convergence
+
+  publish:
+    name: Build, attest, and publish release asset
+    needs: [source, vm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install release build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible-core jq zstd
+      - name: Build the versioned source asset
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=${RELEASE_TAG#v}
+          [[ $RELEASE_TAG == v$version && $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]
+          root="dist/fedora-config-$version"
+          mkdir -p "$root"
+          git archive HEAD | tar -x -C "$root"
+          printf '%s\n' "$version" >"$root/VERSION"
+          jq --arg version "$version" '. + {version:$version}' \
+            "$root/release-manifest.json" >"$root/release-manifest.json.new"
+          mv "$root/release-manifest.json.new" "$root/release-manifest.json"
+          tar --create --zstd --file "dist/fedora-config-$version.tar.zst" \
+            --directory dist "fedora-config-$version"
+          sha256sum "dist/fedora-config-$version.tar.zst" >dist/SHA256SUMS
+          mkdir dist/verify
+          tar --extract --zstd --file "dist/fedora-config-$version.tar.zst" \
+            --directory dist/verify --strip-components=1
+          test "$(tr -d '[:space:]' <dist/verify/VERSION)" = "$version"
+          test -x dist/verify/install
+          ansible-playbook dist/verify/site.yml --syntax-check
+      - name: Attest the exact release archive
+        # actions/attest v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: dist/fedora-config-*.tar.zst
+      - name: Publish the completed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=${RELEASE_TAG#v}
+          prerelease=()
+          [[ $version != *-* ]] || prerelease+=(--prerelease)
+          gh release create "$RELEASE_TAG" --verify-tag --draft \
+            --generate-notes --title "Fedora Config $version" "${prerelease[@]}"
+          gh release upload "$RELEASE_TAG" \
+            "dist/fedora-config-$version.tar.zst" dist/SHA256SUMS
+          gh release edit "$RELEASE_TAG" --draft=false
+          for attempt in $(seq 1 12); do
+            if test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .immutable)" = true; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "GitHub did not make $RELEASE_TAG immutable after publication" >&2
+          exit 1

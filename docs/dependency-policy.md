@@ -54,8 +54,9 @@ template, or a changed YOLO alias. It runs inside the Python stage of
    GitHub publishes an asset digest, make sure it agrees.
 3. Change the inventory pin and checksum together. For a Distrobox, keep the
    reviewed source tag beside the digest and update the review-date comment.
-4. Run `./tests/run`, then use `./update --full --check --diff` or an
-   appropriately scoped bootstrap check.
+4. Run `./tests/run`, then use
+   `ansible-playbook site.yml -e @/etc/fedora-config/config.yml --check --diff`
+   or an appropriately scoped direct Ansible check.
 5. Apply the change and validate the installed version. Do not delete retained
    versions or an existing Distrobox until the replacement is proven and any
    data inside the box is accounted for.

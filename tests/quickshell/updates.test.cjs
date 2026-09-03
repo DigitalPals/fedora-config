@@ -223,24 +223,26 @@ test("status readers cannot cross a local start or dismiss boundary", () => {
 
     const updates = read("Common/Updates.qml");
     assert.match(updates,
-        /statusGeneration\+\+;\s*startPending = true;\s*resetRun\(/,
+        /statusGeneration\+\+;[\s\S]{0,100}?startPreviousStamp = runStamp;[\s\S]{0,100}?startPending = true;[\s\S]{0,100}?resetRun\(/,
         "a local start must invalidate an already-running old status request");
     assert.match(updates,
-        /running: root\.runActive && !root\.startPending/,
-        "the triggered status timer must stay dormant until start settles");
+        /pending\.id !== root\.startPreviousStamp[\s\S]{0,240}?root\.startPending = false/,
+        "run discovery must ignore the prior durable status record");
+    assert.match(updates, /running: root\.runActive\s*repeat: true/,
+        "status polling must continue while the terminal publishes its new run");
 });
 
-test("the QML coordinator settles both commands, including start failures", () => {
+test("the QML coordinator settles every check and backend command", () => {
     const updates = read("Common/Updates.qml");
     const popover = read("Popovers/UpdatesPopover.qml");
 
     assert.match(updates, /readonly property bool busy: !dnfDone \|\| !flatpakDone/);
     assert.match(updates, /function finishCheck\(\) \{\s*if \(!dnfDone \|\| !flatpakDone\)\s*return;/);
-    assert.equal((updates.match(/ProcHelpers\.NOT_STARTED/g) || []).length, 5,
-        "check and run commands all need the no-exited-signal fallback, and "
+    assert.ok((updates.match(/ProcHelpers\.NOT_STARTED/g) || []).length >= 6,
+        "check and backend commands need the no-exited-signal fallback, and "
         + "the failure banner names the could-not-start case");
     assert.equal((updates.match(/onRunningChanged:/g) || []).length >= 3, true,
-        "both processes and the recheck timer should have completion handling");
+        "each process and the recheck timer should have completion handling");
     assert.doesNotMatch(updates, /onTotalChanged:/,
         "intermediate per-process totals must not drive notifications");
     assert.match(updates, /command: \["timeout", "45s"/,

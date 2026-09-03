@@ -84,16 +84,15 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.modOpts.updates, { pollMins: 30, flatpak: true, notify: true });
     assert.deepEqual(d.modOpts.tray, { expanded: false });
     assert.deepEqual(d.modOpts.weather,
-        { place: "Emmen", lat: 52.78, lon: 6.9, pollMins: 20 });
+        { place: "", lat: 0, lon: 0, pollMins: 20 });
     assert.deepEqual(d.modOpts.t3, { showLabel: true });
     assert.deepEqual(d.modOpts.hermes, { showLabel: true, activityDetail: "verb" });
     assert.equal(d.modOpts.usage.warnAt, 25);
     assert.equal(d.modOpts.usage.critAt, 10);
     assert.equal(d.modOpts.usage.claudeAutoRefresh, true);
     assert.equal(d.modOpts.usage.source, "cliproxy");
-    assert.equal(d.modOpts.usage.cliproxyUrl,
-        "https://10.10.0.235:8317/management.html");
-    assert.equal(d.modOpts.usage.cliproxyTlsVerify, false);
+    assert.equal(d.modOpts.usage.cliproxyUrl, "");
+    assert.equal(d.modOpts.usage.cliproxyTlsVerify, true);
     assert.equal(d.modOpts.usage.xai, true);
     assert.equal(d.modOpts.vol.step, 5);
     assert.equal(d.modOpts.vol.middleClick, "mute");

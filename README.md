@@ -1,167 +1,131 @@
 # Fedora Config
 
-An opinionated Fedora Linux installation for my Dell XPS.
+An opinionated Hyprland and Quickshell desktop for Fedora Linux, installed and
+kept current with Ansible. The core configuration is hardware-neutral. A
+separate, precisely gated role preserves extra support for the 2026 Dell XPS
+14 and 16.
 
-This repository uses Ansible to turn a clean Fedora Workstation installation
-into a complete daily-driver setup. It installs and configures the desktop,
-applications, development tools, shell, dotfiles, laptop services, firewall,
-and update workflow. Fedora remains responsible for the kernel, drivers,
-SELinux, and the base operating system.
+The current release target is Fedora 44 on x86_64. Fedora remains responsible
+for the kernel, drivers, SELinux, and base operating system.
 
-![Fedora running Hyprland and Quickshell](assets/fedora-hyprland-desktop.png)
+## What it installs
 
-## What it sets up
+- Hyprland, a custom Quickshell menubar, GDM, portals, notifications, and
+  desktop services
+- a portable Fedora package, Flatpak, shell, font, firewall, and recovery
+  baseline
+- optional developer/Android tools, Steam, Docker, Podman/Distrobox,
+  Tailscale, connected-service widgets, and proprietary applications
+- automatically detected XPS 2026 speaker, camera, haptic, fingerprint,
+  backlight, firmware, and power support
+- a persistent installer configuration, verifier, uninstaller, and verified
+  GitHub release updater
 
-- Hyprland with a custom Quickshell bar, launcher, notifications, and popovers
-- GDM with GNOME kept installed as a fallback session
-- A curated set of desktop apps, command-line tools, fonts, and developer tools
-- Fish, Kitty, Neovim, containers, Android tooling, and Rust/Node.js toolchains
-- Laptop power management, firewall rules, hardware support, and a Plymouth theme
-- Repeatable system and Flatpak updates through one command
-
-The shell's Layered Hug visual direction was inspired by
-[Illogical Impulse](https://github.com/end-4/dots-hyprland). This is an
-original implementation; no upstream code or assets were incorporated.
-
-## Third-party fonts
-
-The Quickshell menubar and its popovers use
-[OPPO Sans 4.0](https://www.coloros.com/article/A00000074/). The playbook
-downloads OPPO's unmodified official archive, verifies its checksum, and keeps
-the bundled OPPO Sans Fonts License Agreement beside the installed font.
-
-## XPS 2026 hardware support
-
-The hardware-gated `xps-2026` role supports Dell XPS 14/16 2026 SKUs `0DB9`
-and `0DBA`: internal-speaker PipeWire tuning, the OVTI08F4/IPU7 camera path,
-configurable Synaptics haptics, hardware-gated Fedora fingerprint support,
-explicit Panther Lake media/firmware RPMs, and Netherlands wireless-regulatory
-verification. The camera's missing PSYS/CVS
-companions use signed DKMS modules; IPU7 base/ISYS and the entire kernel remain
-Fedora stock. Omarchy's custom Panther Lake kernel and display patches are
-intentionally not included.
-
-See [Dell XPS 2026 / Panther Lake hardware support](docs/xps-2026-hardware.md)
-for Secure Boot enrollment, source pins, diagnostics, and the remaining
-Panel Replay/VRR gap.
-
-## Before you install
-
-> [!WARNING]
-> This is a personal configuration, not a general-purpose Fedora installer. It
-> makes system-wide changes and currently expects **Fedora 44 x86_64**, a
-> matching **Dell XPS**, and the local user **`john`**. It also enables the
-> security trade-offs configured in
-> [`inventory/group_vars/all.yml`](inventory/group_vars/all.yml), including
-> passwordless sudo and local Polkit access. Review that file and adapt the
-> machine, user, feature, and security settings before running it elsewhere.
-
-Start with a working Fedora 44 installation and a user that can run `sudo`.
+There is no desktop-preset selection: every installation gets the same core
+Hyprland/Quickshell desktop. The installer asks only about the target machine,
+security decisions, personal dotfiles, and optional components.
 
 ## Install
 
-Clone the repository:
+Start with Fedora 44 and a user that can run `sudo`:
 
 ```bash
 sudo dnf install -y git
 git clone https://github.com/DigitalPals/fedora-config.git
 cd fedora-config
+./install
 ```
 
-Review the machine-specific settings, then run the installer:
+No inventory or configuration file needs to be edited first. The installer
+detects the current desktop user, home directory, hostname, timezone, locale,
+and keyboard settings and offers them as defaults. It asks about optional
+software and explicitly asks whether to enable passwordless sudo, passwordless
+local Polkit authorization, and GDM autologin. The two passwordless choices
+have no implicit answer.
 
-```bash
-$EDITOR inventory/group_vars/all.yml
-./bootstrap
-```
+Answers are saved in `/etc/fedora-config/config.yml`, outside versioned release
+trees, and are reused by later installs and updates. Run
+`fedora-config configure` to ask the questions again. `./bootstrap` remains a
+compatibility alias for `./install`. The first successful install snapshots
+the runtime source under `~/.local/share/fedora-config/releases/`, so the
+cloned checkout can then be moved or removed.
 
-`bootstrap` installs `ansible-core` when needed and applies the complete
-configuration. It is safe to run again after changing the configuration.
-
-The optional private distributed `sccache` hook accepts `https://` scheduler
-URLs by default. The currently configured private-LAN scheduler only offers
-HTTP, so its use is guarded by the explicit
-`allow_insecure_sccache_transport` inventory switch. That opt-in sends the
-scheduler bearer token and compilation traffic without TLS; turn it off to
-fall back to the local cache.
-
-When `gdm_autologin` is enabled in `inventory/group_vars/all.yml`, the next boot
-automatically logs in to **Hyprland (Quickshell)**. From that session, check the
-installation with:
-
-```bash
-./verify --require-hyprland
-```
-
-If `gdm_autologin` is disabled, GDM keeps presenting its normal login screen;
-choose **Hyprland (Quickshell)** there to start the configured session.
+Before any role adopts configuration, the installer creates a one-time backup
+under `~/.local/state/fedora-config/backups/initial/`. Existing Hyprland and
+Quickshell trees are always preserved; personal application files are added
+when the optional dotfiles integration is selected. Uninstall restores those
+pre-existing files. Managed Fish, Kitty, Git, and SSH settings use
+fragments/includes where those applications support them. No wallpapers or
+avatar are imposed; choose a wallpaper folder in Shell Settings after
+installation.
 
 ## Update
 
-Pull the latest configuration and run the updater:
+After the first install, use:
 
 ```bash
-cd /path/to/fedora-config
-git pull --ff-only
-./update
+fedora-config update
 ```
 
-This updates Fedora packages and system Flatpaks. Use `./update --full` to also
-run the strict repository gate and reapply the Ansible configuration. The
-worker survives terminal and Quickshell restarts; Ctrl+C detaches rather than
-cancelling it. Detailed status and logs are saved under
-`~/.local/state/xps-update/logs/`. Do not reboot while an update is active.
-Run `./update --help` for options and see the
-[operations guide](docs/operations.md) for attach, cancel, log, tag, and reboot
-behavior.
+The updater follows the saved `stable` channel by default (`--channel beta`
+selects and saves prereleases). It resolves an immutable GitHub release,
+verifies GitHub's release and asset attestations, checks the API SHA-256
+digest, validates Fedora/architecture/config-schema compatibility, and
+extracts into a versioned staging directory. It migrates a backed-up copy of
+the saved answers, applies the candidate through the durable updater, and
+changes the `current` symlink only after success. A failed apply restores the
+previous configuration. The active release and two recent fallbacks are kept.
 
-## Commands
+The same durable worker updates Fedora packages and system Flatpaks. It uses a
+transient system unit when sudo requires authentication, so a terminal or
+Quickshell restart does not interrupt package work. On Btrfs, package work
+first creates a paired read-only root snapshot and `/boot` archive.
+
+Useful commands:
 
 | Command | Purpose |
 | --- | --- |
-| `./bootstrap` | Install Ansible if needed and apply the full configuration |
-| `./update` | Update Fedora packages and system Flatpaks |
-| `./update --full` | Also update tools and reapply the managed configuration |
-| `./tests/run` | Run all fifteen strict source-check stages |
-| `./tests/fedora-vm-convergence` | Boot the pinned Fedora 44 Cloud image and converge the desktop roles twice |
-| `./verify` | Run source and installed-system checks (`--help` lists scopes and JSON output) |
+| `fedora-config update --check` | Check the configured GitHub channel |
+| `fedora-config update --system-only` | Update Fedora and Flatpak only |
+| `fedora-config verify` | Run source and installed-system checks |
+| `fedora-config doctor` | Alias for `verify` |
+| `fedora-config configure` | Re-run the installer questions |
+| `fedora-config uninstall` | Remove project-managed configuration; retain applications |
 
-Extra arguments to `bootstrap` are passed to `ansible-playbook`. For `update`,
-use `--full` before Ansible arguments, for example `./update --full --check
---diff` or `./update --full --tags desktop,dotfiles`.
+Detailed updater status, logs, cancellation, Btrfs recovery, and advanced
+Ansible tags are documented in [the operations guide](docs/operations.md).
 
-The supported tag list comes from `ansible-playbook site.yml --list-tags`.
-Partial tag runs still execute `always` validation (fresh facts, feature,
-Fedora, user, and hardware contracts), and narrow tags do not form independent
-installation profiles. `./update --full` also always skips the `boot` role; use
-the [documented direct bootstrap path](docs/operations.md#supported-ansible-tags)
-for a reviewed boot/initramfs change.
+## Hardware support
 
-## Documentation
+Generic systems skip every XPS workaround. The `xps-2026` role activates only
+for Dell vendor/product identifiers, supported SKUs `0DB9` or `0DBA`, and the
+expected Panther Lake CPU family; individual devices are gated again before
+their configuration is installed. See
+[Dell XPS 2026 hardware support](docs/xps-2026-hardware.md).
 
-| Document | Purpose |
-| --- | --- |
-| [docs/operations.md](docs/operations.md) | Commands, tags, updater/callback diagnostics, source-check stages, reboot rules, and reduced motion |
-| [docs/dependency-policy.md](docs/dependency-policy.md) | Immutable dependency pins, intentional moving channels, and their update procedure |
-| [docs/fedora-major-upgrade.md](docs/fedora-major-upgrade.md) | Actionable preparation, offline-upgrade, convergence, and hardware validation runbook |
-| [docs/licensing.md](docs/licensing.md) | Current no-license boundary and the owner actions required for code and assets |
-| [docs/quickshell-notes.md](docs/quickshell-notes.md) | Working on the Quickshell shell: how to test it headlessly, the traps, and what has already been decided against |
-| [docs/hermes-menubar.md](docs/hermes-menubar.md) | Hermes conversation history, New chat behavior, password sign-in, streaming states, and diagnostics |
-| [docs/shell-settings-manual-verification.md](docs/shell-settings-manual-verification.md) | Hand-test checklist for the settings window |
-| [docs/t3-composer-manual-verification.md](docs/t3-composer-manual-verification.md) | Hand-test checklist for the T3 composer |
-| [docs/t3-git-actions-manual-verification.md](docs/t3-git-actions-manual-verification.md) | Hand-test checklist for the T3 git actions |
-| [docs/xps-2026-hardware.md](docs/xps-2026-hardware.md) | XPS 2026 speaker, camera, fingerprint, haptics, Secure Boot, and diagnostics |
+## Development and releases
 
-The automated side is `./verify`, which runs all of `tests/run` before the
-installed-system checks by default. `--source`, `--system`, and `--quick` make
-the scope explicit, while `--json` provides a stable machine-readable result.
-The source gate fails rather than silently skipping a missing required tool;
-`./tests/run --list` is its authoritative stage list. Package updates create a
-bounded Btrfs root plus `/boot` recovery point before DNF runs; the rescue
-procedure is documented in [the operations guide](docs/operations.md#update-recovery-points).
+```bash
+./verify --source
+./tests/fedora-vm-convergence
+```
+
+CI runs the complete source contract in Fedora 44 and converges a generic
+Fedora Cloud VM twice to enforce idempotence. A `vX.Y.Z` tag publishes only
+after both gates pass. Repository release immutability must be enabled before
+the first public tag.
+
+Key documentation:
+
+- [Operations and recovery](docs/operations.md)
+- [Release process](docs/releasing.md)
+- [Dependency and pinning policy](docs/dependency-policy.md)
+- [Fedora major upgrades](docs/fedora-major-upgrade.md)
+- [Licensing and asset provenance](docs/licensing.md)
+- [Quickshell development notes](docs/quickshell-notes.md)
 
 > [!IMPORTANT]
-> The repository currently has no repository-wide software license, and the
-> bundled large raster assets have unknown creator/source/license metadata.
-> See [licensing and asset provenance](docs/licensing.md) before reuse or
-> redistribution.
+> The repository does not yet contain a repository-wide software license.
+> Select one before calling the project open source or publishing a public
+> release. Undocumented bundled raster assets were removed from the release
+> payload; `assets/PROVENANCE.json` enforces that boundary.

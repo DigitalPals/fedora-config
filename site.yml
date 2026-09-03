@@ -1,9 +1,35 @@
 ---
-- name: Fedora 44 parity for the Dell XPS
-  hosts: xps
+- name: Fedora Hyprland and Quickshell workstation
+  hosts: workstation
   gather_facts: true
   become: true
   pre_tasks:
+    - name: Read the Dell product SKU for portable desktop defaults
+      ansible.builtin.slurp:
+        src: /sys/class/dmi/id/product_sku
+      register: fedora_config_product_sku_file
+      failed_when: false
+      check_mode: false
+      tags: [always]
+
+    - name: Detect the supported XPS 2026 desktop policy
+      ansible.builtin.set_fact:
+        fedora_config_xps_2026: >-
+          {{ ansible_facts.system_vendor | default('') == 'Dell Inc.'
+             and (fedora_config_product_sku_file.content | default('') | b64decode | trim) in ['0DB9', '0DBA']
+             and ansible_facts.product_name | default('') is regex('(?i)(XPS (14|16)|DA14260|DA16260)')
+             and ansible_facts.processor | default([]) | join(' ') is regex('(?i)(Intel.*(Ultra|X7)|Panther Lake)') }}
+      tags: [always]
+
+    - name: Validate the installation configuration schema
+      ansible.builtin.assert:
+        that:
+          - config_schema_version | int == 1
+        fail_msg: >-
+          Unsupported Fedora Config schema {{ config_schema_version | default('missing') }};
+          run the current installer to migrate the saved configuration.
+      tags: [always]
+
     - name: Validate the feature contract
       ansible.builtin.assert:
         that:
@@ -19,6 +45,9 @@
         - apple_display
         - source_builds
         - local_network_services
+        - developer_tools
+        - connected_widgets
+        - proprietary_apps
       tags: [always]
 
     - name: Validate feature dependencies
@@ -36,6 +65,12 @@
         that:
           - allow_insecure_sccache_transport is boolean
           - start_optional_hardware_services is boolean
+          - manage_system_identity is boolean
+          - manage_personal_dotfiles is boolean
+          - cleanup_legacy_xps_artifacts is boolean
+          - machine_keyboard_layout is string
+          - machine_keyboard_layout | length > 0
+          - machine_keyboard_variant is string
         fail_msg: >-
           allow_insecure_sccache_transport and start_optional_hardware_services
           must be explicit booleans; insecure transport and immediate hardware
@@ -60,23 +95,13 @@
         key: "{{ primary_user }}"
       tags: [always]
 
-    - name: Refuse a non-XPS hardware target
-      ansible.builtin.assert:
-        that:
-          - ansible_facts.system_vendor == expected_hardware.sys_vendor
-          - ansible_facts.product_name is regex(expected_hardware.product_name_regex)
-          - ansible_facts.processor | join(' ') is regex(expected_hardware.cpu_regex)
-        fail_msg: >-
-          Hardware does not match the configured Dell XPS contract:
-          {{ ansible_facts.system_vendor }} {{ ansible_facts.product_name }}.
-      tags: [always]
-
   roles:
     - { role: base, tags: [base] }
     - { role: desktop, tags: [desktop] }
     - { role: apps, tags: [apps] }
-    # Runs after apps because the camera uses Fedora's RPM Fusion akmod and
-    # v4l2-relayd packages; all hardware actions remain precisely DMI-gated.
+    # Runs after apps because the XPS camera uses Fedora's RPM Fusion akmod and
+    # v4l2-relayd packages. The role is safe on generic hardware and activates
+    # each workaround only after its precise DMI and device gates match.
     - { role: xps-2026, tags: [xps-2026, hardware] }
     - { role: dotfiles, tags: [dotfiles] }
     # The role also removes its managed privileges/artifacts when disabled.

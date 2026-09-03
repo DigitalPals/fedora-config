@@ -14,9 +14,21 @@ assert_system_enabled() {
 }
 
 for unit in NetworkManager.service firewalld.service bluetooth.service \
-  thermald.service intel_lpmd.service gdm.service; do
+  gdm.service; do
   assert_system_enabled "$unit"
 done
+
+for unit in thermald.service intel_lpmd.service xps-haptic-touchpad.service \
+  xps-ipu7-camera.service; do
+  systemctl is-enabled --quiet "$unit" 2>/dev/null &&
+    fail "$unit was enabled on generic hardware"
+done
+
+for path in /etc/tuned/profiles/xps-performance /usr/local/share/xps-2026; do
+  [[ ! -e $path ]] || fail "$path was installed on generic hardware"
+done
+grep -q '^performance=xps-performance$' /etc/tuned/ppd.conf &&
+  fail 'the XPS performance mapping was installed on generic hardware'
 
 user_id=$(id -u fedora)
 for unit in quickshell.service hypridle.service hyprpolkitagent.service; do
@@ -25,14 +37,13 @@ for unit in quickshell.service hypridle.service hyprpolkitagent.service; do
     fail "$unit is not enabled for fedora"
 done
 
-[[ -x /usr/local/libexec/xps-system-snapshot ]] || fail 'snapshot helper is not executable'
-[[ -x /usr/local/libexec/xps-session-action ]] || fail 'session action helper is not executable'
-[[ -r /usr/local/libexec/xps-common.sh ]] || fail 'shared installer helper is missing'
+[[ -x /usr/local/libexec/fedora-config-system-snapshot ]] || fail 'snapshot helper is not executable'
+[[ -x /usr/local/libexec/fedora-config-session-action ]] || fail 'session action helper is not executable'
+[[ -r /usr/local/libexec/fedora-config-common.sh ]] || fail 'shared installer helper is missing'
 [[ -f /home/fedora/.config/quickshell/shell.qml ]] || fail 'shell.qml is missing'
-[[ -f /home/fedora/.config/systemd/user/xps-session-lock.service ]] || fail 'lock unit is missing'
+[[ -f /home/fedora/.config/systemd/user/fedora-config-session-lock.service ]] || fail 'lock unit is missing'
 [[ -f /usr/share/wayland-sessions/hyprland-quickshell.desktop ]] || fail 'GDM session is missing'
 [[ ! -e /usr/share/wayland-sessions/hyprland-noctalia.desktop ]] || fail 'retired Noctalia session remains'
-[[ -f /opt/brave.com/brave/initial_preferences ]] || fail 'Brave initial preferences are missing'
 [[ $(plymouth-set-default-theme) == bgrt ]] || fail 'BGRT is not the selected Plymouth theme'
 if find /home/fedora/.config/quickshell \
     \( -type d -name __pycache__ -o -type f -name '*.py[co]' \) -print -quit |

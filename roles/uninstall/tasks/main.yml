@@ -1,0 +1,432 @@
+---
+- name: Stop Fedora Config user services
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - "--machine={{ primary_user }}@.host"
+      - disable
+      - --now
+      - "{{ item }}"
+  loop:
+    - quickshell.service
+    - hypridle.service
+    - hyprpolkitagent.service
+    - voxtype.service
+    - external-monitor-toggle.service
+    - hermes-menubar-bridge.service
+    - fedora-config-session-lock.service
+    - xps-speaker-tuning.service
+  changed_when: false
+  failed_when: false
+
+- name: Stop and disable project-owned system units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - fedora-config-btrfs-scrub.timer
+    - xps-haptic-touchpad.service
+    - xps-ipu7-camera-init.service
+    - xps-ipu7-camera.service
+    - xps-ipu7-camera-resume.service
+  failed_when: false
+
+- name: Remove the managed Kitty include
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.config/kitty/kitty.conf"
+    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    state: absent
+  failed_when: false
+
+- name: Remove the managed Git include
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.gitconfig"
+    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    state: absent
+  failed_when: false
+
+- name: Remove the managed SSH include
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.ssh/config"
+    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    state: absent
+  failed_when: false
+
+- name: Remove project-owned user files and directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ primary_home }}/.config/quickshell"
+    - "{{ primary_home }}/.config/fish/conf.d/50-fedora-config.fish"
+    - "{{ primary_home }}/.config/kitty/fedora-config.conf"
+    - "{{ primary_home }}/.config/fastfetch/config.jsonc"
+    - "{{ primary_home }}/.config/voxtype/config.toml"
+    - "{{ primary_home }}/.config/oh-my-posh/EDM115-newline2.omp.json"
+    - "{{ primary_home }}/.config/mimeapps.list"
+    - "{{ primary_home }}/.config/user-dirs.dirs"
+    - "{{ primary_home }}/.npmrc"
+    - "{{ primary_home }}/.config/fedora-config/gitconfig"
+    - "{{ primary_home }}/.ssh/config.d/fedora-config.conf"
+    - "{{ primary_home }}/.config/environment.d/10-fedora-config.conf"
+    - "{{ primary_home }}/.config/environment.d/10-xps.conf"
+    - "{{ primary_home }}/.config/xdg-desktop-portal/hyprland-portals.conf"
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target"
+    - "{{ primary_home }}/.config/systemd/user/quickshell.service"
+    - "{{ primary_home }}/.config/systemd/user/hypridle.service"
+    - "{{ primary_home }}/.config/systemd/user/hyprpolkitagent.service"
+    - "{{ primary_home }}/.config/systemd/user/voxtype.service"
+    - "{{ primary_home }}/.config/systemd/user/external-monitor-toggle.service"
+    - "{{ primary_home }}/.config/systemd/user/hermes-menubar-bridge.service"
+    - "{{ primary_home }}/.config/systemd/user/fedora-config-session-lock.service"
+    - "{{ primary_home }}/.config/systemd/user/xps-speaker-tuning.service"
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
+    - "{{ primary_home }}/.local/bin/fedora-config"
+    - "{{ primary_home }}/.local/bin/fedora-config-update-run"
+    - "{{ primary_home }}/.local/bin/brightness-control"
+    - "{{ primary_home }}/.local/bin/portal-launcher"
+    - "{{ primary_home }}/.local/bin/t3code-update"
+    - "{{ primary_home }}/.local/bin/t3code-desktop"
+    - "{{ primary_home }}/.local/bin/spotify"
+    - "{{ primary_home }}/.local/bin/app-backup"
+    - "{{ primary_home }}/.local/bin/browser-backup"
+    - "{{ primary_home }}/.local/bin/fastfetch-link-speed"
+    - "{{ primary_home }}/.local/bin/external-monitor-toggle"
+    - "{{ primary_home }}/.local/bin/dev-distrobox-init"
+    - "{{ primary_home }}/.local/bin/update-user-tools"
+    - "{{ primary_home }}/.local/bin/screenshot"
+    - "{{ primary_home }}/.local/bin/screen-record"
+    - "{{ primary_home }}/.local/bin/quickshell-reminder"
+    - "{{ primary_home }}/.local/bin/screen-ocr"
+    - "{{ primary_home }}/.local/bin/clipboard-copy-image"
+    - "{{ primary_home }}/.local/bin/clipboard-image-to-file"
+    - "{{ primary_home }}/.local/bin/clipboard-history-store"
+    - "{{ primary_home }}/.local/bin/localsend"
+    - "{{ primary_home }}/.local/bin/localsend-share"
+    - "{{ primary_home }}/.local/bin/dev-fedora-shell"
+    - "{{ primary_home }}/.local/bin/dev-arch-shell"
+    - "{{ primary_home }}/.local/bin/dev-debian-shell"
+    - "{{ primary_home }}/.local/libexec/hermes-menubar-bridge"
+    - "{{ primary_home }}/.local/share/nautilus-python/extensions/localsend.py"
+    - "{{ primary_home }}/.config/distrobox/distrobox.conf"
+    - "{{ primary_home }}/.local/share/applications/t3code-nightly.desktop"
+    - "{{ primary_home }}/.local/share/applications/chatgpt.desktop"
+    - "{{ primary_home }}/.local/share/applications/brave-browser.desktop"
+    - "{{ primary_home }}/.local/share/applications/1password.desktop"
+    - "{{ primary_home }}/.local/share/applications/nvim-kitty.desktop"
+    - "{{ primary_home }}/.local/share/applications/localsend-share-clipboard.desktop"
+    - "{{ primary_home }}/.local/share/applications/localsend-share-file.desktop"
+    - "{{ primary_home }}/.local/share/applications/localsend-share-folder.desktop"
+    - "{{ primary_home }}/.local/share/applications/dev-fedora.desktop"
+    - "{{ primary_home }}/.local/share/applications/dev-arch.desktop"
+    - "{{ primary_home }}/.local/share/applications/dev-debian.desktop"
+
+- name: Remove the managed Hyprland configuration files
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/hypr/{{ item }}"
+    state: absent
+  loop:
+    - features.lua
+    - monitors.lua
+    - input.lua
+    - looknfeel.lua
+    - bindings.lua
+    - autostart.lua
+    - hyprland.lua
+    - hypridle.conf
+    - hyprlock.conf
+
+- name: Remove project-owned system files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/bin/hyprland-quickshell
+    - /usr/share/wayland-sessions/hyprland-quickshell.desktop
+    - /usr/local/libexec/fedora-config-hyprland-session-start
+    - /usr/local/libexec/fedora-config-session-action
+    - /usr/local/libexec/fedora-config-system-snapshot
+    - /usr/local/libexec/fedora-config-common.sh
+    - /etc/sysctl.d/60-fedora-config-hardening.conf
+    - /etc/systemd/system/fedora-config-btrfs-scrub.service
+    - /etc/systemd/system/fedora-config-btrfs-scrub.timer
+    - /etc/sudoers.d/10-wheel-nopasswd
+    - /etc/polkit-1/rules.d/49-wheel-local.rules
+    - /etc/brave/policies/managed/fedora-config.json
+    - /usr/local/libexec/fedora-config-github-release-install
+    - /usr/local/libexec/fedora-config-source-app-build
+    - /usr/local/libexec/fedora-config-android-sdk-update
+    - /etc/tuned/profiles/xps-performance
+    - /usr/local/share/xps-2026
+    - /usr/local/libexec/xps-speaker-tuning
+    - /usr/local/libexec/xps-haptic-touchpad
+    - /usr/local/libexec/xps-fingerprint-check
+    - /usr/local/libexec/xps-ipu7-build
+    - /usr/local/libexec/xps-ipu7-abi-check
+    - /usr/local/libexec/xps-ipu7-userspace-check
+    - /usr/local/libexec/xps-ipu7-camera-init
+    - /usr/local/libexec/xps-ipu7-camera-check
+    - /usr/local/libexec/xps-ipu7-refresh-wireplumber
+    - /usr/lib/systemd/system-sleep/xps-ipu7-camera
+    - /etc/xps-haptic-touchpad.conf
+    - /etc/udev/rules.d/80-xps-haptic-touchpad.rules
+    - /etc/udev/rules.d/71-xps-ipu7-hide-isys.rules
+    - /etc/udev/rules.d/90-xps-ipu7-psys.rules
+    - /etc/modprobe.d/xps-ipu7-camera.conf
+    - /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf
+    - /etc/v4l2-relayd.d/ipu7.conf
+    - /etc/dkms/framework.conf.d/90-xps-akmods-signing.conf
+    - /etc/systemd/system/xps-haptic-touchpad.service
+    - /etc/systemd/system/xps-ipu7-camera-init.service
+    - /etc/systemd/system/xps-ipu7-camera.service
+    - /etc/systemd/system/xps-ipu7-camera-resume.service
+    - /etc/systemd/system/v4l2-relayd@ipu7.service.d/override.conf
+
+- name: Inspect system configuration preserved before XPS adoption
+  ansible.builtin.stat:
+    path: "/var/lib/fedora-config/backups/system/{{ item }}"
+  loop:
+    - etc/tuned/ppd.conf
+    - etc/v4l2-relayd.d/icamerasrc.conf
+  register: uninstall_xps_system_backups
+
+- name: Restore system configuration preserved before XPS adoption
+  ansible.builtin.copy:
+    src: "/var/lib/fedora-config/backups/system/{{ item.item }}"
+    dest: "/{{ item.item }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ uninstall_xps_system_backups.results }}"
+  loop_control:
+    label: "/{{ item.item }}"
+  when: item.stat.exists
+
+- name: Restart TuneD PPD after restoring its vendor configuration
+  ansible.builtin.systemd_service:
+    name: tuned-ppd.service
+    state: restarted
+    daemon_reload: true
+  when:
+    - uninstall_xps_system_backups.results[0].stat.exists
+    - not ansible_check_mode
+
+- name: Restore shared system configuration preserved before first adoption
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup=/var/lib/fedora-config/backups/system
+    marker=/var/lib/fedora-config/backups/initial-system.complete
+    absent=/var/lib/fedora-config/backups/initial-system.absent
+    [[ -f $marker ]] || exit 0
+    items=(
+      etc/gdm/custom.conf
+      var/lib/AccountsService/users/{{ primary_user | quote }}
+      etc/sudoers.d/10-wheel-nopasswd
+      etc/polkit-1/rules.d/49-wheel-local.rules
+    )
+    for relative in "${items[@]}"; do
+      destination=/$relative
+      if [[ -e $backup/$relative || -L $backup/$relative ]]; then
+        install -d -m 0755 "$(dirname -- "$destination")"
+        cp -a -- "$backup/$relative" "$destination"
+      elif [[ -f $absent ]] && grep -Fqx -- "$relative" "$absent"; then
+        rm -f -- "$destination"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Remove Fedora Config system state when it is not retained
+  ansible.builtin.file:
+    path: /var/lib/fedora-config
+    state: absent
+  when: not fedora_config_keep_user_data | bool
+
+- name: Read the default firewalld zone before removal
+  ansible.builtin.command: firewall-cmd --get-default-zone
+  register: uninstall_default_firewall_zone
+  changed_when: false
+  failed_when: false
+
+- name: Restore Fedora's public zone before removing the project zone
+  ansible.builtin.command: firewall-cmd --set-default-zone=public
+  when: uninstall_default_firewall_zone.stdout | default('') | trim == firewall_zone
+  changed_when: true
+
+- name: Remove the project firewalld zone after changing the default
+  ansible.builtin.file:
+    path: "/etc/firewalld/zones/{{ firewall_zone }}.xml"
+    state: absent
+
+- name: Reload firewalld after project-zone removal
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: false
+  failed_when: false
+
+- name: Remove the project-built XPS camera package
+  ansible.builtin.dnf:
+    name: xps-ipu7-camera-stack
+    state: absent
+
+- name: Read the active Plymouth theme
+  ansible.builtin.command: plymouth-set-default-theme
+  register: uninstall_plymouth_theme
+  changed_when: false
+  failed_when: false
+
+- name: Restore Fedora's default Plymouth theme when Cybex is active
+  ansible.builtin.command: plymouth-set-default-theme -R bgrt
+  register: uninstall_plymouth_reset
+  changed_when: true
+  when: uninstall_plymouth_theme.stdout | default('') | trim == 'cybex'
+
+- name: Remove the project-installed Plymouth theme and caches
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/share/plymouth/themes/cybex
+    - /var/cache/fedora-config-upstream/omarchy-cybex
+    - /var/lib/fedora-config-upstream/omarchy-cybex
+
+- name: Remove only the Fedora Config Firefox policy entry
+  ansible.builtin.command: /usr/local/libexec/fedora-config-firefox-policy disable
+  changed_when: false
+  failed_when: false
+
+- name: Remove the Firefox policy editor after cleanup
+  ansible.builtin.file:
+    path: /usr/local/libexec/fedora-config-firefox-policy
+    state: absent
+
+- name: Restore user configuration preserved before first adoption
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup={{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}
+    [[ -d $backup ]] || exit 0
+    items=(
+      .config/quickshell
+      .config/hypr
+      .config/xdg-desktop-portal/hyprland-portals.conf
+      .config/environment.d/10-fedora-config.conf
+      .config/systemd/user/hyprland-session.target
+      .config/systemd/user/hyprland-session.target.wants
+      .config/systemd/user/quickshell.service
+      .config/systemd/user/hypridle.service
+      .config/systemd/user/hyprpolkitagent.service
+      .config/systemd/user/voxtype.service
+      .config/systemd/user/external-monitor-toggle.service
+      .config/systemd/user/hermes-menubar-bridge.service
+      .config/systemd/user/fedora-config-session-lock.service
+      .config/systemd/user/xps-speaker-tuning.service
+      .config/distrobox/distrobox.conf
+      .local/bin/screenshot
+      .local/bin/screen-record
+      .local/bin/quickshell-reminder
+      .local/bin/screen-ocr
+      .local/bin/clipboard-copy-image
+      .local/bin/clipboard-image-to-file
+      .local/bin/clipboard-history-store
+      .local/bin/localsend
+      .local/bin/localsend-share
+      .local/bin/fedora-config
+      .local/bin/fedora-config-update-run
+      .local/bin/brightness-control
+      .local/bin/portal-launcher
+      .local/bin/t3code-update
+      .local/bin/t3code-desktop
+      .local/bin/spotify
+      .local/bin/app-backup
+      .local/bin/browser-backup
+      .local/bin/fastfetch-link-speed
+      .local/bin/external-monitor-toggle
+      .local/bin/dev-distrobox-init
+      .local/bin/dev-fedora-shell
+      .local/bin/dev-arch-shell
+      .local/bin/dev-debian-shell
+      .local/bin/update-user-tools
+      .local/libexec/hermes-menubar-bridge
+      .local/share/nautilus-python/extensions/localsend.py
+      .local/share/applications/nvim-kitty.desktop
+      .local/share/applications/brave-browser.desktop
+      .local/share/applications/chatgpt.desktop
+      .local/share/applications/1password.desktop
+      .local/share/applications/t3code-nightly.desktop
+      .local/share/applications/localsend-share-clipboard.desktop
+      .local/share/applications/localsend-share-file.desktop
+      .local/share/applications/localsend-share-folder.desktop
+      .local/share/applications/dev-fedora.desktop
+      .local/share/applications/dev-arch.desktop
+      .local/share/applications/dev-debian.desktop
+      .config/fish/config.fish
+      .config/kitty/kitty.conf
+      .config/fastfetch/config.jsonc
+      .config/voxtype/config.toml
+      .config/oh-my-posh/EDM115-newline2.omp.json
+      .config/mimeapps.list
+      .config/fish/conf.d/50-fedora-config.fish
+      .config/kitty/fedora-config.conf
+      .config/fedora-config/gitconfig
+      .ssh/config.d/fedora-config.conf
+      .gitconfig
+      .ssh/config
+      .config/user-dirs.dirs
+      .npmrc
+    )
+    for relative in "${items[@]}"; do
+      source_path="$backup/$relative"
+      [[ -e $source_path || -L $source_path ]] || continue
+      destination={{ primary_home | quote }}/$relative
+      mkdir -p "$(dirname -- "$destination")"
+      if [[ -d $source_path && ! -L $source_path ]]; then
+        mkdir -p "$destination"
+        cp -a -- "$source_path/." "$destination/"
+      else
+        cp -a -- "$source_path" "$destination"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Preserve or remove Fedora Config user state
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/state/fedora-config"
+    state: absent
+  when: not fedora_config_keep_user_data | bool
+
+- name: Remove staged Fedora Config releases when user data is not retained
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/share/fedora-config"
+    state: absent
+  when: not fedora_config_keep_user_data | bool
+
+- name: Reload systemd after unit removal
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Reload the user manager after unit removal
+  ansible.builtin.command:
+    argv: [systemctl, --user, "--machine={{ primary_user }}@.host", daemon-reload]
+  changed_when: false
+  failed_when: false

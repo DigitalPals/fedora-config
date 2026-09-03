@@ -26,13 +26,13 @@ test("Cybex deployment prunes files outside its source-plus-override manifest", 
         /Inspect the installed Cybex directory tree[\s\S]{0,300}?- -depth/,
         "stale directories must be enumerated child-first before removal");
     assert.match(tasks,
-        /dest:\s*\/var\/lib\/xps-upstream\/omarchy-cybex\/installed-theme\.manifest/,
+        /dest:\s*\/var\/lib\/fedora-config-upstream\/omarchy-cybex\/installed-theme\.manifest/,
         "the manifest must live outside the tree it reconciles");
     assert.match(tasks,
         /boot_cybex_source_files\.stdout_lines[\s\S]{0,180}?difference\(boot_cybex_override_files\)/,
         "the upstream copy must not overwrite files managed by the local override layer");
     assert.doesNotMatch(tasks,
-        /src:\s*\/var\/cache\/xps-upstream\/omarchy-cybex\/config\/plymouth\/themes\/cybex\/$/m,
+        /src:\s*\/var\/cache\/fedora-config-upstream\/omarchy-cybex\/config\/plymouth\/themes\/cybex\/$/m,
         "a recursive source-tree copy would make every customized file change twice on each run");
     for (const manifestTask of ["Inspect the pinned Cybex source manifest",
         "Inspect the pinned Cybex source directory manifest", "Inspect the installed Cybex theme tree",
@@ -70,15 +70,15 @@ test("Podman inventory controls packages, helpers, keybindings, and desktop entr
     assert.ok(featureInstallAt > 0 && featureInstallAt < luaConsumersAt,
         "the rendered feature module must exist before a live reload can evaluate bindings");
     assert.match(desktopTasks.slice(featureInstallAt, luaConsumersAt),
-        /src:\s*features\.lua\.j2[\s\S]{0,200}?dest:\s*"\{\{ primary_home \}\}\/\.config\/hypr\/features\.lua"[\s\S]{0,200}?tags:\s*\[browser\]/,
+        /src:\s*"\{\{ item \}\}\.j2"[\s\S]{0,220}?dest:\s*"\{\{ primary_home \}\}\/\.config\/hypr\/\{\{ item \}\}"[\s\S]{0,220}?- features\.lua[\s\S]{0,180}?tags:\s*\[browser\]/,
         "partial browser/config deploys must install the feature dependency first");
     const luaInstallBlock = desktopTasks.slice(luaConsumersAt,
         desktopTasks.indexOf("Install ordered Hyprland session starter", luaConsumersAt));
     assert.ok(luaInstallBlock.indexOf("- bindings.lua")
         < luaInstallBlock.indexOf("- hyprland.lua"),
     "the activating entrypoint must land after the modules it requires");
-    assert.match(luaInstallBlock,
-        /- monitors\.lua\s+- input\.lua\s+- looknfeel\.lua\s+- bindings\.lua\s+- autostart\.lua[\s\S]{0,240}?- hyprland\.lua/,
+    assert.match(desktopTasks.slice(featureInstallAt, luaConsumersAt),
+        /- features\.lua\s+- monitors\.lua\s+- input\.lua\s+- looknfeel\.lua/,
         "all imported leaf modules must precede the activating entrypoint");
     assert.match(hyprland, /\{ "features", "monitors", "input", "bindings"/,
         "a config reload must evict the rendered feature module before reloading bindings");
@@ -94,8 +94,8 @@ test("Podman inventory controls packages, helpers, keybindings, and desktop entr
     assert.doesNotMatch(commonLaunchers, /dev-(?:fedora|arch|debian)\.desktop/);
     assert.match(dotfileTasks,
         /Install Distrobox desktop launchers when Podman is enabled[\s\S]{0,700}?when: features\.podman \| bool/);
-    assert.match(dotfileTasks,
-        /Remove managed Distrobox desktop launchers when Podman is disabled[\s\S]{0,700}?when: not features\.podman \| bool/);
+    assert.ok(dotfileTasks.includes(
+        "Remove managed Distrobox desktop launchers when Podman is disabled"));
     for (const unit of ["podman.socket", "podman.service", "podman-auto-update.timer"])
         assert.ok(packages.includes(`- ${unit}`), `disabled Podman must retire ${unit}`);
     assert.match(packages,
@@ -104,7 +104,7 @@ test("Podman inventory controls packages, helpers, keybindings, and desktop entr
         /Remove disabled Podman and Steam package families[\s\S]{0,600}?Reload systemd after application package removal/);
 });
 
-test("ChatGPT compensates for zero-scaled XWayland on HiDPI displays", () => {
+test("ChatGPT launcher follows portable desktop scaling", () => {
     const appDefaults = read("roles/apps/defaults/main.yml");
     const appPackages = read("roles/apps/tasks/packages.yml");
     const appRepos = read("roles/apps/tasks/repos.yml");
@@ -113,7 +113,7 @@ test("ChatGPT compensates for zero-scaled XWayland on HiDPI displays", () => {
         repo, "roles/apps/files/chatgpt-repository-key.asc"));
     const dotfileTasks = read("roles/dotfiles/tasks/main.yml");
     const launcher = read("roles/dotfiles/files/chatgpt.desktop");
-    const lookAndFeel = read("roles/desktop/files/looknfeel.lua");
+    const lookAndFeel = read("roles/desktop/templates/looknfeel.lua.j2");
 
     assert.equal(crypto.createHash("sha256").update(repositoryKey).digest("hex"),
         "6c8933f828af390b2457f9e2d234082d783d6e4bb1911615b4861c6c61f4ea5a",
@@ -130,13 +130,14 @@ test("ChatGPT compensates for zero-scaled XWayland on HiDPI displays", () => {
     assert.match(repository, /^repo_gpgcheck=1$/m);
     assert.match(repository,
         /^gpgkey=file:\/\/\/etc\/pki\/rpm-gpg\/RPM-GPG-KEY-chatgpt$/m);
-    assert.match(lookAndFeel, /xwayland\s*=\s*\{\s*force_zero_scaling\s*=\s*true\s*\}/,
-        "the launcher override is only needed while XWayland compositor scaling is disabled");
+    assert.match(lookAndFeel,
+        /force_zero_scaling = \{\{ \(fedora_config_xps_2026 \| bool\) \| ternary\('true', 'false'\) \}\}/,
+        "XWayland scaling keeps the XPS behavior behind the hardware gate");
     assert.match(dotfileTasks,
-        /Install MIME defaults and desktop launchers[\s\S]{0,800}?- chatgpt\.desktop/,
-        "the HiDPI launcher must be deployed as a per-user package override");
-    assert.match(launcher, /^Exec=chatgpt --force-device-scale-factor=2 %U$/m,
-        "ChatGPT should render at the compositor's 2x monitor scale");
+        /Install MIME defaults and desktop launchers[\s\S]{0,1200}?name: chatgpt\.desktop[\s\S]{0,120}?features\.proprietary_apps/,
+        "the launcher must be deployed as a per-user package override");
+    assert.match(launcher, /^Exec=chatgpt %U$/m,
+        "ChatGPT follows the display scale selected by the desktop");
 });
 
 test("disabled Docker and Tailscale retire activation and imported trust", () => {
@@ -185,7 +186,7 @@ test("Voxtype probes as the desktop user but activates its system backend as roo
 
 test("the deployed Quickshell manifest excludes tracked paths deleted on disk", () => {
     const tasks = read("roles/desktop/tasks/main.yml");
-    const verifier = read("tests/verify-xps");
+    const verifier = read("tests/verify-system");
     const deletedPairingHelper = "roles/desktop/files/quickshell/scripts/t3-pair.py";
 
     assert.equal(fs.existsSync(path.join(repo, deletedPairingHelper)), false,

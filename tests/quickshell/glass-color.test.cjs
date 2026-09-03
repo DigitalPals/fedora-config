@@ -147,7 +147,8 @@ test("menubar content uses its colour-derived palette", () => {
 });
 
 test("the named Hyprland blur rule persists and applies without remapping surfaces", () => {
-    const look = fs.readFileSync(path.resolve(shellDir, "../looknfeel.lua"), "utf8");
+    const look = fs.readFileSync(
+        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
     const settings = read("Common/Settings.qml");
 
     assert.match(look, /local function persisted_glass_enabled\(\)/);

@@ -35,7 +35,12 @@ function hl.unbind(keys)
 end
 
 function hl.bind(keys, dispatcher_value, options)
-  local binding = { keys = keys, removed = false }
+  local binding = {
+    keys = keys,
+    dispatcher = dispatcher_value,
+    options = options,
+    removed = false,
+  }
   function binding:remove()
     self.removed = true
     active[self.keys] = nil
@@ -48,25 +53,57 @@ local optional = {
   "SUPER + SHIFT + F",
   "SUPER + SHIFT + A",
   "SUPER + SHIFT + D",
+  "SUPER + D",
+  "SUPER + T",
+  "SUPER + SHIFT + SLASH",
+  "SUPER + CTRL + X",
+  "F9",
+  "SHIFT + F9",
 }
 
-package.preload.features = function() return { podman = true } end
+package.preload.features = function()
+  return {
+    podman = true,
+    developer_tools = true,
+    connected_widgets = true,
+    proprietary_apps = true,
+    xps_2026 = true,
+  }
+end
 dofile(config)
 local first_generation = _G.__fedora_hypr_binds
 for _, keys in ipairs(optional) do
-  assert(active[keys], "enabled Podman feature omitted " .. keys)
+  assert(active[keys], "enabled optional feature omitted " .. keys)
 end
+assert(active["SUPER + B"].dispatcher:match("^brave%-browser%-stable"),
+  "proprietary browser selection did not use Brave")
+assert(active["XF86AudioRaiseVolume"].dispatcher:match("xps%-speaker%-tuning"),
+  "XPS audio route omitted the hardware helper")
 
 package.loaded.features = nil
-package.preload.features = function() return { podman = false } end
+package.preload.features = function()
+  return {
+    podman = false,
+    developer_tools = false,
+    connected_widgets = false,
+    proprietary_apps = false,
+    xps_2026 = false,
+  }
+end
 dofile(config)
 for _, keys in ipairs(optional) do
-  assert(active[keys] == nil, "disabled Podman feature retained " .. keys)
+  assert(active[keys] == nil, "disabled optional feature retained " .. keys)
 end
 for _, binding in ipairs(first_generation) do
   assert(binding.removed, "config reload did not retire a previous binding")
 end
 assert(active["SUPER + Return"], "feature gating removed an unrelated binding")
+assert(active["SUPER + B"].dispatcher == "firefox",
+  "generic browser selection did not use installed Firefox")
+assert(not active["XF86AudioRaiseVolume"].dispatcher:match("xps%-speaker%-tuning"),
+  "generic audio route retained the XPS helper")
+assert(active["XF86AudioMicMute"].dispatcher:match("^wpctl"),
+  "generic microphone mute did not use PipeWire")
 
 print("Hyprland optional-feature binding fixtures passed")
 LUA
@@ -167,18 +204,42 @@ install_feature_provider() {
 install_leaf_modules() {
   local destination=$1 scenario_root=$2 module
   for module in monitors.lua input.lua looknfeel.lua bindings.lua autostart.lua; do
-    install -m 0644 "roles/desktop/files/$module" "$destination/$module"
+    install_hypr_module "$module" "$destination/$module"
     if [[ -f $destination/hyprland.lua ]]; then
       assert_hypr_tree_loadable "$scenario_root" "after $module"
     fi
   done
 }
 
+install_hypr_module() {
+  local module=$1 destination=$2
+  case $module in
+    monitors.lua)
+      awk '/^{% else %}$/ { emit=1; next }
+           /^{% endif %}$/ { if (emit) exit }
+           emit' roles/desktop/templates/monitors.lua.j2 >"$destination"
+      ;;
+    input.lua)
+      sed -e 's/{{ machine_keyboard_layout | to_json }}/"us"/' \
+          -e 's/{{ machine_keyboard_variant | to_json }}/""/' \
+          roles/desktop/templates/input.lua.j2 >"$destination"
+      ;;
+    looknfeel.lua)
+      sed -e '/^{% if fedora_config_xps_2026 | bool %}$/d' \
+          -e '/^{% endif %}$/d' \
+          -e "s/{{ (fedora_config_xps_2026 | bool) | ternary('true', 'false') }}/false/" \
+          roles/desktop/templates/looknfeel.lua.j2 >"$destination"
+      ;;
+    *) install -m 0644 "roles/desktop/files/$module" "$destination" ;;
+  esac
+  chmod 0644 "$destination"
+}
+
 upgrade_root=$deployment_scratch/upgrade
 upgrade_config=$upgrade_root/config/hypr
 install -d "$upgrade_config" "$upgrade_root/home"
 for module in monitors.lua input.lua looknfeel.lua autostart.lua; do
-  install -m 0644 "roles/desktop/files/$module" "$upgrade_config/$module"
+  install_hypr_module "$module" "$upgrade_config/$module"
 done
 printf '%s\n' 'return true' > "$upgrade_config/bindings.lua"
 printf '%s\n' \

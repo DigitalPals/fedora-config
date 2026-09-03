@@ -2,7 +2,7 @@
 - name: Download the pinned Hyprland COPR signing key
   ansible.builtin.get_url:
     url: https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
-    dest: /etc/pki/rpm-gpg/XPS-sdegler-hyprland-copr.gpg
+    dest: /etc/pki/rpm-gpg/FEDORA-CONFIG-sdegler-hyprland-copr.gpg
     checksum: sha256:581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7
     owner: root
     group: root
@@ -11,7 +11,7 @@
 
 - name: Import the fingerprint-verified Hyprland COPR package key
   ansible.builtin.rpm_key:
-    key: /etc/pki/rpm-gpg/XPS-sdegler-hyprland-copr.gpg
+    key: /etc/pki/rpm-gpg/FEDORA-CONFIG-sdegler-hyprland-copr.gpg
     fingerprint:
       - 64BBBF013D1CA5E4BE5B0552C043104207862204
     state: present
@@ -77,6 +77,41 @@
     state: present
   when: not ansible_check_mode
 
+- name: Inspect the package-provided GDM configuration fallback
+  ansible.builtin.stat:
+    path: /var/lib/fedora-config/backups/system/etc/gdm/custom.conf
+  register: desktop_gdm_fallback_backup
+
+- name: Inspect the installed GDM configuration
+  ansible.builtin.stat:
+    path: /etc/gdm/custom.conf
+  register: desktop_gdm_configuration
+
+- name: Check whether GDM was absent before first adoption
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Fqx
+      - etc/gdm/custom.conf
+      - /var/lib/fedora-config/backups/initial-system.absent
+  register: desktop_gdm_initially_absent
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Preserve GDM's package default when Fedora Config installed it
+  ansible.builtin.copy:
+    src: /etc/gdm/custom.conf
+    dest: /var/lib/fedora-config/backups/system/etc/gdm/custom.conf
+    remote_src: true
+    owner: root
+    group: root
+    mode: preserve
+  when:
+    - desktop_gdm_initially_absent.rc | default(1) == 0
+    - desktop_gdm_configuration.stat.exists
+    - not desktop_gdm_fallback_backup.stat.exists
+
 - name: Disable GNOME automatic idle suspend without changing blank or lock settings
   become: true
   become_user: "{{ primary_user }}"
@@ -123,9 +158,44 @@
   when: not ansible_check_mode
   tags: [quickshell]
 
+- name: Inspect Fedora Config ownership of connected widgets
+  ansible.builtin.stat:
+    path: /var/lib/fedora-config/features/connected_widgets
+  register: desktop_connected_widgets_marker
+
 - name: Install the remote Hermes WebUI menubar client
   ansible.builtin.import_tasks: hermes-menubar.yml
+  when: features.connected_widgets | bool
   tags: [quickshell, hermes-menubar]
+
+- name: Stop the Fedora Config Hermes client when connected widgets are deselected
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    name: hermes-menubar-bridge.service
+    enabled: false
+    state: stopped
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  failed_when: false
+  when:
+    - not features.connected_widgets | bool
+    - desktop_connected_widgets_marker.stat.exists
+    - not ansible_check_mode
+
+- name: Remove the Fedora Config Hermes client when connected widgets are deselected
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ primary_home }}/.local/libexec/hermes-menubar-bridge"
+    - "{{ primary_home }}/.config/systemd/user/hermes-menubar-bridge.service"
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/hermes-menubar-bridge.service"
+  notify: Reload user systemd
+  when:
+    - not features.connected_widgets | bool
+    - desktop_connected_widgets_marker.stat.exists
 
 - name: Install Fedora fuzzel and matugen rather than COPR variants
   ansible.builtin.dnf:
@@ -174,17 +244,20 @@
     - /usr/share/wayland-sessions/hyprland-lumen.desktop
     - /usr/local/libexec/xps-lumen-compat-build
     - /usr/local/libexec/xps-lumen-launch
-    - /opt/xps-builds/lumen-compat
+    - /opt/fedora-config-builds/lumen-compat
     - "{{ primary_home }}/.config/systemd/user/lumen.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/lumen.service"
     - "{{ primary_home }}/.config/lumen"
   notify: Reload user systemd
+  when: cleanup_legacy_xps_artifacts | bool
 
 - name: Remove the Lumen package
   ansible.builtin.dnf:
     name: lumen
     state: absent
-  when: not ansible_check_mode
+  when:
+    - cleanup_legacy_xps_artifacts | bool
+    - not ansible_check_mode
 
 - name: Stop and disable retired Walker and Elephant user services
   ansible.builtin.command:
@@ -198,7 +271,9 @@
       - elephant.service
   changed_when: false
   failed_when: false
-  when: not ansible_check_mode
+  when:
+    - cleanup_legacy_xps_artifacts | bool
+    - not ansible_check_mode
 
 - name: Remove retired Walker and Elephant user configuration and state
   ansible.builtin.file:
@@ -218,6 +293,7 @@
     - "{{ primary_home }}/.local/share/walker"
     - "{{ primary_home }}/.local/share/elephant"
   notify: Reload user systemd
+  when: cleanup_legacy_xps_artifacts | bool
 
 - name: Create desktop configuration directories
   become: true
@@ -243,9 +319,14 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
-    src: features.lua.j2
-    dest: "{{ primary_home }}/.config/hypr/features.lua"
+    src: "{{ item }}.j2"
+    dest: "{{ primary_home }}/.config/hypr/{{ item }}"
     mode: "0644"
+  loop:
+    - features.lua
+    - monitors.lua
+    - input.lua
+    - looknfeel.lua
   tags: [browser]
 
 - name: Install Hyprland Lua configuration
@@ -256,9 +337,6 @@
     dest: "{{ primary_home }}/.config/hypr/{{ item }}"
     mode: "0644"
   loop:
-    - monitors.lua
-    - input.lua
-    - looknfeel.lua
     - bindings.lua
     - autostart.lua
     # This entrypoint requires every module above. Keeping it last makes an
@@ -269,7 +347,7 @@
 - name: Install ordered Hyprland session starter
   ansible.builtin.copy:
     src: hyprland-session-start
-    dest: /usr/local/libexec/xps-hyprland-session-start
+    dest: /usr/local/libexec/fedora-config-hyprland-session-start
     owner: root
     group: root
     mode: "0755"
@@ -277,8 +355,8 @@
 
 - name: Install verified desktop session action helper
   ansible.builtin.copy:
-    src: xps-session-action
-    dest: /usr/local/libexec/xps-session-action
+    src: fedora-config-session-action
+    dest: /usr/local/libexec/fedora-config-session-action
     owner: root
     group: root
     mode: "0755"
@@ -288,8 +366,8 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
-    src: xps-session-lock.service.j2
-    dest: "{{ primary_home }}/.config/systemd/user/xps-session-lock.service"
+    src: fedora-config-session-lock.service.j2
+    dest: "{{ primary_home }}/.config/systemd/user/fedora-config-session-lock.service"
     mode: "0644"
   register: session_lock_unit
   notify: Reload user systemd
@@ -351,14 +429,15 @@
   ansible.builtin.file:
     path: "{{ primary_home }}/.local/share/fedora-config/paseo-bridge"
     state: absent
+  when: cleanup_legacy_xps_artifacts | bool
   tags: [quickshell]
 
 - name: Install durable updater backend used by Quickshell and the CLI
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    src: "{{ config_repo }}/assets/scripts/xps-update-run"
-    dest: "{{ primary_home }}/.local/bin/xps-update-run"
+    src: "{{ config_repo }}/assets/scripts/fedora-config-update-run"
+    dest: "{{ primary_home }}/.local/bin/fedora-config-update-run"
     mode: "0755"
   tags: [quickshell]
 
@@ -751,6 +830,7 @@
   notify:
     - Reload user systemd
     - Restart external monitor watcher
+  when: fedora_config_xps_2026 | default(false) | bool
 
 - name: Enable desktop units for the Hyprland target
   become: true
@@ -765,8 +845,18 @@
     - hypridle
     - hyprpolkitagent
     - voxtype
-    - external-monitor-toggle
   notify: Reload user systemd
+
+- name: Enable the XPS external monitor watcher
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    src: ../external-monitor-toggle.service
+    dest: "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/external-monitor-toggle.service"
+    state: link
+    force: true
+  notify: Reload user systemd
+  when: fedora_config_xps_2026 | default(false) | bool
 
 - name: Preserve SELinux labels on local session executable
   ansible.builtin.command: restorecon -F /usr/local/bin/hyprland-quickshell

@@ -532,7 +532,8 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
     const settings = read("Common/Settings.qml");
     const helpers = read("Common/SettingsHelpers.js");
     const system = read("Settings/SystemPage.qml");
-    const input = fs.readFileSync(path.resolve(shellDir, "../input.lua"), "utf8");
+    const input = fs.readFileSync(
+        path.resolve(shellDir, "../../templates/input.lua.j2"), "utf8");
 
     assert.match(helpers, /scrollFactor:\s*1\.0/);
     assert.match(helpers, /realIn\(parsed\.scrollFactor, 0\.2, 2\.0, 0\.1/);

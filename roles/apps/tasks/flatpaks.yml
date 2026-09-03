@@ -38,4 +38,5 @@
   loop: "{{ apps_steam_flatpaks | intersect(apps_flatpak_installed.stdout_lines) }}"
   when:
     - not features.steam | bool
+    - apps_feature_owned.steam | bool
     - not ansible_check_mode

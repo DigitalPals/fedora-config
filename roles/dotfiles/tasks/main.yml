@@ -21,24 +21,54 @@
     - "{{ primary_home }}/.config/oh-my-posh"
     - "{{ primary_home }}/.config/voxtype"
     - "{{ primary_home }}/.config/distrobox"
+    - "{{ primary_home }}/.config/fedora-config"
     - "{{ primary_home }}/.ssh"
+    - "{{ primary_home }}/.ssh/config.d"
   tags: [browser]
 
-- name: Copy wallpapers
+- name: Inspect the initial personal-configuration backup marker
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    src: "{{ config_repo }}/assets/wallpapers/"
-    dest: "{{ primary_home }}/Pictures/Wallpapers/"
-    mode: "0644"
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.local/state/fedora-config/backups/initial-personal.complete"
+  register: dotfiles_initial_backup_marker
+  when: manage_personal_dotfiles | bool
 
-- name: Install user avatar
-  ansible.builtin.copy:
-    src: "{{ config_repo }}/assets/face"
-    dest: "{{ primary_home }}/.face"
-    owner: "{{ primary_user }}"
-    group: "{{ primary_group }}"
-    mode: "0644"
+- name: Preserve pre-existing personal configuration before adoption
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup={{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}
+    mkdir -p "$backup"
+    for relative in \
+      .config/fish/config.fish \
+      .config/kitty/kitty.conf \
+      .config/fastfetch/config.jsonc \
+      .config/voxtype/config.toml \
+      .config/oh-my-posh/EDM115-newline2.omp.json \
+      .config/mimeapps.list \
+      .config/fish/conf.d/50-fedora-config.fish \
+      .config/kitty/fedora-config.conf \
+      .config/fedora-config/gitconfig \
+      .ssh/config.d/fedora-config.conf \
+      .gitconfig \
+      .ssh/config \
+      .config/user-dirs.dirs \
+      .npmrc; do
+      source_path={{ primary_home | quote }}/$relative
+      [[ -e $source_path || -L $source_path ]] || continue
+      parent=$(dirname -- "$relative")
+      mkdir -p "$backup/$parent"
+      cp -a -- "$source_path" "$backup/$relative"
+    done
+    touch {{ (primary_home + '/.local/state/fedora-config/backups/initial-personal.complete') | quote }}
+  args:
+    executable: /bin/bash
+  when:
+    - manage_personal_dotfiles | bool
+    - not dotfiles_initial_backup_marker.stat.exists
+    - not ansible_check_mode
 
 - name: Install screenshot, recording, OCR, clipboard, and LocalSend helpers
   become: true
@@ -58,21 +88,95 @@
     - localsend
     - localsend-share
 
+- name: Install the Fedora Config command
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: fedora-config.j2
+    dest: "{{ primary_home }}/.local/bin/fedora-config"
+    mode: "0755"
+
+- name: Create the Fedora Config release store
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/share/fedora-config/releases"
+    state: directory
+    mode: "0755"
+
+- name: Snapshot the initial checkout into the managed release store
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    source_tree={{ config_repo | quote }}
+    release_store={{ (primary_home + '/.local/share/fedora-config/releases') | quote }}
+    staging=$(mktemp -d "$release_store/.bootstrap.XXXXXX")
+    cleanup() { rm -rf -- "$staging"; }
+    trap cleanup EXIT
+    if git -C "$source_tree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      # A checkout snapshot is built only from committed files. This avoids
+      # accidentally carrying unrelated untracked files or local secrets into
+      # the long-lived updater source tree.
+      git -C "$source_tree" archive --format=tar HEAD |
+        tar --extract --file - --directory "$staging"
+    else
+      # GitHub release archives are already assembled from a tagged Git tree.
+      tar --create --file - --directory "$source_tree" \
+          --exclude=.ansible --exclude=dist . |
+        tar --extract --file - --directory "$staging"
+    fi
+    destination="$release_store/bootstrap"
+    mode_manifest() {
+      (cd -- "$1" && find . -mindepth 1 -printf '%P\t%y\t%m\t%l\n' |
+        LC_ALL=C sort)
+    }
+    if [[ -d $destination ]] \
+        && diff --brief --recursive -- "$staging" "$destination" >/dev/null \
+        && cmp -s <(mode_manifest "$staging") <(mode_manifest "$destination"); then
+      exit 0
+    fi
+    rm -rf -- "$destination"
+    mv -- "$staging" "$destination"
+    staging=
+    printf 'CHANGED: refreshed bootstrap source snapshot\n'
+  args:
+    executable: /bin/bash
+  when:
+    - not (config_repo | regex_search('/[.]local/share/fedora-config/releases/'))
+    - not ansible_check_mode
+  changed_when: "'CHANGED:' in dotfiles_bootstrap_snapshot.stdout"
+  register: dotfiles_bootstrap_snapshot
+
+- name: Point the initial active source at the managed bootstrap snapshot
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    src: releases/bootstrap
+    dest: "{{ primary_home }}/.local/share/fedora-config/current"
+    state: link
+    force: true
+  when: >-
+    not (config_repo | regex_search('/[.]local/share/fedora-config/releases/'))
+
 - name: Install Fedora-specific user helpers
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "{{ primary_home }}/.local/bin/{{ item }}"
+    src: "{{ item.name }}.j2"
+    dest: "{{ primary_home }}/.local/bin/{{ item.name }}"
     mode: "0755"
   loop:
-    - brightness-control
-    - portal-launcher
-    - t3code-update
-    - t3code-desktop
-    - spotify
-    - app-backup
-    - fastfetch-link-speed
+    - { name: brightness-control, enabled: true }
+    - { name: portal-launcher, enabled: true }
+    - { name: t3code-update, enabled: "{{ features.connected_widgets }}" }
+    - { name: t3code-desktop, enabled: "{{ features.connected_widgets }}" }
+    - { name: spotify, enabled: true }
+    - { name: app-backup, enabled: true }
+    - { name: fastfetch-link-speed, enabled: true }
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.enabled | bool
   tags: [browser]
 
 - name: Install the external monitor policy helper
@@ -83,6 +187,7 @@
     dest: "{{ primary_home }}/.local/bin/external-monitor-toggle"
     mode: "0755"
   notify: Restart external monitor watcher after helper updates
+  when: fedora_config_xps_2026 | default(false) | bool
 
 - name: Install Distrobox container initialization hook
   become: true
@@ -102,12 +207,15 @@
   failed_when: false
   environment:
     GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
-  when: not ansible_check_mode
+  when:
+    - features.connected_widgets | bool
+    - not ansible_check_mode
 
 - name: Report a failed T3Code nightly update after verified retention
   ansible.builtin.debug:
     msg: "T3Code update failed; installed nightly retained: {{ dotfiles_t3code_update.stderr | default('unknown failure') }}"
   when:
+    - features.connected_widgets | bool
     - not ansible_check_mode
     - dotfiles_t3code_update.rc | default(0) | int == 75
 
@@ -117,8 +225,23 @@
       T3Code nightly installation or rollback failed without a verified prior
       AppImage to retain: {{ dotfiles_t3code_update.stderr | default('unknown failure') }}
   when:
+    - features.connected_widgets | bool
     - not ansible_check_mode
     - dotfiles_t3code_update.rc | default(0) | int not in [0, 75]
+
+- name: Remove Fedora Config T3 helpers after connected widgets are deselected
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ primary_home }}/.local/bin/t3code-update"
+    - "{{ primary_home }}/.local/bin/t3code-desktop"
+    - "{{ primary_home }}/.local/share/t3code-nightly"
+  when:
+    - not features.connected_widgets | bool
+    - apps_feature_owned.connected_widgets | default(false) | bool
 
 - name: Keep browser-backup compatibility command
   become: true
@@ -194,9 +317,22 @@
     dest: "{{ primary_home }}/{{ item.dest }}"
     mode: "{{ item.mode | default('0644') }}"
   loop:
-    - { src: fish-config.fish, dest: .config/fish/config.fish }
-    - { src: kitty.conf, dest: .config/kitty/kitty.conf }
+    - { src: fish-config.fish, dest: .config/fish/conf.d/50-fedora-config.fish }
+    - { src: kitty.conf, dest: .config/kitty/fedora-config.conf }
     - { src: fastfetch.jsonc, dest: .config/fastfetch/config.jsonc }
+  when: manage_personal_dotfiles | bool
+
+- name: Include the managed Kitty fragment without replacing user configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.config/kitty/kitty.conf"
+    create: true
+    backup: true
+    mode: "0644"
+    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    block: "include fedora-config.conf"
+  when: manage_personal_dotfiles | bool
 
 - name: Install Voxtype configuration
   become: true
@@ -206,6 +342,7 @@
     dest: "{{ primary_home }}/.config/voxtype/config.toml"
     mode: "0644"
   notify: Restart Voxtype after configuration updates
+  when: manage_personal_dotfiles | bool
 
 - name: Install Oh My Posh theme from the active configuration
   become: true
@@ -214,26 +351,33 @@
     src: "{{ config_repo }}/assets/EDM115-newline2.omp.json"
     dest: "{{ primary_home }}/.config/oh-my-posh/EDM115-newline2.omp.json"
     mode: "0644"
+  when: manage_personal_dotfiles | bool
 
 - name: Configure environment variables
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
     src: environment.conf.j2
-    dest: "{{ primary_home }}/.config/environment.d/10-xps.conf"
+    dest: "{{ primary_home }}/.config/environment.d/10-fedora-config.conf"
     mode: "0644"
   tags: [browser]
 
-- name: Configure Git identity
+- name: Remove the retired XPS-named environment fragment
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/environment.d/10-xps.conf"
+    state: absent
+  when: cleanup_legacy_xps_artifacts | bool
+  tags: [browser]
+
+- name: Install optional managed Git preferences
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    dest: "{{ primary_home }}/.gitconfig"
+    dest: "{{ primary_home }}/.config/fedora-config/gitconfig"
     mode: "0644"
     content: |
-      [user]
-        name = John
-        email = john@cybex.net
       [core]
         pager = delta
       [interactive]
@@ -247,18 +391,73 @@
       [credential "https://gist.github.com"]
         helper =
         helper = !/usr/bin/gh auth git-credential
+  when: manage_personal_dotfiles | bool
+
+- name: Include managed Git preferences without replacing user identity
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.gitconfig"
+    create: true
+    backup: true
+    mode: "0644"
+    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    block: |
+      [include]
+        path = ~/.config/fedora-config/gitconfig
+  when: manage_personal_dotfiles | bool
 
 - name: Configure SSH to use the 1Password agent without private key references
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    dest: "{{ primary_home }}/.ssh/config"
+    dest: "{{ primary_home }}/.ssh/config.d/fedora-config.conf"
     mode: "0600"
     content: |
       Host *
         IdentityAgent ~/.1password/agent.sock
         StrictHostKeyChecking accept-new
         HashKnownHosts yes
+  when:
+    - manage_personal_dotfiles | bool
+    - features.proprietary_apps | bool
+
+- name: Include managed SSH preferences without replacing existing hosts
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.ssh/config"
+    create: true
+    backup: true
+    mode: "0600"
+    insertbefore: BOF
+    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    block: "Include ~/.ssh/config.d/fedora-config.conf"
+  when:
+    - manage_personal_dotfiles | bool
+    - features.proprietary_apps | bool
+
+- name: Remove the Fedora Config SSH include when proprietary integration is deselected
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.ssh/config"
+    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    state: absent
+  failed_when: false
+  when:
+    - not features.proprietary_apps | bool
+    - apps_feature_owned.proprietary_apps | default(false) | bool
+
+- name: Remove the scoped SSH preferences when proprietary integration is deselected
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.ssh/config.d/fedora-config.conf"
+    state: absent
+  when:
+    - not features.proprietary_apps | bool
+    - apps_feature_owned.proprietary_apps | default(false) | bool
 
 - name: Configure XDG user directories
   become: true
@@ -276,31 +475,57 @@
       XDG_PICTURES_DIR="$HOME/Pictures"
       XDG_VIDEOS_DIR="$HOME/"
       XDG_CODE_DIR="$HOME/Code"
+  when: manage_personal_dotfiles | bool
 
 - name: Install MIME defaults and desktop launchers
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    src: "{{ item }}"
-    dest: "{{ primary_home }}/.local/share/applications/{{ item }}"
+    src: "{{ item.name }}"
+    dest: "{{ primary_home }}/.local/share/applications/{{ item.name }}"
     mode: "0644"
   loop:
-    - mimeapps.list
-    - nvim-kitty.desktop
-    - t3code-nightly.desktop
-    - brave-browser.desktop
-    - chatgpt.desktop
-    - 1password.desktop
-    - localsend-share-clipboard.desktop
-    - localsend-share-file.desktop
-    - localsend-share-folder.desktop
+    - { name: nvim-kitty.desktop, enabled: "{{ features.developer_tools }}" }
+    - { name: brave-browser.desktop, enabled: "{{ features.proprietary_apps }}" }
+    - { name: chatgpt.desktop, enabled: "{{ features.proprietary_apps }}" }
+    - { name: 1password.desktop, enabled: "{{ features.proprietary_apps }}" }
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.enabled | bool
+  tags: [browser]
+
+- name: Install user-path-aware desktop launchers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: "{{ item.name }}.j2"
+    dest: "{{ primary_home }}/.local/share/applications/{{ item.name }}"
+    mode: "0644"
+  loop:
+    - { name: t3code-nightly.desktop, enabled: "{{ features.connected_widgets }}" }
+    - { name: localsend-share-clipboard.desktop, enabled: true }
+    - { name: localsend-share-file.desktop, enabled: true }
+    - { name: localsend-share-folder.desktop, enabled: true }
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.enabled | bool
+  tags: [browser]
+
+- name: Install feature-aware MIME defaults
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: mimeapps.list.j2
+    dest: "{{ primary_home }}/.config/mimeapps.list"
+    mode: "0644"
+  when: manage_personal_dotfiles | bool
   tags: [browser]
 
 - name: Install Distrobox desktop launchers when Podman is enabled
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    src: "{{ item }}"
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
     dest: "{{ primary_home }}/.local/share/applications/{{ item }}"
     mode: "0644"
   loop:
@@ -320,7 +545,28 @@
     - dev-fedora.desktop
     - dev-arch.desktop
     - dev-debian.desktop
-  when: not features.podman | bool
+  when:
+    - not features.podman | bool
+    - apps_feature_owned.podman | default(false) | bool
+  tags: [browser]
+
+- name: Remove managed optional desktop launchers after deselection
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/share/applications/{{ item.name }}"
+    state: absent
+  loop:
+    - { name: nvim-kitty.desktop, feature: developer_tools }
+    - { name: t3code-nightly.desktop, feature: connected_widgets }
+    - { name: brave-browser.desktop, feature: proprietary_apps }
+    - { name: chatgpt.desktop, feature: proprietary_apps }
+    - { name: 1password.desktop, feature: proprietary_apps }
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - not features[item.feature] | bool
+    - apps_feature_owned[item.feature] | default(false) | bool
   tags: [browser]
 
 - name: Remove retired Google Chrome desktop launcher
@@ -329,6 +575,7 @@
   ansible.builtin.file:
     path: "{{ primary_home }}/.local/share/applications/google-chrome.desktop"
     state: absent
+  when: cleanup_legacy_xps_artifacts | bool
   tags: [browser]
 
 - name: Refresh the per-user desktop application database
@@ -348,6 +595,9 @@
     dest: "{{ primary_home }}/.npmrc"
     mode: "0644"
     content: "prefix=${HOME}/.npm-global\n"
+  when:
+    - manage_personal_dotfiles | bool
+    - features.developer_tools | bool
 
 - name: Create Brave enterprise policy directory
   ansible.builtin.file:
@@ -357,106 +607,92 @@
     group: root
     mode: "0755"
   tags: [browser]
-
-- name: Create Brave initial-profile configuration directory
-  ansible.builtin.file:
-    path: /opt/brave.com/brave
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  tags: [browser]
-
-- name: Configure Brave initial profile defaults
-  ansible.builtin.copy:
-    dest: /opt/brave.com/brave/initial_preferences
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      {
-        "extensions": {
-          "theme": {
-            "system_theme": 1
-          }
-        },
-        "webkit": {
-          "webprefs": {
-            "fonts": {
-              "standard": {
-                "Zyyy": "Inter"
-              }
-            }
-          }
-        }
-      }
-  tags: [browser]
+  when:
+    - features.proprietary_apps | bool
+    - manage_personal_dotfiles | bool
 
 - name: Configure Brave managed policies
   ansible.builtin.copy:
-    dest: /etc/brave/policies/managed/xps.json
+    dest: /etc/brave/policies/managed/fedora-config.json
     owner: root
     group: root
     mode: "0644"
     content: |
       {
         "RestoreOnStartup": 1,
-        "SpellcheckLanguage": ["nl"],
+        "SpellcheckLanguage": ["{{ regional_locale.split('_')[0] | lower }}"],
         "ExtensionInstallForcelist": [
           "aeblfdkhhhdcdjpifhhbdiojplfjncoa;https://clients2.google.com/service/update2/crx"
         ]
       }
+  tags: [browser]
+  when:
+    - features.proprietary_apps | bool
+    - manage_personal_dotfiles | bool
+
+- name: Remove Fedora Config Brave policy when it is not selected
+  ansible.builtin.file:
+    path: /etc/brave/policies/managed/fedora-config.json
+    state: absent
+  when: not (features.proprietary_apps | bool and manage_personal_dotfiles | bool)
+  tags: [browser]
+
+- name: Remove the retired XPS-named Brave policy
+  ansible.builtin.file:
+    path: /etc/brave/policies/managed/xps.json
+    state: absent
+  when: cleanup_legacy_xps_artifacts | bool
   tags: [browser]
 
 - name: Remove retired Google Chrome managed policy
   ansible.builtin.file:
     path: /etc/opt/chrome/policies/managed/xps.json
     state: absent
+  when: cleanup_legacy_xps_artifacts | bool
   tags: [browser]
 
-- name: Create Firefox enterprise policy directory
-  ansible.builtin.file:
-    path: /usr/lib64/firefox/distribution
-    state: directory
+- name: Install the scoped Firefox policy editor
+  ansible.builtin.copy:
+    src: manage-firefox-policy
+    dest: /usr/local/libexec/fedora-config-firefox-policy
     owner: root
     group: root
     mode: "0755"
+  tags: [browser]
 
-- name: Enforce 1Password Firefox extension while preserving profiles
-  ansible.builtin.copy:
-    dest: /usr/lib64/firefox/distribution/policies.json
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      {
-        "policies": {
-          "ExtensionSettings": {
-            "{d634138d-c276-4fc8-924b-40a0ea21d284}": {
-              "installation_mode": "force_installed",
-              "install_url": "https://addons.mozilla.org/firefox/downloads/latest/1password-x-password-manager/latest.xpi"
-            }
-          }
-        }
-      }
+- name: Converge only the Fedora Config Firefox policy entry
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/fedora-config-firefox-policy
+      - "{{ (features.proprietary_apps | bool and manage_personal_dotfiles | bool) | ternary('enable', 'disable') }}"
+  changed_when: false
+  tags: [browser]
 
 - name: Prefer dark GTK appearance
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.command: dbus-run-session gsettings set org.gnome.desktop.interface color-scheme prefer-dark
   changed_when: false
-  when: not ansible_check_mode
+  when:
+    - manage_personal_dotfiles | bool
+    - not ansible_check_mode
 
 - name: Check whether Neovim configuration already exists
   ansible.builtin.stat:
     path: "{{ primary_home }}/.config/nvim"
   register: dotfiles_neovim_config
+  when:
+    - features.developer_tools | bool
+    - manage_personal_dotfiles | bool
 
 - name: Validate the LazyVim starter pin
   ansible.builtin.assert:
     that: lazyvim_starter_commit is regex('^[0-9a-fA-F]{40}$')
     fail_msg: lazyvim_starter_commit must be a full immutable Git commit
-  when: not dotfiles_neovim_config.stat.exists
+  when:
+    - features.developer_tools | bool
+    - manage_personal_dotfiles | bool
+    - not dotfiles_neovim_config.stat.exists
 
 - name: Install LazyVim starter only when Neovim configuration is absent
   become: true
@@ -465,7 +701,10 @@
     repo: https://github.com/LazyVim/starter
     dest: "{{ primary_home }}/.config/nvim"
     version: "{{ lazyvim_starter_commit }}"
-  when: not dotfiles_neovim_config.stat.exists
+  when:
+    - features.developer_tools | bool
+    - manage_personal_dotfiles | bool
+    - not dotfiles_neovim_config.stat.exists
 
 - name: Restore SELinux user-home labels
   ansible.builtin.command: "restorecon -RF {{ primary_home }}/.local/bin {{ primary_home }}/.local/share/applications"

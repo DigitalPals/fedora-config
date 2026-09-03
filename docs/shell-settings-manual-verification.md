@@ -6,7 +6,7 @@ modules, wallpaper, and system behavior live-configurable, persisted to
 `tests/run` — the Node suite (store merge/clamp rules, schema/property
 agreement, qmldir completeness, IPC single-declaration, typography lint) plus
 `tests/qml-lint`, a qmllint sweep over every shell QML file — and
-`tests/verify-xps` (settings IPC liveness). Everything pointer-driven below
+`tests/verify-system` (settings IPC liveness). Everything pointer-driven below
 is manual.
 
 ## Opening and closing
@@ -229,4 +229,4 @@ is manual.
       module names, and preview chips for clipping or overlap.
 - [ ] `journalctl --user -u quickshell.service` free of QML errors and
       binding loops after exercising every page.
-- [ ] `tests/verify-xps` passes.
+- [ ] `tests/verify-system` passes.

@@ -463,7 +463,7 @@ Singleton {
     readonly property int pickerRowHeight: scaled(40)
     // A panel takes the bar's corner and everything inside it takes the bar's
     // chip corner. `surfaceRadius` stays where it is: it is the compositor's
-    // window rounding (roles/desktop/files/looknfeel.lua) and the Hug corners
+    // window rounding (roles/desktop/templates/looknfeel.lua.j2) and the Hug corners
     // that have to match it, not a shell-internal design choice.
     readonly property int popRadius: panelRadius
     readonly property int cardRadius: chipRadius

@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=Dev Debian
-Exec=kitty -e /home/john/.local/bin/dev-debian-shell
-Icon=distributor-logo-debian
-Categories=Development;System;
-Terminal=false
-Type=Application

@@ -1,4 +1,127 @@
 ---
+- name: Inspect the first-adoption core backup marker
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.local/state/fedora-config/backups/initial-core.complete"
+  register: base_initial_backup_marker
+
+- name: Preserve core user paths before any role can adopt them
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup={{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}
+    marker={{ (primary_home + '/.local/state/fedora-config/backups/initial-core.complete') | quote }}
+    mkdir -p "$backup"
+    items=(
+      .config/quickshell
+      .config/hypr
+      .config/xdg-desktop-portal/hyprland-portals.conf
+      .config/environment.d/10-fedora-config.conf
+      .config/systemd/user/hyprland-session.target
+      .config/systemd/user/hyprland-session.target.wants
+      .config/systemd/user/quickshell.service
+      .config/systemd/user/hypridle.service
+      .config/systemd/user/hyprpolkitagent.service
+      .config/systemd/user/voxtype.service
+      .config/systemd/user/external-monitor-toggle.service
+      .config/systemd/user/hermes-menubar-bridge.service
+      .config/systemd/user/fedora-config-session-lock.service
+      .config/systemd/user/xps-speaker-tuning.service
+      .config/distrobox/distrobox.conf
+      .local/bin/screenshot
+      .local/bin/screen-record
+      .local/bin/quickshell-reminder
+      .local/bin/screen-ocr
+      .local/bin/clipboard-copy-image
+      .local/bin/clipboard-image-to-file
+      .local/bin/clipboard-history-store
+      .local/bin/localsend
+      .local/bin/localsend-share
+      .local/bin/fedora-config
+      .local/bin/fedora-config-update-run
+      .local/bin/brightness-control
+      .local/bin/portal-launcher
+      .local/bin/t3code-update
+      .local/bin/t3code-desktop
+      .local/bin/spotify
+      .local/bin/app-backup
+      .local/bin/browser-backup
+      .local/bin/fastfetch-link-speed
+      .local/bin/external-monitor-toggle
+      .local/bin/dev-distrobox-init
+      .local/bin/dev-fedora-shell
+      .local/bin/dev-arch-shell
+      .local/bin/dev-debian-shell
+      .local/bin/update-user-tools
+      .local/libexec/hermes-menubar-bridge
+      .local/share/nautilus-python/extensions/localsend.py
+      .local/share/applications/nvim-kitty.desktop
+      .local/share/applications/brave-browser.desktop
+      .local/share/applications/chatgpt.desktop
+      .local/share/applications/1password.desktop
+      .local/share/applications/t3code-nightly.desktop
+      .local/share/applications/localsend-share-clipboard.desktop
+      .local/share/applications/localsend-share-file.desktop
+      .local/share/applications/localsend-share-folder.desktop
+      .local/share/applications/dev-fedora.desktop
+      .local/share/applications/dev-arch.desktop
+      .local/share/applications/dev-debian.desktop
+    )
+    for relative in "${items[@]}"; do
+      source_path={{ primary_home | quote }}/$relative
+      [[ -e $source_path || -L $source_path ]] || continue
+      parent=$(dirname -- "$relative")
+      mkdir -p "$backup/$parent"
+      cp -a -- "$source_path" "$backup/$relative"
+    done
+    touch "$marker"
+  args:
+    executable: /bin/bash
+  when:
+    - not base_initial_backup_marker.stat.exists
+    - not ansible_check_mode
+  changed_when: true
+
+- name: Inspect the first-adoption shared-system backup marker
+  ansible.builtin.stat:
+    path: /var/lib/fedora-config/backups/initial-system.complete
+  register: base_initial_system_backup_marker
+
+- name: Preserve shared system paths before Fedora Config can adopt them
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup=/var/lib/fedora-config/backups/system
+    marker=/var/lib/fedora-config/backups/initial-system.complete
+    absent=/var/lib/fedora-config/backups/initial-system.absent
+    install -d -m 0700 "$backup"
+    temporary="$absent.new"
+    : >"$temporary"
+    items=(
+      etc/gdm/custom.conf
+      var/lib/AccountsService/users/{{ primary_user | quote }}
+      etc/sudoers.d/10-wheel-nopasswd
+      etc/polkit-1/rules.d/49-wheel-local.rules
+    )
+    for relative in "${items[@]}"; do
+      source_path=/$relative
+      if [[ -e $source_path || -L $source_path ]]; then
+        install -d -m 0700 "$backup/$(dirname -- "$relative")"
+        cp -a -- "$source_path" "$backup/$relative"
+      else
+        printf '%s\n' "$relative" >>"$temporary"
+      fi
+    done
+    mv -f -- "$temporary" "$absent"
+    touch "$marker"
+  args:
+    executable: /bin/bash
+  when:
+    - not base_initial_system_backup_marker.stat.exists
+    - not ansible_check_mode
+  changed_when: true
+
 - name: Install Fedora baseline packages
   ansible.builtin.dnf:
     name:
@@ -17,7 +140,6 @@
       - "glibc-langpack-{{ regional_locale.split('_')[0] }}"
       - gvfs
       - gvfs-fuse
-      - intel-lpmd
       - mokutil
       - NetworkManager
       - pipewire
@@ -26,18 +148,18 @@
       - policycoreutils-python-utils
       - polkit
       - powertop
-      - thermald
       - tuned-ppd
       - udisks2
       - upower
       - zram-generator-defaults
+      - zstd
     state: present
     allowerasing: true
 
 - name: Install transactional Btrfs recovery helper
   ansible.builtin.copy:
-    src: xps-system-snapshot
-    dest: /usr/local/libexec/xps-system-snapshot
+    src: fedora-config-system-snapshot
+    dest: /usr/local/libexec/fedora-config-system-snapshot
     owner: root
     group: root
     mode: "0755"
@@ -48,8 +170,8 @@
 # refresh remains self-contained on an already provisioned host.
 - name: Install shared upstream installer helper prerequisite
   ansible.builtin.copy:
-    src: "{{ config_repo }}/roles/apps/files/xps-common.sh"
-    dest: /usr/local/libexec/xps-common.sh
+    src: "{{ config_repo }}/roles/apps/files/fedora-config-common.sh"
+    dest: /usr/local/libexec/fedora-config-common.sh
     owner: root
     group: root
     mode: "0644"
@@ -58,6 +180,19 @@
   ansible.builtin.file:
     path: "{{ primary_home }}/.cache/xps-ansible-facts"
     state: absent
+
+- name: Create the Fedora Config system-state directory
+  ansible.builtin.file:
+    path: /var/lib/fedora-config/features
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Inspect Fedora Config ownership of Docker
+  ansible.builtin.stat:
+    path: /var/lib/fedora-config/features/docker
+  register: base_docker_marker
 
 - name: Stop and disable Docker socket activation before removing its packages
   ansible.builtin.systemd_service:
@@ -70,16 +205,29 @@
     - docker.service
   when:
     - not features.docker | bool
+    - base_docker_marker.stat.exists
     - not ansible_check_mode
 
-- name: Converge Docker packages
+- name: Install Docker packages when selected
   ansible.builtin.dnf:
     name:
       - docker-compose
       - moby-engine
-    state: "{{ features.docker | bool | ternary('present', 'absent') }}"
+    state: present
     allowerasing: true
   notify: Reload systemd
+  when: features.docker | bool
+
+- name: Remove Fedora Config-owned Docker packages when deselected
+  ansible.builtin.dnf:
+    name:
+      - docker-compose
+      - moby-engine
+    state: absent
+  notify: Reload systemd
+  when:
+    - not features.docker | bool
+    - base_docker_marker.stat.exists
 
 - name: Enable Docker when requested
   ansible.builtin.systemd_service:
@@ -90,35 +238,10 @@
     - features.docker | bool
     - not ansible_check_mode
 
-- name: Create the local XPS TuneD profile directory
-  ansible.builtin.file:
-    path: /etc/tuned/profiles/xps-performance
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Install the XPS laptop performance profile
-  ansible.builtin.copy:
-    src: tuned/xps-performance/tuned.conf
-    dest: /etc/tuned/profiles/xps-performance/tuned.conf
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Restart TuneD PPD bridge
-
-- name: Map the desktop Performance option to the XPS profile
-  ansible.builtin.copy:
-    src: tuned/ppd.conf
-    dest: /etc/tuned/ppd.conf
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Restart TuneD PPD bridge
-
 - name: Set hostname
   ansible.builtin.hostname:
     name: "{{ machine_hostname }}"
+  when: manage_system_identity | bool
 
 - name: Set timezone
   ansible.builtin.file:
@@ -126,6 +249,7 @@
     dest: /etc/localtime
     state: link
     force: true
+  when: manage_system_identity | bool
 
 - name: Read available system locales
   ansible.builtin.command: locale -a
@@ -137,7 +261,9 @@
   ansible.builtin.command: "localedef -i {{ item.split('.')[0] }} -f UTF-8 {{ item }}"
   changed_when: true
   loop: "{{ [machine_locale, regional_locale] | unique }}"
-  when: (item.split('.')[0] + '.utf8') not in base_available_locales.stdout_lines
+  when:
+    - manage_system_identity | bool
+    - (item.split('.')[0] + '.utf8') not in base_available_locales.stdout_lines
 
 - name: Configure language and regional locale categories
   ansible.builtin.template:
@@ -146,10 +272,11 @@
     owner: root
     group: root
     mode: "0644"
+  when: manage_system_identity | bool
 
 - name: Configure portable kernel hardening
   ansible.builtin.copy:
-    dest: /etc/sysctl.d/60-xps-hardening.conf
+    dest: /etc/sysctl.d/60-fedora-config-hardening.conf
     owner: root
     group: root
     mode: "0644"
@@ -166,13 +293,13 @@
       net.ipv6.conf.default.accept_redirects = 0
 
 - name: Apply portable kernel hardening
-  ansible.builtin.command: sysctl --load /etc/sysctl.d/60-xps-hardening.conf
+  ansible.builtin.command: sysctl --load /etc/sysctl.d/60-fedora-config-hardening.conf
   changed_when: false
   when: not ansible_check_mode
 
 - name: Configure strict firewalld zone
   ansible.builtin.template:
-    src: xps-zone.xml.j2
+    src: fedora-config-zone.xml.j2
     dest: "/etc/firewalld/zones/{{ firewall_zone }}.xml"
     owner: root
     group: root
@@ -200,7 +327,6 @@
     enabled: true
   loop:
     - bluetooth.service
-    - thermald.service
 
 - name: Start optional hardware-backed services on the physical workstation
   ansible.builtin.systemd_service:
@@ -208,7 +334,6 @@
     state: started
   loop:
     - bluetooth.service
-    - thermald.service
   when: start_optional_hardware_services | bool
 
 - name: Apply the managed firewalld zone before using it
@@ -221,37 +346,13 @@
   changed_when: false
   when: not ansible_check_mode
 
-- name: Enable available Panther Lake power service
-  ansible.builtin.systemd_service:
-    name: intel_lpmd.service
-    enabled: true
-    daemon_reload: true
-  failed_when: false
-
-- name: Start the Panther Lake power service on the physical workstation
-  ansible.builtin.systemd_service:
-    name: intel_lpmd.service
-    state: started
-  failed_when: false
-  when: start_optional_hardware_services | bool
-
-- name: Disable services intentionally excluded from the Fedora XPS baseline
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: false
-    state: stopped
-  loop:
-    - NetworkManager-wait-online.service
-    - sshd.service
-  failed_when: false
-
 - name: Read default firewall zone
   ansible.builtin.command: firewall-cmd --get-default-zone
   register: base_current_firewall_zone
   changed_when: false
   check_mode: false
 
-- name: Set xps as the default firewall zone
+- name: Set Fedora Config as the default firewall zone
   ansible.builtin.command: "firewall-cmd --set-default-zone={{ firewall_zone }}"
   changed_when: true
   when: base_current_firewall_zone.stdout | trim != firewall_zone and not ansible_check_mode
@@ -326,7 +427,9 @@
     key: docker
     fail_key: false
   register: base_docker_group
-  when: not features.docker | bool
+  when:
+    - not features.docker | bool
+    - base_docker_marker.stat.exists
 
 - name: Revoke Docker socket access when Docker is disabled
   ansible.builtin.command:
@@ -334,8 +437,26 @@
   changed_when: true
   when:
     - not features.docker | bool
+    - base_docker_marker.stat.exists
     - ansible_facts.getent_group.docker is defined
     - primary_user in (ansible_facts.getent_group.docker[2] | default('')).split(',')
+
+- name: Record Fedora Config ownership of Docker
+  ansible.builtin.copy:
+    dest: /var/lib/fedora-config/features/docker
+    content: "managed\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: features.docker | bool
+
+- name: Retire Fedora Config Docker ownership after removal
+  ansible.builtin.file:
+    path: /var/lib/fedora-config/features/docker
+    state: absent
+  when:
+    - not features.docker | bool
+    - base_docker_marker.stat.exists
 
 - name: Enable user lingering
   ansible.builtin.command: "loginctl enable-linger {{ primary_user }}"
@@ -386,7 +507,7 @@
 
 - name: Install weekly Btrfs scrub unit
   ansible.builtin.copy:
-    dest: /etc/systemd/system/xps-btrfs-scrub.service
+    dest: /etc/systemd/system/fedora-config-btrfs-scrub.service
     owner: root
     group: root
     mode: "0644"
@@ -405,7 +526,7 @@
 
 - name: Install weekly Btrfs scrub timer
   ansible.builtin.copy:
-    dest: /etc/systemd/system/xps-btrfs-scrub.timer
+    dest: /etc/systemd/system/fedora-config-btrfs-scrub.timer
     owner: root
     group: root
     mode: "0644"
@@ -425,7 +546,7 @@
 
 - name: Enable weekly Btrfs scrub
   ansible.builtin.systemd_service:
-    name: xps-btrfs-scrub.timer
+    name: fedora-config-btrfs-scrub.timer
     enabled: true
     state: started
     daemon_reload: true
@@ -433,7 +554,7 @@
 
 - name: Stop and disable the Btrfs scrub timer on other filesystems
   ansible.builtin.systemd_service:
-    name: xps-btrfs-scrub.timer
+    name: fedora-config-btrfs-scrub.timer
     enabled: false
     state: stopped
     daemon_reload: true
@@ -447,7 +568,7 @@
     path: "/etc/systemd/system/{{ item }}"
     state: absent
   loop:
-    - xps-btrfs-scrub.service
-    - xps-btrfs-scrub.timer
+    - fedora-config-btrfs-scrub.service
+    - fedora-config-btrfs-scrub.timer
   notify: Reload systemd
   when: base_root_filesystem.stdout | trim != 'btrfs'

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+cd -- "$repo_dir"
+config_path=${FEDORA_CONFIG_FILE:-/etc/fedora-config/config.yml}
+keep_user_data=false
+assume_yes=false
+
+usage() {
+  cat <<'EOF'
+Usage: fedora-config uninstall [--keep-user-data] [--yes]
+
+Removes Fedora Config-owned services and configuration. Fedora packages and
+applications are retained. Existing files backed up before adoption are
+restored; --keep-user-data also retains the backup and updater state.
+EOF
+}
+
+while (($#)); do
+  case $1 in
+    --keep-user-data) keep_user_data=true ;;
+    --yes) assume_yes=true ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'uninstall: unknown option %s\n' "$1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+[[ -r $config_path ]] || {
+  printf 'uninstall: saved configuration is missing: %s\n' "$config_path" >&2
+  exit 1
+}
+
+if [[ $assume_yes == false ]]; then
+  read -r -p 'Remove Fedora Config-managed desktop configuration? [y/N]: ' answer
+  [[ ${answer,,} == y || ${answer,,} == yes ]] || exit 0
+fi
+
+sudo -v
+ansible-playbook uninstall.yml -e "@$config_path" \
+  -e "fedora_config_keep_user_data=$keep_user_data"
+if [[ $keep_user_data == false ]]; then
+  sudo rm -f -- "$config_path"
+  sudo rmdir -- /etc/fedora-config 2>/dev/null || true
+fi

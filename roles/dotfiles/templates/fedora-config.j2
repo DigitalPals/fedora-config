@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir={{ (primary_home + '/.local/share/fedora-config/current') | quote }}
+command_name=${1:-help}
+[[ $# -eq 0 ]] || shift
+
+case $command_name in
+  install)
+    exec "$source_dir/install" "$@"
+    ;;
+  configure)
+    exec "$source_dir/install" --reconfigure "$@"
+    ;;
+  update)
+    exec "$source_dir/update" "$@"
+    ;;
+  verify|doctor)
+    exec "$source_dir/verify" "$@"
+    ;;
+  uninstall)
+    exec "$source_dir/uninstall" "$@"
+    ;;
+  version|--version|-V)
+    tr -d '\n' <"$source_dir/VERSION"
+    printf '\n'
+    ;;
+  help|-h|--help)
+    cat <<'EOF'
+Usage: fedora-config <command> [options]
+
+Commands:
+  install      Install using saved choices, or start first-run setup
+  configure    Ask the installation questions again and apply the answers
+  update       Check for and apply Fedora Config and system updates
+  verify       Verify repository and installed-system health
+  doctor       Alias for verify
+  uninstall    Remove project-managed configuration
+  version      Print the installed source version
+EOF
+    ;;
+  *)
+    printf 'fedora-config: unknown command %s\n' "$command_name" >&2
+    exit 2
+    ;;
+esac

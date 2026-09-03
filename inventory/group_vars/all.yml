@@ -1,23 +1,26 @@
 ---
-# Non-secret machine contract. Credentials are deliberately resolved at runtime.
+# Safe product defaults. The interactive installer records machine-specific
+# answers in /etc/fedora-config/config.yml and passes that file as extra vars.
+# Direct developer runs use the current account and avoid changing identity or
+# relaxing security unless explicitly requested.
 fedora_release: "44"
-machine_hostname: xps
-machine_timezone: Europe/Amsterdam
+config_schema_version: 1
+machine_hostname: "{{ ansible_facts.hostname | default('fedora') }}"
+machine_timezone: UTC
 machine_locale: en_US.UTF-8
-regional_locale: nl_NL.UTF-8
-# Cybex dynamically recenters its prompt when early KMS replaces the firmware
-# framebuffer with the internal panel and the tiled Apple display.
-plymouth_theme: cybex
-primary_user: john
-primary_group: john
-primary_home: /home/john
-# Root of this checkout; the dotfiles role copies wallpapers/scripts from it.
+regional_locale: en_US.UTF-8
+machine_keyboard_layout: us
+machine_keyboard_variant: ""
+manage_system_identity: false
+manage_personal_dotfiles: false
+cleanup_legacy_xps_artifacts: false
+fedora_config_xps_2026: false
+plymouth_theme: bgrt
+primary_user: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'USER'), true) }}"
+primary_group: "{{ primary_user }}"
+primary_home: "{{ lookup('env', 'HOME') }}"
+# Root of this checkout; roles copy managed scripts and assets from it.
 config_repo: "{{ playbook_dir }}"
-
-expected_hardware:
-  sys_vendor: Dell Inc.
-  product_name_regex: "(?i)(XPS|DA14260|DA16260)"
-  cpu_regex: "(?i)(Intel.*(Ultra|X7)|Panther Lake)"
 
 # XPS 2026 hardware-role preferences. The camera stack is attempted only when
 # both OVTI08F4 and Intel 8086:b05d are detected; build failure is diagnostic,
@@ -26,9 +29,9 @@ xps_2026_camera_enabled: true
 xps_2026_haptic_intensity: high
 
 # Explicitly accepted local-machine security tradeoffs.
-passwordless_wheel: true
-passwordless_local_polkit: true
-gdm_autologin: true
+passwordless_wheel: false
+passwordless_local_polkit: false
+gdm_autologin: false
 # Hardware-backed daemons should start immediately on the physical laptop.
 # Hardware-neutral convergence profiles can leave them enabled for boot while
 # avoiding perpetual start attempts against devices the VM cannot provide.
@@ -37,28 +40,31 @@ start_optional_hardware_services: true
 # Setting this true is an explicit acceptance that its bearer token and build
 # traffic cross that network without TLS. Set false (or use an https://
 # scheduler URL) to keep compilation local instead.
-allow_insecure_sccache_transport: true
+allow_insecure_sccache_transport: false
 
 features:
-  tailscale: true
-  docker: true
-  podman: true
-  steam: true
-  private_hooks: true
-  apple_display: true
-  source_builds: true
+  tailscale: false
+  docker: false
+  podman: false
+  steam: false
+  private_hooks: false
+  apple_display: false
+  source_builds: false
   # Inbound LocalSend, mDNS, Steam, and source-server ports are a deliberate
   # workstation trust decision. Disable this on machines used on untrusted
   # networks; feature-specific ports are additionally gated below.
-  local_network_services: true
+  local_network_services: false
+  developer_tools: false
+  connected_widgets: false
+  proprietary_apps: false
 
 private_services:
-  portal_binary: /home/john/Code/portal/target/release/portal
-  sccache_scheduler_url: http://10.10.0.233:10600
+  portal_binary: ""
+  sccache_scheduler_url: ""
   # The token itself is never read by Ansible. This hook merely tests for this file.
   sccache_token_file: /etc/sccache/client-token
 
-firewall_zone: xps
+firewall_zone: fedora-config
 firewall_ports:
   - { port: "53317", protocol: tcp, comment: LocalSend }
   - { port: "53317", protocol: udp, comment: LocalSend }
@@ -104,42 +110,49 @@ source_build_container_image: docker.io/library/fedora@sha256:43b29f65a41eb9c35e
 
 github_release_apps:
   - name: lazygit
+    enabled: "{{ features.developer_tools }}"
     repo: jesseduffield/lazygit
     asset_regex: '^lazygit_.*_linux_x86_64[.]tar[.]gz$'
     kind: archive
     version: v0.64.1
     checksum: sha256:f8ea237c41f194cd799b48505518bfdaae4edf5a2ad6bd3d898e939785ee4532
   - name: lazydocker
+    enabled: "{{ features.developer_tools }}"
     repo: jesseduffield/lazydocker
     asset_regex: '^lazydocker_.*_Linux_x86_64[.]tar[.]gz$'
     kind: archive
     version: v0.25.2
     checksum: sha256:0d9dbfc26068b218e7ed84b104748cadc6e3cf733c0afd35465306fb39b9523c
   - name: mdview
+    enabled: "{{ features.developer_tools }}"
     repo: DigitalPals/mdview
     asset_regex: '^mdview-0[.]0[.]1-1[.]fc44[.]x86_64[.]rpm$'
     kind: rpm
     version: "0.0.1"
     checksum: sha256:2100ed7607ffb6b49fdaca46fd14d09da6f716bcdac8fa8596e5f051f199d83d
   - name: voxtype
+    enabled: true
     repo: peteonrails/voxtype
     asset_regex: '^voxtype-.*[.]x86_64[.]rpm$'
     kind: rpm
     version: v0.7.5
     checksum: sha256:50dd10fe8dcdd0f0d7a2796ca8d628e21810c81e2ae1c365075643e552e79c61
   - name: bun
+    enabled: "{{ features.developer_tools }}"
     repo: oven-sh/bun
     asset_regex: '^bun-linux-x64[.]zip$'
     kind: archive
     version: bun-v1.4.0
     checksum: sha256:2d03fb5fb83ac8b567aca0a281b2ce1a1a19d488f56c2968d88c3f25e92fe452
   - name: balena
+    enabled: "{{ features.developer_tools }}"
     repo: balena-io/balena-cli
     asset_regex: '^balena-cli-.*-linux-x64-standalone[.]tar[.]gz$'
     kind: archive
     version: v25.2.5
     checksum: sha256:f127556de933f0ef2d48c1e3beb034d1d4ca990d3b12c4ad039e2c4cd85e12eb
   - name: oh-my-posh
+    enabled: true
     repo: JanDeDobbeleer/oh-my-posh
     asset_regex: '^posh-linux-amd64$'
     kind: binary

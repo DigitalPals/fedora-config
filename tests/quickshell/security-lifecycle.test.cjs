@@ -51,7 +51,7 @@ test("Hyprland session publication is serialized before target activation", () =
     const autostart = readRepo("roles/desktop/files/autostart.lua");
     const starter = path.join(repoDir, "roles/desktop/files/hyprland-session-start");
     assert.equal((autostart.match(/hl\.exec_cmd/g) || []).length, 1);
-    assert.match(autostart, /xps-hyprland-session-start/);
+    assert.match(autostart, /fedora-config-hyprland-session-start/);
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hypr-session-test-"));
     try {
@@ -153,12 +153,13 @@ test("external monitor watcher asks systemd to retry incomplete sessions", () =>
     }
 });
 
-test("plaintext distributed sccache is an explicit inventory decision", () => {
+test("plaintext distributed sccache requires an explicit local decision", () => {
     const inventory = readRepo("inventory/group_vars/all.yml");
     const site = readRepo("site.yml");
     const wrapper = readRepo("roles/private-hooks/templates/sccache.j2");
     assert.match(inventory, /^allow_insecure_sccache_transport: (?:true|false)$/m);
-    assert.match(inventory, /sccache_scheduler_url: http:\/\//);
+    assert.match(inventory, /^allow_insecure_sccache_transport: false$/m);
+    assert.match(inventory, /^\s+sccache_scheduler_url: ""$/m);
     assert.match(site, /allow_insecure_sccache_transport is boolean/);
     assert.match(wrapper,
         /http:\/\/\*\)[\s\S]*\$allow_insecure != true[\s\S]*scheduler_url=""/);
