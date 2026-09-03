@@ -5,13 +5,15 @@ const { load } = require("./shell.cjs");
 const H = load("LayoutHelpers.js");
 const SettingsHelpers = load("SettingsHelpers.js");
 
-test("calendar, weather, notifications, and status widgets remain separate pills", () => {
+test("the clock pill and the status pill group per the edge-drawer design", () => {
     const defaults = SettingsHelpers.defaultMods();
     const center = H.groupModules(defaults.center,
         id => SettingsHelpers.moduleGroup(id));
-    assert.deepEqual(center.map(group => group.kind), ["solo", "solo", "solo"]);
-    assert.deepEqual(center.map(group => group.items[0].entry.id),
-        ["indicators", "clock", "weather"]);
+    // Clock and weather share one filled "time" pill; indicators stay solo.
+    assert.deepEqual(center.map(group => group.kind), ["solo", "time"]);
+    assert.deepEqual(center[1].items.map(item => item.entry.id),
+        ["clock", "weather"]);
+    assert.ok(SettingsHelpers.groupFilled("time"));
 
     const right = H.groupModules(defaults.right,
         id => SettingsHelpers.moduleGroup(id));
@@ -21,15 +23,17 @@ test("calendar, weather, notifications, and status widgets remain separate pills
     const agentGroup = right.find(group =>
         group.items.some(item => item.entry.id === "hermes"));
     assert.equal(agentGroup.kind, "chip");
+    assert.ok(!SettingsHelpers.groupFilled("chip"));
     assert.deepEqual(agentGroup.items.map(item => item.entry.id),
         ["gh", "t3", "hermes", "usage"]);
-    for (const id of ["vol", "wifi", "bt", "batt"]) {
-        const group = right.find(candidate =>
-            candidate.items.some(item => item.entry.id === id));
-        assert.equal(group.kind, "solo", `${id} must own its pointer target`);
-        assert.deepEqual(group.items.map(item => item.entry.id), [id],
-            `${id} must not merge with an adjacent status widget`);
-    }
+    // The four status glyphs share one filled pill; each keeps its own
+    // pointer target inside it (the pill is furniture, not a hit area).
+    const statusGroup = right.find(group =>
+        group.items.some(item => item.entry.id === "vol"));
+    assert.equal(statusGroup.kind, "status");
+    assert.ok(SettingsHelpers.groupFilled("status"));
+    assert.deepEqual(statusGroup.items.map(item => item.entry.id),
+        ["vol", "wifi", "bt", "batt"]);
 });
 
 test("stacked drops subtract each column origin before finding the row", () => {

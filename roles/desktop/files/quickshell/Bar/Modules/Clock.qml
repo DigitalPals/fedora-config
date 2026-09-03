@@ -45,7 +45,9 @@ BarModule {
             text: Qt.formatDateTime(clock.date, Settings.clock24
                 ? (Settings.modOpts.clock.seconds ? "HH:mm:ss" : "HH:mm")
                 : (Settings.modOpts.clock.seconds ? "h:mm:ss AP" : "h:mm AP"))
-            font.family: Theme.fontMenu
+            // The time is an instrument reading: Geist Mono, per the
+            // edge-drawer design's numeric face.
+            font.family: Theme.fontNumeric
             font.pixelSize: Theme.barTextSize
             font.weight: Theme.weightBold
             font.letterSpacing: 0.3

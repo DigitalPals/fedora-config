@@ -28,12 +28,18 @@ test("notification history is an always-eligible reorderable widget", () => {
         "a detail-only widget must still expose its compaction policy");
 });
 
-test("notification widget shows bounded session count and compact glyph state", () => {
+test("notification widget shows an unread mark and compact glyph state", () => {
     assert.match(moduleSource, /moduleId:\s*"notifications"/);
     assert.match(moduleSource, /panelName:\s*"notifications"/);
+    // The edge-drawer design trades the bar count for an accent unread dot;
+    // the count lives in the tooltip and the drawer's Notifications tab.
+    assert.match(moduleSource, /visible:\s*Notifs\.count > 0/);
     assert.match(moduleSource,
-        /label:\s*Notifs\.count > 99 \? "99\+" : String\(Notifs\.count\)/);
-    assert.match(moduleSource, /compact:\s*root\.compact/);
+        /color:\s*Notifs\.hasUrgent \? Theme\.barRedText : Theme\.barAccent/);
+    assert.doesNotMatch(moduleSource, /label:\s*Notifs\.count/,
+        "the bell carries a dot, not a number");
+    assert.match(moduleSource, /Notifs\.count \+ " notifications"/,
+        "the tooltip still says how many");
     assert.match(moduleSource,
         /glyph:\s*Notifs\.dnd \? "notifications_off" : "notifications"/);
     assert.match(moduleSource, /alert:\s*Notifs\.hasUrgent/);

@@ -2,13 +2,14 @@ import QtQuick
 import ".."
 import "../../Common"
 
-// Retained session notification history. Opening the panel is intentionally
+// Retained session notification history. The bell carries an accent unread
+// mark rather than a count, per the edge-drawer design; the drawer's
+// Notifications tab holds the numbers. Opening the panel is intentionally
 // read-only: dismissing a card or clearing the history is what lowers count.
 BarModule {
     id: root
 
     moduleId: "notifications"
-    detailSaving: chip.detailSaving
 
     BarIcon {
         id: chip
@@ -21,8 +22,6 @@ BarModule {
         glyphSize: Theme.barIconSize
         glyphFill: Notifs.dnd || Notifs.hasUrgent ? 1 : 0
         glyphWeight: 550
-        label: Notifs.count > 99 ? "99+" : String(Notifs.count)
-        compact: root.compact
         // Critical history stays visible even while DND suppresses its toast.
         alert: Notifs.hasUrgent
         active: Notifs.dnd && !Notifs.hasUrgent
@@ -31,5 +30,28 @@ BarModule {
             : Notifs.count === 1 ? "1 notification"
             : Notifs.count + " notifications"
         tooltipAlign: 1
+
+        // The unread mark, ringed in the bar surface so it reads as sitting
+        // on the bell rather than beside it. Urgency keeps the red identity.
+        Rectangle {
+            visible: Notifs.count > 0
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.rightMargin: 4
+            anchors.topMargin: 4
+            width: 8
+            height: 8
+            radius: 4
+            color: Theme.barSurface
+            z: 2
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: 5
+                height: 5
+                radius: 3
+                color: Notifs.hasUrgent ? Theme.barRedText : Theme.barAccent
+            }
+        }
     }
 }

@@ -180,12 +180,29 @@ pinned_font_archives:
 
 # Single-file fonts, which upstream publishes as bare variable TTFs rather than
 # archives. The URL is pinned to a commit and the checksum pins the bytes, so
-# the version below is only the directory label. JetBrains Mono (installed by
-# the apps role) is the Quickshell UI default; Google Sans Flex and Urbanist
-# remain appearance choices, and Material Symbols Rounded supplies every
-# generic interface glyph in the shell (Common/Sym.qml). Product identities
-# are the audited SVGs behind Common/BrandIcon.qml.
+# the version below is only the directory label. Figtree is the Quickshell UI
+# default and Geist Mono its numeric-reading face (Theme.fontNumeric);
+# JetBrains Mono, Google Sans Flex and Urbanist remain appearance choices,
+# and Material Symbols Rounded supplies every generic interface glyph in the
+# shell (Common/Sym.qml). Product identities are the audited SVGs behind
+# Common/BrandIcon.qml.
 pinned_font_files:
+  - name: figtree
+    version: "1.2"
+    url: https://raw.githubusercontent.com/erikdkennedy/figtree/032dfa7fe219ef3a02890d6d3add84eacc9aebfe/fonts/variable/Figtree%5Bwght%5D.ttf
+    checksum: sha256:c8d9e77bb970c18f7b55fd2d8c91f86c9e9cc42696da9c3e7bc4fffba1d3ef5a
+    filename: Figtree[wght].ttf
+    license_url: https://raw.githubusercontent.com/erikdkennedy/figtree/032dfa7fe219ef3a02890d6d3add84eacc9aebfe/OFL.txt
+    license_checksum: sha256:140d37233e7f3ce7313798befa9600893bcceaf41a55fa0fa5ad52f7f657a268
+    license_filename: OFL.txt
+  - name: geist-mono
+    version: "1.5.0"
+    url: https://raw.githubusercontent.com/vercel/geist-font/10dc7658f13c38a474cde201bb09a4617267545b/fonts/GeistMono/variable/GeistMono%5Bwght%5D.ttf
+    checksum: sha256:87c2aff9723544a9adaea19d92e42a33705c9723624801b6e0224c2206a6af0d
+    filename: GeistMono[wght].ttf
+    license_url: https://raw.githubusercontent.com/vercel/geist-font/10dc7658f13c38a474cde201bb09a4617267545b/OFL.txt
+    license_checksum: sha256:c683bfbcc7e087f5d37a54ef628f10387c451a83ddc459b151403a164ac46c90
+    license_filename: OFL.txt
   - name: google-sans-flex
     version: "2025.11.18"
     url: https://raw.githubusercontent.com/end-4/google-sans-flex/251aa5abd30496368f634e54ce2a508fe5a2fdfa/GoogleSansFlex-VariableFont_GRAD%2CROND%2Copsz%2Cslnt%2Cwdth%2Cwght.ttf

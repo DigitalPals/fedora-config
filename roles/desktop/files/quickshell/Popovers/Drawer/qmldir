@@ -1,0 +1,16 @@
+# Sibling-type resolution inside Popovers/Drawer/ — same contract as the
+# parent directory: every *.qml type here must be listed, qmldir.test.cjs
+# enforces it.
+DrawerFooter DrawerFooter.qml
+DrawerIconButton DrawerIconButton.qml
+DrawerNetwork DrawerNetwork.qml
+DrawerNotifications DrawerNotifications.qml
+DrawerOverview DrawerOverview.qml
+DrawerPopover DrawerPopover.qml
+DrawerPower DrawerPower.qml
+DrawerSliderRow DrawerSliderRow.qml
+DrawerSound DrawerSound.qml
+DrawerTabs DrawerTabs.qml
+DrawerTile DrawerTile.qml
+DrawerUsage DrawerUsage.qml
+DrawerUsageRows DrawerUsageRows.qml

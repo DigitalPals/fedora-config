@@ -94,9 +94,9 @@ test("settings-driven tokens default to the selected menu face", () => {
     assert.equal(d.barRadius, 11);
     assert.equal(d.gap, 8);
     assert.equal(d.barStyle, "hug");
-    assert.equal(d.accent, "#9ecbeb");
+    assert.equal(d.accent, "#d3d283");
     const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
-    assert.equal(menuChoice.family, "JetBrains Mono");
+    assert.equal(menuChoice.family, "Figtree");
 
     assert.match(theme,
         /readonly property int barHeight:\s*Math\.max\(Settings\.barHeight, chipHeight \+ 8\)/);

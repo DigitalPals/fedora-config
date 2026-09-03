@@ -32,7 +32,7 @@ test("expressive text and reveal motion use the shared timing language", () => {
         "a seconds clock should not run a transition every second");
 });
 
-test("clock and weather use separate transparent-resting pills", () => {
+test("clock and weather share one filled time pill with their own targets", () => {
     const divider = read("Bar/Divider.qml");
     const cluster = read("Bar/Cluster.qml");
     const clock = read("Bar/Modules/Clock.qml");
@@ -46,8 +46,16 @@ test("clock and weather use separate transparent-resting pills", () => {
     assert.match(clock, /BarChip\s*\{[\s\S]*?panelName:\s*"calendar"/);
     assert.match(weather, /BarChip\s*\{[\s\S]*?panelName:\s*"weather"/);
     assert.match(clock, /id:\s*dateSeparator[\s\S]{0,60}?kind:\s*"space"/);
+    // The edge-drawer design groups clock+weather into one filled "time"
+    // pill and the status glyphs into a filled "status" pill; each module
+    // still owns its pointer target inside the shared furniture.
     assert.match(helpers,
-        /indicators:\s*"solo", clock:\s*"solo", weather:\s*"solo"/);
+        /indicators:\s*"solo", clock:\s*"time", weather:\s*"time"/);
+    assert.match(helpers, /FILLED_GROUP_KINDS = \["time", "status"\]/);
+    assert.match(cluster,
+        /filled:\s*\n?\s*SettingsHelpers\.groupFilled\(group\.kind\)/,
+        "the pill fill decision must come from the shared helper");
+    assert.match(cluster, /color:\s*filled \? Theme\.barChip : "transparent"/);
     assert.doesNotMatch(cluster, /kind === "center"|center:\s*"notifications"/);
     assert.doesNotMatch(divider + cluster + clock + weather, /kind:\s*"dot"/);
 });

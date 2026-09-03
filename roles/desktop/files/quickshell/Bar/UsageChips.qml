@@ -186,7 +186,9 @@ Item {
                 // Quota state belongs to the percentage text. Keep the bar
                 // slab quiet instead of adding warning/critical tile fills.
                 color: current ? Theme.barChipHover : "transparent"
-                anchors.verticalCenter: parent.verticalCenter
+                // Null-guarded like the delegate wrapper in Cluster.qml: a
+                // provider delegate evaluates once mid-reparent.
+                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                 scale: chipMouse.pressed ? 0.95 : 1
 
                 Behavior on color {
@@ -212,35 +214,78 @@ Item {
                     pressPoint: Qt.point(chipMouse.mouseX, chipMouse.mouseY)
                 }
 
-                Row {
-                    id: chipRow
-                    anchors.centerIn: parent
-                    spacing: 4
+                // The redesigned usage pill: brand mark and two-digit
+                // remaining over a 2px meter. When the fit pass compacts the
+                // bar, the reading collapses to a status dot and the meter
+                // goes with it.
+                Column {
+                    id: chipCol
 
-                    BarBrandIcon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: chip.modelData === "codex" ? 13 : 12
-                        height: width
-                        name: Usage.meta[chip.modelData].icon
-                        opacity: highlighted || chip.status !== "error" ? 1 : 0.52
-                        highlighted: chip.current || chipHover.over
+                    readonly property color reading:
+                        chip.status === "crit" ? Theme.barRedText
+                        : chip.status === "warn" ? Theme.barAmber
+                        : chip.status === "stale" ? Theme.barTextFaint
+                        : chip.status === "error" ? Theme.barRedText
+                        : Theme.barTextMid
+
+                    anchors.centerIn: parent
+                    spacing: 3
+
+                    Row {
+                        id: chipRow
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: 4
+
+                        BarBrandIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: chip.modelData === "codex" ? 13 : 12
+                            height: width
+                            name: Usage.meta[chip.modelData].icon
+                            opacity: highlighted || chip.status !== "error" ? 1 : 0.52
+                            highlighted: chip.current || chipHover.over
+                        }
+
+                        Text {
+                            id: usageText
+                            visible: root.displayMode > 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: chip.status === "error" || chip.remaining < 0
+                                ? "--" : String(chip.remaining)
+                            font.family: Theme.fontNumeric
+                            font.pixelSize: Theme.barLabelSize
+                            font.weight: Theme.weightSemibold
+                            font.features: Theme.tabularNumberFeatures
+                            color: chipCol.reading
+                        }
+
+                        Rectangle {
+                            visible: root.displayMode === 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 5
+                            height: 5
+                            radius: 3
+                            color: chipCol.reading
+                        }
                     }
 
-                    Text {
-                        id: usageText
+                    Rectangle {
                         visible: root.displayMode > 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: chip.status === "error" || chip.remaining < 0
-                            ? "--%" : chip.remaining + "%"
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.barLabelSize
-                        font.weight: Theme.weightMedium
-                        font.features: Theme.tabularNumberFeatures
-                        color: chip.status === "crit" ? Theme.barRedText
-                            : chip.status === "warn" ? Theme.barAmber
-                            : chip.status === "stale" ? Theme.barTextFaint
-                            : chip.status === "error" ? Theme.barRedText
-                            : Theme.barTextMid
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: chipRow.implicitWidth
+                        height: 2
+                        radius: 1
+                        color: Theme.barDotDim
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: parent.width * Math.max(0,
+                                Math.min(100, chip.remaining)) / 100
+                            radius: 1
+                            color: chipCol.reading
+                            visible: chip.remaining >= 0
+                        }
                     }
                 }
 

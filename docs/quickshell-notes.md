@@ -348,6 +348,41 @@ tone for all five steps — in wallpaper mode every label, value and piece of
 metadata rendered identically. `paletteTone` folds the tone back toward the
 background when it over-clears, so each step lands on its own floor.
 
+## The edge drawer and the Day sheet (2026-09 redesign)
+
+The 2026-09-03 redesign ("Quickshell Menubar", Claude Design project
+`8cf85161`, direction 2) folded the status popovers into two attached
+surfaces:
+
+- **The edge drawer** (`Popovers/Drawer/`) is one surface with six tabs —
+  Overview · Sound · Network · Power · Notifications · Usage. Every
+  established popout name (`control`, `audio`, `wifi`, `bluetooth`,
+  `tailscale`, `battery`, `notifications`, `usage`, `updates`) still works
+  from IPC and the bar; each one now presents its tab of
+  `DrawerPopover.qml`. The tab is derived from `Popouts.currentName` at
+  creation, and the drawer's own tab strip navigates by reopening the
+  canonical name for the wanted tab (`PanelRegistryData.nameForTab`), so the
+  bar's held states, hover-crossing and the module-ownership sweep all keep
+  working unchanged.
+- **The Day sheet** (`Popovers/DaySheetPopover.qml`) hangs under the clock
+  (and the weather pill): big time, today's sky, a Monday-first week strip
+  with per-day forecast and calendar event dots, and the next three events.
+- The registry gained two flags: `attached` (flush under the bar, squared
+  bar-side corners, Hug-corner bridges drawn by `Bar/PopoutHost.qml`) and
+  `edge: "right"` (pinned to the screen edge instead of centred on the
+  trigger). Both are read by the popout host; detached panels are untouched.
+- The visual system moved with it: warm charcoal surfaces (`#1a1917` bar and
+  panel, chartreuse `#d3d283` accent), Figtree as the default UI face, and
+  `Theme.fontNumeric` (Geist Mono) for every instrument reading — the clock,
+  percentages, meters, resets. Clock+weather group into one filled `time`
+  pill and the vol/wifi/bt/batt run into a filled `status` pill
+  (`SettingsHelpers.MODULE_GROUPS` / `FILLED_GROUP_KINDS`); the usage chips
+  carry a 2px remaining meter; the bell wears an unread dot instead of a
+  count.
+- The pre-drawer popovers (`AudioPopover`, `WifiPopover`,
+  `ControlCenterPopover`, …) are no longer reachable from the registry but
+  remain in the tree with their tests until a deliberate removal pass.
+
 ## Layered Hug, glass, and the wallpaper palette
 
 The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project

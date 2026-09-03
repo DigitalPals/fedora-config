@@ -28,6 +28,7 @@ var DETAIL_IDS = ["media", "weather", "clock", "t3", "hermes", "usage", "gh", "u
 var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
 var FONT_CHOICES = [
+    { id: "figtree", label: "Figtree", family: "Figtree" },
     { id: "google", label: "Google Sans Flex", family: "Google Sans Flex" },
     { id: "urbanist", label: "Urbanist", family: "Urbanist" },
     { id: "oppo", label: "OPPO Sans 4.0", family: "OPPO Sans 4.0" },
@@ -54,10 +55,10 @@ var BAR_COLOR_CHOICES = [
 var BAR_COLOR_IDS = BAR_COLOR_CHOICES.map(function(choice) { return choice.id; });
 
 var BAR_COLOR_PRESETS = {
-    // The original August menubar used this near-black neutral. Keep the
-    // adaptive light half, while returning dark mode to the screenshot's
-    // quieter surface instead of the later purple-black redesign.
-    "default": { dark: "#131419", light: "#ffffff" },
+    // The 2026-09 "edge drawer" redesign (Claude Design project 8cf85161,
+    // direction 2) rests the shell on a warm charcoal instead of the earlier
+    // cool near-black. The light half stays adaptive.
+    "default": { dark: "#1a1917", light: "#ffffff" },
     "macos": { dark: "#1d1d1f", light: "#f5f5f7" },
     "black": { dark: "#000000", light: "#000000" },
     "graphite": { dark: "#2c2c2e", light: "#2c2c2e" },
@@ -68,12 +69,22 @@ var BAR_COLOR_PRESETS = {
 // How a module draws itself in the bar, which is also how the bar groups a
 // run of them. `chip` modules retain their shared ordering and separator
 // contract; `solo` modules bring their own independent pointer target.
+// `time` (clock + weather) and `status` (the vol/wifi/bt/batt glyph run)
+// group the same way but rest on a filled pill, per the edge-drawer design.
 var MODULE_GROUPS = {
-    ws: "solo", media: "solo", indicators: "solo", clock: "solo", weather: "solo",
+    ws: "solo", media: "solo", indicators: "solo", clock: "time", weather: "time",
     updates: "solo", gh: "chip", t3: "chip", hermes: "chip", usage: "chip", tray: "solo",
     notifications: "solo",
-    vol: "solo", wifi: "solo", bt: "solo", batt: "solo"
+    vol: "status", wifi: "status", bt: "status", batt: "status"
 };
+
+// Group kinds that rest on a visible pill fill rather than transparent
+// furniture. Cluster.qml reads this so the decision lives beside the map.
+var FILLED_GROUP_KINDS = ["time", "status"];
+
+function groupFilled(kind) {
+    return FILLED_GROUP_KINDS.indexOf(kind) !== -1;
+}
 
 function moduleGroup(id) {
     return MODULE_GROUPS[id] || "solo";
@@ -145,8 +156,8 @@ function defaults() {
         barCustomLightness: 9,
         barHeight: 34,
         barRadius: 11,
-        font: "mono",
-        accent: "#9ecbeb",
+        font: "figtree",
+        accent: "#d3d283",
         paletteMode: "wallpaper",
         position: "top",
         barStyle: "hug",
@@ -1000,6 +1011,8 @@ var exported = {
     RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
     MODULE_GROUPS: MODULE_GROUPS,
     moduleGroup: moduleGroup,
+    FILLED_GROUP_KINDS: FILLED_GROUP_KINDS,
+    groupFilled: groupFilled,
     DETAIL_IDS: DETAIL_IDS,
     DETAIL_POLICIES: DETAIL_POLICIES,
     FONT_CHOICES: FONT_CHOICES,

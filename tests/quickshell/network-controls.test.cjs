@@ -172,5 +172,5 @@ test("the visible widget label is Network while stable identifiers stay wifi", (
     const registry = read("Common/PanelRegistryData.js");
     const catalog = require(path.join(shellDir, "Common", "WidgetCatalog.js"));
     assert.equal(catalog.widgetName("wifi"), "Network");
-    assert.match(registry, /name: "wifi"[\s\S]*source: "Popovers\/WifiPopover\.qml"/);
+    assert.match(registry, /name: "wifi"[\s\S]*tab: "network"/);
 });

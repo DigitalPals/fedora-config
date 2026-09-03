@@ -38,13 +38,16 @@ Singleton {
         Settings.paletteMode === "wallpaper" && Common.Palette.ready
 
     // ---- reference surfaces (opaque; used for contrast math) --------------
-    readonly property color darkPopBg: "#171526"
+    // The dark references are the edge-drawer redesign's warm charcoal: the
+    // panel surface matches the default bar colour exactly, so an attached
+    // drawer and the bar read as one continuous slab.
+    readonly property color darkPopBg: "#201e1b"
     readonly property color lightPopBg: "#eeedf3"
     readonly property color background: paletteActive ? Common.Palette.background
-        : dark ? "#100e1c" : "#f7f5fb"
+        : dark ? "#1a1917" : "#f7f5fb"
     readonly property color popBg: paletteActive ? Common.Palette.surfaceContainerLow
         : dark ? darkPopBg : lightPopBg
-    readonly property color darkMenuBg: "#1a182c"
+    readonly property color darkMenuBg: "#26241f"
     readonly property color lightMenuBg: "#fcfcff"
     readonly property color menuBg: paletteActive ? Common.Palette.surfaceContainer
         : dark ? darkMenuBg : lightMenuBg
@@ -219,12 +222,12 @@ Singleton {
     // to the lightest value that clears AA and are verified by
     // tests/quickshell/typography.test.cjs; `dotDim` is the one decorative
     // token and must never carry copy.
-    readonly property color darkTextHi: "#f5f4fb"
-    readonly property color darkTextMid: "#a1a0a9"
-    readonly property color darkTextLow: "#8f8e9b"
-    readonly property color darkTextDim: "#868593"
-    readonly property color darkTextFaint: "#84838f"
-    readonly property color darkIcon: "#c3c2cd"
+    readonly property color darkTextHi: "#f2f0ea"
+    readonly property color darkTextMid: "#b3afa4"
+    readonly property color darkTextLow: "#a29e93"
+    readonly property color darkTextDim: "#97938a"
+    readonly property color darkTextFaint: "#8e8a7f"
+    readonly property color darkIcon: "#c8c5bb"
 
     readonly property color lightTextHi: "#1c1a2e"
     readonly property color lightTextMid: "#4a4860"
@@ -259,9 +262,13 @@ Singleton {
     // ---- accent and status -------------------------------------------------
     readonly property color accent: paletteActive ? Common.Palette.primary
         : Settings.effectiveAccent
+    // Derived rather than fixed white: the redesign's chartreuse accent needs
+    // dark ink on it, and any pale fixed accent has the same problem.
     readonly property color accentFg: paletteActive
         ? SettingsHelpers.ensureContrast(Common.Palette.onPrimary.toString(),
-            accent.toString(), 4.5) : "#ffffff"
+            accent.toString(), 4.5)
+        : (SettingsHelpers.foregroundFor(accent.toString()) === "#ffffff"
+            ? "#ffffff" : "#1c1c12")
     // Full accent belongs on small state marks. Large selected controls use a
     // calmer opaque container mixed into the panel reference, so a vivid fixed
     // choice or wallpaper palette cannot turn broad UI areas fluorescent.
@@ -372,6 +379,10 @@ Singleton {
         return choice ? choice.family : fontSans;
     }
     readonly property string fontMono: "JetBrains Mono"
+    // Numeric readings — the clock, percentages, meters, resets. The
+    // edge-drawer redesign sets these in Geist Mono against Figtree UI copy,
+    // so a reading is recognisably an instrument value rather than prose.
+    readonly property string fontNumeric: "Geist Mono"
     // Material Symbols Rounded, installed as a pinned variable font by the
     // apps role. Draw it through Common/Sym.qml rather than by hand: the
     // glyph is selected by ligature name and the fill/weight axes need
@@ -448,6 +459,11 @@ Singleton {
 
     readonly property int popWidth: scaled(408, Math.min(contentScale, 1.15))
     readonly property int popWideWidth: scaled(448, Math.min(contentScale, 1.15))
+    // The edge drawer and the Day sheet: attached surfaces from the 2026-09
+    // redesign. The drawer holds one width across all its tabs so switching
+    // never slides the surface; the sheet hangs under the clock.
+    readonly property int drawerWidth: scaled(360, Math.min(contentScale, 1.15))
+    readonly property int daySheetWidth: scaled(640, Math.min(contentScale, 1.15))
     readonly property int t3MinWidth: 360
     readonly property int t3MaxWidth: 520
     readonly property int surfacePadding: scaled(16)

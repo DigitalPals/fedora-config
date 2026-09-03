@@ -71,7 +71,7 @@ BarModule {
             visible: Settings.modOpts.batt.showPct && !root.compact
             anchors.verticalCenter: parent.verticalCenter
             text: root.level + "%"
-            font.family: Theme.fontMenu
+            font.family: Theme.fontNumeric
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightBold
             font.features: Theme.tabularNumberFeatures

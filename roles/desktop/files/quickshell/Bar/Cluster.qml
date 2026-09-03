@@ -78,13 +78,18 @@ Item {
                     id: pill
 
                     readonly property string isle: root.col
-                    readonly property real pad: 0
+                    // Filled group kinds (the clock pill, the status glyph
+                    // run) rest on a visible chip per the edge-drawer design;
+                    // the rest stay transparent furniture.
+                    readonly property bool filled:
+                        SettingsHelpers.groupFilled(group.kind)
+                    readonly property real pad: filled ? 5 : 0
 
                     width: slotRow.implicitWidth + pad * 2
                     height: Theme.chipHeight
                     radius: Theme.chipRadius
                     anchors.verticalCenter: parent.verticalCenter
-                    color: "transparent"
+                    color: filled ? Theme.barChip : "transparent"
 
                     // A module appearing or dropping its detail resizes the
                     // pill around it; the glide is what keeps the neighbours
@@ -127,7 +132,13 @@ Item {
                                 // registers) never gets on screen.
                                 visible: slotLoader.active
                                     && !root.host.moduleOverflowed(entry.modelData.entry.id)
-                                anchors.verticalCenter: parent.verticalCenter
+                                // Null-guarded: the delegate evaluates once
+                                // while it is still being reparented, and an
+                                // unguarded read lands a TypeError in the
+                                // journal that the deploy health gate then
+                                // refuses to snapshot past.
+                                anchors.verticalCenter: parent
+                                    ? parent.verticalCenter : undefined
                                 spacing: 0
 
                                 Divider {

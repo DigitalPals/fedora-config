@@ -39,7 +39,7 @@ BarModule {
             visible: Settings.modOpts.vol.showPct && !root.compact
             anchors.verticalCenter: parent.verticalCenter
             text: Audio.volume + "%"
-            font.family: Theme.fontMenu
+            font.family: Theme.fontNumeric
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightBold
             font.features: Theme.tabularNumberFeatures

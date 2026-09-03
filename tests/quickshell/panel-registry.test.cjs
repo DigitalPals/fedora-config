@@ -101,17 +101,20 @@ test("a bar module that owns a panel registers it under the registry's name", ()
 });
 
 test("calendar, weather, and notifications each have one widget and one view", () => {
+    // The clock and the weather pill both unroll the attached Day sheet;
+    // the bell presents the drawer's Notifications tab.
     assert.deepEqual(R.byName("calendar"), {
         name: "calendar", island: "center", moduleId: "clock",
-        source: "Popovers/CalendarPopover.qml"
+        source: "Popovers/DaySheetPopover.qml", attached: true
     });
     assert.deepEqual(R.byName("weather"), {
         name: "weather", island: "center", moduleId: "weather",
-        source: "Popovers/WeatherPopover.qml"
+        source: "Popovers/DaySheetPopover.qml", attached: true
     });
     assert.deepEqual(R.byName("notifications"), {
         name: "notifications", island: "right", moduleId: "notifications",
-        source: "Popovers/NotifsPopover.qml"
+        source: "Popovers/Drawer/DrawerPopover.qml",
+        attached: true, edge: "right", tab: "notifications"
     });
 
     assert.match(read("Bar/Modules/Clock.qml"), /panelName:\s*"calendar"/);
@@ -132,17 +135,21 @@ test("Hermes Agent owns one right-side conversation client panel", () => {
     assert.match(read("Bar/Modules/Hermes.qml"), /panelName:\s*"hermes"/);
 });
 
-test("the four status widgets each own exactly one dedicated view", () => {
+test("the four status widgets each present their drawer tab", () => {
     const expected = {
-        vol: ["audio", "Bar/Modules/Volume.qml", "Popovers/AudioPopover.qml"],
-        wifi: ["wifi", "Bar/Modules/Wifi.qml", "Popovers/WifiPopover.qml"],
-        bt: ["bluetooth", "Bar/Modules/Bluetooth.qml", "Popovers/BluetoothPopover.qml"],
-        batt: ["battery", "Bar/Modules/Battery.qml", "Popovers/BatteryPopover.qml"]
+        vol: ["audio", "Bar/Modules/Volume.qml", "sound"],
+        wifi: ["wifi", "Bar/Modules/Wifi.qml", "network"],
+        bt: ["bluetooth", "Bar/Modules/Bluetooth.qml", "network"],
+        batt: ["battery", "Bar/Modules/Battery.qml", "power"]
     };
 
-    for (const [moduleId, [name, moduleFile, source]] of Object.entries(expected)) {
+    for (const [moduleId, [name, moduleFile, tab]] of Object.entries(expected)) {
         const owned = R.PANELS.filter(panel => panel.moduleId === moduleId);
-        assert.deepEqual(owned, [{ name, island: "right", moduleId, source }]);
+        assert.deepEqual(owned, [{
+            name, island: "right", moduleId,
+            source: "Popovers/Drawer/DrawerPopover.qml",
+            attached: true, edge: "right", tab
+        }]);
         assert.match(read(moduleFile), new RegExp(`panelName:\\s*"${name}"`));
         assert.match(read(moduleFile), /BarChip\s*\{/,
             `${moduleId} must draw its own transparent-resting chip`);
@@ -212,7 +219,35 @@ test("the derived maps cover every panel", () => {
     }
     assert.equal(Object.keys(islands).length, R.PANELS.length);
     assert.equal(Object.keys(sources).length, R.PANELS.length);
-    assert.equal(R.sourceMap().control, "Popovers/ControlCenterPopover.qml");
+    assert.equal(R.sourceMap().control, "Popovers/Drawer/DrawerPopover.qml");
+});
+
+test("every drawer name carries a tab and the strip can route to each tab", () => {
+    // One surface, six tabs: each name that loads the drawer must say which
+    // tab it presents, and every tab must resolve back to a canonical name
+    // for the strip (and for hover-crossing) to reopen.
+    const drawerPanels = R.PANELS.filter(p =>
+        p.source === "Popovers/Drawer/DrawerPopover.qml");
+    assert.ok(drawerPanels.length >= 6, "the drawer serves the status names");
+    for (const panel of drawerPanels) {
+        assert.ok(panel.attached === true && panel.edge === "right",
+            `${panel.name} must attach to the right edge`);
+        assert.ok(typeof panel.tab === "string" && panel.tab !== "",
+            `${panel.name} names no drawer tab`);
+    }
+    const tabs = ["overview", "sound", "network", "power", "notifications", "usage"];
+    assert.deepEqual([...new Set(drawerPanels.map(p => p.tab))].sort(),
+        [...tabs].sort());
+    for (const tab of tabs) {
+        const name = R.nameForTab(tab);
+        assert.equal(R.drawerTab(name), tab,
+            `tab "${tab}" does not round-trip through nameForTab`);
+    }
+    // The Day sheet attaches too, centred on its trigger rather than pinned.
+    for (const name of ["calendar", "weather"]) {
+        assert.ok(R.attached(name), `${name} must attach under the bar`);
+        assert.equal(R.edge(name), "");
+    }
 });
 
 test("panelName is what actually drives the panel wiring", () => {

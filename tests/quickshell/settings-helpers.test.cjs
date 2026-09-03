@@ -19,8 +19,8 @@ test("defaults carry the design values", () => {
         [230, 14, 9]);
     assert.equal(d.barHeight, 34);
     assert.equal(d.barRadius, 11);
-    assert.equal(d.font, "mono");
-    assert.equal(d.accent, "#9ecbeb");
+    assert.equal(d.font, "figtree");
+    assert.equal(d.accent, "#d3d283");
     assert.equal(d.paletteMode, "wallpaper");
     assert.equal(d.position, "top");
     assert.equal(d.barStyle, "hug");
@@ -117,7 +117,7 @@ test("menubar presets are a small intentional neutral palette", () => {
 
     const resolve = (mode, theme = "dark") =>
         H.resolveBarColor(mode, theme, 230, 14, 9);
-    assert.equal(resolve("default"), "#131419");
+    assert.equal(resolve("default"), "#1a1917");
     assert.equal(resolve("default", "light"), "#ffffff");
     assert.equal(resolve("macos"), "#1d1d1f");
     assert.equal(resolve("macos", "light"), "#f5f5f7");
@@ -314,7 +314,7 @@ test("merge over a partial object fills the rest from defaults", () => {
     assert.equal(merged.barHeight, 36);
     assert.equal(merged.unit, "f");
     assert.equal(merged.barRadius, 11);
-    assert.equal(merged.accent, "#9ecbeb");
+    assert.equal(merged.accent, "#d3d283");
     assert.ok(!("v" in merged));
     assert.ok(!("bogus" in H.merge({ bogus: 1 })));
 });
@@ -367,7 +367,7 @@ test("merge clamps and snaps numeric ranges", () => {
 });
 
 test("merge falls back on invalid enums, colors and names", () => {
-    assert.equal(H.merge({ font: "comic-sans" }).font, "mono");
+    assert.equal(H.merge({ font: "comic-sans" }).font, "figtree");
     assert.equal(H.merge({ v: H.VERSION, font: "oppo" }).font, "oppo",
         "the previous menu face stays selectable");
     assert.equal(H.merge({ themeMode: "sepia" }).themeMode, "dark");
@@ -386,7 +386,7 @@ test("merge falls back on invalid enums, colors and names", () => {
     assert.equal(invalidAccessibility.textScale, "default");
     assert.equal(invalidAccessibility.interfaceDensity, "default");
     assert.equal(H.merge({ pollMax: 120 }).pollMax, 300);
-    assert.equal(H.merge({ accent: "red" }).accent, "#9ecbeb");
+    assert.equal(H.merge({ accent: "red" }).accent, "#d3d283");
     assert.equal(H.merge({ accent: "#a992e0" }).accent, "#a992e0");
     assert.equal(H.merge({ wall: "../../etc/passwd" }).wall, H.defaults().wall);
     assert.equal(H.merge({ wall: "" }).wall, H.defaults().wall);
@@ -500,7 +500,7 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
     assert.equal(untouched.barHeight, 34);
     assert.equal(untouched.barRadius, 11);
     assert.equal(untouched.gap, 8);
-    assert.equal(untouched.accent, "#9ecbeb");
+    assert.equal(untouched.accent, "#d3d283");
     assert.equal(untouched.font, "google");
     assert.equal(untouched.osd, "bottom");
     assert.equal(untouched.modOpts.ws.style, "numbers");
@@ -574,7 +574,7 @@ test("schema-9 adopts the classic bar only from untouched design values", () => 
     assert.equal(untouched.barHeight, 34);
     assert.equal(untouched.barRadius, 11);
     assert.equal(untouched.gap, 8);
-    assert.equal(untouched.accent, "#9ecbeb");
+    assert.equal(untouched.accent, "#d3d283");
     assert.deepEqual([
         untouched.barCustomHue,
         untouched.barCustomSaturation,

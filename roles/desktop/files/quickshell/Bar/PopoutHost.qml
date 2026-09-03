@@ -67,6 +67,13 @@ Item {
     readonly property rect effectiveAnchor: Popouts.anchorRect.width > 0
         ? Popouts.anchorRect : activeIslandRect
 
+    // Attached surfaces (the edge drawer, the Day sheet) sit flush against
+    // the bar, square their bar-side corners and bridge to the slab with Hug
+    // corners; an edge of "right" additionally pins the surface to the screen
+    // edge instead of centring it on its trigger.
+    readonly property bool attachedPanel: PanelRegistry.attached(Popouts.currentName)
+    readonly property bool rightEdgePanel: PanelRegistry.edge(Popouts.currentName) === "right"
+
     // Where the card is going, and where it is now. The rendered values are
     // what animate; the targets are recomputed whenever the panel or the
     // output changes.
@@ -85,7 +92,7 @@ Item {
     // centre of the trigger, clamped inside the card.
     property real originX: renderedW / 2
 
-    readonly property real bodyTop: barBottom + Theme.popGap
+    readonly property real bodyTop: barBottom + (attachedPanel ? 0 : Theme.popGap)
     // The height the layer surface is asked for. Following the animating
     // renderedH would resize the Wayland surface — and recompute the
     // compositor blur — on every frame of a panel-switch morph. Shrinking it
@@ -156,10 +163,14 @@ Item {
         // Centred on the trigger, then held inside the screen. A panel wider
         // than the room beside its trigger slides along the edge rather than
         // hanging off it, which is what the design's fixed right offsets do
-        // for the panels that are wider than the chips that open them.
+        // for the panels that are wider than the chips that open them. The
+        // edge drawer skips all of that: it is pinned to the screen edge no
+        // matter which glyph opened its tab.
         const centred = anchor.x + anchor.width / 2 - bodyW / 2;
-        const bodyX = Math.round(clamp(centred, edgeMargin,
-            Math.max(edgeMargin, host.width - edgeMargin - bodyW)));
+        const bodyX = rightEdgePanel
+            ? Math.max(0, Math.round(host.width - bodyW))
+            : Math.round(clamp(centred, edgeMargin,
+                Math.max(edgeMargin, host.width - edgeMargin - bodyW)));
 
         return {
             bodyX: bodyX,
@@ -611,19 +622,53 @@ Item {
 
         Rectangle {
             id: surface
+
+            // Attached surfaces square the corners that meet the bar (and the
+            // screen edge, for the right-pinned drawer) and take the Hug
+            // corner radius on the free ones, so the drawer reads as the bar
+            // folding down rather than a card floating under it.
+            readonly property bool attached: host.attachedPanel
+            readonly property real freeRadius: Theme.surfaceRadius
+
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             height: Math.max(1, host.renderedCardH)
             radius: Theme.popRadius
+            topLeftRadius: attached ? (host.bottomBar ? freeRadius : 0) : radius
+            topRightRadius: attached
+                ? (host.bottomBar && !host.rightEdgePanel ? freeRadius : 0) : radius
+            bottomLeftRadius: attached ? (host.bottomBar ? 0 : freeRadius) : radius
+            bottomRightRadius: attached
+                ? (host.bottomBar || host.rightEdgePanel ? 0 : freeRadius) : radius
             color: host.activePanel ? host.activePanel.surfaceColor : Theme.panelSurface
-            border.width: 1
+            border.width: attached ? 0 : 1
             border.color: host.activePanel
                 ? host.activePanel.surfaceBorderColor : Theme.stroke
 
             Behavior on color {
                 ColorAnimation { duration: Theme.surfaceDuration }
             }
+        }
+
+        // The concave bridges from an attached surface back to the bar slab,
+        // outside the card on its bar-side edge. The drawer keeps only the
+        // left one — its right side is the screen edge.
+        HugCorner {
+            visible: host.attachedPanel
+            x: -width
+            y: host.bottomBar ? card.height - height : 0
+            rightCorner: true
+            bottomCorner: host.bottomBar
+            fillColor: surface.color
+        }
+
+        HugCorner {
+            visible: host.attachedPanel && !host.rightEdgePanel
+            x: card.width
+            y: host.bottomBar ? card.height - height : 0
+            bottomCorner: host.bottomBar
+            fillColor: surface.color
         }
 
         // The content still clips to the native extent while panels morph, but

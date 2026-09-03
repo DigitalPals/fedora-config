@@ -51,7 +51,7 @@ BarModule {
             // Weather.temp is 0 with nothing loaded, and "0°" is a reading. A
             // dash is not.
             text: Weather.ready ? Weather.temp + "°" : "—"
-            font.family: Theme.fontMenu
+            font.family: Theme.fontNumeric
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightBold
             font.features: Theme.tabularNumberFeatures

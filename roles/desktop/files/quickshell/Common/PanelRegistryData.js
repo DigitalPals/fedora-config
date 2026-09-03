@@ -20,42 +20,49 @@
 //              open. An owner-less panel must be left alone by the bar's
 //              module sweep — that is the Tailscale bug above.
 //
-// Flags, both defaulting false, each replacing a hardcoded `=== "settings"`:
+// Flags, all defaulting false/empty, each replacing a hardcoded name check:
 //   centerAnchored       ignores its opener's anchor and stays centred on the
 //                        bar, re-centring when the bar's geometry changes
 //   fillsBody            its view owns the whole popout body rather than
 //                        being laid out inside the standard padding
+//   attached             the surface sits flush against the bar with no gap,
+//                        squares its bar-side corners and bridges to the slab
+//                        with Hug corners (the edge drawer, the Day sheet)
+//   edge                 "right" pins the surface to the screen edge instead
+//                        of centring it on its trigger (the edge drawer)
+//   tab                  which drawer tab this name presents. Every name that
+//                        routes into Popovers/Drawer/DrawerPopover.qml names
+//                        one, which is also how the drawer knows what to show
+
+var DRAWER_SOURCE = "Popovers/Drawer/DrawerPopover.qml";
+var DAY_SHEET_SOURCE = "Popovers/DaySheetPopover.qml";
 
 var PANELS = [
+    // The edge drawer. One surface, six tabs; each established popout name
+    // stays a valid IPC target and simply presents its tab of the drawer.
     // The Fedora button is fixed bar furniture rather than a configurable
     // module. It still registers the panel's live anchor, but `control` stays
     // ownerless so module enablement and movement never close it.
-    { name: "control", island: "right", moduleId: "", source: "Popovers/ControlCenterPopover.qml" },
+    { name: "control", island: "right", moduleId: "", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "overview" },
+    { name: "updates", island: "right", moduleId: "updates", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "overview" },
+    { name: "audio", island: "right", moduleId: "vol", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "sound" },
+    { name: "wifi", island: "right", moduleId: "wifi", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
+    { name: "bluetooth", island: "right", moduleId: "bt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
+    { name: "tailscale", island: "right", moduleId: "", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
+    { name: "battery", island: "right", moduleId: "batt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "power" },
+    { name: "notifications", island: "right", moduleId: "notifications", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "notifications" },
+    { name: "usage", island: "right", moduleId: "usage", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "usage" },
 
-    // The three glanceable views each belong to the widget that presents
-    // them. Their names remain the established IPC names.
-    { name: "calendar", island: "center", moduleId: "clock", source: "Popovers/CalendarPopover.qml" },
-    { name: "weather", island: "center", moduleId: "weather", source: "Popovers/WeatherPopover.qml" },
-    { name: "notifications", island: "right", moduleId: "notifications", source: "Popovers/NotifsPopover.qml" },
+    // The Day sheet hangs under the clock; the weather pill shares it.
+    { name: "calendar", island: "center", moduleId: "clock", source: DAY_SHEET_SOURCE, attached: true },
+    { name: "weather", island: "center", moduleId: "weather", source: DAY_SHEET_SOURCE, attached: true },
+
     { name: "reminders", island: "center", moduleId: "indicators", source: "Popovers/ReminderPopover.qml" },
-
     { name: "media", island: "left", moduleId: "media", source: "Popovers/MediaPopover.qml" },
-    { name: "usage", island: "right", moduleId: "usage", source: "Popovers/UsagePopover.qml" },
     { name: "t3code", island: "right", moduleId: "t3", source: "Popovers/T3CodePopover.qml" },
     { name: "hermes", island: "right", moduleId: "hermes", source: "Popovers/HermesPopover.qml" },
     { name: "github", island: "right", moduleId: "gh", source: "Popovers/GitHubPopover.qml" },
-    { name: "updates", island: "right", moduleId: "updates", source: "Popovers/UpdatesPopover.qml" },
     { name: "overflow", island: "right", moduleId: "", source: "Popovers/OverflowPopover.qml" },
-
-    // Each status widget owns its established dedicated view. The names stay
-    // stable for `qs ipc call popouts toggle <name>` and in-panel drill-ins.
-    { name: "audio", island: "right", moduleId: "vol", source: "Popovers/AudioPopover.qml" },
-    { name: "wifi", island: "right", moduleId: "wifi", source: "Popovers/WifiPopover.qml" },
-    { name: "bluetooth", island: "right", moduleId: "bt", source: "Popovers/BluetoothPopover.qml" },
-    { name: "battery", island: "right", moduleId: "batt", source: "Popovers/BatteryPopover.qml" },
-
-    // Opened from the Control Panel tile, not from a bar module of its own.
-    { name: "tailscale", island: "right", moduleId: "", source: "Popovers/TailscalePopover.qml" },
 
     // Opened from the settings window and from IPC. The only panel carrying
     // any of the three flags; they exist so no consumer has to name it.
@@ -118,6 +125,33 @@ function centerAnchored(name) {
     return !!(panel && panel.centerAnchored);
 }
 
+function attached(name) {
+    var panel = byName(name);
+    return !!(panel && panel.attached);
+}
+
+function edge(name) {
+    var panel = byName(name);
+    return panel && panel.edge ? panel.edge : "";
+}
+
+function drawerTab(name) {
+    var panel = byName(name);
+    return panel && panel.tab ? panel.tab : "";
+}
+
+// The drawer's own tab strip navigates by reopening the panel name that
+// presents the wanted tab, so the popout host, the bar's held states and IPC
+// all stay in one name space. First declaration wins, which keeps the strip
+// on the canonical names (control/audio/wifi/battery/notifications/usage).
+function nameForTab(tab) {
+    for (var i = 0; i < PANELS.length; i++) {
+        if (PANELS[i].tab === tab)
+            return PANELS[i].name;
+    }
+    return "";
+}
+
 function fillsBody(name) {
     var panel = byName(name);
     return !!(panel && panel.fillsBody);
@@ -149,6 +183,10 @@ var exported = {
     panelForModule: panelForModule,
     ownerless: ownerless,
     centerAnchored: centerAnchored,
+    attached: attached,
+    edge: edge,
+    drawerTab: drawerTab,
+    nameForTab: nameForTab,
     fillsBody: fillsBody,
     islandMap: islandMap,
     sourceMap: sourceMap
