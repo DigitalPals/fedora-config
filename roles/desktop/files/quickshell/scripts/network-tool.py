@@ -17,11 +17,9 @@ import json
 import os
 from pathlib import Path
 import re
-import signal
 import subprocess
 import sys
 import time
-import uuid as uuid_module
 from typing import Any, Iterable
 
 

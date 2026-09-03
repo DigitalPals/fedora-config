@@ -3,12 +3,9 @@ import QtWebSockets
 
 // Loaded by URL so systems without QtWebSockets keep a working shell and get
 // an actionable offline Hermes panel instead of failing the whole QML graph.
-Item {
+SocketContract {
     id: root
 
-    property string url: ""
-    property bool active: false
-    property int generation: 0
     property int activeGeneration: -1
 
     readonly property int status: socket.status

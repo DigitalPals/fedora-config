@@ -69,6 +69,7 @@ Rectangle {
     property bool pressFeedback: true
     property string tooltip: ""
     property int tooltipAlign: 0
+    property var preparePanel: null
 
     // The shared bar-wide hit test drives the background, module colours and
     // tooltip together. It remains correct when a child MouseArea misses an
@@ -134,6 +135,8 @@ Rectangle {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onEntered: {
+            if (root.preparePanel)
+                root.preparePanel();
             if (root.ownsPanel)
                 root.host.hoverPopout(root.panelName, root.isle, root.anchorItem);
             root.entered();
@@ -141,11 +144,15 @@ Rectangle {
         // See BarIcon: motion is the first recovery path, and hoverPopout is a
         // no-op for the panel that is already current.
         onPositionChanged: {
+            if (root.preparePanel)
+                root.preparePanel();
             if (root.ownsPanel)
                 root.host.hoverPopout(root.panelName, root.isle, root.anchorItem);
         }
         onExited: root.exited()
         onClicked: {
+            if (root.preparePanel)
+                root.preparePanel();
             if (root.ownsPanel)
                 root.host.togglePopout(root.panelName, root.isle, root.anchorItem);
             root.clicked();

@@ -193,6 +193,15 @@ test("the deployed Quickshell manifest excludes tracked paths deleted on disk", 
     assert.match(tasks,
         /git -C "\$repo" ls-files -z --cached --others --exclude-standard[\s\S]{0,500}?\[\[ -f "\$repo\/\$source_path" \|\| -L "\$repo\/\$source_path" \]\]/,
         "deployment must filter the index through actual file/symlink existence");
+    assert.match(tasks,
+        /rev-parse --is-inside-work-tree[\s\S]{0,1000}?find "\$repo\/roles\/desktop\/files\/quickshell"/,
+        "deployment must build the same source allowlist from release archives without .git");
+    assert.match(tasks,
+        /find "\$repo\/roles\/desktop\/files\/quickshell"[\s\S]{0,300}?-name __pycache__ -prune[\s\S]{0,200}?! -name '\*\.py\[co\]'/,
+        "archive deployment must exclude generated Python bytecode caches");
+    assert.match(tasks,
+        /Refuse an empty or incomplete Quickshell source manifest[\s\S]{0,400}?'shell\.qml' in quickshell_managed_manifest/,
+        "an invalid manifest must fail before it can prune the deployed shell");
     assert.match(verifier,
         /git -C "\$repo_root" ls-files -z --cached --others --exclude-standard[\s\S]{0,400}?\[\[ -f "\$repo_root\/\$source_path" \|\| -L "\$repo_root\/\$source_path" \]\]/,
         "installed-state verification must calculate the identical manifest");

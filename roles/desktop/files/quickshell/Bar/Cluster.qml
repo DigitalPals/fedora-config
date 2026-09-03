@@ -126,6 +126,7 @@ Item {
                                 // (a track starts, updates appear, a tray icon
                                 // registers) never gets on screen.
                                 visible: slotLoader.active
+                                    && !root.host.moduleOverflowed(entry.modelData.entry.id)
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 0
 

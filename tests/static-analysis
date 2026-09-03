@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Repository-wide language-aware lint. Tool absence is a failure: this stage is
+# both a local deployment gate and the exact CI contract.
+set -uo pipefail
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd) || exit 1
+cd -- "$repo_root" || exit 1
+
+missing=()
+for tool in shellcheck ansible-lint yamllint ruff; do
+  command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+done
+if ((${#missing[@]})); then
+  printf 'Missing static-analysis tools: %s\n' "$(IFS=,; printf '%s' "${missing[*]}")" >&2
+  printf 'Install ShellCheck python3-ansible-lint yamllint python3-ruff.\n' >&2
+  exit 2
+fi
+
+shell_files=()
+mapfile -t shell_files < <(rg -l '^#!.*(bash|sh)' -g '!*.j2' . | LC_ALL=C sort)
+((${#shell_files[@]})) || {
+  printf 'No shell sources discovered.\n' >&2
+  exit 1
+}
+
+rc=0
+shellcheck --severity=warning -x "${shell_files[@]}" || rc=1
+yamllint . || rc=1
+ruff check . || rc=1
+ansible-lint --offline site.yml roles/ || rc=1
+exit "$rc"

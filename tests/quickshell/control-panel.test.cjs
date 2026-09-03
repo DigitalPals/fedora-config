@@ -28,7 +28,7 @@ test("the fixed Fedora button owns the ownerless Control Panel anchor", () => {
         "fixed bar furniture must not become a configurable module owner");
 });
 
-test("the Control Panel exposes all five equal session actions", () => {
+test("the Control Panel exposes five equal session actions with guarded destructive controls", () => {
     const control = read("Popovers/ControlCenterPopover.qml");
     const actions = control.match(/sessionActions:\s*\[([\s\S]*?)\n\s*\]/)?.[1] ?? "";
     const keys = [...actions.matchAll(/key:\s*"([^"]+)"/g)].map(match => match[1]);
@@ -36,8 +36,6 @@ test("the Control Panel exposes all five equal session actions", () => {
 
     assert.deepEqual(keys, ["lock", "suspend", "logout", "restart", "shutdown"]);
     assert.deepEqual(labels, ["Lock", "Suspend", "Log out", "Restart", "Shut down"]);
-    assert.doesNotMatch(actions, /danger/,
-        "Shut down must use the same neutral presentation as the other actions");
     assert.match(control, /text:\s*"SESSION"/);
     assert.match(control,
         /sessionActionWidth:\s*\n\s*Math\.max\(0, \(contentWidth - 4 \* sessionSpacing\) \/ 5\)/,
@@ -50,14 +48,40 @@ test("the Control Panel exposes all five equal session actions", () => {
     assert.ok(trigger.indexOf("Popouts.close()") < trigger.indexOf("switch (key)"));
     for (const method of ["lock", "suspend", "logout", "reboot", "shutdown"])
         assert.match(trigger, new RegExp(`Session\\.${method}\\(\\)`));
+
+    const request = control.slice(control.indexOf("function requestSession(key)"),
+        control.indexOf("function triggerSession(key)"));
+    for (const key of ["logout", "reboot", "shutdown"])
+        assert.match(request, new RegExp(`"${key}"`));
+    assert.doesNotMatch(request, /"lock"|"suspend"/,
+        "lock and suspend must not require destructive-action confirmation");
+    assert.match(request, /pendingSessionKey !== key/);
+    assert.match(request, /sessionConfirmTimer\.restart\(\)/);
+    assert.match(request, /triggerSession\(key\)/);
+    assert.match(control, /interval:\s*5000/);
+    assert.match(control, /Accessible\.role:\s*Accessible\.AlertMessage/);
+
     const sessionAction = control.slice(
         control.indexOf("component SessionAction:"),
         control.indexOf("component StatCard:"));
     assert.match(sessionAction,
-        /color:\s*actionMouse\.containsMouse \? Theme\.chipHover : Theme\.chip/);
-    assert.doesNotMatch(sessionAction,
-        /danger|Theme\.(?:red|redBg|redText|textOnAccent)/,
-        "session actions must not carry the retired red Shutdown styling");
+        /color:\s*armed \? Theme\.amberBg[\s\S]*actionMouse\.containsMouse \? Theme\.chipHover : Theme\.chip/);
+    assert.match(sessionAction, /visibleLabel:\s*armed \? "Confirm" : label/);
+    assert.match(sessionAction, /Accessible\.description:\s*armed/);
+    assert.doesNotMatch(sessionAction, /Theme\.(?:red|redBg|redText|textOnAccent)/,
+        "armed session actions use warning, not error, semantics");
+});
+
+test("session actions use the installed helper and report observed failures", () => {
+    const session = read("Common/Session.qml");
+    assert.match(session,
+        /sessionAction\.command = \["\/usr\/local\/libexec\/xps-session-action", action\]/);
+    assert.match(session, /readonly property bool actionBusy:\s*sessionAction\.running/);
+    assert.match(session, /Process \{[\s\S]*id:\s*sessionAction/);
+    assert.match(session, /ProcHelpers\.NOT_STARTED/);
+    assert.match(session, /summary:\s*"Session action failed"/);
+    assert.doesNotMatch(session, /sleep 0\.3|hyprlock.*&/,
+        "suspend must not depend on an unobserved fixed delay");
 });
 
 test("launcher and session power compatibility routes toggle control", () => {

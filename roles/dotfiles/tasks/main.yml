@@ -358,6 +358,15 @@
     mode: "0755"
   tags: [browser]
 
+- name: Create Brave initial-profile configuration directory
+  ansible.builtin.file:
+    path: /opt/brave.com/brave
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [browser]
+
 - name: Configure Brave initial profile defaults
   ansible.builtin.copy:
     dest: /opt/brave.com/brave/initial_preferences

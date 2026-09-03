@@ -1,6 +1,8 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Io
+import "ProcHelpers.js" as ProcHelpers
 
 // Session actions used by the Control Panel and the keyboard cheatsheet
 // reachable from its footer or Super+K.
@@ -9,10 +11,10 @@ Singleton {
 
     property bool keysOpen: false
     property var screen: null
-
-    readonly property string lockCommand:
-        "hyprlock --config " + Quickshell.env("HOME")
-        + "/.config/hypr/hyprlock.conf --immediate-render --no-fade-in"
+    property string actionInFlight: ""
+    property string actionError: ""
+    property string actionOutput: ""
+    readonly property bool actionBusy: sessionAction.running
 
     function openKeys(targetScreen) {
         const popoutScreen = Screens.byName(Popouts.hostScreenName);
@@ -37,31 +39,77 @@ Singleton {
         keysOpen = false;
     }
 
-    function run(command) {
+    function run(action) {
+        if (sessionAction.running)
+            return false;
         closeAll();
-        Quickshell.execDetached(["sh", "-c", command]);
+        actionError = "";
+        actionOutput = "";
+        actionInFlight = action;
+        sessionAction.command = ["/usr/local/libexec/xps-session-action", action];
+        sessionAction.running = true;
+        return true;
     }
 
     function lock() {
-        run(lockCommand);
+        return run("lock");
     }
 
     function suspend() {
-        // Lock first: waking to an unlocked session is the one outcome none of
-        // these buttons should ever produce.
-        run(lockCommand + " & sleep 0.3; systemctl suspend");
+        return run("suspend");
     }
 
     function reboot() {
-        run("systemctl reboot");
+        return run("reboot");
     }
 
     function shutdown() {
-        run("systemctl poweroff");
+        return run("shutdown");
     }
 
     function logout() {
-        run("hyprctl dispatch exit");
+        return run("logout");
+    }
+
+    Process {
+        id: sessionAction
+
+        property bool exitSeen: false
+        property int lastExit: ProcHelpers.NOT_STARTED
+
+        stdout: StdioCollector {
+            onStreamFinished: root.actionOutput = text.trim()
+        }
+        stderr: StdioCollector {
+            onStreamFinished: root.actionError = text.trim()
+        }
+        onExited: exitCode => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = ProcHelpers.NOT_STARTED;
+                return;
+            }
+            if (root.actionInFlight === "")
+                return;
+            const finishedAction = root.actionInFlight;
+            root.actionInFlight = "";
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code !== 0) {
+                const detail = root.actionError !== "" ? root.actionError
+                    : "The " + finishedAction + " action could not be completed.";
+                root.actionError = detail;
+                Notifs.send({
+                    appName: "Session",
+                    appIcon: "system-lock-screen",
+                    summary: "Session action failed",
+                    body: detail
+                });
+            }
+        }
     }
 
     // The rows the cheatsheet draws. Kept here rather than in the overlay so

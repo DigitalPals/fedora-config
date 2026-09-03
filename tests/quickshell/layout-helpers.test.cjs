@@ -126,6 +126,30 @@ test("Hermes activity detail participates in responsive compaction", () => {
     assert.ok(H.COMPACT_ORDER.indexOf("hermes") > H.COMPACT_ORDER.indexOf("t3"));
 });
 
+test("narrow bars overflow low-priority modules but retain core status", () => {
+    const entries = [
+        { id: "ws", col: "left", width: 90, saving: 0, policy: "auto" },
+        { id: "media", col: "left", width: 120, saving: 40, policy: "auto" },
+        { id: "indicators", col: "center", width: 60, saving: 0, policy: "auto", centerSide: "left" },
+        { id: "clock", col: "center", width: 100, saving: 30, policy: "auto", centerSide: "right" },
+        { id: "gh", col: "right", width: 60, saving: 20, policy: "auto" },
+        { id: "wifi", col: "right", width: 40, saving: 0, policy: "auto" },
+        { id: "batt", col: "right", width: 55, saving: 15, policy: "auto" }
+    ];
+    const result = H.fitBar({
+        width: 430, gutter: 8, overflowWidth: 30,
+        widths: { left: 210, center: 160, right: 155 },
+        centerExtents: { left: 60, right: 100 },
+        entries
+    });
+    assert.equal(result.fits, true);
+    assert.ok(result.overflow.includes("media") || result.overflow.includes("gh"));
+    for (const critical of ["ws", "clock", "wifi", "batt"])
+        assert.equal(result.overflow.includes(critical), false);
+    assert.deepEqual(H.OVERFLOW_ORDER.slice(0, 6),
+        ["media", "updates", "gh", "t3", "hermes", "usage"]);
+});
+
 test("asymmetric center extents pin the clock while actions reveal on its left", () => {
     const hidden = H.fitBar({
         width: 1200, gutter: 8,

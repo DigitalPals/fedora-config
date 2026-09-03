@@ -64,7 +64,7 @@ Item {
             return emptyText.implicitWidth + 5;
         let total = 0;
         for (let i = 0; i < providerRepeater.count; i++) {
-            const item = providerRepeater.itemAt(i);
+            const item = providerRepeater.itemAt(i) as UsageProviderItem;
             if (item)
                 total += item.detailSaving;
         }
@@ -170,17 +170,16 @@ Item {
             id: providerRepeater
             model: root.availableKeys
 
-            delegate: Rectangle {
+            delegate: UsageProviderItem {
                 id: chip
 
-                required property string modelData
                 readonly property string providerKey: modelData
                 readonly property string status: Usage.chipStatus(modelData)
                 readonly property int remaining: Usage.minRemaining(modelData)
                 readonly property bool stressed: status === "warn" || status === "crit"
                 // This provider's view is expanded below the bar.
                 readonly property bool current: root.held && Usage.selected === modelData
-                readonly property real detailSaving: usageText.implicitWidth + 4
+                detailSaving: usageText.implicitWidth + 4
                 height: Theme.chipInnerHeight
                 width: chipRow.implicitWidth + 14
                 radius: Theme.chipRadius

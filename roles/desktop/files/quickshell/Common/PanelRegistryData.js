@@ -45,6 +45,7 @@ var PANELS = [
     { name: "hermes", island: "right", moduleId: "hermes", source: "Popovers/HermesPopover.qml" },
     { name: "github", island: "right", moduleId: "gh", source: "Popovers/GitHubPopover.qml" },
     { name: "updates", island: "right", moduleId: "updates", source: "Popovers/UpdatesPopover.qml" },
+    { name: "overflow", island: "right", moduleId: "", source: "Popovers/OverflowPopover.qml" },
 
     // Each status widget owns its established dedicated view. The names stay
     // stable for `qs ipc call popouts toggle <name>` and in-panel drill-ins.

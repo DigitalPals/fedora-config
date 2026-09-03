@@ -47,6 +47,8 @@ singleton EthernetState EthernetState.qml
 singleton BluetoothState BluetoothState.qml
 singleton Battery Battery.qml
 singleton BatteryHealth BatteryHealth.qml
+singleton BarOverflow BarOverflow.qml
+singleton ShellHealth ShellHealth.qml
 singleton BrandIcons BrandIcons.qml
 singleton WebIcons WebIcons.qml
 singleton Media Media.qml
@@ -70,6 +72,7 @@ NotifCard NotifCard.qml
 NotifIcon NotifIcon.qml
 Revealer Revealer.qml
 ScrollChrome ScrollChrome.qml
+SocketContract SocketContract.qml
 StatusPlaceholder StatusPlaceholder.qml
 Toggle Toggle.qml
 StateLayer StateLayer.qml

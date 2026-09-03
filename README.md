@@ -122,8 +122,9 @@ behavior.
 | `./bootstrap` | Install Ansible if needed and apply the full configuration |
 | `./update` | Update Fedora packages and system Flatpaks |
 | `./update --full` | Also update tools and reapply the managed configuration |
-| `./tests/run` | Run all thirteen strict source-check stages |
-| `./verify` | Run non-destructive checks against the installed system |
+| `./tests/run` | Run all fifteen strict source-check stages |
+| `./tests/fedora-vm-convergence` | Boot the pinned Fedora 44 Cloud image and converge the desktop roles twice |
+| `./verify` | Run source and installed-system checks (`--help` lists scopes and JSON output) |
 
 Extra arguments to `bootstrap` are passed to `ansible-playbook`. For `update`,
 use `--full` before Ansible arguments, for example `./update --full --check
@@ -152,9 +153,12 @@ for a reviewed boot/initramfs change.
 | [docs/xps-2026-hardware.md](docs/xps-2026-hardware.md) | XPS 2026 speaker, camera, fingerprint, haptics, Secure Boot, and diagnostics |
 
 The automated side is `./verify`, which runs all of `tests/run` before the
-installed-system checks. The source gate runs every stage and fails rather than
-silently skipping a missing required tool; `./tests/run --list` is its
-authoritative stage list.
+installed-system checks by default. `--source`, `--system`, and `--quick` make
+the scope explicit, while `--json` provides a stable machine-readable result.
+The source gate fails rather than silently skipping a missing required tool;
+`./tests/run --list` is its authoritative stage list. Package updates create a
+bounded Btrfs root plus `/boot` recovery point before DNF runs; the rescue
+procedure is documented in [the operations guide](docs/operations.md#update-recovery-points).
 
 > [!IMPORTANT]
 > The repository currently has no repository-wide software license, and the

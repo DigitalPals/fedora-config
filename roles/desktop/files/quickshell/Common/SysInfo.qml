@@ -13,10 +13,27 @@ Singleton {
     readonly property string user: Quickshell.env("USER") || "user"
     property string host: "linux"
 
-    // Shared idle-inhibit state (bar module + control center toggle).
-    // `idleInhibited` remains the persisted user intent for compatibility;
-    // consumers that need the actual process state use the fields beside it.
-    readonly property bool idleInhibited: Settings.idleInhibited
+    // Shared idle-inhibit state (bar module + control center toggle). Only
+    // "Always" is persisted through Settings; normal requests expire in this
+    // Quickshell session or when external power is removed.
+    property string temporaryIdleInhibitMode: "off"
+    property double idleInhibitUntilMs: 0
+    property double idleInhibitClockMs: Date.now()
+    readonly property string idleInhibitMode: Settings.idleInhibited
+        ? "always" : temporaryIdleInhibitMode
+    readonly property bool idleInhibited: idleInhibitMode !== "off"
+    readonly property int idleInhibitRemainingSecs: idleInhibitUntilMs > 0
+        ? Math.max(0, Math.ceil((idleInhibitUntilMs - idleInhibitClockMs) / 1000)) : 0
+    readonly property string idleInhibitStatus: {
+        if (!idleInhibited)
+            return "Off";
+        if (idleInhibitMode === "always")
+            return "Until turned off";
+        if (idleInhibitMode === "unplugged")
+            return "Until unplugged";
+        const mins = Math.max(1, Math.ceil(idleInhibitRemainingSecs / 60));
+        return mins + " min left";
+    }
     property bool idleInhibitPending: false
     property bool idleInhibitEffective: false
     property string idleInhibitError: ""
@@ -176,16 +193,63 @@ Singleton {
         setNightLight(!nightLight);
     }
 
+    function setIdleInhibitMode(mode) {
+        const accepted = ["off", "30m", "1h", "unplugged", "always"];
+        if (accepted.indexOf(mode) === -1)
+            mode = "off";
+
+        if (mode === "always") {
+            temporaryIdleInhibitMode = "off";
+            idleInhibitUntilMs = 0;
+            Settings.set("idleInhibited", true);
+            return;
+        }
+
+        temporaryIdleInhibitMode = mode;
+        idleInhibitUntilMs = mode === "30m" ? Date.now() + 30 * 60000
+            : mode === "1h" ? Date.now() + 60 * 60000 : 0;
+        if (Settings.idleInhibited)
+            Settings.set("idleInhibited", false);
+        else
+            syncIdleInhibit();
+
+        if (mode === "unplugged" && Battery.isLaptop && !Battery.pluggedIn)
+            setIdleInhibitMode("off");
+    }
+
     function setIdleInhibited(value) {
-        Settings.set("idleInhibited", !!value);
+        setIdleInhibitMode(value ? "always" : "off");
     }
 
     function toggleIdleInhibited() {
-        setIdleInhibited(!idleInhibited);
+        // The dashboard's quick action is intentionally safe by default. The
+        // System page offers the explicit persistent choice.
+        setIdleInhibitMode(idleInhibited ? "off" : "1h");
     }
 
     onNightLightChanged: syncNightLight()
     onIdleInhibitedChanged: syncIdleInhibit()
+
+    Timer {
+        interval: 1000
+        running: root.idleInhibitUntilMs > 0
+        repeat: true
+        onTriggered: {
+            root.idleInhibitClockMs = Date.now();
+            if (root.idleInhibitClockMs >= root.idleInhibitUntilMs)
+                root.setIdleInhibitMode("off");
+        }
+    }
+
+    Connections {
+        target: Battery
+
+        function onPluggedInChanged() {
+            if (root.temporaryIdleInhibitMode === "unplugged"
+                    && Battery.isLaptop && !Battery.pluggedIn)
+                root.setIdleInhibitMode("off");
+        }
+    }
 
     Timer {
         id: idleInhibitConfirm

@@ -25,6 +25,10 @@ jobs:
         run: |
           dnf install -y \
             ansible-core \
+            python3-ansible-lint \
+            python3-ruff \
+            ShellCheck \
+            yamllint \
             curl \
             dbus-daemon \
             dnf5-plugins \

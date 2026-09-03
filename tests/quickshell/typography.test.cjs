@@ -25,7 +25,8 @@ function qmlFiles(directory) {
 }
 
 function intToken(name) {
-    const match = theme.match(new RegExp(`readonly property int ${name}:\\s*(\\d+)`));
+    const match = theme.match(new RegExp(
+        `readonly property int ${name}:\\s*(?:scaled\\(\\s*)?(\\d+)`));
     assert.ok(match, `Theme.${name} must be an integer token`);
     return Number(match[1]);
 }
@@ -97,7 +98,8 @@ test("settings-driven tokens default to the selected menu face", () => {
     const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
     assert.equal(menuChoice.family, "JetBrains Mono");
 
-    assert.match(theme, /readonly property int barHeight:\s*Settings\.barHeight/);
+    assert.match(theme,
+        /readonly property int barHeight:\s*Math\.max\(Settings\.barHeight, chipHeight \+ 8\)/);
     assert.match(theme, /readonly property bool barFloating:\s*Settings\.barStyle === "floating"/);
     assert.match(theme, /readonly property int clusterRadius:\s*barFloating \? Settings\.barRadius : 0/);
     assert.match(theme, /readonly property color accent:\s*paletteActive \? Common\.Palette\.primary/);
@@ -213,7 +215,8 @@ test("all visible bar values use the menu face with tabular figures", () => {
 
 test("bar and popovers use semantic sizes with an eleven-pixel text floor", () => {
     const files = [...qmlFiles("Bar"), ...qmlFiles("Popovers"), ...qmlFiles("Settings")];
-    const textTokens = [...theme.matchAll(/readonly property int (font\w+):\s*(\d+)/g)];
+    const textTokens = [...theme.matchAll(
+        /readonly property int (font\w+):\s*(?:scaled\(\s*)?(\d+)/g)];
     assert.ok(textTokens.length > 0);
     for (const [, name, value] of textTokens)
         assert.ok(Number(value) >= 11, `Theme.${name} falls below the 11 px floor`);

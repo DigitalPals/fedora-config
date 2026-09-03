@@ -10,7 +10,7 @@ table in the README links here instead of duplicating these details.
 | --- | --- |
 | `./bootstrap` | Ensures `ansible-core` exists, then runs `ansible-playbook site.yml`. It includes the `boot` role and does **not** run `tests/run` first. |
 | `./tests/run` | Runs all required source-tree checks without inspecting or changing the live machine. |
-| `./verify` | Runs `tests/run` and then the non-destructive installed-system verifier. Both halves run even if the other fails. |
+| `./verify` | Runs complete source and non-destructive installed-system checks. Use `--source`, `--system`, or `--quick` for a narrower scope and `--json` for automation. |
 | `./update` | Starts one durable user-service worker for Fedora and system Flatpak updates, then attaches the terminal to its log. |
 | `./update --full` | Updates packages, runs `tests/run`, and applies `site.yml --skip-tags boot`. |
 
@@ -30,6 +30,10 @@ Ansible arguments to `update` are accepted only after `--full`, for example:
 Ansible argument selects a boot-related tag. Apply reviewed Plymouth/initramfs
 changes with `./bootstrap --tags boot`, then allow its handler to finish before
 rebooting.
+
+`./verify --help` is the authoritative verification interface. Scope flags are
+mutually exclusive, unknown arguments fail before any check runs, and
+`--require-hyprland` is accepted only when system checks are in scope.
 
 ## Supported Ansible tags
 
@@ -79,7 +83,8 @@ Run state lives under `~/.local/state/xps-update/`. Each run has a private
 directory under `logs/<run-id>/` containing:
 
 - `status.json`: atomic machine-readable phase, result, component exit codes,
-  timestamps, and transient unit name;
+  timestamps, transient unit name, and the pre-update `snapshotId` when one
+  was created;
 - `run.log`: the complete combined stream with `dnf`, `flatpak`, `tests`, and
   `ansible` prefixes;
 - component logs such as `dnf.log`, `flatpak.log`, `tests.log`, and
@@ -91,6 +96,50 @@ the `unit` field with `systemctl --user status <unit>` and
 `journalctl --user -u <unit>`. If the unit disappeared without final status,
 the next status read marks the run failed with phase `abandoned` instead of
 blocking all future updates.
+
+## Update recovery points
+
+Before package work starts, the updater requires
+`/usr/local/libexec/xps-system-snapshot` on the managed Btrfs layout. It saves a
+read-only snapshot of the `root` subvolume and a matching archive of `/boot`
+(including the mounted EFI tree), then retains the five newest pairs. `/home`
+is a separate subvolume and is intentionally outside system rollback. A
+snapshot failure stops the update before DNF changes anything. On a non-Btrfs
+root the step records that no filesystem recovery point was required.
+
+List retained IDs and descriptions with:
+
+```bash
+sudo xps-system-snapshot list
+xps-update-run status --json | jq -r .snapshotId
+```
+
+Rollback is deliberately a rescue operation, never an automatic action from a
+running, potentially damaged root. Boot Fedora rescue/live media, unlock the
+LUKS device, identify the root Btrfs filesystem and the separate `/boot` and
+EFI partitions with `lsblk -f`, then use the reviewed snapshot ID below. Device
+names are placeholders and must be replaced with the values from `lsblk`:
+
+```bash
+mount -o subvolid=5 /dev/mapper/ROOT_CRYPT /mnt
+ID=20260903T120000Z-1234
+test -d "/mnt/xps-snapshots/root/$ID"
+test -f "/mnt/xps-snapshots/boot/$ID.tar"
+btrfs subvolume snapshot "/mnt/xps-snapshots/root/$ID" /mnt/root.recovered
+mv /mnt/root "/mnt/root.failed-$ID"
+mv /mnt/root.recovered /mnt/root
+mount /dev/BOOT_PARTITION /mnt/root/boot
+mount /dev/EFI_PARTITION /mnt/root/boot/efi
+tar --acls --xattrs --selinux --numeric-owner \
+  --extract --file "/mnt/xps-snapshots/boot/$ID.tar" --directory /mnt/root
+sync
+```
+
+Reboot into the default entry and run `sudo restorecon -RF /boot` followed by
+`./verify --system --require-hyprland`. Keep `root.failed-$ID` until the system
+and user session are confirmed healthy; deleting it is a separate, explicit
+space-reclamation decision. These recovery points do not replace backups:
+they share the same physical Btrfs filesystem and cannot survive device loss.
 
 Ansible's `xps` callback is intentionally compact: unchanged and skipped tasks
 are quiet, changes are one line, and failures include a bounded diagnostic.
@@ -125,16 +174,24 @@ from the executable itself:
 ./tests/run --list
 ```
 
-The current thirteen stages cover whole-source/Ansible syntax, Node unit
-tests, Hyprland workspace fixtures, QML static analysis, offscreen QML runtime
-contracts, Quickshell deployment integration, callback compatibility, Python
-helper and repository-policy tests, XPS hardware integration, Plymouth layout,
-the durable updater, screenshot workflow, and brightness routing.
+The current fifteen stages cover whole-source/Ansible syntax, ShellCheck,
+ansible-lint, yamllint, Ruff, Node unit tests, Hyprland workspace fixtures, QML
+static analysis, offscreen helper contracts, real-Quickshell component
+lifecycle coverage in CI, Quickshell deployment integration, callback and
+Python fixtures, XPS hardware integration, Plymouth layout, the durable
+updater, screenshot/brightness workflows, and Btrfs snapshot retention.
 
 The GitHub workflow runs the same `./tests/run` command in a Fedora 44
 container. `./update --full` stops before Ansible if this gate fails. The
 `--skip-tests` updater option is an emergency override and should be recorded
 with the reason it was needed; it is not the normal deployment path.
+
+The weekly and manually dispatchable `Fedora VM convergence` workflow adds a
+slower system boundary: it checksum-verifies the pinned official Fedora 44
+Cloud image, boots it under QEMU, applies the base/desktop/dotfiles/boot roles
+twice, requires a zero-change second pass, and checks the rendered system and
+user units. Run the same test locally with `./tests/fedora-vm-convergence`;
+set `FEDORA_VM_TAGS=all` for an intentionally longer all-role exercise.
 
 ## Reduced motion
 

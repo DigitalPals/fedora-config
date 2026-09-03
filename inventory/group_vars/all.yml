@@ -29,6 +29,10 @@ xps_2026_haptic_intensity: high
 passwordless_wheel: true
 passwordless_local_polkit: true
 gdm_autologin: true
+# Hardware-backed daemons should start immediately on the physical laptop.
+# Hardware-neutral convergence profiles can leave them enabled for boot while
+# avoiding perpetual start attempts against devices the VM cannot provide.
+start_optional_hardware_services: true
 # sccache has no transport upgrade for the existing private-LAN scheduler.
 # Setting this true is an explicit acceptance that its bearer token and build
 # traffic cross that network without TLS. Set false (or use an https://

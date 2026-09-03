@@ -22,10 +22,10 @@ you need the reasoning behind a particular change; `git log --oneline
   runtime as "X is not a type". `tests/quickshell/qmldir.test.cjs` enforces it.
 - Pure logic goes in a `.js` module in `Common/` with a Node test in
   `tests/quickshell/` — that suite runs in under a second without Qt.
-- `tests/run` is the strict thirteen-stage source gate: Node tests, QML static
-  and runtime checks, integration contracts, and the repository's other
-  fixtures. `update --full` runs it before deploying, and the Ansible role
-  lints the tree before copying it. See `./tests/run --list` and
+- `tests/run` is the strict fifteen-stage source gate: language-aware static
+  analysis, Node tests, QML static/runtime checks, integration contracts, and
+  the repository's other fixtures. `update --full` runs it before deploying,
+  and the Ansible role lints the tree before copying it. See `./tests/run --list` and
   [the operations guide](operations.md#the-strict-source-gate).
 
 ## Testing without a GUI
@@ -76,9 +76,11 @@ example. Do not commit while a throwaway live copy is deployed.
   `journalctl --user -u quickshell.service`. A harness that must report a value
   writes a file:
   `Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", text, path])`.
-- **Offscreen harness**: prefer the isolated `qmltestrunner` stage in
-  `tests/run`; it points HOME/XDG paths at a scratch directory and cannot write
-  live settings. If a direct source-tree `qs -d`/`qs -p` probe is indispensable,
+- **Offscreen harness**: `tests/run` points HOME/XDG paths at a scratch
+  directory. Generic `qmltestrunner` covers helpers; Quickshell's plugin is
+  statically linked into `qs`, so the production-component lifecycle harness
+  runs through the real engine in CI and refuses to run beside an active local
+  `qs`. If another direct source-tree `qs -d`/`qs -p` probe is indispensable,
   stop `quickshell.service` first and install a trap that terminates the exact
   developer PID, restores the service, and finishes with the same sole-PID and
   current-journal checks as `qs_live_end`. Never run the probe beside the
@@ -455,7 +457,8 @@ glass and detached panels. What that added, and what it needs:
   overlay surfaces, not menubar chrome, so they follow the general UI face and
   do not track the menu font setting. `typography.test.cjs` enforces the split.
 
-Still open: **broader QML component and state-machine coverage**. The mandatory
-`qmltestrunner-qt6` stage now exercises shared JavaScript helpers inside the QML
-runtime; the next targets are the Settings load/merge/save cycle and the
+Still open: **deeper QML state-machine coverage**. The mandatory runtime stage
+now exercises helpers under `qmltestrunner-qt6` and constructs, mutates,
+signals, and destroys production controls under the real Quickshell engine in
+CI. The next targets are the Settings load/merge/save cycle and the
 `T3Connection` process/socket lifecycle against controlled test doubles.

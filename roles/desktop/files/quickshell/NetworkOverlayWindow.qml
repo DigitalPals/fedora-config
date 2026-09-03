@@ -15,6 +15,8 @@ import "Common/NetworkHelpers.js" as NetworkHelpers
 PanelWindow {
     id: root
 
+    readonly property Item loadedPage: pageLoader.item as Item
+
     readonly property string helper: Quickshell.shellDir + "/scripts/network-tool.py"
     readonly property string speedHelper: Quickshell.shellDir + "/scripts/network-speedtest.py"
     readonly property bool qrPageActive: NetworkOverlayState.page === "qr"
@@ -65,8 +67,8 @@ PanelWindow {
 
             anchors.centerIn: parent
             width: Math.min(620, root.width - 32)
-            height: Math.min(root.height - 32, pageLoader.item
-                ? pageLoader.item.implicitHeight + 88 : 260)
+            height: Math.min(root.height - 32, root.loadedPage
+                ? root.loadedPage.implicitHeight + 88 : 260)
             radius: Theme.popRadius
             color: Theme.panelSurface
             border.width: 1

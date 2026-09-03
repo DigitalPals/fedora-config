@@ -6,6 +6,11 @@ import Quickshell.Wayland
 import "Bar"
 import "Common"
 
+// The static linter cannot resolve Quickshell's private PostReloadHook base from the
+// installed qmltypes. The shell does not instantiate it; importing Quickshell
+// nevertheless makes the tool inspect that private base.
+// qmllint disable import
+
 ShellRoot {
     id: shell
 

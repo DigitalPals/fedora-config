@@ -7,6 +7,8 @@ import "../Common"
 Surface {
     id: root
 
+    readonly property Item loadedPage: pageLoader.item as Item
+
     spacing: 6
     padding: T3Theme.pagePadding
     surfaceColor: T3Theme.canvas
@@ -15,7 +17,9 @@ Surface {
     availableWidth: 484 - Theme.barSideMargin * 2
     availableHeight: 800 - Theme.barTopMargin - Theme.barHeight - 16
 
-    readonly property int pageMaxWidth: page === "inbox" ? 460 : 520
+    property bool workspaceExpanded: false
+    readonly property int pageMaxWidth: workspaceExpanded ? 760
+        : page === "inbox" ? 460 : 520
     implicitWidth: Math.max(Theme.t3MinWidth,
         Math.min(pageMaxWidth, root.availableWidth))
 
@@ -39,8 +43,9 @@ Surface {
     // reading window a thread needs — so below roughly 1080px the thread
     // takes more than half rather than less, and maxPageHeight still has the
     // last word on the smallest outputs.
-    readonly property int threadMaxHeight: Math.min(root.maxPageHeight,
-        Math.max(520, Math.round(root.availableHeight / 2)))
+    readonly property int threadMaxHeight: workspaceExpanded ? root.maxPageHeight
+        : Math.min(root.maxPageHeight,
+            Math.max(520, Math.round(root.availableHeight / 2)))
     readonly property T3NewThreadPage loadedNewThreadPage: root.page === "new"
         ? pageLoader.item as T3NewThreadPage : null
 
@@ -97,6 +102,10 @@ Surface {
     function handleEscape(): bool {
         if (connectionMenuOpen) {
             connectionMenuOpen = false;
+            return true;
+        }
+        if (page === "inbox" && workspaceExpanded) {
+            workspaceExpanded = false;
             return true;
         }
         if (page === "inbox")
@@ -272,6 +281,16 @@ Surface {
             spacing: 2
 
             IconButton {
+                symbol: root.workspaceExpanded ? "close_fullscreen" : "open_in_full"
+                accessibleName: root.workspaceExpanded
+                    ? "Use compact T3 Code popover" : "Expand T3 Code workspace"
+                accessibleDescription: root.workspaceExpanded
+                    ? "Return to the glanceable view" : "Use more width and transcript height"
+                tint: root.workspaceExpanded ? T3Theme.accent : T3Theme.textMuted
+                onTriggered: root.workspaceExpanded = !root.workspaceExpanded
+            }
+
+            IconButton {
                 id: newButton
                 visible: T3Code.paired
                 readonly property bool usable: T3Code.canDispatch && T3Code.hasReadyProvider
@@ -420,7 +439,7 @@ Surface {
         width: parent.width
         sourceComponent: root.page === "thread" ? threadPage
             : root.page === "new" ? newPage : inboxPage
-        height: item ? item.implicitHeight : 0
+        height: root.loadedPage ? root.loadedPage.implicitHeight : 0
     }
 
     Item {

@@ -1,0 +1,29 @@
+---
+# A hardware-neutral Fedora Cloud profile for the real-role convergence job.
+# The production defaults remain untouched; DMI is fixed by the QEMU command
+# line so the site-level hardware guard is still genuinely exercised.
+primary_user: fedora
+primary_group: fedora
+primary_home: /home/fedora
+machine_hostname: fedora-config-ci
+machine_timezone: UTC
+machine_locale: en_US.UTF-8
+regional_locale: en_US.UTF-8
+plymouth_theme: bgrt
+gdm_autologin: false
+start_optional_hardware_services: false
+xps_2026_camera_enabled: false
+allow_insecure_sccache_transport: false
+expected_hardware:
+  sys_vendor: QEMU
+  product_name_regex: ^Fedora Convergence$
+  cpu_regex: .*
+features:
+  tailscale: false
+  docker: false
+  podman: false
+  steam: false
+  private_hooks: false
+  apple_display: false
+  source_builds: false
+  local_network_services: false

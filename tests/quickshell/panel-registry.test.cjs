@@ -155,7 +155,7 @@ test("panels no module owns are exactly the ones the bar sweep must skip", () =>
     // `control` is opened by fixed Fedora-button furniture rather than a
     // configurable module, so module changes must leave it alone.
     assert.deepEqual(R.PANELS.filter(p => R.ownerless(p.name)).map(p => p.name).sort(),
-        ["control", "settings", "tailscale"]);
+        ["control", "overflow", "settings", "tailscale"]);
 });
 
 test("only settings carries the behaviour flags", () => {

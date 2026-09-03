@@ -15,7 +15,7 @@ function read(rel) {
 // would let T3 and the menubar drift apart again.
 function intToken(source, name, theme) {
     const match = source.match(new RegExp(
-        `readonly property int ${name}:\\s*(?:Theme\\.(\\w+)|(\\d+))`));
+        `readonly property int ${name}:\\s*(?:Theme\\.(\\w+)|(?:scaled\\(\\s*)?(\\d+))`));
     assert.ok(match, `${name} must remain an integer token`);
     if (match[2] !== undefined)
         return Number(match[2]);

@@ -5,6 +5,8 @@
 // weather conditions, while the clock's own date remains a late resort.
 var COMPACT_ORDER = ["media", "updates", "notifications", "t3", "hermes", "usage", "gh",
     "weather", "clock", "vol", "batt"];
+var OVERFLOW_ORDER = ["media", "updates", "gh", "t3", "hermes", "usage",
+    "weather", "tray", "bt", "notifications", "indicators"];
 
 // Consecutive modules that draw the same way share one layout group: the
 // T3/Hermes/usage/GitHub chips retain their ordering and separator contract. "solo"
@@ -149,6 +151,7 @@ function fitBar(options) {
     widths.center = center.left + center.right;
     var entries = Array.isArray(options.entries) ? options.entries : [];
     var compact = [];
+    var overflow = [];
 
     function apply(entry) {
         if (!entry || compact.indexOf(entry.id) !== -1)
@@ -188,7 +191,8 @@ function fitBar(options) {
     ["auto", "prefer"].forEach(function(policy) {
         COMPACT_ORDER.forEach(function(id) {
             var entry = entries.find(function(item) {
-                return item.id === id && item.policy === policy;
+                return item.id === id && item.policy === policy
+                    && Math.max(0, item.saving || 0) > 0;
             });
             if (entry)
                 ordered.push(entry);
@@ -213,8 +217,48 @@ function fitBar(options) {
         }
     }
 
+    // The semantic centre could not be fitted even after every eligible label
+    // was compacted and the cluster shifted. Reserve the More button, then
+    // remove low-priority modules until the three lanes no longer collide.
+    if (!state.fits) {
+        widths.right += Math.max(0, Number(options.overflowWidth) || 0);
+        state = geometry();
+        centerX = state.desired;
+        shifted = false;
+        for (var j = 0; !state.fits && j < OVERFLOW_ORDER.length; j++) {
+            var hidden = entries.find(function(item) {
+                return item.id === OVERFLOW_ORDER[j];
+            });
+            if (!hidden || !(hidden.col in widths))
+                continue;
+            overflow.push(hidden.id);
+            var fullWidth = Math.max(0, Number(hidden.width) || 0);
+            var hiddenWidth = Math.max(0, fullWidth
+                - (compact.indexOf(hidden.id) !== -1
+                    ? Math.max(0, hidden.saving || 0) : 0));
+            widths[hidden.col] = Math.max(0, widths[hidden.col] - hiddenWidth);
+            if (hidden.col === "center") {
+                var hiddenSide = hidden.centerSide === "left" ? "left" : "right";
+                center[hiddenSide] = Math.max(0, center[hiddenSide] - hiddenWidth);
+            }
+            state = geometry();
+            centerX = state.desired;
+            shifted = false;
+            if (!state.fits) {
+                var overflowMinX = widths.left + gutter;
+                var overflowMaxX = state.rightX - gutter - center.left - center.right;
+                if (overflowMaxX >= overflowMinX) {
+                    centerX = clamp(state.desired, overflowMinX, overflowMaxX);
+                    shifted = Math.abs(centerX - state.desired) > 0.01;
+                    state.fits = true;
+                }
+            }
+        }
+    }
+
     return {
         compact: compact,
+        overflow: overflow,
         widths: widths,
         centerExtents: center,
         centerX: centerX,
@@ -258,6 +302,7 @@ function edgeFlareRadii(options) {
 
 var exported = {
     COMPACT_ORDER: COMPACT_ORDER,
+    OVERFLOW_ORDER: OVERFLOW_ORDER,
     clamp: clamp,
     groupModules: groupModules,
     moveWidget: moveWidget,

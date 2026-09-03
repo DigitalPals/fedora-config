@@ -22,7 +22,16 @@ Singleton {
     readonly property string reducedMotionValue:
         (Quickshell.env("QS_REDUCED_MOTION") || "").trim().toLowerCase()
     readonly property bool reducedMotion:
-        ["1", "true", "yes", "on"].includes(reducedMotionValue)
+        Settings.reducedMotion
+        || ["1", "true", "yes", "on"].includes(reducedMotionValue)
+    readonly property real typeScale: Settings.textScale === "larger" ? 1.30
+        : Settings.textScale === "large" ? 1.15 : 1.0
+    readonly property real densityScale: Settings.interfaceDensity === "comfortable" ? 1.16
+        : Settings.interfaceDensity === "compact" ? 0.92 : 1.0
+    readonly property real contentScale: Math.max(typeScale, densityScale)
+    function scaled(value, scale) {
+        return Math.round(value * (scale === undefined ? contentScale : scale));
+    }
 
     readonly property bool dark: Settings.themeMode !== "light"
     readonly property bool paletteActive:
@@ -69,17 +78,20 @@ Singleton {
     // Rendering uses semantic surface tokens. The raw glass colours above
     // remain the translucent variants; disabling glass swaps in opaque
     // references without making nested chip/tile fills opaque.
-    readonly property color barSurface: Settings.glassEnabled ? glass : barBg
-    readonly property color surfaceStrong: Settings.glassEnabled ? glassStrong : popBg
-    readonly property color surfaceMenu: Settings.glassEnabled ? glassMenu : menuBg
-    readonly property color panelSurface: Settings.glassEnabled ? glassPanel : background
+    readonly property bool glassActive: Settings.glassEnabled && !Settings.highContrast
+    readonly property color barSurface: glassActive ? glass : barBg
+    readonly property color surfaceStrong: glassActive ? glassStrong : popBg
+    readonly property color surfaceMenu: glassActive ? glassMenu : menuBg
+    readonly property color panelSurface: glassActive ? glassPanel : background
     // Full-screen scrim behind the shortcut sheet.
     readonly property color scrim: dark
         ? Qt.rgba(10 / 255, 8 / 255, 22 / 255, 0.42)
         : Qt.rgba(236 / 255, 236 / 255, 244 / 255, 0.5)
 
     // Hairlines.
-    readonly property color stroke: paletteActive ? Common.Palette.outlineVariant
+    readonly property color stroke: Settings.highContrast
+        ? (dark ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(0, 0, 0, 0.44))
+        : paletteActive ? Common.Palette.outlineVariant
         : dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.65)
     readonly property color popBorder: stroke
     readonly property color hairline: stroke
@@ -368,15 +380,15 @@ Singleton {
 
     // Semantic logical-pixel type scale. Metadata now floors at 11px and the
     // the roomier scale keeps compact copy from feeling compressed.
-    readonly property int fontMicro: 11
-    readonly property int fontTiny: 12
-    readonly property int fontCaption: 12
-    readonly property int fontSecondary: 13
-    readonly property int fontBody: 14
-    readonly property int fontHeading: 16
-    readonly property int fontProminent: 20
-    readonly property int fontDisplay: 28
-    readonly property int fontHero: 34
+    readonly property int fontMicro: scaled(11, typeScale)
+    readonly property int fontTiny: scaled(12, typeScale)
+    readonly property int fontCaption: scaled(12, typeScale)
+    readonly property int fontSecondary: scaled(13, typeScale)
+    readonly property int fontBody: scaled(14, typeScale)
+    readonly property int fontHeading: scaled(16, typeScale)
+    readonly property int fontProminent: scaled(20, typeScale)
+    readonly property int fontDisplay: scaled(28, typeScale)
+    readonly property int fontHero: scaled(34, typeScale)
     // Monospaced faces set wider than they are tall, so a measure that reads
     // comfortably at 1.45 in the proportional faces runs together in JetBrains
     // Mono. The step is per-face rather than global: raising it for everyone
@@ -392,24 +404,24 @@ Singleton {
     readonly property int weightBold: 650
     readonly property int weightHeavy: 750
 
-    readonly property int iconTiny: 11
-    readonly property int iconSmall: 13
-    readonly property int iconMedium: 16
-    readonly property int iconLarge: 20
-    readonly property int iconHero: 27
+    readonly property int iconTiny: scaled(11, typeScale)
+    readonly property int iconSmall: scaled(13, typeScale)
+    readonly property int iconMedium: scaled(16, typeScale)
+    readonly property int iconLarge: scaled(20, typeScale)
+    readonly property int iconHero: scaled(27, typeScale)
 
     // Menubar typography. The bar sets its own optical size independently of
     // the roomier panel scale.
-    readonly property int barTextSize: 13
+    readonly property int barTextSize: scaled(13, typeScale)
     readonly property int barLabelSize: fontMicro
-    readonly property int barIconSize: 15
+    readonly property int barIconSize: scaled(15, typeScale)
     readonly property var tabularNumberFeatures: ({ "tnum": 1 })
 
     // ---- metrics -----------------------------------------------------------
     // Bar geometry is settings-driven. Hug and attached styles meet the
     // screen edge; floating restores the screenshot's slightly wider side
     // inset while continuing to use the configurable gap and radius.
-    readonly property int barHeight: Settings.barHeight
+    readonly property int barHeight: Math.max(Settings.barHeight, chipHeight + 8)
     readonly property bool barFloating: Settings.barStyle === "floating"
     readonly property bool barHug: Settings.barStyle === "hug"
     readonly property int barTopMargin: barFloating ? Settings.gap : 0
@@ -427,28 +439,28 @@ Singleton {
 
     // Compact controls reproduce the original 22–26px rhythm while the
     // outer slab remains independently height-adjustable.
-    readonly property int chipHeight: 26
-    readonly property int chipInnerHeight: 22
+    readonly property int chipHeight: scaled(26)
+    readonly property int chipInnerHeight: scaled(22)
     readonly property int chipRadius: 7
     readonly property int pillRadius: 999
-    readonly property int roundButton: 26
-    readonly property int tooltipHeight: 28
+    readonly property int roundButton: scaled(26)
+    readonly property int tooltipHeight: scaled(28)
 
-    readonly property int popWidth: 408
-    readonly property int popWideWidth: 448
+    readonly property int popWidth: scaled(408, Math.min(contentScale, 1.15))
+    readonly property int popWideWidth: scaled(448, Math.min(contentScale, 1.15))
     readonly property int t3MinWidth: 360
     readonly property int t3MaxWidth: 520
-    readonly property int surfacePadding: 16
-    readonly property int controlHeight: 46
+    readonly property int surfacePadding: scaled(16)
+    readonly property int controlHeight: scaled(46)
     // Inline action pills sit beside copy inside compact cards. They need a
     // smaller target than standalone header, footer and form controls so a
     // two-line tile does not grow or clip when its actions are revealed.
-    readonly property int inlineActionHeight: 32
-    readonly property int settingsControlHeight: 28
-    readonly property int rowHeight: 52
-    readonly property int tileHeight: 64
-    readonly property int calendarCellSize: 22
-    readonly property int pickerRowHeight: 40
+    readonly property int inlineActionHeight: scaled(32)
+    readonly property int settingsControlHeight: scaled(28)
+    readonly property int rowHeight: scaled(52)
+    readonly property int tileHeight: scaled(64)
+    readonly property int calendarCellSize: scaled(22)
+    readonly property int pickerRowHeight: scaled(40)
     // A panel takes the bar's corner and everything inside it takes the bar's
     // chip corner. `surfaceRadius` stays where it is: it is the compositor's
     // window rounding (roles/desktop/files/looknfeel.lua) and the Hug corners
@@ -467,25 +479,25 @@ Singleton {
     // is the menubar's own default height, held as a literal so a taller bar
     // does not drag every thread row up with it.
     readonly property int panelRadius: Settings.barRadius
-    readonly property int panelPadding: 14
-    readonly property int sectionHeaderHeight: 22
-    readonly property int panelRowHeight: 28
-    readonly property int listRowHeight: 34
+    readonly property int panelPadding: scaled(14)
+    readonly property int sectionHeaderHeight: scaled(22)
+    readonly property int panelRowHeight: scaled(28)
+    readonly property int listRowHeight: scaled(34)
     // A panel's title block: subject on one line, its qualifiers on the next,
     // closed by a hairline. The footer carries one line and no more.
-    readonly property int panelHeaderHeight: 52
-    readonly property int panelFooterHeight: 30
+    readonly property int panelHeaderHeight: scaled(52)
+    readonly property int panelFooterHeight: scaled(30)
     // A row that genuinely carries two lines — a device and what it is doing,
     // a track and its artist. Most rows do not: one line and a right-aligned
     // qualifier is the shell's default, and `listRowHeight` is that.
-    readonly property int panelTileHeight: 48
+    readonly property int panelTileHeight: scaled(48)
     // Between two rows in one group, and between two groups.
     readonly property int panelRowSpacing: 2
-    readonly property int panelSectionSpacing: 16
+    readonly property int panelSectionSpacing: scaled(16)
 
     // The settings workspace uses one stable label lane in every font. Rows
     // stack below their labels only when the page itself becomes narrow.
-    readonly property int settingsLabelWidth: 132
+    readonly property int settingsLabelWidth: scaled(132, Math.min(contentScale, 1.15))
     readonly property int settingsNarrowWidth: 520
 
     // Switch geometry per surface, for Common/Toggle.qml: `box` is the hit

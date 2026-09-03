@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 14;
+var VERSION = 16;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -87,8 +87,8 @@ function defaultMods() {
         left: [mod("ws", true), mod("media", true)],
         center: [mod("indicators", true), mod("clock", true), mod("weather", true)],
         right: [
-            mod("updates", true), mod("gh", true), mod("t3", true), mod("hermes", true),
-            mod("usage", true), mod("tray", true), mod("notifications", true), mod("vol", true),
+            mod("updates", true), mod("gh", false), mod("t3", false), mod("hermes", false),
+            mod("usage", false), mod("tray", true), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", false), mod("batt", true)
         ]
     };
@@ -135,6 +135,10 @@ function defaults() {
         shuffle: "Off",
         themeMode: "dark",
         glassEnabled: false,
+        highContrast: false,
+        reducedMotion: false,
+        textScale: "default",
+        interfaceDensity: "default",
         barColorMode: "default",
         barCustomHue: 230,
         barCustomSaturation: 14,
@@ -156,7 +160,9 @@ function defaults() {
         pollMax: 300,
         scrollFactor: 1.0,
         nightLight: false,
-        idleInhibited: true,
+        // Staying awake is an explicit, normally time-bounded action. Existing
+        // settings that opted in remain respected; a fresh session may idle.
+        idleInhibited: false,
         notifDnd: false,
         notifQuiet: "off",
         notifQuietStart: 1320,
@@ -850,6 +856,11 @@ function merge(raw) {
         shuffle: enumIn(parsed.shuffle, ["Off", "15m", "1h", "1d"], d.shuffle),
         themeMode: enumIn(parsed.themeMode, ["dark", "light"], d.themeMode),
         glassEnabled: boolIn(parsed.glassEnabled, d.glassEnabled),
+        highContrast: boolIn(parsed.highContrast, d.highContrast),
+        reducedMotion: boolIn(parsed.reducedMotion, d.reducedMotion),
+        textScale: enumIn(parsed.textScale, ["default", "large", "larger"], d.textScale),
+        interfaceDensity: enumIn(parsed.interfaceDensity,
+            ["compact", "default", "comfortable"], d.interfaceDensity),
         barColorMode: enumIn(parsed.barColorMode, BAR_COLOR_IDS, d.barColorMode),
         barCustomHue: intIn(parsed.barCustomHue, 0, 359, 1, d.barCustomHue),
         barCustomSaturation: intIn(parsed.barCustomSaturation, 0, 100, 1,

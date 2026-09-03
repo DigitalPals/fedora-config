@@ -62,7 +62,7 @@ Surface {
         const segment = profileRepeater.itemAt(index);
         if (!segment || !segment.visible)
             return;
-        PowerProfiles.profile = segment.modelData.profile;
+        PowerProfiles.profile = profileRepeater.model[index].profile;
         segment.forceActiveFocus();
     }
 

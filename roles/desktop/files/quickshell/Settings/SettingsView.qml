@@ -18,10 +18,14 @@ PopoutPanel {
     readonly property int navWidth: compactNav ? 56 : 176
     readonly property int preferredWidth: 900
     readonly property int preferredHeight: 680
+    property bool moduleDragActive: false
+    property bool moduleSubPageActive: false
+    signal cancelModuleDrag()
+    signal closeModuleSubPage()
     readonly property int pageIndex: Math.max(0,
         navItems.findIndex(item => item.id === Settings.page))
-    readonly property bool dragActive: pageLoader.item
-        ? (pageLoader.item.dragActive ?? false) : false
+    readonly property bool dragActive: Settings.page === "modules"
+        && moduleDragActive
     readonly property string persistenceStatus: Settings.loadError
         ? (Settings.loadErrorText !== "" ? Settings.loadErrorText
             : "Could not read the settings file.") + " Retry is available."
@@ -79,8 +83,7 @@ PopoutPanel {
     }
 
     function cancelDrag() {
-        if (pageLoader.item && pageLoader.item.cancelDrag)
-            pageLoader.item.cancelDrag();
+        cancelModuleDrag();
     }
 
     // Called by IslandPopout. A module drag consumes the first Escape and an
@@ -90,8 +93,8 @@ PopoutPanel {
             cancelDrag();
             return true;
         }
-        if (pageLoader.item && (pageLoader.item.subPageActive ?? false)) {
-            pageLoader.item.closeSubPage();
+        if (Settings.page === "modules" && moduleSubPageActive) {
+            closeModuleSubPage();
             return true;
         }
         return false;
@@ -425,7 +428,27 @@ PopoutPanel {
         Component { id: appearancePage; AppearancePage {} }
         Component { id: wallpaperPage; WallpaperPage {} }
         Component { id: barPage; BarLayoutPage {} }
-        Component { id: modulesPage; ModulesPage {} }
+        Component {
+            id: modulesPage
+            ModulesPage {
+                id: modulesContent
+                onDragActiveChanged: root.moduleDragActive = modulesContent.dragActive
+                onSubPageActiveChanged: root.moduleSubPageActive = modulesContent.subPageActive
+                Component.onCompleted: {
+                    root.moduleDragActive = modulesContent.dragActive;
+                    root.moduleSubPageActive = modulesContent.subPageActive;
+                }
+                Component.onDestruction: {
+                    root.moduleDragActive = false;
+                    root.moduleSubPageActive = false;
+                }
+                Connections {
+                    target: root
+                    function onCancelModuleDrag() { modulesContent.cancelDrag(); }
+                    function onCloseModuleSubPage() { modulesContent.closeSubPage(); }
+                }
+            }
+        }
         Component { id: notificationsPage; NotificationsPage {} }
         Component { id: systemPage; SystemPage {} }
     }

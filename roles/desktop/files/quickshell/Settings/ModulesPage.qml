@@ -445,12 +445,8 @@ Item {
             + list.length * page.pitch
 
         function rowForId(id) {
-            for (let i = 0; i < rowRepeater.count; i++) {
-                const candidate = rowRepeater.itemAt(i);
-                if (candidate && candidate.modelData.id === id)
-                    return candidate;
-            }
-            return null;
+            const index = list.findIndex(candidate => candidate.id === id);
+            return index >= 0 ? rowRepeater.itemAt(index) : null;
         }
 
 
@@ -514,7 +510,7 @@ Item {
     Rectangle {
         id: miniBar
         visible: !detailLoader.item
-        anchors.top: previewHeader.bottom
+        anchors.top: presetRow.bottom
         anchors.topMargin: 10
         width: parent.width
         height: 30
@@ -575,6 +571,20 @@ Item {
                 }
             }
         }
+    }
+
+    ResponsiveActionRow {
+        id: presetRow
+        visible: !detailLoader.item
+        anchors.top: previewHeader.bottom
+        anchors.topMargin: 6
+        width: parent.width
+        actionsFirst: true
+        description: "Visibility profiles preserve widget order and options"
+
+        SettingsAction { text: "Focused"; onTriggered: Settings.applyModulePreset("focused") }
+        SettingsAction { text: "Connected"; onTriggered: Settings.applyModulePreset("connected") }
+        SettingsAction { text: "Everything"; onTriggered: Settings.applyModulePreset("everything") }
     }
 
     Flickable {
@@ -726,8 +736,9 @@ Item {
         // Incubation finishes after openSubPage has returned, so the sub-page
         // claims focus here; a callLater would still find item null.
         onLoaded: {
-            if (page.subPageActive)
-                item.focusFirst();
+            const detail = item as ModuleDetailView;
+            if (page.subPageActive && detail)
+                detail.focusFirst();
         }
         sourceComponent: ModuleDetailView {
             moduleId: page.subPage

@@ -4,7 +4,7 @@ from gi import require_version
 
 require_version("Nautilus", "4.1")
 
-from gi.repository import Gio, GObject, Nautilus
+from gi.repository import Gio, GObject, Nautilus  # noqa: E402
 
 
 class SendViaLocalSendAction(GObject.GObject, Nautilus.MenuProvider):

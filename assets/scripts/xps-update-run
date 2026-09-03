@@ -225,13 +225,13 @@ write_status() {
     --argjson flatpak "$with_flatpak" --argjson dnfDone "$dnf_done" \
     --argjson flatpakDone "$flatpak_done" --argjson dnfRc "$dnf_rc" \
     --argjson flatpakRc "$flatpak_rc" --argjson testsRc "$tests_rc" \
-    --argjson ansibleRc "$ansible_rc" \
+    --argjson ansibleRc "$ansible_rc" --arg snapshotId "${snapshot_id:-}" \
     '{id: $id, state: $state, phase: $phase, message: $message,
       logDir: $logDir, unit: $unit, startedAt: $startedAt,
       finishedAt: $finishedAt, exitCode: $exitCode, full: $full,
       flatpak: $flatpak, dnfDone: $dnfDone, flatpakDone: $flatpakDone,
       dnfRc: $dnfRc, flatpakRc: $flatpakRc, testsRc: $testsRc,
-      ansibleRc: $ansibleRc, bootId: $bootId,
+      ansibleRc: $ansibleRc, snapshotId: $snapshotId, bootId: $bootId,
       rebootRecommendation: $rebootRecommendation}' > "$temporary"
   mv -f -- "$temporary" "$run_dir/status.json"
 }
@@ -307,7 +307,7 @@ start_run() {
 
   local run_id unit_name run_dir started_at dnf_done=false flatpak_done=false
   local dnf_rc=0 flatpak_rc=0 tests_rc=0 ansible_rc=0
-  local boot_id reboot_recommendation
+  local boot_id reboot_recommendation snapshot_id=""
   boot_id=$(current_boot_id || true)
   reboot_recommendation="pending"
   if [[ -n $active_id ]]; then
@@ -419,6 +419,7 @@ worker() {
   started_at=$(jq -r '.startedAt // 0' "$run_dir/status.json" 2>/dev/null || printf 0)
   [[ $started_at =~ ^[0-9]+$ ]] || started_at=$(date +%s)
   dnf_done=false; flatpak_done=false; dnf_rc=0; flatpak_rc=0; tests_rc=0; ansible_rc=0
+  snapshot_id=""
   boot_id=$(current_boot_id || true)
   reboot_recommendation=$(status_reboot_recommendation \
     "$run_dir/status.json" "$boot_id")
@@ -451,13 +452,35 @@ worker() {
     exit 125
   fi
 
-  write_status running packages "Updating system packages and Flatpaks" 0
+  write_status running snapshot "Creating a pre-update recovery point" 0
   printf 'XPS update %s started at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
   # Keep run state and logs private, but do not pass that 0077 umask through
   # sudo. DNF5 rewrites its shared system-state TOML files using the process
   # umask; making them root-only breaks every later unprivileged dnf query.
   local -a privileged_package=(sudo -n sh -c \
     'umask 022; exec "$@"' xps-update-package)
+  local snapshot_helper=/usr/local/libexec/xps-system-snapshot snapshot_rc=0
+  if [[ -x $snapshot_helper ]]; then
+    tagged_command snapshot "$run_dir/snapshot.log" "$run_dir/snapshot.rc" \
+      "${privileged_package[@]}" "$snapshot_helper" create "update $run_id"
+    snapshot_rc=$(<"$run_dir/snapshot.rc")
+    if ((snapshot_rc != 0)); then
+      write_status failed snapshot "Could not create the pre-update recovery point" "$snapshot_rc"
+      worker_finalized=true
+      exit "$snapshot_rc"
+    fi
+    snapshot_id=$(tail -n 1 "$run_dir/snapshot.log")
+    [[ $snapshot_id == skipped:* ]] && snapshot_id=""
+  else
+    if [[ $(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) == btrfs ]]; then
+      write_status failed snapshot "Btrfs recovery helper is not installed" 127
+      worker_finalized=true
+      exit 127
+    fi
+    printf '[snapshot] non-Btrfs root; no filesystem recovery point created\n' \
+      >>"$run_dir/run.log"
+  fi
+  write_status running packages "Updating system packages and Flatpaks" 0
   tagged_command dnf "$run_dir/dnf.log" "$run_dir/dnf.rc" \
     "${privileged_package[@]}" dnf -y upgrade --refresh &
   local dnf_pid=$! flatpak_pid=""
@@ -483,7 +506,11 @@ worker() {
   fi
 
   if [[ $full == true ]]; then
-    cd -- "$repo"
+    cd -- "$repo" || {
+      write_status failed tests "Could not enter repository directory" 1
+      worker_finalized=true
+      exit 1
+    }
     if [[ $skip_tests == true ]]; then
       printf '[tests] repository checks skipped (--skip-tests)\n' >> "$run_dir/run.log"
     else
@@ -557,6 +584,7 @@ load_status_globals() {
   flatpak_done=$(jq -r '.flatpakDone // false' "$file"); dnf_rc=$(jq -r '.dnfRc // 0' "$file")
   flatpak_rc=$(jq -r '.flatpakRc // 0' "$file"); tests_rc=$(jq -r '.testsRc // 0' "$file")
   ansible_rc=$(jq -r '.ansibleRc // 0' "$file")
+  snapshot_id=$(jq -r '.snapshotId // empty' "$file")
   boot_id=$(current_boot_id || true)
   reboot_recommendation=$(status_reboot_recommendation "$file" "$boot_id")
 }

@@ -35,9 +35,11 @@
       ansible.builtin.assert:
         that:
           - allow_insecure_sccache_transport is boolean
+          - start_optional_hardware_services is boolean
         fail_msg: >-
-          allow_insecure_sccache_transport must be an explicit boolean; HTTP
-          distributed compilation is never enabled implicitly.
+          allow_insecure_sccache_transport and start_optional_hardware_services
+          must be explicit booleans; insecure transport and immediate hardware
+          activation are never inferred.
       tags: [always]
 
     - name: Refuse unsupported operating systems

@@ -3,13 +3,18 @@
   ansible.builtin.dnf:
     name:
       - acl
+      - avahi
       - bash-completion
+      - bluez
       - btrfs-progs
       - bolt
+      - cups
       - firewalld
       - fish
       - flatpak
       - fwupd
+      - "glibc-langpack-{{ machine_locale.split('_')[0] }}"
+      - "glibc-langpack-{{ regional_locale.split('_')[0] }}"
       - gvfs
       - gvfs-fuse
       - intel-lpmd
@@ -28,6 +33,26 @@
       - zram-generator-defaults
     state: present
     allowerasing: true
+
+- name: Install transactional Btrfs recovery helper
+  ansible.builtin.copy:
+    src: xps-system-snapshot
+    dest: /usr/local/libexec/xps-system-snapshot
+    owner: root
+    group: root
+    mode: "0755"
+
+# Dotfiles and the apps role both consume this library. Installing the shared
+# prerequisite in the foundational role keeps a fresh selective convergence
+# (base + dotfiles) valid. The apps role also declares it so an application
+# refresh remains self-contained on an already provisioned host.
+- name: Install shared upstream installer helper prerequisite
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/roles/apps/files/xps-common.sh"
+    dest: /usr/local/libexec/xps-common.sh
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Remove the retired persistent Ansible fact cache
   ansible.builtin.file:
@@ -102,19 +127,17 @@
     state: link
     force: true
 
-- name: Read generated locale archive
-  ansible.builtin.command: localedef --list-archive
-  register: base_locale_archive
+- name: Read available system locales
+  ansible.builtin.command: locale -a
+  register: base_available_locales
   changed_when: false
   check_mode: false
 
 - name: Generate required locales
   ansible.builtin.command: "localedef -i {{ item.split('.')[0] }} -f UTF-8 {{ item }}"
   changed_when: true
-  loop:
-    - "{{ machine_locale }}"
-    - "{{ regional_locale }}"
-  when: (item.split('.')[0] + '.utf8') not in base_locale_archive.stdout_lines
+  loop: "{{ [machine_locale, regional_locale] | unique }}"
+  when: (item.split('.')[0] + '.utf8') not in base_available_locales.stdout_lines
 
 - name: Configure language and regional locale categories
   ansible.builtin.template:
@@ -164,14 +187,29 @@
   loop:
     - NetworkManager.service
     - firewalld.service
-    - bluetooth.service
     - avahi-daemon.service
     - cups.service
     - fstrim.timer
     - fwupd-refresh.timer
-    - thermald.service
     - tuned.service
     - tuned-ppd.service
+
+- name: Enable optional hardware-backed services for boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - bluetooth.service
+    - thermald.service
+
+- name: Start optional hardware-backed services on the physical workstation
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - bluetooth.service
+    - thermald.service
+  when: start_optional_hardware_services | bool
 
 - name: Apply the managed firewalld zone before using it
   ansible.builtin.meta: flush_handlers
@@ -187,9 +225,15 @@
   ansible.builtin.systemd_service:
     name: intel_lpmd.service
     enabled: true
-    state: started
     daemon_reload: true
   failed_when: false
+
+- name: Start the Panther Lake power service on the physical workstation
+  ansible.builtin.systemd_service:
+    name: intel_lpmd.service
+    state: started
+  failed_when: false
+  when: start_optional_hardware_services | bool
 
 - name: Disable services intentionally excluded from the Fedora XPS baseline
   ansible.builtin.systemd_service:
@@ -407,15 +451,3 @@
     - xps-btrfs-scrub.timer
   notify: Reload systemd
   when: base_root_filesystem.stdout | trim != 'btrfs'
-
-- name: Disable GNOME automatic idle suspend without changing blank or lock settings
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.command: >-
-    dbus-run-session gsettings set org.gnome.settings-daemon.plugins.power
-    {{ item }} 0
-  loop:
-    - sleep-inactive-ac-timeout
-    - sleep-inactive-battery-timeout
-  changed_when: false
-  when: not ansible_check_mode

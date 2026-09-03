@@ -20,6 +20,7 @@ PanelWindow {
         right: true
     }
     property var compactIds: []
+    property var overflowIds: []
     property real centerShift: 0
     // Follow the clock's local geometry synchronously. Updating this from the
     // deferred fit pass left it one rendered frame behind an animated child,
@@ -245,11 +246,29 @@ PanelWindow {
     }
 
     function moduleShown(entry) {
-        return !!entry && entry.on === true && autoRule(entry.id);
+        return !!entry && entry.on === true && autoRule(entry.id)
+            && !moduleOverflowed(entry.id);
     }
 
     function moduleCompact(id) {
         return compactIds.indexOf(id) !== -1;
+    }
+
+    function moduleOverflowed(id) {
+        return overflowIds.indexOf(id) !== -1;
+    }
+
+    function currentOverflowItems() {
+        return overflowIds.map(id => ({
+            id: id,
+            label: WidgetCatalog.widgetName(id),
+            panel: PanelRegistry.panelForModule(id)
+        }));
+    }
+
+    function toggleOverflow(item) {
+        BarOverflow.items = currentOverflowItems();
+        togglePopout("overflow", "right", item);
     }
 
     // ---- fit pass ------------------------------------------------------
@@ -439,12 +458,14 @@ PanelWindow {
         const metrics = currentCenterExtents();
         for (const id of Object.keys(slotRegistry)) {
             const slot = slotRegistry[id];
-            if (!slot || !slot.active || slot.detailSaving <= 0)
+            if (!slot || !slot.active)
                 continue;
             entries.push({
                 id: id,
                 col: slot.col,
                 saving: slot.detailSaving,
+                width: slot.width + (moduleCompact(id) ? slot.detailSaving : 0),
+                currentWidth: slot.width,
                 policy: slot.modelData.detail ?? "auto",
                 centerSide: slot.col === "center" && id !== "clock"
                     && slot.mapToItem(centerCluster, 0, 0).x + slot.width / 2
@@ -492,6 +513,12 @@ PanelWindow {
             const side = entry.centerSide === "left" ? "left" : "right";
             result[side] += entry.saving;
         }
+        for (const entry of entries) {
+            if (entry.col !== "center" || !moduleOverflowed(entry.id))
+                continue;
+            const side = entry.centerSide === "left" ? "left" : "right";
+            result[side] += entry.currentWidth;
+        }
         return result;
     }
 
@@ -503,6 +530,8 @@ PanelWindow {
         for (const entry of entries) {
             if (entry.col === col && moduleCompact(entry.id))
                 result += entry.saving;
+            if (entry.col === col && moduleOverflowed(entry.id))
+                result += entry.currentWidth;
         }
         return result;
     }
@@ -517,13 +546,18 @@ PanelWindow {
             widths: {
                 left: reconstructedWidth(leftSection.width, "left", entries),
                 center: reconstructedWidth(centerCluster.width, "center", entries),
-                right: reconstructedWidth(rightSection.width, "right", entries)
+                right: reconstructedWidth(rightSection.width
+                    - (overflowIds.length > 0
+                        ? overflowButton.width + Theme.barSpacing : 0), "right", entries)
             },
             centerExtents: centerExtents,
-            entries: entries
+            entries: entries,
+            overflowWidth: Theme.chipHeight + Theme.barSpacing
         });
         if (JSON.stringify(compactIds) !== JSON.stringify(result.compact))
             compactIds = result.compact;
+        if (JSON.stringify(overflowIds) !== JSON.stringify(result.overflow))
+            overflowIds = result.overflow;
         centerShift = result.centerOffset;
     }
 
@@ -920,6 +954,28 @@ PanelWindow {
                 col: "right"
                 model: Settings.mods.right
                 onImplicitWidthChanged: barWindow.scheduleFit()
+            }
+
+            BarChip {
+                id: overflowButton
+
+                visible: barWindow.overflowIds.length > 0
+                host: barWindow
+                panelName: "overflow"
+                isle: "right"
+                hPadding: 6
+                preparePanel: () => BarOverflow.items = barWindow.currentOverflowItems()
+                tooltip: barWindow.overflowIds.length + " hidden widgets"
+                tooltipAlign: 1
+                Accessible.role: Accessible.Button
+                Accessible.name: "More widgets"
+                Accessible.description: tooltip
+                Sym {
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "more_horiz"
+                    size: Theme.barIconSize
+                    color: overflowButton.fg
+                }
             }
 
             BarChip {

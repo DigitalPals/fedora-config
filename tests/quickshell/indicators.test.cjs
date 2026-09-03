@@ -112,7 +112,12 @@ test("all shared toggles use one persisted write path", () => {
     const sys = read("Common/SysInfo.qml");
     const control = read("Popovers/ControlCenterPopover.qml");
     assert.match(sys, /readonly property bool nightLight:\s*Settings\.nightLight/);
-    assert.match(sys, /readonly property bool idleInhibited:\s*Settings\.idleInhibited/);
+    assert.match(sys,
+        /readonly property bool idleInhibited:\s*idleInhibitMode !== "off"/);
+    assert.match(sys, /function setIdleInhibitMode\(mode\)/);
+    assert.match(sys, /\["off", "30m", "1h", "unplugged", "always"\]/);
+    assert.match(sys, /idleInhibitUntilMs/);
+    assert.match(sys, /onPluggedInChanged/);
     assert.match(sys, /function setNightLight\(value\)/);
     assert.match(sys, /function toggleNightLight\(\)/);
     assert.match(sys, /function setIdleInhibited\(value\)/);
@@ -132,6 +137,11 @@ test("all shared toggles use one persisted write path", () => {
         /idleInhibitLifecycle = "error"[\s\S]*idleInhibitRetry\.restart\(\)/);
     assert.match(control, /onToggled:\s*SysInfo\.toggleNightLight\(\)/);
     assert.match(control, /onToggled:\s*SysInfo\.toggleIdleInhibited\(\)/);
+    assert.match(control, /statusOverride:\s*SysInfo\.idleInhibitStatus/);
+    const systemPage = read("Settings/SystemPage.qml");
+    for (const mode of ["off", "30m", "1h", "unplugged", "always"])
+        assert.match(systemPage, new RegExp(`value: "${mode}"`));
+    assert.match(systemPage, /SysInfo\.setIdleInhibitMode\(value\)/);
 });
 
 test("Control Panel fills use their intended accent strength", () => {

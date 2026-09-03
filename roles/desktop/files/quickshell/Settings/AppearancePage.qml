@@ -162,7 +162,9 @@ SettingsPage {
             title: "Theme"
             dirty: Settings.themeMode !== Settings.defaults.themeMode
                 || Settings.glassEnabled !== Settings.defaults.glassEnabled
-            onResetRequested: Settings.resetKeys(["themeMode", "glassEnabled"], "Theme")
+                || Settings.highContrast !== Settings.defaults.highContrast
+            onResetRequested: Settings.resetKeys(["themeMode", "glassEnabled",
+                "highContrast"], "Theme")
 
             PickerRow {
                 width: parent.width
@@ -182,6 +184,53 @@ SettingsPage {
                 description: Settings.glassApplyError
                     ? "Surface changed, but the compositor blur rule could not be updated"
                     : "Blurred translucent shell surfaces; off uses opaque surfaces"
+            }
+            SwitchRow {
+                width: parent.width
+                label: "High contrast"
+                settingKey: "highContrast"
+                description: "Opaque surfaces, stronger borders, and no compositor blur"
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: "Accessibility"
+            dirty: Settings.reducedMotion !== Settings.defaults.reducedMotion
+                || Settings.textScale !== Settings.defaults.textScale
+                || Settings.interfaceDensity !== Settings.defaults.interfaceDensity
+            onResetRequested: Settings.resetKeys(["reducedMotion", "textScale",
+                "interfaceDensity"], "Accessibility")
+
+            SwitchRow {
+                width: parent.width
+                label: "Reduce motion"
+                settingKey: "reducedMotion"
+                description: "Remove panel, reveal, hover, and activity animations"
+            }
+            PickerRow {
+                width: parent.width
+                label: "Text size"
+                settingKey: "textScale"
+                caption: "applies across the shell"
+                captionMono: false
+                model: [
+                    { value: "default", label: "Default" },
+                    { value: "large", label: "Large" },
+                    { value: "larger", label: "Larger" }
+                ]
+            }
+            PickerRow {
+                width: parent.width
+                label: "Control spacing"
+                settingKey: "interfaceDensity"
+                caption: "touch targets and row height"
+                captionMono: false
+                model: [
+                    { value: "compact", label: "Compact" },
+                    { value: "default", label: "Default" },
+                    { value: "comfortable", label: "Comfortable" }
+                ]
             }
         }
 

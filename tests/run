@@ -7,7 +7,8 @@
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
-cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd) || exit 1
+cd -- "$repo_root" || exit 1
 
 shell_dir=roles/desktop/files/quickshell
 failed_stages=()
@@ -163,6 +164,20 @@ PY
   fi
 }
 
+# ── Language-aware static analysis ────────────────────────────────────────
+stage_static_analysis() {
+  local out rc=0 t0 elapsed
+  t0=$(now_ms)
+  out=$(tests/static-analysis 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+  if ((rc == 0)); then
+    pass 'static lint' "ShellCheck, ansible-lint, yamllint, and Ruff $(took "$elapsed")"
+  else
+    fail 'static lint' 'language-aware static analysis failed'
+    excerpt "${out:-unknown failure}" 100
+  fi
+}
+
 # ── Hyprland workspace/monitor policy ───────────────────────────────────────────
 stage_hyprland_workspaces() {
   local out rc=0 t0 elapsed
@@ -205,7 +220,7 @@ stage_qml_lint() {
 
 # ── QML JavaScript runtime contracts ───────────────────────────────
 stage_qml_runtime() {
-  local runner qml_import_path scratch out rc=0 t0 elapsed
+  local runner qml_import_path scratch out rc=0 t0 elapsed lifecycle_out lifecycle_rc=0
   runner=$(command -v qmltestrunner-qt6 || command -v qmltestrunner || true)
   if [[ -z $runner ]]; then
     fail 'qml runtime' 'qmltestrunner not installed (dnf install qt6-qtdeclarative-devel)'
@@ -241,11 +256,50 @@ stage_qml_runtime() {
       -import "$qml_import_path" \
       -import "$shell_dir" \
       -o -,txt 2>&1) || rc=$?
+
+  # Quickshell's core QML plugin is statically linked into `qs`, so generic
+  # qmltestrunner can exercise the pure helpers but cannot construct production
+  # components. Run that lifecycle smoke test through the real engine only
+  # where doing so cannot create a second qs beside the managed desktop shell.
+  if ((rc == 0)); then
+    if pgrep -x qs >/dev/null 2>&1 \
+        || systemctl --user is-active --quiet quickshell.service 2>/dev/null; then
+      skip 'qml lifecycle' 'active managed shell; real-engine smoke runs in CI'
+    elif ! command -v qs >/dev/null 2>&1; then
+      rc=1
+      out+=$'\nqs is required for real QML component lifecycle coverage'
+    else
+      mkdir -p "$scratch/shell"
+      cp -a "$shell_dir/." "$scratch/shell/"
+      cp tests/qml-lifecycle/shell.qml "$scratch/shell/shell.qml"
+      lifecycle_out=$(env \
+        HOME="$scratch/home" \
+        XDG_CONFIG_HOME="$scratch/config" \
+        XDG_STATE_HOME="$scratch/state" \
+        XDG_RUNTIME_DIR="$scratch/runtime" \
+        QT_QPA_PLATFORM=offscreen \
+        QT_QUICK_BACKEND=software \
+        QS_REDUCED_MOTION=1 \
+        timeout --signal=TERM --kill-after=2 15 \
+        dbus-run-session -- qs --no-color -v -p "$scratch/shell" 2>&1) || lifecycle_rc=$?
+      if ((lifecycle_rc != 0 && lifecycle_rc != 143)) \
+          || ! grep -q 'LIFECYCLE_RESULT pass' <<<"$lifecycle_out" \
+          || grep -q 'LIFECYCLE_FAIL' <<<"$lifecycle_out"; then
+        rc=1
+        out+=$'\n'
+        out+="$lifecycle_out"
+      fi
+      if pgrep -x qs >/dev/null 2>&1; then
+        rc=1
+        out+=$'\nreal-engine lifecycle test left an unexpected qs process'
+      fi
+    fi
+  fi
   elapsed=$(( $(now_ms) - t0 ))
   rm -rf -- "$scratch"
 
   if ((rc == 0)); then
-    pass 'qml runtime' "QML JavaScript runtime contracts $(took "$elapsed")"
+    pass 'qml runtime' "QML helper and component lifecycle contracts $(took "$elapsed")"
   else
     fail 'qml runtime' 'offscreen qmltestrunner checks failed'
     excerpt "${out:-unknown failure}" 100
@@ -286,6 +340,7 @@ stage_python_helpers() {
   t0=$(now_ms)
   out=$({
     python3 tests/usage-fetch.py \
+      && python3 tests/shell-health.py \
       && python3 tests/repository-policy.py \
       && python3 tests/installer-convergence.py \
       && python3 tests/quickshell-deployment.py \
@@ -308,7 +363,7 @@ stage_quickshell_integration() {
   local out rc=0 t0 elapsed
   t0=$(now_ms)
 
-  out=$(python3 - <<'PY' 2>&1
+  out=$({ python3 - <<'PY'
 from pathlib import Path
 
 tasks = Path("roles/desktop/tasks/main.yml").read_text()
@@ -329,6 +384,9 @@ assert "Install tracked Quickshell menubar files" in tasks
 assert 'src: "quickshell/{{ item }}"' in tasks
 assert "loop: \"{{ quickshell_managed_manifest }}\"" in tasks
 assert tasks.index("Build the tracked Quickshell source manifest") < tasks.index("Install tracked Quickshell menubar files")
+assert "Calculate the content identity of the managed Quickshell tree" in tasks
+assert 'digest.update(payload + b"\\0")' in tasks
+assert tasks.count('"{{ quickshell_source_digest.stdout }}"') == 2
 assert tasks.index("Install rendered Hyprland Lua dependencies before their consumers") < tasks.index("Install Hyprland Lua configuration")
 lua_install = tasks[tasks.index("Install Hyprland Lua configuration"):tasks.index("Install ordered Hyprland session starter")]
 assert lua_install.index("- bindings.lua") < lua_install.index("- hyprland.lua")
@@ -347,7 +405,8 @@ assert "--exclude='__pycache__/'" in snapshot
 assert "--exclude='*.py[co]'" in snapshot
 print("Quickshell configuration and guarded Noctalia migration are wired")
 PY
-) || rc=1
+    bash tests/quickshell-deploy-health-fixture
+  } 2>&1) || rc=1
 
   elapsed=$(( $(now_ms) - t0 ))
   if ((rc == 0)); then
@@ -689,6 +748,20 @@ stage_brightness_routing() {
   fi
 }
 
+stage_system_snapshot() {
+  local out rc=0 t0 elapsed
+  t0=$(now_ms)
+  out=$(bash tests/system-snapshot 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+
+  if ((rc == 0)); then
+    pass 'snapshots' "Btrfs root and /boot recovery-point retention $(took "$elapsed")"
+  else
+    fail 'snapshots' 'Btrfs recovery fixture failed'
+    excerpt "${out:-unknown failure}"
+  fi
+}
+
 stage_screenshot_workflow() {
   local out rc=0 t0 elapsed
   t0=$(now_ms)
@@ -725,6 +798,7 @@ stage_update_backend() {
 
 stages=(
   stage_source_syntax
+  stage_static_analysis
   stage_unit_tests
   stage_hyprland_workspaces
   stage_qml_lint
@@ -737,7 +811,18 @@ stages=(
   stage_update_backend
   stage_screenshot_workflow
   stage_brightness_routing
+  stage_system_snapshot
 )
+
+quick_stages=(
+  stage_source_syntax
+  stage_static_analysis
+  stage_unit_tests
+  stage_qml_lint
+  stage_qml_runtime
+)
+
+selected_stages=("${stages[@]}")
 
 case ${1:-} in
   --list)
@@ -748,9 +833,12 @@ case ${1:-} in
     done
     exit 0
     ;;
+  --quick)
+    selected_stages=("${quick_stages[@]}")
+    ;;
   -h|--help)
-    printf 'Usage: tests/run [--list]\n'
-    printf 'Run every required source-tree check, or list the authoritative stage order.\n'
+    printf 'Usage: tests/run [--list | --quick]\n'
+    printf 'Run every required source-tree check, list the authoritative stage order, or run the short preflight.\n'
     exit 0
     ;;
   '') ;;
@@ -760,7 +848,7 @@ case ${1:-} in
     ;;
 esac
 
-for stage in "${stages[@]}"; do
+for stage in "${selected_stages[@]}"; do
   "$stage"
 done
 
@@ -768,7 +856,7 @@ done
 # failure report, so the actionable summary has to survive the truncation.
 if ((${#failed_stages[@]} > 0)); then
   printf '\n%d of %d repo check stages failed: %s\n' \
-    "${#failed_stages[@]}" "${#stages[@]}" \
+    "${#failed_stages[@]}" "${#selected_stages[@]}" \
     "$(IFS=, ; printf '%s' "${failed_stages[*]}")"
   exit 1
 fi

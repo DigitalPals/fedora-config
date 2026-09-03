@@ -5,8 +5,20 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=tests/lib/quickshell-live
 source "$repo_root/tests/lib/quickshell-live"
 
+usage() {
+  printf 'Usage: tests/verify-xps [--require-hyprland]\n'
+  printf 'Run non-destructive checks against the installed XPS/Fedora system.\n'
+}
+
 require_hyprland=false
-[[ ${1:-} == --require-hyprland ]] && require_hyprland=true
+while (($#)); do
+  case $1 in
+    --require-hyprland) require_hyprland=true ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'verify-xps: unknown argument %s\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
 failures=0
 warnings=0
 quickshell_live_safe=false
@@ -134,13 +146,21 @@ check_managed_quickshell_tree() {
   actual="$scratch/actual"
   # Match the role's source manifest: cached and intentional untracked files,
   # including symlinks, while respecting ignored generated artifacts.
-  git -C "$repo_root" ls-files -z --cached --others --exclude-standard -- \
-      roles/desktop/files/quickshell |
-    while IFS= read -r -d '' source_path; do
-      if [[ -f "$repo_root/$source_path" || -L "$repo_root/$source_path" ]]; then
-        printf '%s\n' "${source_path#roles/desktop/files/quickshell/}"
-      fi
-    done | LC_ALL=C sort >"$expected" || {
+  {
+    if git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      git -C "$repo_root" ls-files -z --cached --others --exclude-standard -- \
+          roles/desktop/files/quickshell |
+        while IFS= read -r -d '' source_path; do
+          if [[ -f "$repo_root/$source_path" || -L "$repo_root/$source_path" ]]; then
+            printf '%s\n' "${source_path#roles/desktop/files/quickshell/}"
+          fi
+        done
+    else
+      find "$repo_root/roles/desktop/files/quickshell" \
+        \( -type d -name __pycache__ -prune \) -o \
+        \( -type f -o -type l \) ! -name '*.py[co]' -printf '%P\n'
+    fi
+  } | LC_ALL=C sort >"$expected" || {
       rm -rf -- "$scratch"
       return 1
     }
@@ -214,6 +234,8 @@ check 'SSH server is inactive' bash -c '! systemctl is-active --quiet sshd.servi
 check 'weekly TRIM is enabled' unit_enabled fstrim.timer
 if [[ $(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) == btrfs ]]; then
   check 'weekly Btrfs scrub is enabled' unit_enabled xps-btrfs-scrub.timer
+  check 'transactional Btrfs recovery helper is installed' \
+    test -x /usr/local/libexec/xps-system-snapshot
 else
   check 'Btrfs scrub is disabled on a non-Btrfs root' bash -c '! systemctl is-enabled --quiet xps-btrfs-scrub.timer'
 fi
@@ -299,7 +321,6 @@ for forbidden in xps-bios-fan-control mic-led-sync tlp; do
 done
 
 product_sku=$(tr -d '[:space:]' </sys/class/dmi/id/product_sku 2>/dev/null || true)
-product_name=$(tr -d '\n' </sys/class/dmi/id/product_name 2>/dev/null || true)
 xps_2026=false
 if [[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == "$expected_vendor" ]] &&
    [[ $product_sku == 0DB9 || $product_sku == 0DBA ]] &&
@@ -417,11 +438,9 @@ if $xps_2026; then
       'dkms status -m ipu7-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
     check 'Intel CVS DKMS built for the running kernel' bash -c \
       'dkms status -m vision-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
-    camera_reboot_pending=false
     if [[ -r /var/lib/xps-hardware/ipu7/reboot-required ]] &&
        grep -q "^boot_id=$(cat /proc/sys/kernel/random/boot_id) " \
          /var/lib/xps-hardware/ipu7/reboot-required; then
-      camera_reboot_pending=true
       pass 'camera DKMS upgrade is safely awaiting one normal reboot'
       check 'camera transaction remains uncommitted until post-reboot validation' \
         test -r /var/lib/xps-hardware/ipu7/transaction.in-progress
@@ -500,7 +519,7 @@ check 'Hyprland Lua entry point is a regular file' bash -c '[[ -f $HOME/.config/
 check_diagnostic 'deployed Quickshell tree exactly matches tracked source files' check_managed_quickshell_tree
 
 required_commands=(Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
-  voxtype localsend lazygit lazydocker mdview bun balena t3code-update hermes \
+  voxtype localsend lazygit lazydocker mdview bun balena t3code-update \
   git gh gcc g++ cmake rustup mold sccache node npm python3 claude opencode oh-my-posh \
   kitty nvim fish zoxide fzf eza jq rg fd dust bat btop glow fastfetch duf ffmpeg mpv yt-dlp imv brave-browser)
 required_commands+=(chatgpt)

@@ -1,7 +1,11 @@
 ---
 - name: Install Fedora BGRT Plymouth theme support
   ansible.builtin.dnf:
-    name: plymouth-plugin-two-step
+    name:
+      - plymouth-plugin-two-step
+      # Fedora's bgrt.plymouth definition is shipped here; the rendering
+      # plugin alone is insufficient on a minimal/Cloud installation.
+      - plymouth-theme-spinner
     state: present
 
 - name: Install optional Cybex Plymouth script theme support

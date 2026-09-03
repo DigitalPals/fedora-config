@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# Boot the pinned official Fedora Cloud image, apply the desktop roles twice,
+# and require a zero-change second pass plus rendered service/config checks.
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+image_url=${FEDORA_VM_IMAGE_URL:-https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}
+image_sha256=${FEDORA_VM_IMAGE_SHA256:-28680fe5b371a5a82ebf43a31926e086a168e59949d03969c5093e7071f90b7f}
+image_cache=${FEDORA_VM_IMAGE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/fedora-config/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}
+convergence_tags=${FEDORA_VM_TAGS:-base,desktop,dotfiles,private-hooks,boot,finalize}
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-vm.XXXXXX")
+qemu_pid=''
+temporary_image=''
+
+cleanup() {
+  if [[ -n $qemu_pid ]]; then
+    kill "$qemu_pid" 2>/dev/null || true
+    wait "$qemu_pid" 2>/dev/null || true
+  fi
+  if [[ -n $temporary_image && $temporary_image == "$image_cache".download.* ]]; then
+    rm -f -- "$temporary_image"
+  fi
+  [[ $scratch == "${TMPDIR:-/tmp}"/fedora-config-vm.* ]] && rm -rf -- "$scratch"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+for command in cloud-localds curl git python3 qemu-img qemu-system-x86_64 sha256sum ssh ssh-keygen tar timeout; do
+  command -v "$command" >/dev/null 2>&1 || {
+    printf 'fedora-vm-convergence: missing required command: %s\n' "$command" >&2
+    exit 2
+  }
+done
+
+mkdir -p -- "$(dirname -- "$image_cache")"
+if [[ ! -f $image_cache ]] ||
+    ! printf '%s  %s\n' "$image_sha256" "$image_cache" | sha256sum --check --status; then
+  temporary_image=$image_cache.download.$$
+  rm -f -- "$temporary_image"
+  curl --fail --location --retry 4 --retry-all-errors \
+    --output "$temporary_image" "$image_url"
+  printf '%s  %s\n' "$image_sha256" "$temporary_image" | sha256sum --check
+  mv -f -- "$temporary_image" "$image_cache"
+  temporary_image=''
+fi
+
+ssh-keygen -q -t ed25519 -N '' -f "$scratch/id_ed25519"
+public_key=$(<"$scratch/id_ed25519.pub")
+cat >"$scratch/user-data" <<EOF
+#cloud-config
+users:
+  - name: fedora
+    gecos: Fedora convergence
+    groups: [wheel]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - $public_key
+ssh_pwauth: false
+disable_root: true
+runcmd:
+  - [loginctl, enable-linger, fedora]
+  - [systemctl, start, user@1000.service]
+  - [systemctl, enable, --now, sshd.service]
+EOF
+cat >"$scratch/meta-data" <<'EOF'
+instance-id: fedora-config-convergence
+local-hostname: fedora-config-ci
+EOF
+cloud-localds "$scratch/seed.iso" "$scratch/user-data" "$scratch/meta-data"
+qemu-img create -q -f qcow2 -F qcow2 -b "$image_cache" "$scratch/system.qcow2" 40G
+
+ssh_port=$(python3 - <<'PY'
+import socket
+
+with socket.socket() as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PY
+)
+
+if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+  accelerator=kvm
+  cpu=host
+else
+  accelerator=tcg,thread=multi
+  cpu=max
+fi
+
+qemu-system-x86_64 \
+  -name fedora-config-convergence \
+  -machine q35 -accel "$accelerator" \
+  -cpu "$cpu" -smp 4 -m 6144 \
+  -smbios type=1,manufacturer=QEMU,product='Fedora Convergence' \
+  -drive "if=virtio,format=qcow2,file=$scratch/system.qcow2" \
+  -drive "if=virtio,format=raw,readonly=on,file=$scratch/seed.iso" \
+  -device virtio-net-pci,netdev=network \
+  -netdev "user,id=network,hostfwd=tcp:127.0.0.1:$ssh_port-:22" \
+  -display none -serial "file:$scratch/console.log" -monitor none \
+  -no-reboot &
+qemu_pid=$!
+
+ssh_args=(
+  -i "$scratch/id_ed25519"
+  -p "$ssh_port"
+  -o BatchMode=yes
+  -o ConnectTimeout=5
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null
+  -o LogLevel=ERROR
+)
+
+ready=false
+for _ in {1..120}; do
+  if ! kill -0 "$qemu_pid" 2>/dev/null; then
+    printf 'Fedora VM exited before SSH became ready\n' >&2
+    tail -n 100 "$scratch/console.log" >&2 || true
+    exit 1
+  fi
+  if ssh "${ssh_args[@]}" fedora@127.0.0.1 true 2>/dev/null; then
+    ready=true
+    break
+  fi
+  sleep 5
+done
+$ready || {
+  printf 'Fedora VM did not become reachable within 10 minutes\n' >&2
+  tail -n 100 "$scratch/console.log" >&2 || true
+  exit 1
+}
+
+ssh "${ssh_args[@]}" fedora@127.0.0.1 \
+  'cloud-init status --wait >/dev/null; mkdir -p /home/fedora/fedora-config'
+# Transfer precisely the checked-out and intentional untracked source set.
+# Besides avoiding generated caches, this respects future .gitignore entries
+# for local credentials instead of copying an arbitrary working directory into
+# the guest. Filter tracked paths deleted in this working tree just as the
+# Quickshell deployment manifest does.
+(
+  cd -- "$repo_root"
+  git ls-files -z --cached --others --exclude-standard |
+    while IFS= read -r -d '' source_path; do
+      [[ -f $source_path || -L $source_path ]] || continue
+      [[ $source_path == *.qcow2 ]] && continue
+      printf '%s\0' "$source_path"
+    done |
+    tar --create --file=- --null --verbatim-files-from --files-from=-
+) | \
+  ssh "${ssh_args[@]}" fedora@127.0.0.1 \
+    'tar -C /home/fedora/fedora-config -xf -'
+
+# Base convergence intentionally disables sshd. Both passes and all assertions
+# therefore run inside this one already-established session.
+timeout --signal=TERM --kill-after=30 100m \
+  ssh "${ssh_args[@]}" fedora@127.0.0.1 bash -s -- "$convergence_tags" <<'GUEST'
+set -euo pipefail
+tags=$1
+sudo dnf install -y ansible-core git
+cd /home/fedora/fedora-config
+export ANSIBLE_FORCE_COLOR=0
+export PYTHONDONTWRITEBYTECODE=1
+playbook=(ansible-playbook -i inventory/hosts.yml site.yml
+  -e @tests/vm/convergence-vars.yml --tags "$tags")
+"${playbook[@]}" | tee /tmp/fedora-config-first.log
+"${playbook[@]}" | tee /tmp/fedora-config-second.log
+grep -F 'no configuration changes' /tmp/fedora-config-second.log >/dev/null || {
+  printf 'Second Fedora VM convergence pass was not idempotent\n' >&2
+  tail -n 120 /tmp/fedora-config-second.log >&2
+  exit 1
+}
+sudo tests/vm/assert-converged
+GUEST
+
+printf 'Fedora 44 VM converged twice with a zero-change second pass\n'

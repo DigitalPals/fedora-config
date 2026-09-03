@@ -7,7 +7,24 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 backend="$repo_root/assets/scripts/xps-update-run"
 fixture=$(mktemp -d)
-trap 'rm -rf -- "$fixture"' EXIT
+
+cleanup() {
+  local rc=$? file
+  trap - EXIT
+  if ((rc != 0)); then
+    printf 'xps-update-run fixture failed; retained diagnostics follow\n' >&2
+    while IFS= read -r -d '' file; do
+      printf '%s\n' "--- ${file#"$fixture"/}" >&2
+      sed -n '1,160p' "$file" >&2
+    done < <(find "$fixture" -type f \
+      \( -name 'status.json' -o -name '*.err' -o -name '*.rc' \
+         -o -name 'run.log' -o -name 'snapshot.log' -o -name 'dnf.log' \) \
+      -print0 | LC_ALL=C sort -z)
+  fi
+  rm -rf -- "$fixture"
+  exit "$rc"
+}
+trap cleanup EXIT
 
 mock_bin="$fixture/bin"
 active_dir="$fixture/active"
@@ -76,6 +93,10 @@ apply_mock dnf \
   'fi' \
   'exit 98'
 
+# The snapshot helper has its own Btrfs fixture. Keep the durable-update test
+# on the supported non-Btrfs path so it never inspects or mutates the host FS.
+apply_mock findmnt 'printf "ext4\n"'
+
 export HOME="$fixture/home"
 export XDG_STATE_HOME="$fixture/state"
 export XDG_RUNTIME_DIR="$fixture/runtime"
@@ -85,6 +106,10 @@ export MOCK_PACKAGE_LOG="$fixture/package.log"
 export MOCK_DNF_LOG="$fixture/dnf.log"
 export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
 export XPS_UPDATE_BOOT_ID_FILE="$fixture/boot-id"
+# The now-installed production helper still executes inside this fixture's
+# mocked sudo process. Permit its non-root test mode; mocked findmnt below
+# forces the supported non-Btrfs no-op before any filesystem mutation.
+export XPS_SYSTEM_SNAPSHOT_TESTING=1
 export PATH="$mock_bin:$PATH"
 printf 'boot-a\n' >"$XPS_UPDATE_BOOT_ID_FILE"
 
@@ -255,7 +280,7 @@ recommended=$($backend status --json "$recommended_id")
 [[ $(jq -r .rebootRecommendation <<<"$recommended") == recommended ]]
 [[ $(tail -n 1 "$MOCK_DNF_UMASK_LOG") =~ ^0?022$ ]]
 [[ $(stat -c %a "$XDG_STATE_HOME/xps-update/logs/$recommended_id/dnf.log") == 600 ]]
-[[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 2 ]]
+[[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 3 ]]
 grep -q -- '--quiet --cacheonly needs-restarting --json' "$MOCK_DNF_LOG"
 
 # Dismissing the transcript does not dismiss a positive same-boot result. A

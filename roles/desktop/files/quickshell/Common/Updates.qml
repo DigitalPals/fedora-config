@@ -273,6 +273,8 @@ Singleton {
     property string flatpakLogCarry: ""
     property string backendTerminalState: ""
     property string backendMessage: ""
+    property string backendPhase: ""
+    property string recoveryPointId: ""
     property double backendFinishedAt: 0
     // Status requests are deliberately subordinate to a local start. A retry
     // from a terminal run must not accept the old run's final status after the
@@ -326,6 +328,8 @@ Singleton {
         flatpakLogCarry = "";
         backendTerminalState = "";
         backendMessage = "";
+        backendPhase = "";
+        recoveryPointId = "";
         backendFinishedAt = 0;
         runState = "running";
         doneClear.stop();
@@ -504,6 +508,8 @@ Singleton {
             runStartedAt = started > 0 ? started : runStartedAt;
             runIncludedFlatpak = includedFlatpak;
         }
+        backendPhase = typeof data.phase === "string" ? data.phase : "";
+        recoveryPointId = typeof data.snapshotId === "string" ? data.snapshotId : "";
 
         wantedDnfBytes = Math.max(wantedDnfBytes, Number(data.dnfBytes || 0));
         wantedFlatpakBytes = Math.max(wantedFlatpakBytes,

@@ -34,6 +34,10 @@ Singleton {
     property string shuffle: defaults.shuffle
     property string themeMode: defaults.themeMode
     property bool glassEnabled: defaults.glassEnabled
+    property bool highContrast: defaults.highContrast
+    property bool reducedMotion: defaults.reducedMotion
+    property string textScale: defaults.textScale
+    property string interfaceDensity: defaults.interfaceDensity
     property string barColorMode: defaults.barColorMode
     property int barCustomHue: defaults.barCustomHue
     property int barCustomSaturation: defaults.barCustomSaturation
@@ -110,7 +114,8 @@ Singleton {
     // One dirty/reset key list per settings page (grouped-rail design 1c).
     readonly property var sectionKeys: ({
         wallpaper: ["wall", "wallDir", "shuffle"],
-        appearance: ["themeMode", "glassEnabled", "barColorMode", "barCustomHue",
+        appearance: ["themeMode", "glassEnabled", "highContrast", "reducedMotion",
+            "textScale", "interfaceDensity", "barColorMode", "barCustomHue",
             "barCustomSaturation", "barCustomLightness", "font", "accent", "paletteMode"],
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive"],
@@ -204,6 +209,31 @@ Singleton {
         clearUndo();
         migrationPending = false;
         mods = SettingsHelpers.normalizeMods({ left: left, center: center, right: right });
+    }
+
+    function applyModulePreset(name) {
+        const enabled = name === "everything"
+            ? SettingsHelpers.MODULE_IDS
+            : name === "connected"
+            ? ["ws", "media", "indicators", "clock", "weather", "updates", "gh",
+                "t3", "hermes", "usage", "tray", "notifications", "vol", "wifi", "bt", "batt"]
+            : ["ws", "media", "indicators", "clock", "weather", "updates", "tray",
+                "notifications", "vol", "wifi", "batt"];
+        clearUndo();
+        migrationPending = false;
+        resetSnapshot = { mods: SettingsHelpers.clone(mods) };
+        resetLabel = "Widget profile";
+        const next = { left: [], center: [], right: [] };
+        for (const col of ["left", "center", "right"])
+            next[col] = mods[col].map(entry => ({
+                id: entry.id,
+                on: enabled.indexOf(entry.id) !== -1,
+                detail: entry.detail
+            }));
+        mods = next;
+        announcement = "Applied " + name
+            + " widget profile. Undo available for eight seconds.";
+        resetTimer.restart();
     }
 
     function resetKeys(keys, label) {
@@ -457,6 +487,13 @@ Singleton {
         scheduleSave();
         applyGlassEffect();
     }
+    onHighContrastChanged: {
+        scheduleSave();
+        applyGlassEffect();
+    }
+    onReducedMotionChanged: scheduleSave()
+    onTextScaleChanged: scheduleSave()
+    onInterfaceDensityChanged: scheduleSave()
     onBarColorModeChanged: scheduleSave()
     onBarCustomHueChanged: scheduleSave()
     onBarCustomSaturationChanged: scheduleSave()
@@ -551,9 +588,10 @@ Singleton {
     function applyGlassEffect() {
         if (!loaded || glassApplyProc.running)
             return;
-        dispatchedGlassEnabled = glassEnabled;
+        dispatchedGlassEnabled = glassEnabled && !highContrast;
         glassApplyProc.command = ["hyprctl", "eval",
-            "quickshell_blur_rule:set_enabled(" + (glassEnabled ? "true" : "false") + ")"];
+            "quickshell_blur_rule:set_enabled("
+                + (dispatchedGlassEnabled ? "true" : "false") + ")"];
         glassApplyProc.running = true;
     }
 
@@ -582,7 +620,7 @@ Singleton {
             root.glassApplyError = code !== 0;
             if (code !== 0)
                 console.warn("could not apply compositor glass effect:", code);
-            if (root.dispatchedGlassEnabled !== root.glassEnabled)
+            if (root.dispatchedGlassEnabled !== (root.glassEnabled && !root.highContrast))
                 glassReplayTimer.restart();
         }
     }

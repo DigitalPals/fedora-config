@@ -8,6 +8,7 @@ Item {
     id: root
 
     property int maxHeight: 650
+    property bool workspaceExpanded: false
     property bool pickerOpen: false
     property bool actionsOpen: false
     property bool confirmDelete: false
@@ -15,6 +16,7 @@ Item {
     property string respondingRequestId: ""
     property bool respondingRequestHadFocus: false
     signal setupRequested()
+    signal workspaceToggleRequested()
 
     readonly property var conversation: Hermes.selectedConversation
     readonly property var requests: Hermes.selectedRequests
@@ -670,6 +672,17 @@ Item {
                 anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 1
+
+                IconButton {
+                    symbol: root.workspaceExpanded ? "close_fullscreen" : "open_in_full"
+                    accessibleName: root.workspaceExpanded
+                        ? "Use compact Hermes popover" : "Expand Hermes workspace"
+                    accessibleDescription: root.workspaceExpanded
+                        ? "Return to the glanceable view" : "Use more width and conversation height"
+                    controlSize: 30
+                    tint: root.workspaceExpanded ? HermesTheme.accent : HermesTheme.textMuted
+                    onTriggered: root.workspaceToggleRequested()
+                }
 
                 IconButton {
                     id: actionsButton

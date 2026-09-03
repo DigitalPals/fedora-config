@@ -77,14 +77,16 @@ test("Appearance exposes live glass, wallpaper accents, and independent bar colo
 test("glass switches every shell surface through semantic fills", () => {
     const theme = read("Common/Theme.qml");
     assert.match(theme,
-        /readonly property color barSurface:\s*Settings\.glassEnabled[\s\S]{0,150}?: barBg/);
+        /readonly property bool glassActive:\s*Settings\.glassEnabled && !Settings\.highContrast/);
     assert.match(theme,
-        /readonly property color surfaceStrong:\s*Settings\.glassEnabled \? glassStrong : popBg/);
+        /readonly property color barSurface:\s*glassActive \? glass : barBg/);
     assert.match(theme,
-        /readonly property color surfaceMenu:\s*Settings\.glassEnabled \? glassMenu : menuBg/);
+        /readonly property color surfaceStrong:\s*glassActive \? glassStrong : popBg/);
+    assert.match(theme,
+        /readonly property color surfaceMenu:\s*glassActive \? glassMenu : menuBg/);
 
     assert.match(theme,
-        /readonly property color panelSurface:\s*Settings\.glassEnabled \? glassPanel : background/);
+        /readonly property color panelSurface:\s*glassActive \? glassPanel : background/);
 
     // Every surface that hangs off the bar is a panel now and shares one fill.
     // A menu floating *above* a panel still needs to stay legible over it, so
@@ -159,7 +161,7 @@ test("the named Hyprland blur rule persists and applies without remapping surfac
     assert.match(settings, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/,
         "a missing hyprctl binary must surface as an apply error");
     assert.match(settings,
-        /if \(root\.dispatchedGlassEnabled !== root\.glassEnabled\)\s*glassReplayTimer\.restart\(\)/,
+        /if \(root\.dispatchedGlassEnabled !== \(root\.glassEnabled && !root\.highContrast\)\)\s*glassReplayTimer\.restart\(\)/,
         "a second toggle while hyprctl is busy must be replayed");
 
     for (const file of ["Bar/Bar.qml", "Bar/BarPopoutWindow.qml", "LauncherWindow.qml",

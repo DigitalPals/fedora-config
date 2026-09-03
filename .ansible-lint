@@ -1,0 +1,5 @@
+profile: min
+offline: true
+exclude_paths:
+  - .cache/
+  - assets/

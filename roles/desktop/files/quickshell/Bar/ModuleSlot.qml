@@ -35,7 +35,7 @@ Loader {
     // others must not instantiate a full set of modules (and their timers)
     // behind an unmapped surface.
     active: host.visible && modelData.on && host.autoRule(modelData.id)
-    visible: active
+    visible: active && !host.moduleOverflowed(modelData.id)
     source: host.moduleSources[slot.modelData.id] ?? ""
 
     // Dimmed, not removed, while it is being dragged along the bar: the drag

@@ -8,6 +8,8 @@ import Quickshell
 Singleton {
     id: root
 
+    readonly property SocketContract socket: socketLoader.item as SocketContract
+
     // "connecting" | "connected" | "offline" | "disabled"
     property string state: "offline"
     property string connectionError: ""
@@ -119,7 +121,7 @@ Singleton {
     function send(text) {
         if (state !== "connected" || !socketLoader.item)
             return false;
-        socketLoader.item.sendText(text);
+        socket.sendText(text);
         return true;
     }
 

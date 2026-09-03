@@ -15,6 +15,10 @@ apps_required_fedora_packages:
   - nodejs24-npm
   - python3
   - python3-pip
+  - python3-ruff
+  - python3-ansible-lint
+  - ShellCheck
+  - yamllint
   - tree-sitter-cli
   - android-tools
   - inkscape

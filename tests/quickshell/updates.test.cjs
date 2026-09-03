@@ -152,6 +152,11 @@ test("the completed widget gates reboot action and retains only positive advice"
     const popover = read("Popovers/UpdatesPopover.qml");
 
     assert.match(updates, /property string bootId:\s*""/);
+    assert.match(updates, /property string recoveryPointId:\s*""/);
+    assert.match(updates,
+        /recoveryPointId = typeof data\.snapshotId === "string" \? data\.snapshotId : ""/);
+    assert.match(popover,
+        /label:\s*"Recovery point"[\s\S]{0,300}?Updates\.recoveryPointId/);
     assert.match(updates,
         /property string rebootRecommendation:\s*"unavailable"/);
     assert.match(updates,

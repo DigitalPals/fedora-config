@@ -6,9 +6,13 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 14);
+    assert.equal(H.VERSION, 16);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, false);
+    assert.equal(d.highContrast, false);
+    assert.equal(d.reducedMotion, false);
+    assert.equal(d.textScale, "default");
+    assert.equal(d.interfaceDensity, "default");
     assert.equal(d.barColorMode, "default");
     assert.deepEqual(
         [d.barCustomHue, d.barCustomSaturation, d.barCustomLightness],
@@ -30,7 +34,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.pollMax, 300);
     assert.equal(d.scrollFactor, 1.0);
     assert.equal(d.nightLight, false);
-    assert.equal(d.idleInhibited, true);
+    assert.equal(d.idleInhibited, false);
     assert.equal(d.shuffle, "Off");
     assert.equal(d.wallDir, "~/Pictures/Wallpapers");
     assert.equal(d.notifDnd, false);
@@ -54,6 +58,9 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.right.find(m => m.id === "tray").on, true);
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
+    for (const id of ["gh", "t3", "hermes", "usage"])
+        assert.equal(d.mods.right.find(m => m.id === id).on, false,
+            `${id} is available through Connected without crowding a fresh bar`);
     const moduleIds = [...d.mods.left, ...d.mods.center, ...d.mods.right]
         .map(module => module.id);
     assert.equal(new Set(moduleIds).size, moduleIds.length,
@@ -369,6 +376,16 @@ test("merge falls back on invalid enums, colors and names", () => {
         "wallpaper");
     assert.equal(H.merge({ v: H.VERSION, barStyle: "island" }).barStyle, "hug");
     assert.equal(H.merge({ position: "left" }).position, "top");
+    const invalidAccessibility = H.merge({
+        highContrast: "yes",
+        reducedMotion: 1,
+        textScale: "huge",
+        interfaceDensity: "touch"
+    });
+    assert.equal(invalidAccessibility.highContrast, false);
+    assert.equal(invalidAccessibility.reducedMotion, false);
+    assert.equal(invalidAccessibility.textScale, "default");
+    assert.equal(invalidAccessibility.interfaceDensity, "default");
     assert.equal(H.merge({ pollMax: 120 }).pollMax, 300);
     assert.equal(H.merge({ accent: "red" }).accent, "#9ecbeb");
     assert.equal(H.merge({ accent: "#a992e0" }).accent, "#a992e0");
@@ -799,7 +816,7 @@ test("schema-8 validates persisted action and system toggle state", () => {
         modOpts: { indicators: { mode: "visible" } }
     });
     assert.equal(invalid.nightLight, false);
-    assert.equal(invalid.idleInhibited, true);
+    assert.equal(invalid.idleInhibited, false);
     assert.equal(invalid.modOpts.indicators.mode, "hover");
 });
 

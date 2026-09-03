@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() {
+  printf 'Fedora VM convergence assertion failed: %s\n' "$*" >&2
+  exit 1
+}
+
+assert_system_enabled() {
+  systemctl is-enabled --quiet "$1" || {
+    systemctl is-enabled "$1" >&2 || true
+    fail "$1 is not enabled"
+  }
+}
+
+for unit in NetworkManager.service firewalld.service bluetooth.service \
+  thermald.service intel_lpmd.service gdm.service; do
+  assert_system_enabled "$unit"
+done
+
+user_id=$(id -u fedora)
+for unit in quickshell.service hypridle.service hyprpolkitagent.service; do
+  sudo -u fedora env XDG_RUNTIME_DIR="/run/user/$user_id" \
+    systemctl --user is-enabled --quiet "$unit" ||
+    fail "$unit is not enabled for fedora"
+done
+
+[[ -x /usr/local/libexec/xps-system-snapshot ]] || fail 'snapshot helper is not executable'
+[[ -x /usr/local/libexec/xps-session-action ]] || fail 'session action helper is not executable'
+[[ -r /usr/local/libexec/xps-common.sh ]] || fail 'shared installer helper is missing'
+[[ -f /home/fedora/.config/quickshell/shell.qml ]] || fail 'shell.qml is missing'
+[[ -f /home/fedora/.config/systemd/user/xps-session-lock.service ]] || fail 'lock unit is missing'
+[[ -f /usr/share/wayland-sessions/hyprland-quickshell.desktop ]] || fail 'GDM session is missing'
+[[ ! -e /usr/share/wayland-sessions/hyprland-noctalia.desktop ]] || fail 'retired Noctalia session remains'
+[[ -f /opt/brave.com/brave/initial_preferences ]] || fail 'Brave initial preferences are missing'
+[[ $(plymouth-set-default-theme) == bgrt ]] || fail 'BGRT is not the selected Plymouth theme'
+if find /home/fedora/.config/quickshell \
+    \( -type d -name __pycache__ -o -type f -name '*.py[co]' \) -print -quit |
+    grep -q .; then
+  fail 'generated Python bytecode leaked into the deployed shell'
+fi
+if grep -Eq '(^|/)__pycache__/|\.py[co]$' \
+    /home/fedora/.local/state/fedora-config/quickshell-manifest.txt; then
+  fail 'generated Python bytecode leaked into the managed shell manifest'
+fi
+
+for key in sleep-inactive-ac-timeout sleep-inactive-battery-timeout; do
+  value=$(sudo -u fedora env HOME=/home/fedora dbus-run-session \
+    gsettings get org.gnome.settings-daemon.plugins.power "$key")
+  [[ $value == 0 ]] || fail "$key is $value instead of 0"
+done
+
+python3 - <<'PY' || fail 'headless Quickshell deployment health is invalid'
+import json
+from pathlib import Path
+
+health = json.loads(Path(
+    "/home/fedora/.local/state/fedora-config/quickshell-health.json"
+).read_text(encoding="utf-8"))
+assert health["status"] == "skipped", health
+assert health["detail"] == "No live shell was active before deployment", health
+PY
+
+printf 'Fedora VM rendered configuration and service assertions passed\n'

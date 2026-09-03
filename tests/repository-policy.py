@@ -127,17 +127,42 @@ def verify_dependency_policy(values: dict) -> None:
             f"the clean Fedora CI container must explicitly install {package} "
             f"for the {purpose}"
         )
-    action_refs = re.findall(r"^\s*- uses:\s*([^\s#]+)", workflow, re.MULTILINE)
+    workflow_sources = [
+        path.read_text() for path in sorted((ROOT / ".github/workflows").glob("*.yml"))
+    ]
+    action_refs = re.findall(
+        r"^\s*- uses:\s*([^\s#]+)", "\n".join(workflow_sources), re.MULTILINE
+    )
     assert action_refs, "CI workflow has no externally reviewed actions"
     for action_ref in action_refs:
         assert re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", action_ref), (
             f"CI action is not pinned to a full commit: {action_ref}"
         )
 
+    vm_runner = (ROOT / "tests/fedora-vm-convergence").read_text()
+    assert "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2" in vm_runner
+    assert "28680fe5b371a5a82ebf43a31926e086a168e59949d03969c5093e7071f90b7f" in vm_runner
+    assert "sha256sum --check" in vm_runner
+    assert "no configuration changes" in vm_runner
+    assert "git ls-files -z --cached --others --exclude-standard" in vm_runner
+    assert "--null --verbatim-files-from --files-from=-" in vm_runner
+    assert "tar --exclude=.git" not in vm_runner
+    required_commands = re.search(
+        r"for command in ([^;]+); do", vm_runner
+    )
+    assert required_commands is not None
+    assert "git" in required_commands.group(1).split()
+
     runner = (ROOT / "tests/run").read_text()
     assert "rg -l '^#!.*(bash|sh)' -g '!*.j2' ." in runner
     assert "rg --files . -g '*.py'" in runner
     assert "rg -l '^#!.*python' -g '!*.j2' ." in runner
+
+    verifier = (ROOT / "tests/verify-xps").read_text()
+    assert not re.search(
+        r"required_commands=\([^)]*\bhermes\b", verifier, re.DOTALL
+    ), "the retired local Hermes runtime cannot also be a required command"
+    assert "local Hermes Agent runtime is absent" in verifier
 
     fish = (ROOT / "roles/dotfiles/files/fish-config.fish").read_text()
     assert "alias codex='codex --dangerously-bypass-approvals-and-sandbox'" in fish

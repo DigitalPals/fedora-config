@@ -410,12 +410,16 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema fourteen keeps the classic menubar and adds Hermes Agent", () => {
+test("schema sixteen keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 14/);
+    assert.match(helpers, /var VERSION = 16/);
+    assert.match(helpers, /highContrast: false/);
+    assert.match(helpers, /reducedMotion: false/);
+    assert.match(helpers, /textScale: "default"/);
+    assert.match(helpers, /interfaceDensity: "default"/);
     assert.match(helpers, /"media", "indicators", "clock"/);
     assert.match(helpers, /nightLight:\s*false/);
-    assert.match(helpers, /idleInhibited:\s*true/);
+    assert.match(helpers, /idleInhibited:\s*false/);
     assert.match(helpers, /"updates", "gh", "t3", "hermes",\s*"usage", "tray"/);
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers, /claudeAutoRefresh:\s*true/);
@@ -459,6 +463,15 @@ test("Layered Hug is one undoable preset and preserves layout dimensions", () =>
     assert.doesNotMatch(preset, /gap\s*=/);
 });
 
+test("Connected enables integration widgets including auto-hiding Bluetooth", () => {
+    const settings = read("Common/Settings.qml");
+    const preset = settings.slice(settings.indexOf("function applyModulePreset(name)"),
+        settings.indexOf("function applyLayeredHugPreset()"));
+    assert.match(preset,
+        /name === "connected"[\s\S]*?\["ws"[\s\S]*?"gh"[\s\S]*?"t3"[\s\S]*?"hermes"[\s\S]*?"usage"[\s\S]*?"bt"[\s\S]*?"batt"\]/,
+        "Connected should enable every connection-driven widget; Bluetooth hides itself when idle");
+});
+
 test("settings improvements expose fitting, embedded folders, undo, and shortcut", () => {
     const bar = read("Bar/Bar.qml");
     const modules = read("Settings/ModulesPage.qml");
@@ -500,7 +513,8 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     assert.doesNotMatch(page, /scrollGutter:\s*scrollbarVisible/);
     assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
     // One fixed lane keeps every row aligned across all menu fonts.
-    assert.match(theme, /readonly property int settingsLabelWidth:\s*132/);
+    assert.match(theme,
+        /readonly property int settingsLabelWidth:\s*scaled\(132, Math\.min\(contentScale, 1\.15\)\)/);
     assert.match(theme, /readonly property int settingsNarrowWidth:\s*520/);
     assert.match(base, /readonly property int labelWidth:\s*Theme\.settingsLabelWidth/);
     assert.match(picker, /narrowHeight:[\s\S]{0,100}?pills\.implicitHeight/,
@@ -752,7 +766,7 @@ test("the module cog opens a per-module sub-page inside the Modules page", () =>
         "a drag in progress must not be interrupted by opening a sub-page");
     assert.match(modules, /ModuleDetailView \{/);
     assert.match(modules, /id:\s*cogButton/);
-    assert.match(view, /subPageActive \?\? false/,
+    assert.match(view, /moduleSubPageActive[\s\S]{0,120}?closeModuleSubPage\(\)/,
         "Escape must close an open module sub-page before clearing search");
     assert.match(detail, /Settings\.setModuleDetail\(view\.moduleId/,
         "the detail policy control lives on the sub-page, stored in mods");

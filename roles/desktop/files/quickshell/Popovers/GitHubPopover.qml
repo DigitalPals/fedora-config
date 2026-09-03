@@ -13,6 +13,8 @@ import "../Common/GitHubHelpers.js" as Helpers
 Surface {
     id: root
 
+    readonly property Item loadedPage: pageLoader.item as Item
+
     // Match the integrated T3 workspace: the module owns a calm canvas and
     // composes flat rows plus focused detail inside it, while the popout host
     // still owns the outer shadow and opening motion.
@@ -25,7 +27,9 @@ Surface {
     // defaults stand in for a host that sets neither.
     availableWidth: 484 - Theme.barSideMargin * 2
     availableHeight: 800 - Theme.barTopMargin - Theme.barHeight - 16
-    implicitWidth: Math.max(Theme.t3MinWidth, Math.min(460, root.availableWidth))
+    property bool workspaceExpanded: false
+    implicitWidth: Math.max(Theme.t3MinWidth,
+        Math.min(workspaceExpanded ? 760 : 460, root.availableWidth))
 
     readonly property int headerHeight: T3Theme.headerHeight
     readonly property int footerHeight: T3Theme.footerHeight
@@ -91,6 +95,10 @@ Surface {
     function handleEscape(): bool {
         if (page === "repos" && repoSearchText !== "") {
             repoSearchText = "";
+            return true;
+        }
+        if (page !== "commits" && workspaceExpanded) {
+            workspaceExpanded = false;
             return true;
         }
         if (page !== "commits")
@@ -617,7 +625,8 @@ Surface {
 
             IconButton {
                 id: refreshButton
-                anchors.right: parent.right
+                anchors.right: workspaceButton.left
+                anchors.rightMargin: 2
                 anchors.verticalCenter: parent.verticalCenter
                 symbol: "refresh"
                 accessibleName: "Refresh GitHub repositories and Inbox"
@@ -625,6 +634,19 @@ Surface {
                     ? T3Theme.accent : T3Theme.textMuted
                 onTriggered: GitHub.refreshAll()
             }
+        }
+
+        IconButton {
+            id: workspaceButton
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            symbol: root.workspaceExpanded ? "close_fullscreen" : "open_in_full"
+            accessibleName: root.workspaceExpanded
+                ? "Use compact GitHub popover" : "Expand GitHub workspace"
+            accessibleDescription: root.workspaceExpanded
+                ? "Return to the glanceable view" : "Use more width for activity and commits"
+            tint: root.workspaceExpanded ? T3Theme.accent : T3Theme.textMuted
+            onTriggered: root.workspaceExpanded = !root.workspaceExpanded
         }
 
         // Commit list: back, the repository, and a way out to the browser.
@@ -674,7 +696,8 @@ Surface {
         IconButton {
             id: openRepoLink
             visible: root.page === "commits"
-            anchors.right: parent.right
+            anchors.right: workspaceButton.left
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             symbol: "open_in_new"
             accessibleName: "Open repository on GitHub"
@@ -711,7 +734,7 @@ Surface {
                 width: body.width - (body.contentHeight > body.height ? 5 : 0)
                 sourceComponent: root.page === "commits" ? commitsPage
                     : root.page === "repos" ? reposPage : inboxPage
-                height: item ? item.implicitHeight : 0
+                height: root.loadedPage ? root.loadedPage.implicitHeight : 0
             }
         }
 

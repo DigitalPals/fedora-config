@@ -23,6 +23,11 @@ SettingsPage {
         onReleased: Usage.releaseCountdown()
     }
 
+    onVisibleChanged: {
+        if (visible)
+            ShellHealth.refresh();
+    }
+
     function openConfig() {
         Settings.saveNow();
         Qt.callLater(() => Quickshell.execDetached(["xdg-open", Settings.filePath]));
@@ -109,6 +114,46 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
+            title: "Stay awake"
+
+            SettingsRow {
+                width: parent.width
+                label: "Duration"
+                narrowHeight: 70
+                narrowLabelInset: 80
+
+                PillRow {
+                    x: parent.narrow ? 0 : parent.labelWidth
+                    y: parent.narrow ? 26 : (parent.height - height) / 2
+                    width: parent.contentRight - x
+                    current: SysInfo.idleInhibitMode
+                    model: [
+                        { value: "off", label: "Off" },
+                        { value: "30m", label: "30 min" },
+                        { value: "1h", label: "1 hour" },
+                        { value: "unplugged", label: "Until unplugged" },
+                        { value: "always", label: "Always" }
+                    ]
+                    onPicked: value => SysInfo.setIdleInhibitMode(value)
+                }
+            }
+
+            Text {
+                width: parent.width
+                leftPadding: page.width < Theme.settingsNarrowWidth
+                    ? 0 : Theme.settingsLabelWidth + 10
+                text: SysInfo.idleInhibited
+                    ? "Active · " + SysInfo.idleInhibitStatus
+                    : "Temporary choices reset automatically and are not saved across login."
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: SysInfo.idleInhibited ? Theme.amber : Theme.textDim
+                wrapMode: Text.Wrap
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
             title: "OSD"
             dirty: Settings.osd !== Settings.defaults.osd
             onResetRequested: Settings.resetKeys(["osd"], "OSD")
@@ -142,6 +187,105 @@ SettingsPage {
                     { value: 600, label: "10 min" }
                 ]
                 caption: "next " + Format.mmss(page.pollLeft)
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: "Shell health"
+
+            SettingsRow {
+                width: parent.width
+                label: "Status"
+
+                Row {
+                    x: parent.labelWidth
+                    width: parent.contentRight - x
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 7
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 7
+                        height: 7
+                        radius: 4
+                        color: ShellHealth.healthy ? Theme.accent
+                            : ShellHealth.serviceActive ? Theme.amber : Theme.red
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: ShellHealth.busy ? "Checking…" : ShellHealth.statusLabel
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightMedium
+                        color: Theme.textHi
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: "Service"
+
+                Text {
+                    x: parent.labelWidth
+                    width: parent.contentRight - x
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: ShellHealth.serviceActive
+                        ? "PID " + ShellHealth.servicePid + " · up " + ShellHealth.uptimeLabel()
+                        : (ShellHealth.refreshError || "inactive")
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fontCaption
+                    color: ShellHealth.serviceActive ? Theme.textMid : Theme.redText
+                    elide: Text.ElideRight
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: "Deployment"
+
+                Text {
+                    x: parent.labelWidth
+                    width: parent.contentRight - x
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: ShellHealth.deploymentId === ""
+                        ? ShellHealth.deploymentDetail
+                        : ShellHealth.deploymentStatus + " · "
+                            + ShellHealth.deploymentId.slice(0, 10)
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fontCaption
+                    color: ShellHealth.deploymentStatus === "failed"
+                        ? Theme.redText : Theme.textMid
+                    elide: Text.ElideRight
+                }
+            }
+
+            Text {
+                visible: ShellHealth.issueCount > 0
+                width: parent.width
+                leftPadding: page.width < Theme.settingsNarrowWidth
+                    ? 0 : Theme.settingsLabelWidth + 10
+                text: (ShellHealth.integrationIssues.concat(ShellHealth.recentWarnings))[0] || ""
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: Theme.amber
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
+
+            ResponsiveActionRow {
+                width: parent.width
+                description: ShellHealth.deploymentCheckedAt === ""
+                    ? "Live service and current-invocation warnings"
+                    : "Last deploy check " + ShellHealth.deploymentCheckedAt
+
+                SettingsAction {
+                    text: ShellHealth.busy ? "Checking" : "Refresh"
+                    glyph: "refresh"
+                    onTriggered: ShellHealth.refresh()
+                }
             }
         }
 

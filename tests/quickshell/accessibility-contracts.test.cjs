@@ -32,6 +32,19 @@ test("popover action primitives are keyboard and assistive-technology operable",
         "the mute glyph must be a separate named keyboard action");
 });
 
+test("every overflowed widget remains keyboard reachable with visible focus", () => {
+    const overflow = read("Popovers/OverflowPopover.qml");
+    assert.match(overflow, /activeFocusOnTab:\s*true/,
+        "every repeated row must participate in sequential Tab focus");
+    assert.match(overflow,
+        /color:\s*rowMouse\.containsMouse \|\| activeFocus[\s\S]{0,100}?Theme\.hoverFill/,
+        "keyboard focus needs the same visible highlight as pointer hover");
+    assert.match(overflow,
+        /Accessible\.role:\s*Accessible\.Button[\s\S]*Accessible\.name:\s*modelData\.label/);
+    assert.match(overflow,
+        /Qt\.Key_Return[\s\S]*Qt\.Key_Enter[\s\S]*Qt\.Key_Space/);
+});
+
 test("notification history exposes primary, action, disclosure, dismiss, and clear paths", () => {
     const card = read("Common/NotifCard.qml");
     const actions = read("Common/NotifActions.qml");
@@ -61,7 +74,9 @@ test("notification history exposes primary, action, disclosure, dismiss, and cle
 test("Control Center focus reaches rows, toggles, audio, capture, session, and footer actions", () => {
     const control = read("Popovers/ControlCenterPopover.qml");
     assert.match(control, /focus:\s*visible/);
-    assert.match(control, /Keys\.onEscapePressed:\s*Popouts\.close\(\)/);
+    assert.match(control,
+        /Keys\.onEscapePressed:[\s\S]{0,260}?pendingSessionKey[\s\S]{0,260}?Popouts\.close\(\)/,
+        "Escape cancels a pending destructive action before closing the panel");
     assert.match(control,
         /function focusInitial\(\)[\s\S]*brightnessSlider\.ready \? brightnessSlider : outputButton/);
 

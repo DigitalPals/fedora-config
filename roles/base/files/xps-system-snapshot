@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Create a bounded, read-only Btrfs recovery point before package/config work.
+# /home is a separate subvolume and is deliberately not rolled back.
+set -euo pipefail
+umask 077
+
+usage() {
+  printf 'Usage: xps-system-snapshot create [DESCRIPTION]\n' >&2
+  printf '       xps-system-snapshot list\n' >&2
+  exit 2
+}
+
+action=${1:-}
+shift || true
+[[ $action == create || $action == list ]] || usage
+[[ $# -le 1 ]] || usage
+if [[ ${XPS_SYSTEM_SNAPSHOT_TESTING:-0} != 1 && $EUID -ne 0 ]]; then
+  printf 'xps-system-snapshot must run as root\n' >&2
+  exit 1
+fi
+
+if [[ $(findmnt --noheadings --output FSTYPE --target / | xargs) != btrfs ]]; then
+  printf 'skipped: root filesystem is not Btrfs\n'
+  exit 0
+fi
+root_subvolume=$(findmnt --noheadings --output FSROOT --target / | xargs)
+home_subvolume=$(findmnt --noheadings --output FSROOT --target /home | xargs)
+[[ $root_subvolume == /root && $home_subvolume == /home ]] || {
+  printf 'unsupported Btrfs layout: expected separate /root and /home subvolumes\n' >&2
+  exit 1
+}
+for tool in btrfs findmnt tar flock; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    printf 'required snapshot tool is missing: %s\n' "$tool" >&2
+    exit 1
+  }
+done
+
+temporary_mount=''
+created_root=''
+boot_tmp=''
+boot_target=''
+committed=false
+cleanup() {
+  if ! $committed; then
+    [[ -z $boot_tmp ]] || rm -f -- "$boot_tmp"
+    [[ -z $boot_target ]] || rm -f -- "$boot_target"
+    if [[ -n $created_root && -e $created_root ]]; then
+      btrfs subvolume delete "$created_root" >/dev/null 2>&1 || true
+    fi
+  fi
+  if [[ -n $temporary_mount ]]; then
+    umount -- "$temporary_mount" 2>/dev/null || true
+    rmdir -- "$temporary_mount" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+top=${XPS_SNAPSHOT_TOPLEVEL:-}
+if [[ -z $top ]]; then
+  uuid=$(findmnt --noheadings --output UUID --target / | xargs)
+  [[ $uuid =~ ^[0-9A-Fa-f-]{16,}$ ]] || {
+    printf 'could not resolve the root Btrfs UUID\n' >&2
+    exit 1
+  }
+  temporary_mount=$(mktemp -d /run/xps-snapshot.XXXXXX)
+  mount -t btrfs -o subvolid=5 "UUID=$uuid" "$temporary_mount"
+  top=$temporary_mount
+fi
+
+store=$top/xps-snapshots
+if [[ ! -e $store ]]; then
+  btrfs subvolume create "$store" >/dev/null
+elif ! btrfs subvolume show "$store" >/dev/null 2>&1; then
+  printf 'snapshot store exists but is not a Btrfs subvolume: %s\n' "$store" >&2
+  exit 1
+fi
+root_snapshots=$store/root
+boot_archives=$store/boot
+metadata=$store/metadata
+mkdir -p -- "$root_snapshots" "$boot_archives" "$metadata"
+exec 9>"$store/.lock"
+flock 9
+
+if [[ $action == list ]]; then
+  for file in "$metadata"/*.meta; do
+    [[ -f $file ]] || continue
+    name=${file##*/}
+    printf '%s\t%s\n' "${name%.meta}" "$(<"$file")"
+  done
+  exit 0
+fi
+
+description=${1:-manual recovery point}
+description=${description//$'\n'/ }
+description=${description:0:120}
+id=${XPS_SNAPSHOT_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}
+[[ $id =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]] || {
+  printf 'invalid snapshot identifier\n' >&2
+  exit 1
+}
+root_target=$root_snapshots/$id
+boot_target=$boot_archives/$id.tar
+[[ ! -e $root_target && ! -e $boot_target ]] || {
+  printf 'snapshot already exists: %s\n' "$id" >&2
+  exit 1
+}
+
+boot_tmp=$boot_archives/.$id.tar.tmp
+tar --acls --xattrs --selinux --numeric-owner --create --file "$boot_tmp" /boot
+sync -f "$boot_tmp"
+mv -f -- "$boot_tmp" "$boot_target"
+if ! btrfs subvolume snapshot -r / "$root_target" >/dev/null; then
+  rm -f -- "$boot_target"
+  exit 1
+fi
+created_root=$root_target
+printf '%s\n' "$description" >"$metadata/$id.meta"
+printf '%s\n' "$id" >"$store/latest"
+sync -f "$store/latest"
+committed=true
+
+# Five recovery points bound disk growth while retaining several independent
+# package/config transactions. Root snapshots and their /boot archives rotate
+# as one unit.
+mapfile -t snapshots < <(
+  find "$root_snapshots" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+    | LC_ALL=C sort
+)
+while ((${#snapshots[@]} > 5)); do
+  oldest=${snapshots[0]}
+  [[ $oldest =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]] || {
+    printf 'refusing to prune unexpected snapshot name: %s\n' "$oldest" >&2
+    exit 1
+  }
+  btrfs subvolume delete "$root_snapshots/$oldest" >/dev/null
+  rm -f -- "$boot_archives/$oldest.tar" "$metadata/$oldest.meta"
+  snapshots=("${snapshots[@]:1}")
+done
+
+printf '%s\n' "$id"

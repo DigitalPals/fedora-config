@@ -30,7 +30,14 @@ Surface {
     spacing: Theme.panelSectionSpacing
     focus: visible
 
-    Keys.onEscapePressed: Popouts.close()
+    Keys.onEscapePressed: event => {
+        if (pendingSessionKey !== "") {
+            clearSessionConfirmation();
+            event.accepted = true;
+        } else {
+            Popouts.close();
+        }
+    }
 
     function moveFocus(item, forward) {
         const next = item.nextItemInFocusChain(forward);
@@ -48,7 +55,11 @@ Surface {
     }
 
     Component.onCompleted: focusInitial()
-    onVisibleChanged: focusInitial()
+    onVisibleChanged: {
+        focusInitial();
+        if (!visible && pendingSessionKey !== "")
+            clearSessionConfirmation();
+    }
 
     readonly property string binDir: Quickshell.env("HOME") + "/.local/bin/"
     readonly property var btConnected: BluetoothState.devices.filter(d => d.connected)
@@ -84,6 +95,37 @@ Surface {
         { key: "restart", glyph: "restart_alt", label: "Restart" },
         { key: "shutdown", glyph: "power_settings_new", label: "Shut down" }
     ]
+    property string pendingSessionKey: ""
+    property string sessionAnnouncement: ""
+
+    function sessionActionLabel(key) {
+        switch (key) {
+        case "logout": return "log out";
+        case "reboot": return "restart";
+        case "shutdown": return "shut down";
+        default: return key;
+        }
+    }
+
+    function clearSessionConfirmation() {
+        sessionConfirmTimer.stop();
+        pendingSessionKey = "";
+        sessionAnnouncement = "Session action cancelled.";
+    }
+
+    function requestSession(key) {
+        const guarded = ["logout", "reboot", "shutdown"].indexOf(key) !== -1;
+        if (guarded && pendingSessionKey !== key) {
+            pendingSessionKey = key;
+            sessionAnnouncement = "Press " + sessionActionLabel(key)
+                + " again within five seconds to confirm.";
+            sessionConfirmTimer.restart();
+            return;
+        }
+        sessionConfirmTimer.stop();
+        pendingSessionKey = "";
+        triggerSession(key);
+    }
 
     // The stat cards are live only while this panel is on screen, so it says
     // so rather than the singletons guessing from Popouts. Keyed on
@@ -129,6 +171,12 @@ Surface {
         case "restart": Session.reboot(); break;
         case "shutdown": Session.shutdown(); break;
         }
+    }
+
+    Timer {
+        id: sessionConfirmTimer
+        interval: 5000
+        onTriggered: root.clearSessionConfirmation()
     }
 
     // Radio row: mark, name, live status underneath, and the chevron into the
@@ -275,7 +323,9 @@ Surface {
         property bool pending: false
         property string error: ""
         property bool showStatus: false
-        readonly property string statusLabel: error !== "" ? "Error"
+        property string statusOverride: ""
+        readonly property string statusLabel: statusOverride !== "" ? statusOverride
+            : error !== "" ? "Error"
             : pending ? (on ? "Starting…" : "Stopping…")
             : effective ? "Active" : on ? "Not active" : "Off"
         readonly property string statusDescription: error !== "" ? error
@@ -395,19 +445,24 @@ Surface {
 
         property string glyph: ""
         property string label: ""
+        property string actionKey: ""
+        readonly property bool armed: root.pendingSessionKey === actionKey
+        readonly property string visibleLabel: armed ? "Confirm" : label
         signal triggered
 
         width: root.sessionActionWidth
         height: root.sessionActionHeight
         radius: Theme.chipRadius
-        color: actionMouse.containsMouse ? Theme.chipHover : Theme.chip
-        border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        color: armed ? Theme.amberBg
+            : actionMouse.containsMouse ? Theme.chipHover : Theme.chip
+        border.width: activeFocus || armed ? 1 : 0
+        border.color: armed ? Theme.amber : Theme.accent
         scale: actionMouse.pressed ? 0.95 : 1
         activeFocusOnTab: true
 
         Accessible.role: Accessible.Button
-        Accessible.name: label
+        Accessible.name: armed ? "Confirm " + root.sessionActionLabel(actionKey) : label
+        Accessible.description: armed ? "This action ends the current session state." : ""
         Accessible.onPressAction: action.triggered()
 
         Behavior on color {
@@ -445,18 +500,18 @@ Surface {
                 name: action.glyph
                 size: Theme.iconMedium
                 fill: 0
-                color: Theme.icon
+                color: action.armed ? Theme.amber : Theme.icon
             }
 
             Text {
                 width: action.width - 4
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
-                text: action.label
+                text: action.visibleLabel
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontMicro
                 font.weight: Theme.weightMedium
-                color: Theme.textLow
+                color: action.armed ? Theme.amber : Theme.textLow
             }
         }
 
@@ -768,6 +823,7 @@ Surface {
                     pending: SysInfo.idleInhibitPending
                     error: SysInfo.idleInhibitError
                     showStatus: true
+                    statusOverride: SysInfo.idleInhibitStatus
                     onToggled: SysInfo.toggleIdleInhibited()
                 }
             }
@@ -924,9 +980,24 @@ Surface {
 
                     glyph: modelData.glyph
                     label: modelData.label
-                    onTriggered: root.triggerSession(modelData.key)
+                    actionKey: modelData.key
+                    onTriggered: root.requestSession(modelData.key)
                 }
             }
+        }
+
+        Text {
+            visible: root.sessionAnnouncement !== ""
+            width: parent.width
+            topPadding: 6
+            text: root.sessionAnnouncement
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontMicro
+            color: root.pendingSessionKey !== "" ? Theme.amber : Theme.textDim
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: text
         }
     }
 

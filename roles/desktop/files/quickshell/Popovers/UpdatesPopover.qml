@@ -544,6 +544,16 @@ Surface {
             spacing: 11
 
             StepLine {
+                label: "Recovery point"
+                tint: Theme.amber
+                finished: Updates.backendPhase !== "snapshot"
+                rc: 0
+                idleText: "snapshotting root & /boot…"
+                doneText: Updates.recoveryPointId !== ""
+                    ? Updates.recoveryPointId.slice(0, 16) : "not required"
+            }
+
+            StepLine {
                 label: "System packages"
                 tint: Theme.accent
                 cur: Updates.dnfCur
@@ -626,6 +636,16 @@ Surface {
                 font.pixelSize: Theme.fontMicro
                 font.weight: Theme.weightSemibold
                 color: Updates.fpWarning !== "" ? Theme.amber : Theme.textFaint
+                elide: Text.ElideRight
+            }
+
+            Text {
+                visible: Updates.recoveryPointId !== ""
+                width: parent.width
+                text: "Recovery point · " + Updates.recoveryPointId
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontMicro
+                color: Theme.textDim
                 elide: Text.ElideRight
             }
         }

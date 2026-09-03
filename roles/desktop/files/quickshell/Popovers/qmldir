@@ -27,6 +27,7 @@ IconButton IconButton.qml
 LinkText LinkText.qml
 MediaPopover MediaPopover.qml
 NotifsPopover NotifsPopover.qml
+OverflowPopover OverflowPopover.qml
 ReminderPopover ReminderPopover.qml
 PopoutPanel PopoutPanel.qml
 SectionLabel SectionLabel.qml

@@ -14,14 +14,15 @@ Surface {
 
     availableWidth: 560 - Theme.barSideMargin * 2
     availableHeight: 900 - Theme.barTopMargin - Theme.barHeight - 16
+    property bool workspaceExpanded: false
     implicitWidth: Math.max(Theme.t3MinWidth,
-        Math.min(520, root.availableWidth))
+        Math.min(workspaceExpanded ? 760 : 520, root.availableWidth))
 
     readonly property int bodyBudget: Math.max(420, root.availableHeight
         - root.padding * 2 - header.height - footer.height
         - root.spacing * 2)
-    readonly property int threadMaxHeight: Math.min(bodyBudget,
-        Math.max(520, Math.round(root.availableHeight / 2)))
+    readonly property int threadMaxHeight: workspaceExpanded ? bodyBudget
+        : Math.min(bodyBudget, Math.max(520, Math.round(root.availableHeight / 2)))
 
     detachedOverflowHeight: !root.showingSetup
         ? inbox.detachedOverflowHeight : 0
@@ -62,7 +63,13 @@ Surface {
             closeSetup();
             return true;
         }
-        return !showingSetup && inbox.handleEscape();
+        if (!showingSetup && inbox.handleEscape())
+            return true;
+        if (workspaceExpanded) {
+            workspaceExpanded = false;
+            return true;
+        }
+        return false;
     }
 
     Claim {
@@ -192,6 +199,16 @@ Surface {
             spacing: 2
 
             IconButton {
+                symbol: root.workspaceExpanded ? "close_fullscreen" : "open_in_full"
+                accessibleName: root.workspaceExpanded
+                    ? "Use compact Hermes popover" : "Expand Hermes workspace"
+                accessibleDescription: root.workspaceExpanded
+                    ? "Return to the glanceable view" : "Use more width and conversation height"
+                tint: root.workspaceExpanded ? HermesTheme.accent : HermesTheme.textMuted
+                onTriggered: root.workspaceExpanded = !root.workspaceExpanded
+            }
+
+            IconButton {
                 symbol: "refresh"
                 accessibleName: "Refresh Hermes status"
                 tint: HermesTheme.textMuted
@@ -220,6 +237,8 @@ Surface {
         width: parent.width
         height: visible ? implicitHeight : 0
         maxHeight: root.threadMaxHeight
+        workspaceExpanded: root.workspaceExpanded
+        onWorkspaceToggleRequested: root.workspaceExpanded = !root.workspaceExpanded
         onSetupRequested: root.openSetup()
     }
 
