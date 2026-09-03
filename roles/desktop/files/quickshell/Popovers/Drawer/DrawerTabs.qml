@@ -4,10 +4,11 @@ import "../../Common"
 import "../../Common/PanelRegistryData.js" as PanelRegistry
 
 // The drawer's tab strip. The current tab carries its icon and label on a
-// lit segment; the others compress to icons sharing the remaining width, so
-// the strip holds one row at every drawer width. Selecting a tab reopens the
-// popout under that tab's canonical panel name — same name space as the bar
-// glyphs and IPC — which keeps the surface exactly where it is.
+// lit segment with the design's 12px side padding; the others compress to
+// icons sharing the remaining width, so the strip holds one row at every
+// drawer width. Selecting a tab reopens the popout under that tab's
+// canonical panel name — same name space as the bar glyphs and IPC — which
+// keeps the surface exactly where it is.
 Rectangle {
     id: root
 
@@ -22,8 +23,8 @@ Rectangle {
         { tab: "usage", glyph: "insights", label: "Usage" }
     ]
 
-    height: 36
-    radius: 9
+    height: 42
+    radius: 10
     color: Theme.chip
 
     Row {
@@ -39,13 +40,17 @@ Rectangle {
 
                 required property var modelData
                 readonly property bool on: modelData.tab === root.current
+                // Icon lane, its gap to the label, and the design's 12px of
+                // air either side of the pair.
+                readonly property real litWidth: 12 + 17 + 7
+                    + labelMetrics.width + 12
                 // The lit segment takes its natural width; the rest split
                 // what is left evenly.
                 readonly property real restWidth: {
                     let lit = 0;
                     for (const t of root.tabs) {
                         if (t.tab === root.current)
-                            lit = 24 + 6 + labelMetrics.width;
+                            lit = 12 + 17 + 7 + litMetrics.width + 12;
                     }
                     return (parent.width - lit - 2 * (root.tabs.length - 1))
                         / (root.tabs.length - 1);
@@ -54,14 +59,28 @@ Rectangle {
                 TextMetrics {
                     id: labelMetrics
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.fontSecondary
                     font.weight: Theme.weightSemibold
                     text: segment.modelData.label
                 }
 
-                width: on ? 24 + 6 + labelMetrics.width : Math.max(24, restWidth)
+                TextMetrics {
+                    id: litMetrics
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontSecondary
+                    font.weight: Theme.weightSemibold
+                    text: {
+                        for (const t of root.tabs) {
+                            if (t.tab === root.current)
+                                return t.label;
+                        }
+                        return "";
+                    }
+                }
+
+                width: on ? litWidth : Math.max(28, restWidth)
                 height: parent.height
-                radius: 7
+                radius: 8
                 color: on ? Theme.chipHover : "transparent"
 
                 Behavior on width {
@@ -78,17 +97,17 @@ Rectangle {
 
                 Row {
                     anchors.centerIn: parent
-                    spacing: 6
+                    spacing: 7
 
                     Item {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 16
-                        height: 16
+                        width: 17
+                        height: 17
 
                         Sym {
                             anchors.centerIn: parent
                             name: segment.modelData.glyph
-                            size: 16
+                            size: 17
                             fill: segment.on ? 1 : 0
                             rotation: segment.modelData.rotate === true ? 90 : 0
                             color: segment.on ? Theme.textHi : Theme.textFaint
@@ -100,7 +119,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         text: segment.modelData.label
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.fontSecondary
                         font.weight: Theme.weightSemibold
                         color: Theme.textHi
                     }
@@ -113,8 +132,8 @@ Rectangle {
                         && !segment.on && Notifs.count > 0
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.rightMargin: 7
-                    anchors.topMargin: 6
+                    anchors.rightMargin: 8
+                    anchors.topMargin: 7
                     width: 6
                     height: 6
                     radius: 3

@@ -450,8 +450,8 @@ Singleton {
 
     // Compact controls reproduce the original 22–26px rhythm while the
     // outer slab remains independently height-adjustable.
-    readonly property int chipHeight: scaled(26)
-    readonly property int chipInnerHeight: scaled(22)
+    readonly property int chipHeight: scaled(28)
+    readonly property int chipInnerHeight: scaled(24)
     readonly property int chipRadius: 7
     readonly property int pillRadius: 999
     readonly property int roundButton: scaled(26)
@@ -462,8 +462,8 @@ Singleton {
     // The edge drawer and the Day sheet: attached surfaces from the 2026-09
     // redesign. The drawer holds one width across all its tabs so switching
     // never slides the surface; the sheet hangs under the clock.
-    readonly property int drawerWidth: scaled(360, Math.min(contentScale, 1.15))
-    readonly property int daySheetWidth: scaled(640, Math.min(contentScale, 1.15))
+    readonly property int drawerWidth: scaled(400, Math.min(contentScale, 1.15))
+    readonly property int daySheetWidth: scaled(680, Math.min(contentScale, 1.15))
     readonly property int t3MinWidth: 360
     readonly property int t3MaxWidth: 520
     readonly property int surfacePadding: scaled(16)

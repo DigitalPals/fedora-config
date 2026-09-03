@@ -429,7 +429,7 @@ test("schema sixteen keeps safe defaults and exposes accessibility preferences",
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
     assert.match(helpers, /themeMode:\s*"dark"/);
-    assert.match(helpers, /barHeight:\s*34/);
+    assert.match(helpers, /barHeight:\s*36/);
     assert.match(helpers, /barRadius:\s*11/);
     assert.match(helpers, /glassEnabled:\s*false/);
     assert.match(helpers, /barColorMode:\s*"default"/);

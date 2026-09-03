@@ -1,10 +1,10 @@
 import QtQuick
 import "../../Common"
 
-// One quick-toggle tile in the Overview grid: glyph over label, lit while on.
-// The lit state fills the glyph and hands both marks the accent — the tile
-// fill itself stays a quiet chip step so four of them in a row cannot turn
-// the drawer fluorescent.
+// One quick-toggle tile in the Overview grid: glyph over label, lit while
+// on. A lit tile is a switch track, so it earns the accent-tinted fill and
+// ring the design gives it (typography.test.cjs lists this file for that);
+// the resting state stays a quiet chip.
 Rectangle {
     id: root
 
@@ -13,12 +13,12 @@ Rectangle {
     property bool on: false
     signal toggled()
 
-    height: 54
+    height: 60
     radius: 10
-    color: on ? Theme.chipHover : Theme.chip
+    color: on ? Theme.accentAlpha(0.14) : Theme.chip
     activeFocusOnTab: true
-    border.width: activeFocus ? 1 : 0
-    border.color: Theme.accent
+    border.width: on || activeFocus ? 1 : 0
+    border.color: activeFocus ? Theme.accent : Theme.accentAlpha(0.35)
     Accessible.role: Accessible.CheckBox
     Accessible.checked: on
     Accessible.name: label
@@ -43,7 +43,7 @@ Rectangle {
         Sym {
             anchors.horizontalCenter: parent.horizontalCenter
             name: root.glyph
-            size: 17
+            size: 18
             fill: root.on ? 1 : 0
             color: root.on ? Theme.accent : Theme.textMid
         }
@@ -52,9 +52,9 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.label
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightSemibold
-            color: root.on ? Theme.textHi : Theme.textMid
+            color: root.on ? Theme.accent : Theme.textMid
         }
     }
 

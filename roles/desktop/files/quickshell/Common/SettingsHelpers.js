@@ -154,7 +154,7 @@ function defaults() {
         barCustomHue: 230,
         barCustomSaturation: 14,
         barCustomLightness: 9,
-        barHeight: 34,
+        barHeight: 36,
         barRadius: 11,
         font: "figtree",
         accent: "#d3d283",

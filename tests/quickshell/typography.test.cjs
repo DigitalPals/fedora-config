@@ -80,7 +80,7 @@ test("menu typography keeps the bar's own compact metrics", () => {
         intToken("tooltipHeight"),
         intToken("barTextSize"),
         intToken("barIconSize"),
-    ], [26, 22, 28, 13, 15]);
+    ], [28, 24, 28, 13, 15]);
     assert.match(theme, /readonly property var tabularNumberFeatures:\s*\(\{\s*"tnum":\s*1\s*\}\)/);
 });
 
@@ -90,7 +90,7 @@ test("settings-driven tokens default to the selected menu face", () => {
     // and Theme must actually bind to Settings rather than re-hardcode.
     const H = load("SettingsHelpers.js");
     const d = H.defaults();
-    assert.equal(d.barHeight, 34);
+    assert.equal(d.barHeight, 36);
     assert.equal(d.barRadius, 11);
     assert.equal(d.gap, 8);
     assert.equal(d.barStyle, "hug");
@@ -326,6 +326,7 @@ test("no surface paints an accent field where a chip belongs", () => {
         "Popovers/FillSlider.qml",
         // a switch track, and the quick toggles that are switches
         "Popovers/ControlCenterPopover.qml",
+        "Popovers/Drawer/DrawerTile.qml",
         "Common/Toggle.qml",
         // the one primary action per panel
         "Popovers/UpdatesPopover.qml",

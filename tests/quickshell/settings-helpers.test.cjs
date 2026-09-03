@@ -17,7 +17,7 @@ test("defaults carry the design values", () => {
     assert.deepEqual(
         [d.barCustomHue, d.barCustomSaturation, d.barCustomLightness],
         [230, 14, 9]);
-    assert.equal(d.barHeight, 34);
+    assert.equal(d.barHeight, 36);
     assert.equal(d.barRadius, 11);
     assert.equal(d.font, "figtree");
     assert.equal(d.accent, "#d3d283");
@@ -354,7 +354,7 @@ test("merge clamps and snaps numeric ranges", () => {
     assert.equal(H.merge({ barHeight: 99 }).barHeight, 60);
     assert.equal(H.merge({ barHeight: 10 }).barHeight, 28);
     assert.equal(H.merge({ barHeight: 45.6 }).barHeight, 46);
-    assert.equal(H.merge({ barHeight: "30" }).barHeight, 34);
+    assert.equal(H.merge({ barHeight: "30" }).barHeight, 36);
     assert.equal(H.merge({ gap: 1 }).gap, 4);
     assert.equal(H.merge({ barRadius: -3 }).barRadius, 0);
     assert.equal(H.merge({ warmth: 3333 }).warmth, 3350);
@@ -497,7 +497,7 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
         font: "oppo", osd: "top",
         modOpts: { ws: { style: "numbers" }, media: { maxWidth: 220 } }
     });
-    assert.equal(untouched.barHeight, 34);
+    assert.equal(untouched.barHeight, 36);
     assert.equal(untouched.barRadius, 11);
     assert.equal(untouched.gap, 8);
     assert.equal(untouched.accent, "#d3d283");
@@ -571,7 +571,7 @@ test("schema-9 adopts the classic bar only from untouched design values", () => 
         }
     });
     assert.equal(untouched.glassEnabled, false);
-    assert.equal(untouched.barHeight, 34);
+    assert.equal(untouched.barHeight, 36);
     assert.equal(untouched.barRadius, 11);
     assert.equal(untouched.gap, 8);
     assert.equal(untouched.accent, "#d3d283");
