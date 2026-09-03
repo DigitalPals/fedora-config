@@ -9,6 +9,7 @@
     - steam
     - proprietary_apps
     - tailscale
+    - source_builds
   register: apps_feature_marker_stats
 
 - name: Record optional application ownership state
@@ -54,6 +55,7 @@
     - steam
     - proprietary_apps
     - tailscale
+    - source_builds
   when: features[item] | bool
 
 - name: Retire optional application ownership after deselection
@@ -67,6 +69,7 @@
     - steam
     - proprietary_apps
     - tailscale
+    - source_builds
   when:
     - not features[item] | bool
     - apps_feature_owned[item] | bool

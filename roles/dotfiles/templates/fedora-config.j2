@@ -16,6 +16,13 @@ case $command_name in
     exec "$source_dir/update" "$@"
     ;;
   verify|doctor)
+    verify_scope=false
+    for argument in "$@"; do
+      case $argument in
+        --source|--system|--quick) verify_scope=true ;;
+      esac
+    done
+    $verify_scope || set -- --system "$@"
     exec "$source_dir/verify" "$@"
     ;;
   uninstall)

@@ -7,7 +7,7 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 image_url=${FEDORA_VM_IMAGE_URL:-https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}
 image_sha256=${FEDORA_VM_IMAGE_SHA256:-28680fe5b371a5a82ebf43a31926e086a168e59949d03969c5093e7071f90b7f}
 image_cache=${FEDORA_VM_IMAGE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/fedora-config/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}
-convergence_tags=${FEDORA_VM_TAGS:-base,desktop,dotfiles,private-hooks,boot,finalize}
+convergence_tags=${FEDORA_VM_TAGS:-all}
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-vm.XXXXXX")
 qemu_pid=''
 temporary_image=''
@@ -156,7 +156,7 @@ timeout --signal=TERM --kill-after=30 100m \
   ssh "${ssh_args[@]}" fedora@127.0.0.1 bash -s -- "$convergence_tags" <<'GUEST'
 set -euo pipefail
 tags=$1
-sudo dnf install -y ansible-core git
+sudo dnf install -y ansible-core firewalld git
 cd /home/fedora/fedora-config
 export ANSIBLE_FORCE_COLOR=0
 export PYTHONDONTWRITEBYTECODE=1
@@ -165,16 +165,40 @@ export PYTHONDONTWRITEBYTECODE=1
 # cloud-user home. Each file is overwritten during convergence and must be
 # recovered byte-for-byte by the uninstaller.
 install -d -m 0755 /home/fedora/.config/hypr \
-  /home/fedora/.config/quickshell /home/fedora/.local/bin \
+  /home/fedora/.config/quickshell /home/fedora/.config/distrobox \
+  /home/fedora/.config/noctalia /home/fedora/.local/state/noctalia \
+  /home/fedora/.cache/noctalia /home/fedora/.local/bin \
   /home/fedora/.config/systemd/user
 printf 'original Hyprland bindings\n' >/home/fedora/.config/hypr/bindings.lua
 printf 'original Quickshell root\n' >/home/fedora/.config/quickshell/shell.qml
 printf 'original Spotify helper\n' >/home/fedora/.local/bin/spotify
 printf 'original user unit\n' >/home/fedora/.config/systemd/user/quickshell.service
+printf 'original sccache helper\n' >/home/fedora/.local/bin/sccache
+printf 'original Distrobox configuration\n' >/home/fedora/.config/distrobox/distrobox.conf
+printf 'original Noctalia configuration\n' >/home/fedora/.config/noctalia/config.json
+printf 'original Noctalia state\n' >/home/fedora/.local/state/noctalia/state.json
+printf 'original Noctalia cache\n' >/home/fedora/.cache/noctalia/cache
 sudo install -d -m 0755 /etc/gdm /etc/sudoers.d /etc/polkit-1/rules.d
 printf '[daemon]\n# original GDM configuration\n' | sudo tee /etc/gdm/custom.conf >/dev/null
 printf '# original sudo policy\n' | sudo tee /etc/sudoers.d/10-wheel-nopasswd >/dev/null
 printf '// original Polkit policy\n' | sudo tee /etc/polkit-1/rules.d/49-wheel-local.rules >/dev/null
+printf 'original awww command\n' | sudo tee /usr/local/bin/awww >/dev/null
+printf 'original awww daemon\n' | sudo tee /usr/local/bin/awww-daemon >/dev/null
+printf 'original wayfreeze command\n' | sudo tee /usr/local/bin/wayfreeze >/dev/null
+printf 'original Noctalia launcher\n' | sudo tee /usr/local/bin/hyprland-noctalia >/dev/null
+printf 'original Noctalia session\n' | sudo tee /usr/share/wayland-sessions/hyprland-noctalia.desktop >/dev/null
+
+# Prove uninstall restores both the default zone and every profile-specific
+# binding rather than leaving references to the removed project zone.
+sudo systemctl enable --now firewalld
+sudo firewall-cmd --set-default-zone=home
+while IFS=: read -r uuid type; do
+  case "$type" in
+    802-3-ethernet|802-11-wireless)
+      sudo nmcli connection modify "$uuid" connection.zone work
+      ;;
+  esac
+done < <(nmcli -t -f UUID,TYPE connection show)
 
 playbook=(ansible-playbook -i inventory/hosts.yml site.yml
   -e @tests/vm/convergence-vars.yml --tags "$tags")

@@ -19,6 +19,16 @@ assert_content /home/fedora/.config/systemd/user/quickshell.service 'original us
 assert_content /etc/gdm/custom.conf $'[daemon]\n# original GDM configuration'
 assert_content /etc/sudoers.d/10-wheel-nopasswd '# original sudo policy'
 assert_content /etc/polkit-1/rules.d/49-wheel-local.rules '// original Polkit policy'
+assert_content /home/fedora/.local/bin/sccache 'original sccache helper'
+assert_content /home/fedora/.config/distrobox/distrobox.conf 'original Distrobox configuration'
+assert_content /home/fedora/.config/noctalia/config.json 'original Noctalia configuration'
+assert_content /home/fedora/.local/state/noctalia/state.json 'original Noctalia state'
+assert_content /home/fedora/.cache/noctalia/cache 'original Noctalia cache'
+assert_content /usr/local/bin/awww 'original awww command'
+assert_content /usr/local/bin/awww-daemon 'original awww daemon'
+assert_content /usr/local/bin/wayfreeze 'original wayfreeze command'
+assert_content /usr/local/bin/hyprland-noctalia 'original Noctalia launcher'
+assert_content /usr/share/wayland-sessions/hyprland-noctalia.desktop 'original Noctalia session'
 [[ ! -e /var/lib/AccountsService/users/fedora ]] ||
   fail 'an AccountsService record created by Fedora Config remains after uninstall'
 
@@ -44,5 +54,18 @@ done
 [[ -f /etc/tuned/ppd.conf ]] || fail 'the Fedora TuneD PPD configuration was removed'
 grep -q '^performance=xps-performance$' /etc/tuned/ppd.conf &&
   fail 'the XPS TuneD mapping remains on generic hardware'
+
+[[ $(firewall-cmd --get-default-zone) == home ]] ||
+  fail 'the first-adoption default firewall zone was not restored'
+while IFS=: read -r uuid type; do
+  case "$type" in
+    802-3-ethernet|802-11-wireless)
+      [[ $(nmcli -g connection.zone connection show "$uuid") == work ]] ||
+        fail "$uuid did not regain its first-adoption firewall zone"
+      ;;
+  esac
+done < <(nmcli -t -f UUID,TYPE connection show)
+firewall-cmd --permanent --get-zones | tr ' ' '\n' | grep -Fxq fedora-config &&
+  fail 'the Fedora Config firewall zone remains after uninstall'
 
 printf 'Fedora VM uninstall restored adopted files and removed project state\n'

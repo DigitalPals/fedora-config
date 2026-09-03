@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Validate, compare, and sort strict Semantic Versions."""
+
+from __future__ import annotations
+
+from functools import cmp_to_key
+import re
+import sys
+
+
+IDENTIFIER = r"(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+SEMVER = re.compile(
+    rf"^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)"
+    rf"(?:-({IDENTIFIER}(?:[.]{IDENTIFIER})*))?"
+    r"(?:[+]([0-9A-Za-z-]+(?:[.][0-9A-Za-z-]+)*))?$"
+)
+
+
+def parse(value: str) -> tuple[tuple[int, int, int], list[str] | None]:
+    match = SEMVER.fullmatch(value)
+    if match is None:
+        raise ValueError(value)
+    core = tuple(int(match.group(index)) for index in range(1, 4))
+    prerelease = match.group(4)
+    return core, None if prerelease is None else prerelease.split(".")
+
+
+def compare(left: str, right: str) -> int:
+    left_core, left_pre = parse(left)
+    right_core, right_pre = parse(right)
+    if left_core != right_core:
+        return (left_core > right_core) - (left_core < right_core)
+    if left_pre is None or right_pre is None:
+        return (left_pre is None) - (right_pre is None)
+    for left_id, right_id in zip(left_pre, right_pre):
+        if left_id == right_id:
+            continue
+        left_numeric = left_id.isdigit()
+        right_numeric = right_id.isdigit()
+        if left_numeric and right_numeric:
+            return (int(left_id) > int(right_id)) - (int(left_id) < int(right_id))
+        if left_numeric != right_numeric:
+            return -1 if left_numeric else 1
+        return (left_id > right_id) - (left_id < right_id)
+    return (len(left_pre) > len(right_pre)) - (len(left_pre) < len(right_pre))
+
+
+def usage() -> None:
+    print("usage: semver validate VERSION | newer CANDIDATE CURRENT | sort", file=sys.stderr)
+
+
+def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == "validate":
+        try:
+            parse(sys.argv[2])
+        except ValueError:
+            return 1
+        return 0
+    if len(sys.argv) == 4 and sys.argv[1] == "newer":
+        try:
+            return 0 if compare(sys.argv[2], sys.argv[3]) > 0 else 1
+        except ValueError:
+            return 2
+    if len(sys.argv) == 2 and sys.argv[1] == "sort":
+        versions = []
+        for line in sys.stdin:
+            value = line.strip()
+            try:
+                parse(value)
+            except ValueError:
+                continue
+            versions.append(value)
+        for version in sorted(versions, key=cmp_to_key(compare), reverse=True):
+            print(version)
+        return 0
+    usage()
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

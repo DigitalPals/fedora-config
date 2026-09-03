@@ -36,7 +36,9 @@ retain their prior configuration automatically.
 
 ## What the workflow publishes
 
-The release contains a versioned source archive and `SHA256SUMS`. The archive
+The release contains a versioned source archive and `SHA256SUMS`. Its checksum
+entry uses the asset basename, so it can be verified directly after both files
+are downloaded into one directory. The archive
 is reconstructed from the tagged Git tree, its `VERSION` and manifest version
 are set to the tag, its installer is checked, and Ansible syntax is validated.
 GitHub attestation plus immutable-release verification form the updater trust

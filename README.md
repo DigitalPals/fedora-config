@@ -71,10 +71,11 @@ The updater follows the saved `stable` channel by default (`--channel beta`
 selects and saves prereleases). It resolves an immutable GitHub release,
 verifies GitHub's release and asset attestations, checks the API SHA-256
 digest, validates Fedora/architecture/config-schema compatibility, and
-extracts into a versioned staging directory. It migrates a backed-up copy of
-the saved answers, applies the candidate through the durable updater, and
-changes the `current` symlink only after success. A failed apply restores the
-previous configuration. The active release and two recent fallbacks are kept.
+extracts into a versioned staging directory. One durable system worker owns the
+saved-answer migration, candidate application, rollback, and atomic `current`
+symlink change, so detaching the terminal cannot split the transaction. A
+failed apply restores the previous configuration. The active release and two
+recent fallbacks are kept.
 
 The same durable worker updates Fedora packages and system Flatpaks. It uses a
 transient system unit when sudo requires authentication, so a terminal or
@@ -87,7 +88,7 @@ Useful commands:
 | --- | --- |
 | `fedora-config update --check` | Check the configured GitHub channel |
 | `fedora-config update --system-only` | Update Fedora and Flatpak only |
-| `fedora-config verify` | Run source and installed-system checks |
+| `fedora-config verify` | Check the installed system (`--source` opts into developer checks) |
 | `fedora-config doctor` | Alias for `verify` |
 | `fedora-config configure` | Re-run the installer questions |
 | `fedora-config uninstall` | Remove project-managed configuration; retain applications |
@@ -110,8 +111,8 @@ their configuration is installed. See
 ./tests/fedora-vm-convergence
 ```
 
-CI runs the complete source contract in Fedora 44 and converges a generic
-Fedora Cloud VM twice to enforce idempotence. A `vX.Y.Z` tag publishes only
+CI runs the complete source contract in Fedora 44 and converges all roles on a
+generic Fedora Cloud VM twice to enforce idempotence. A `vX.Y.Z` tag publishes only
 after both gates pass. Repository release immutability must be enabled before
 the first public tag.
 

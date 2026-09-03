@@ -91,10 +91,12 @@
   changed_when: false
   failed_when: false
   check_mode: false
+  when: cleanup_legacy_xps_artifacts | bool
   tags: [quickshell]
 
 - name: Hand the running session from Noctalia to Quickshell
   when:
+    - cleanup_legacy_xps_artifacts | bool
     - not ansible_check_mode
     - retired_noctalia_running.rc == 0
   tags: [quickshell]
@@ -183,13 +185,15 @@
   loop_control:
     label: "{{ item.path }}"
   register: retired_noctalia_user_data
+  when: cleanup_legacy_xps_artifacts | bool
   tags: [quickshell]
 
 - name: Allocate one fresh Noctalia retirement backup identifier
   ansible.builtin.set_fact:
     retired_noctalia_backup_stamp: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
   when: >-
-    retired_noctalia_user_data.results
+    cleanup_legacy_xps_artifacts | bool and
+    retired_noctalia_user_data.results | default([])
     | selectattr('stat.exists')
     | list
     | length > 0
@@ -203,7 +207,8 @@
     state: directory
     mode: "0700"
   when: >-
-    retired_noctalia_user_data.results
+    cleanup_legacy_xps_artifacts | bool and
+    retired_noctalia_user_data.results | default([])
     | selectattr('stat.exists')
     | list
     | length > 0
@@ -218,10 +223,11 @@
       - --
       - "{{ item.item.path }}"
       - "{{ primary_home }}/.local/state/noctalia-retired-{{ retired_noctalia_backup_stamp }}/{{ item.item.name }}"
-  loop: "{{ retired_noctalia_user_data.results }}"
+  loop: "{{ retired_noctalia_user_data.results | default([]) }}"
   loop_control:
     label: "{{ item.item.path }}"
   when:
+    - cleanup_legacy_xps_artifacts | bool
     - not ansible_check_mode
     - item.stat.exists
   changed_when: true
@@ -237,11 +243,14 @@
     - "{{ primary_home }}/.config/noctalia"
     - "{{ primary_home }}/.local/state/noctalia"
     - "{{ primary_home }}/.cache/noctalia"
+  when: cleanup_legacy_xps_artifacts | bool
   tags: [quickshell]
 
 - name: Remove the retired Noctalia package
   ansible.builtin.dnf:
     name: noctalia
     state: absent
-  when: not ansible_check_mode
+  when:
+    - cleanup_legacy_xps_artifacts | bool
+    - not ansible_check_mode
   tags: [quickshell]

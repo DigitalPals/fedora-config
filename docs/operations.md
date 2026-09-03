@@ -34,6 +34,9 @@ with Ansible, then allow its handler to finish before rebooting.
 `./verify --help` is the authoritative verification interface. Scope flags are
 mutually exclusive, unknown arguments fail before any check runs, and
 `--require-hyprland` is accepted only when system checks are in scope.
+The installed `fedora-config verify` and `doctor` commands default to
+`--system`; pass `--source` explicitly when the developer lint toolchain is
+installed.
 
 ## Supported Ansible tags
 
@@ -65,12 +68,14 @@ immutable, its release and asset attestations verify, the downloaded SHA-256
 matches GitHub metadata, and its manifest supports the current Fedora release,
 architecture, configuration schema, and updater version.
 
-The verified archive is extracted into a new versioned directory. Any
-configuration migration is backed up, the candidate is applied, and the
-`current` symlink changes only after Ansible succeeds. Failure restores the
-pre-migration configuration. The active release plus two recent release
-directories are retained as recovery material; filesystem rollback remains the
-supported way to reverse system package changes.
+The verified archive is extracted into a new versioned directory. A dedicated
+durable system worker owns configuration migration, candidate application,
+rollback, and the atomic `current` symlink change. Detaching the terminal cannot
+split those steps, and an unrelated active update is never accepted as the
+candidate transaction. Failure restores the pre-migration configuration. The
+active release plus two recent release directories are retained as recovery
+material; filesystem rollback remains the supported way to reverse system
+package changes.
 
 Useful release commands are:
 
@@ -88,8 +93,10 @@ fedora-config update --system-only
 The package/configuration worker is normally a transient user service. When
 sudo needs interactive authentication it starts a transient system service
 instead, after authorization, so closing the terminal or restarting
-Quickshell does not abandon the transaction. Pressing Ctrl+C while attached
-only detaches the observer. At most one worker can own the update lock.
+Quickshell does not abandon the transaction. Release transactions always use a
+system service because their configuration migration and activation must
+outlive the client. Pressing Ctrl+C while attached only detaches the observer.
+At most one worker can own the update lock.
 
 Use the installed backend to inspect or control it:
 
@@ -216,10 +223,11 @@ not part of the public command interface.
 
 The weekly and manually dispatchable `Fedora VM convergence` workflow adds a
 slower system boundary: it checksum-verifies the pinned official Fedora 44
-Cloud image, boots it under QEMU, applies the base/desktop/dotfiles/boot roles
-twice, requires a zero-change second pass, and checks the rendered system and
-user units. Run the same test locally with `./tests/fedora-vm-convergence`;
-set `FEDORA_VM_TAGS=all` for an intentionally longer all-role exercise.
+Cloud image, boots it under QEMU, applies every role twice, requires a
+zero-change second pass, checks preserved user collisions and firewall state,
+and then verifies uninstall restoration. Run the same test locally with
+`./tests/fedora-vm-convergence`; set `FEDORA_VM_TAGS` to a comma-separated role
+subset only for a deliberately narrower development run.
 
 ## Reduced motion
 

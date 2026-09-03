@@ -6,6 +6,12 @@ fail() {
   exit 1
 }
 
+assert_content() {
+  local path=$1 expected=$2
+  [[ -f $path ]] || fail "$path was removed"
+  [[ $(<"$path") == "$expected" ]] || fail "$path was modified"
+}
+
 assert_system_enabled() {
   systemctl is-enabled --quiet "$1" || {
     systemctl is-enabled "$1" >&2 || true
@@ -43,8 +49,29 @@ done
 [[ -f /home/fedora/.config/quickshell/shell.qml ]] || fail 'shell.qml is missing'
 [[ -f /home/fedora/.config/systemd/user/fedora-config-session-lock.service ]] || fail 'lock unit is missing'
 [[ -f /usr/share/wayland-sessions/hyprland-quickshell.desktop ]] || fail 'GDM session is missing'
-[[ ! -e /usr/share/wayland-sessions/hyprland-noctalia.desktop ]] || fail 'retired Noctalia session remains'
 [[ $(plymouth-set-default-theme) == bgrt ]] || fail 'BGRT is not the selected Plymouth theme'
+
+assert_content /home/fedora/.local/bin/sccache 'original sccache helper'
+assert_content /home/fedora/.config/distrobox/distrobox.conf 'original Distrobox configuration'
+assert_content /home/fedora/.config/noctalia/config.json 'original Noctalia configuration'
+assert_content /home/fedora/.local/state/noctalia/state.json 'original Noctalia state'
+assert_content /home/fedora/.cache/noctalia/cache 'original Noctalia cache'
+assert_content /usr/local/bin/awww 'original awww command'
+assert_content /usr/local/bin/awww-daemon 'original awww daemon'
+assert_content /usr/local/bin/wayfreeze 'original wayfreeze command'
+assert_content /usr/local/bin/hyprland-noctalia 'original Noctalia launcher'
+assert_content /usr/share/wayland-sessions/hyprland-noctalia.desktop 'original Noctalia session'
+
+[[ $(firewall-cmd --get-default-zone) == fedora-config ]] ||
+  fail 'Fedora Config is not the active default firewall zone'
+while IFS=: read -r uuid type; do
+  case "$type" in
+    802-3-ethernet|802-11-wireless)
+      [[ $(nmcli -g connection.zone connection show "$uuid") == fedora-config ]] ||
+        fail "$uuid is not bound to the Fedora Config firewall zone"
+      ;;
+  esac
+done < <(nmcli -t -f UUID,TYPE connection show)
 if find /home/fedora/.config/quickshell \
     \( -type d -name __pycache__ -o -type f -name '*.py[co]' \) -print -quit |
     grep -q .; then

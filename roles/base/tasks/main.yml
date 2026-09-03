@@ -189,6 +189,14 @@
     group: root
     mode: "0755"
 
+- name: Create the firewall first-adoption state directory
+  ansible.builtin.file:
+    path: /var/lib/fedora-config/firewall/profiles
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Inspect Fedora Config ownership of Docker
   ansible.builtin.stat:
     path: /var/lib/fedora-config/features/docker
@@ -352,6 +360,17 @@
   changed_when: false
   check_mode: false
 
+- name: Preserve the default firewall zone before first adoption
+  ansible.builtin.copy:
+    dest: /var/lib/fedora-config/firewall/default-zone
+    content: >-
+      {{ ((base_current_firewall_zone.stdout | trim) == firewall_zone)
+         | ternary('public', base_current_firewall_zone.stdout | trim) }}
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+
 - name: Set Fedora Config as the default firewall zone
   ansible.builtin.command: "firewall-cmd --set-default-zone={{ firewall_zone }}"
   changed_when: true
@@ -374,6 +393,26 @@
   register: base_network_profiles_outside_zone
   changed_when: false
   check_mode: false
+
+- name: Preserve physical NetworkManager profile zones before first adoption
+  ansible.builtin.shell: |
+    set -euo pipefail
+    [[ $PROFILE_UUID =~ ^[0-9A-Fa-f-]{36}$ ]]
+    marker="/var/lib/fedora-config/firewall/profiles/$PROFILE_UUID"
+    temporary="$marker.$$.tmp"
+    zone=$(nmcli -g connection.zone connection show "$PROFILE_UUID")
+    printf '%s\n' "$zone" >"$temporary"
+    chmod 0600 "$temporary"
+    mv -f -- "$temporary" "$marker"
+  args:
+    executable: /bin/bash
+    creates: "/var/lib/fedora-config/firewall/profiles/{{ item }}"
+  environment:
+    PROFILE_UUID: "{{ item }}"
+  loop: "{{ base_network_profiles_outside_zone.stdout_lines }}"
+  loop_control:
+    label: "{{ item }}"
+  when: not ansible_check_mode
 
 - name: Bind physical NetworkManager profiles to the strict zone
   ansible.builtin.command:

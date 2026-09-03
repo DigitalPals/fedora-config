@@ -34,6 +34,10 @@ Options for run/start:
       --skip-tests  Skip repository checks before a full configuration run
       --no-packages Skip Fedora and Flatpak updates (requires --full)
       --no-flatpak  Skip the system Flatpak update
+      --release-version VERSION
+      --release-data-root PATH
+      --release-config PATH
+                    Finalize a staged release in the durable worker (internal)
   -h, --help        Show this help message and exit
 
 ANSIBLE_ARGS require --full and are passed verbatim to ansible-playbook.
@@ -225,6 +229,7 @@ write_status() {
   [[ $state == queued || $state == running ]] || finished=$(date +%s)
   jq -n --arg id "$run_id" --arg state "$state" --arg phase "$phase" \
     --arg message "$message" --arg logDir "$run_dir" --arg unit "$unit_name" \
+    --arg releaseVersion "${release_version:-}" \
     --arg bootId "$status_boot_id" --arg rebootRecommendation "$status_reboot" \
     --argjson startedAt "$started_at" --argjson finishedAt "$finished" \
     --argjson systemUnit "${system_unit:-false}" \
@@ -239,6 +244,7 @@ write_status() {
       flatpak: $flatpak, dnfDone: $dnfDone, flatpakDone: $flatpakDone,
       dnfRc: $dnfRc, flatpakRc: $flatpakRc, testsRc: $testsRc,
       ansibleRc: $ansibleRc, snapshotId: $snapshotId, bootId: $bootId,
+      releaseVersion: $releaseVersion,
       rebootRecommendation: $rebootRecommendation}' > "$temporary"
   mv -f -- "$temporary" "$run_dir/status.json"
   if [[ -n ${FEDORA_CONFIG_UPDATE_OWNER_UID:-} ]]; then
@@ -249,6 +255,8 @@ write_status() {
 
 parse_options() {
   full=false; skip_tests=false; with_packages=true; with_flatpak=true; json=false; repo=""
+  release_version=""; release_data_root=""; release_config=""; release_target=""
+  release_transaction=false
   system_unit=${FEDORA_CONFIG_UPDATE_SYSTEM_UNIT:-false}
   ansible_args=()
   while (( $# )); do
@@ -259,6 +267,19 @@ parse_options() {
       --no-flatpak) with_flatpak=false ;;
       --json) json=true ;;
       --system-unit) system_unit=true ;;
+      --release-version|--release-data-root|--release-config)
+        option=$1
+        shift
+        [[ $# -gt 0 ]] || {
+          printf 'fedora-config-update-run: %s needs a value\n' "$option" >&2
+          return 2
+        }
+        case $option in
+          --release-version) release_version=$1 ;;
+          --release-data-root) release_data_root=$1 ;;
+          --release-config) release_config=$1 ;;
+        esac
+        ;;
       --repo)
         shift
         [[ $# -gt 0 ]] || { printf 'fedora-config-update-run: --repo needs a path\n' >&2; return 2; }
@@ -286,6 +307,30 @@ parse_options() {
       printf 'fedora-config-update-run: --full requires the configuration repository path\n' >&2
       return 2
     fi
+  fi
+  if [[ -n $release_version || -n $release_data_root || -n $release_config ]]; then
+    if [[ $full != true || -z $release_version || -z $release_data_root \
+          || -z $release_config ]]; then
+      printf 'fedora-config-update-run: a release transaction requires --full and all release options\n' >&2
+      return 2
+    fi
+    release_data_root=$(readlink -f -- "$release_data_root") || return 2
+    release_config=$(readlink -f -- "$release_config") || return 2
+    release_target="$release_data_root/releases/$release_version"
+    release_parent=$(readlink -f -- "$(dirname -- "$repo")") || return 2
+    release_name=${repo##*/}
+    if [[ ! -d $release_data_root/releases || ! -f $release_config \
+          || ! -x $repo/scripts/migrate-config || ! -x $repo/scripts/semver \
+          || ! -r $repo/VERSION ]] \
+      || ! "$repo/scripts/semver" validate "$release_version" \
+      || [[ $(tr -d '[:space:]' <"$repo/VERSION") != "$release_version" ]] \
+      || { [[ $repo != "$release_target" ]] \
+           && [[ $release_parent != "$release_data_root/releases" \
+                 || $release_name != ".stage.$release_version."* ]]; }; then
+      printf 'fedora-config-update-run: invalid staged release transaction\n' >&2
+      return 2
+    fi
+    release_transaction=true
   fi
 }
 
@@ -357,6 +402,10 @@ start_run() {
   local worker_args=("$script_path" _worker "$run_id")
   [[ $system_unit == true ]] && worker_args+=(--system-unit)
   [[ $full == true ]] && worker_args+=(--full --repo "$repo")
+  if [[ $release_transaction == true ]]; then
+    worker_args+=(--release-version "$release_version"
+      --release-data-root "$release_data_root" --release-config "$release_config")
+  fi
   [[ $skip_tests == true ]] && worker_args+=(--skip-tests)
   [[ $with_packages == true ]] || worker_args+=(--no-packages)
   [[ $with_flatpak == true ]] || worker_args+=(--no-flatpak)
@@ -396,11 +445,109 @@ tagged_command() {
 }
 
 worker_finalized=false
+release_config_changed=false
+release_activated=false
+release_backup=""
+
+restore_release_configuration() {
+  [[ ${release_transaction:-false} == true && $release_config_changed == true \
+      && $release_activated != true ]] || return 0
+  [[ -r $release_backup ]] || return 1
+  if ((EUID == 0)); then
+    install -m 0644 "$release_backup" "$release_config"
+  else
+    sudo -n install -m 0644 "$release_backup" "$release_config"
+  fi
+  printf '[release] restored the pre-update installer configuration\n' \
+    >>"$run_dir/run.log"
+  release_config_changed=false
+}
+
+worker_failed() {
+  local phase=$1 message=$2 rc=$3
+  if ! restore_release_configuration; then
+    phase=rollback
+    message="$message; restoring the previous installer configuration also failed"
+    rc=125
+  fi
+  write_status failed "$phase" "$message" "$rc"
+  worker_finalized=true
+  exit "$rc"
+}
+
+prepare_release_configuration() {
+  [[ $release_transaction == true ]] || return 0
+  local migrated="$run_dir/config.migrated.yml"
+  local migration_error="$run_dir/config-migration.err"
+  if ! "$repo/scripts/migrate-config" "$release_config" \
+      >"$migrated" 2>"$migration_error"; then
+    return 1
+  fi
+  if cmp -s -- "$release_config" "$migrated"; then
+    printf '[release] installer configuration already uses the target schema\n' \
+      >>"$run_dir/run.log"
+    return 0
+  fi
+  release_backup="$run_dir/config.before.yml"
+  cp --preserve=mode,timestamps -- "$release_config" "$release_backup" || return 1
+  release_config_changed=true
+  "${privileged_package[@]}" install -m 0644 "$migrated" "$release_config" || return 1
+  printf '[release] migrated installer configuration for %s\n' "$release_version" \
+    >>"$run_dir/run.log"
+}
+
+activate_release() {
+  [[ $release_transaction == true ]] || return 0
+  local releases_root="$release_data_root/releases" expected old_release old_path
+  local -a installed_releases=()
+  expected=$(readlink -f -- "$releases_root/$release_version") || return 1
+  [[ $expected == "$repo" ]] || return 1
+  ln -sfn "releases/$release_version" "$release_data_root/current.new" || return 1
+  mv -Tf -- "$release_data_root/current.new" "$release_data_root/current" || return 1
+  release_activated=true
+  printf '[release] activated Fedora Config %s\n' "$release_version" \
+    >>"$run_dir/run.log"
+
+  mapfile -t installed_releases < <(
+    find "$releases_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+      | "$repo/scripts/semver" sort
+  )
+  if ((${#installed_releases[@]} > 3)); then
+    for old_release in "${installed_releases[@]:3}"; do
+      old_path="$releases_root/$old_release"
+      [[ $old_path == "$releases_root/"* && $old_release != "$release_version" ]] \
+        || continue
+      rm -rf -- "$old_path" \
+        || printf '[release] warning: could not prune %s\n' "$old_release" \
+          >>"$run_dir/run.log"
+    done
+  fi
+}
+
+promote_release_candidate() {
+  [[ $release_transaction == true ]] || return 0
+  [[ $repo != "$release_target" ]] || return 0
+  local parent name
+  parent=$(readlink -f -- "$(dirname -- "$repo")") || return 1
+  name=${repo##*/}
+  [[ $parent == "$release_data_root/releases" \
+      && $name == ".stage.$release_version."* ]] || return 1
+  [[ ! -e $release_target && ! -L $release_target ]] || rm -rf -- "$release_target"
+  mv -- "$repo" "$release_target" || return 1
+  repo=$release_target
+}
 
 worker_cancelled() {
-  write_status cancelled cancelled "Update cancelled" 130
+  local state=cancelled phase=cancelled message="Update cancelled" rc=130
+  if ! restore_release_configuration; then
+    state=failed
+    phase=rollback
+    message="Update cancelled, but restoring the previous installer configuration failed"
+    rc=125
+  fi
+  write_status "$state" "$phase" "$message" "$rc"
   worker_finalized=true
-  exit 130
+  exit "$rc"
 }
 
 worker_exit_fallback() {
@@ -408,7 +555,11 @@ worker_exit_fallback() {
   [[ $worker_finalized == true ]] && return
   # This catches interpreter/tool failures and SIGKILL's next status read
   # repairs the one case in which no shell trap can run.
-  write_status failed internal "Update worker exited unexpectedly (status $rc)" \
+  local message="Update worker exited unexpectedly (status $rc)"
+  if ! restore_release_configuration; then
+    message="$message; restoring the previous installer configuration also failed"
+  fi
+  write_status failed internal "$message" \
     "$([[ $rc -eq 0 ]] && printf 125 || printf '%s' "$rc")" 2>/dev/null || true
 }
 
@@ -459,6 +610,9 @@ worker() {
   valid_id "$run_id" || exit 2
   parse_options "$@" || exit $?
   run_dir="$log_shelf/$run_id"; unit_name="fedora-config-update-$run_id.service"
+  release_config_changed=false
+  release_activated=false
+  release_backup="$run_dir/config.before.yml"
   started_at=$(jq -r '.startedAt // 0' "$run_dir/status.json" 2>/dev/null || printf 0)
   [[ $started_at =~ ^[0-9]+$ ]] || started_at=$(date +%s)
   dnf_done=false; flatpak_done=false; dnf_rc=0; flatpak_rc=0; tests_rc=0; ansible_rc=0
@@ -495,6 +649,10 @@ worker() {
     exit 125
   fi
 
+  if [[ $release_transaction == true ]] && ! promote_release_candidate; then
+    worker_failed staging "Could not promote the verified release candidate" 1
+  fi
+
   write_status running snapshot "Creating a pre-update recovery point" 0
   printf 'Fedora Config update %s started at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
   # Keep run state and logs private, but do not pass that 0077 umask through
@@ -513,17 +671,13 @@ worker() {
       "${privileged_package[@]}" "$snapshot_helper" create "update $run_id"
     snapshot_rc=$(<"$run_dir/snapshot.rc")
     if ((snapshot_rc != 0)); then
-      write_status failed snapshot "Could not create the pre-update recovery point" "$snapshot_rc"
-      worker_finalized=true
-      exit "$snapshot_rc"
+      worker_failed snapshot "Could not create the pre-update recovery point" "$snapshot_rc"
     fi
     snapshot_id=$(tail -n 1 "$run_dir/snapshot.log")
     [[ $snapshot_id == skipped:* ]] && snapshot_id=""
   else
     if [[ $(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) == btrfs ]]; then
-      write_status failed snapshot "Btrfs recovery helper is not installed" 127
-      worker_finalized=true
-      exit 127
+      worker_failed snapshot "Btrfs recovery helper is not installed" 127
     fi
     printf '[snapshot] non-Btrfs root; no filesystem recovery point created\n' \
       >>"$run_dir/run.log"
@@ -556,16 +710,12 @@ worker() {
     flatpak_done=true
   fi
   if (( dnf_rc != 0 )); then
-    write_status failed packages "dnf exited with status $dnf_rc" "$dnf_rc"
-    worker_finalized=true
-    exit "$dnf_rc"
+    worker_failed packages "dnf exited with status $dnf_rc" "$dnf_rc"
   fi
 
   if [[ $full == true ]]; then
     cd -- "$repo" || {
-      write_status failed tests "Could not enter repository directory" 1
-      worker_finalized=true
-      exit 1
+      worker_failed tests "Could not enter repository directory" 1
     }
     if [[ $skip_tests == true ]]; then
       printf '[tests] repository checks skipped (--skip-tests)\n' >> "$run_dir/run.log"
@@ -574,9 +724,13 @@ worker() {
       tagged_command tests "$run_dir/tests.log" "$run_dir/tests.rc" ./tests/run
       tests_rc=$(<"$run_dir/tests.rc")
       if (( tests_rc != 0 )); then
-        write_status failed tests "Repository checks exited with status $tests_rc" "$tests_rc"
-        worker_finalized=true
-        exit "$tests_rc"
+        worker_failed tests "Repository checks exited with status $tests_rc" "$tests_rc"
+      fi
+    fi
+    if [[ $release_transaction == true ]]; then
+      write_status running migration "Migrating the saved installer configuration" 0
+      if ! prepare_release_configuration; then
+        worker_failed migration "Could not migrate the saved installer configuration" 1
       fi
     fi
     write_status running ansible "Applying the managed configuration" 0
@@ -585,9 +739,13 @@ worker() {
       ansible-playbook site.yml --skip-tags boot "${ansible_args[@]}"
     ansible_rc=$(<"$run_dir/ansible.rc")
     if (( ansible_rc != 0 )); then
-      write_status failed ansible "Ansible exited with status $ansible_rc" "$ansible_rc"
-      worker_finalized=true
-      exit "$ansible_rc"
+      worker_failed ansible "Ansible exited with status $ansible_rc" "$ansible_rc"
+    fi
+    if [[ $release_transaction == true ]]; then
+      write_status running activation "Activating the applied Fedora Config release" 0
+      if ! activate_release; then
+        worker_failed activation "Could not activate the applied Fedora Config release" 1
+      fi
     fi
   fi
 
@@ -641,6 +799,8 @@ load_status_globals() {
   flatpak_rc=$(jq -r '.flatpakRc // 0' "$file"); tests_rc=$(jq -r '.testsRc // 0' "$file")
   ansible_rc=$(jq -r '.ansibleRc // 0' "$file")
   system_unit=$(jq -r '.systemUnit // false' "$file")
+  release_version=$(jq -r '.releaseVersion // empty' "$file")
+  [[ -z $release_version ]] && release_transaction=false || release_transaction=true
   snapshot_id=$(jq -r '.snapshotId // empty' "$file")
   boot_id=$(current_boot_id || true)
   reboot_recommendation=$(status_reboot_recommendation "$file" "$boot_id")

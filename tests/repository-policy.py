@@ -116,6 +116,44 @@ def verify_dependency_policy(values: dict) -> None:
     assert 'mktemp -d "$root/.stage.' in updater
     render_user_updater(values)
 
+    apps_main = (ROOT / "roles/apps/tasks/main.yml").read_text()
+    upstream = (ROOT / "roles/apps/tasks/upstream.yml").read_text()
+    dotfiles = (ROOT / "roles/dotfiles/tasks/main.yml").read_text()
+    private_hooks = (ROOT / "roles/private-hooks/tasks/main.yml").read_text()
+    finalize = (ROOT / "roles/finalize/tasks/main.yml").read_text()
+    base = (ROOT / "roles/base/tasks/main.yml").read_text()
+    uninstall = (ROOT / "roles/uninstall/tasks/main.yml").read_text()
+    assert apps_main.count("    - source_builds") == 3
+    source_cleanup = upstream.split(
+        "- name: Inspect source-built command links before owned cleanup", 1
+    )[1]
+    assert "apps_feature_owned.source_builds | bool" in source_cleanup
+    assert "item.stat.lnk_source" in source_cleanup
+    distrobox_cleanup = dotfiles.split(
+        "- name: Remove managed Distrobox launchers and hooks when Podman is disabled",
+        1,
+    )[1].split("\n- name:", 1)[0]
+    assert "apps_feature_owned.podman | default(false) | bool" in distrobox_cleanup
+    assert "private_hook_owned.private_hooks | bool" in private_hooks
+    assert "private_hook_owned.apple_display | bool" in private_hooks
+    assert finalize.count("cleanup_legacy_xps_artifacts | bool") >= 7
+    assert "Preserve physical NetworkManager profile zones before first adoption" in base
+    assert "Restore first-adoption NetworkManager profile zones" in uninstall
+    assert uninstall.index("Restore first-adoption NetworkManager profile zones") < uninstall.index(
+        "Remove the project firewalld zone after changing the default"
+    )
+    assert uninstall.index("Remove the project firewalld zone after changing the default") < uninstall.index(
+        "Remove Fedora Config system state when it is not retained"
+    )
+
+    command_wrapper = (ROOT / "roles/dotfiles/templates/fedora-config.j2").read_text()
+    assert '$verify_scope || set -- --system "$@"' in command_wrapper
+
+    release_workflow = (ROOT / ".github/workflows/release.yml").read_text()
+    assert 'scripts/semver validate "$version"' in release_workflow
+    assert 'sha256sum "fedora-config-$version.tar.zst" >SHA256SUMS' in release_workflow
+    assert 'sha256sum "dist/fedora-config-$version.tar.zst"' not in release_workflow
+
     workflow = (ROOT / ".github/workflows/tests.yml").read_text()
     for package, purpose in (
         ("jq", "durable updater fixture"),

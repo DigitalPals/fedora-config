@@ -3,7 +3,7 @@ name: Qualified immutable release
 on:
   push:
     tags:
-      # The build step applies the strict SemVer regex before publishing.
+      # The build step applies the repository's strict SemVer validator.
       - "v*"
 
 permissions:
@@ -68,7 +68,8 @@ jobs:
         run: |
           set -euo pipefail
           version=${RELEASE_TAG#v}
-          [[ $RELEASE_TAG == v$version && $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]
+          [[ $RELEASE_TAG == v$version ]]
+          scripts/semver validate "$version"
           root="dist/fedora-config-$version"
           mkdir -p "$root"
           git archive HEAD | tar -x -C "$root"
@@ -78,7 +79,10 @@ jobs:
           mv "$root/release-manifest.json.new" "$root/release-manifest.json"
           tar --create --zstd --file "dist/fedora-config-$version.tar.zst" \
             --directory dist "fedora-config-$version"
-          sha256sum "dist/fedora-config-$version.tar.zst" >dist/SHA256SUMS
+          (
+            cd dist
+            sha256sum "fedora-config-$version.tar.zst" >SHA256SUMS
+          )
           mkdir dist/verify
           tar --extract --zstd --file "dist/fedora-config-$version.tar.zst" \
             --directory dist/verify --strip-components=1

@@ -93,6 +93,12 @@ apply_mock dnf \
   'fi' \
   'exit 98'
 
+apply_mock ansible-playbook \
+  'set -euo pipefail' \
+  'cat "$MOCK_RELEASE_CONFIG" >"$MOCK_ANSIBLE_CONFIG_LOG"' \
+  'printf "%s\n" "$*" >"$MOCK_ANSIBLE_ARGS_LOG"' \
+  'exit "${MOCK_ANSIBLE_RC:-0}"'
+
 # The snapshot helper has its own Btrfs fixture. Keep the durable-update test
 # on the supported non-Btrfs path so it never inspects or mutates the host FS.
 apply_mock findmnt 'printf "ext4\n"'
@@ -105,6 +111,8 @@ export MOCK_SYSTEMD_LOG="$fixture/systemd.log"
 export MOCK_PACKAGE_LOG="$fixture/package.log"
 export MOCK_DNF_LOG="$fixture/dnf.log"
 export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
+export MOCK_ANSIBLE_CONFIG_LOG="$fixture/ansible-config.log"
+export MOCK_ANSIBLE_ARGS_LOG="$fixture/ansible-args.log"
 export FEDORA_CONFIG_UPDATE_BOOT_ID_FILE="$fixture/boot-id"
 export FEDORA_CONFIG_UPDATE_ASSUME_USER_UNIT=1
 # The now-installed production helper still executes inside this fixture's
@@ -281,7 +289,7 @@ recommended=$($backend status --json "$recommended_id")
 [[ $(jq -r .rebootRecommendation <<<"$recommended") == recommended ]]
 [[ $(tail -n 1 "$MOCK_DNF_UMASK_LOG") =~ ^0?022$ ]]
 [[ $(stat -c %a "$XDG_STATE_HOME/fedora-config/update/logs/$recommended_id/dnf.log") == 600 ]]
-[[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 3 ]]
+[[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 4 ]]
 grep -q -- '--quiet --cacheonly needs-restarting --json' "$MOCK_DNF_LOG"
 
 # Dismissing the transcript does not dismiss a positive same-boot result. A
@@ -336,6 +344,73 @@ failed_check=$($backend status --json "$failed_check_id")
 [[ $(jq -r .state <<<"$failed_check") == done ]]
 [[ $(jq -r .rebootRecommendation <<<"$failed_check") == unavailable ]]
 
+# Release migration, apply, activation, and pruning belong to the durable
+# worker. A failed apply restores the prior configuration and active release.
+release_data="$fixture/releases-data"
+release_config="$fixture/fedora-config.yml"
+mkdir -p "$release_data/releases/1.0.0" "$release_data/releases/1.1.0" \
+  "$release_data/releases/1.2.0"
+ln -s releases/1.2.0 "$release_data/current"
+printf 'schema: old\n' >"$release_config"
+export MOCK_RELEASE_CONFIG="$release_config"
+
+make_candidate() {
+  local version=$1 candidate="$release_data/releases/$1"
+  mkdir -p "$candidate/scripts" "$candidate/tests"
+  printf '%s\n' '---' >"$candidate/site.yml"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$candidate/tests/run"
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'printf "%s\n" "${MOCK_MIGRATED_CONFIG:?}"' >"$candidate/scripts/migrate-config"
+  printf '%s\n' "$version" >"$candidate/VERSION"
+  cp "$repo_root/scripts/semver" "$candidate/scripts/semver"
+  chmod 0755 "$candidate/tests/run" "$candidate/scripts/migrate-config" \
+    "$candidate/scripts/semver"
+}
+
+make_candidate 2.0.0
+release_stage="$release_data/releases/.stage.2.0.0.ABC123"
+mv -- "$release_data/releases/2.0.0" "$release_stage"
+export MOCK_MIGRATED_CONFIG='schema: committed'
+release_start=$($backend start --json --full --skip-tests --no-packages \
+  --repo "$release_stage" --release-version 2.0.0 \
+  --release-data-root "$release_data" --release-config "$release_config" \
+  -- -e "@$release_config")
+release_id=$(jq -er .id <<<"$release_start")
+$backend _worker "$release_id" --full --skip-tests --no-packages \
+  --repo "$release_stage" --release-version 2.0.0 \
+  --release-data-root "$release_data" --release-config "$release_config" \
+  -- -e "@$release_config"
+[[ $(<"$release_config") == 'schema: committed' ]]
+[[ $(<"$MOCK_ANSIBLE_CONFIG_LOG") == 'schema: committed' ]]
+[[ $(readlink "$release_data/current") == releases/2.0.0 ]]
+[[ ! -d $release_data/releases/1.0.0 ]]
+release_status=$($backend status --json "$release_id")
+[[ $(jq -r .state <<<"$release_status") == done ]]
+[[ $(jq -r .releaseVersion <<<"$release_status") == 2.0.0 ]]
+
+make_candidate 2.1.0
+export MOCK_MIGRATED_CONFIG='schema: must-rollback'
+export MOCK_ANSIBLE_RC=42
+failed_release_start=$($backend start --json --full --skip-tests --no-packages \
+  --repo "$release_data/releases/2.1.0" --release-version 2.1.0 \
+  --release-data-root "$release_data" --release-config "$release_config")
+failed_release_id=$(jq -er .id <<<"$failed_release_start")
+set +e
+$backend _worker "$failed_release_id" --full --skip-tests --no-packages \
+  --repo "$release_data/releases/2.1.0" --release-version 2.1.0 \
+  --release-data-root "$release_data" --release-config "$release_config"
+failed_release_rc=$?
+set -e
+unset MOCK_ANSIBLE_RC
+[[ $failed_release_rc -eq 42 ]]
+[[ $(<"$release_config") == 'schema: committed' ]]
+[[ $(readlink "$release_data/current") == releases/2.0.0 ]]
+failed_release=$($backend status --json "$failed_release_id")
+[[ $(jq -r .state <<<"$failed_release") == failed ]]
+[[ $(jq -r .phase <<<"$failed_release") == ansible ]]
+grep -F '[release] restored the pre-update installer configuration' \
+  "$release_data/../state/fedora-config/update/logs/$failed_release_id/run.log" >/dev/null
+
 ! grep -q 'set +e;.*set -e' "$backend"
 
-printf 'Durable updater serializes starts, closes cancellation races, preserves boot-scoped reboot advice, and reads exact log windows\n'
+printf 'Durable updater serializes starts, owns release finalization and rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'

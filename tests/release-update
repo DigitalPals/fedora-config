@@ -5,11 +5,12 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 updater=$repo_root/assets/scripts/fedora-config-release-update
 fixture=$(mktemp -d)
 trap 'rm -rf -- "$fixture"' EXIT
-mkdir -p "$fixture/bin" "$fixture/source" "$fixture/data" \
+mkdir -p "$fixture/bin" "$fixture/source/scripts" "$fixture/data" \
   "$fixture/release/fedora-config-1.2.3/tests" \
   "$fixture/release/fedora-config-1.2.3/scripts"
 
 printf '0.0.0\n' >"$fixture/source/VERSION"
+cp "$repo_root/scripts/semver" "$fixture/source/scripts/semver"
 printf '%s\n' '---' 'config_schema_version: 0' 'primary_user: tester' >"$fixture/config.yml"
 cp -- "$fixture/config.yml" "$fixture/config.original.yml"
 printf '%s\n' '---' >"$fixture/release/fedora-config-1.2.3/site.yml"
@@ -21,6 +22,8 @@ chmod 0755 "$fixture/release/fedora-config-1.2.3/install" \
   "$fixture/release/fedora-config-1.2.3/tests/run"
 cp "$repo_root/scripts/migrate-config" \
   "$fixture/release/fedora-config-1.2.3/scripts/migrate-config"
+cp "$repo_root/scripts/semver" \
+  "$fixture/release/fedora-config-1.2.3/scripts/semver"
 printf '1.2.3\n' >"$fixture/release/fedora-config-1.2.3/VERSION"
 fedora_release=$(source /etc/os-release; printf '%s' "$VERSION_ID")
 jq -n --arg fedora "$fedora_release" --arg architecture "$(uname -m)" \
@@ -39,6 +42,14 @@ release_json() {
     >"$fixture/release.json"
 }
 release_json true
+
+semver=$repo_root/scripts/semver
+$semver validate 1.2.3
+$semver validate 1.2.3-beta.1+build.7
+! $semver validate 01.2.3
+! $semver validate 1.2.3-01
+$semver newer 1.2.3 1.2.3-rc.1
+! $semver newer 1.2.3-beta.1 1.2.3
 
 cat >"$fixture/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -62,8 +73,44 @@ EOF
 cat >"$fixture/bin/backend" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$*" >"$MOCK_BACKEND_LOG"
-[[ ${MOCK_BACKEND_FAIL:-false} != true ]] || exit 42
+case ${1:-} in
+  start)
+    printf '%s\n' "$*" >"$MOCK_BACKEND_LOG"
+    if [[ ${MOCK_BACKEND_EXISTING:-false} == true ]]; then
+      printf '{"id":"20260903-120000-1-1","existing":true}\n'
+      exit 3
+    fi
+    printf '{"id":"20260903-120001-2-2","existing":false}\n'
+    ;;
+  attach)
+    rc=${MOCK_BACKEND_ATTACH_RC:-0}
+    ((rc == 0)) || exit "$rc"
+    arguments=$(<"$MOCK_BACKEND_LOG")
+    repo=$(sed -n 's/.*--repo \([^ ]*\).*/\1/p' <<<"$arguments")
+    version=$(sed -n 's/.*--release-version \([^ ]*\).*/\1/p' <<<"$arguments")
+    data=$(sed -n 's/.*--release-data-root \([^ ]*\).*/\1/p' <<<"$arguments")
+    config=$(sed -n 's/.*--release-config \([^ ]*\).*/\1/p' <<<"$arguments")
+    target="$data/releases/$version"
+    [[ $repo == "$target" ]] || {
+      rm -rf -- "$target"
+      mv -- "$repo" "$target"
+      repo=$target
+    }
+    "$repo/scripts/migrate-config" "$config" >"$config.migrated"
+    install -m 0644 "$config.migrated" "$config"
+    rm -f -- "$config.migrated"
+    ln -sfn "releases/$version" "$data/current.new"
+    mv -Tf -- "$data/current.new" "$data/current"
+    mapfile -t releases < <(
+      find "$data/releases" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
+        "$repo/scripts/semver" sort
+    )
+    for old in "${releases[@]:3}"; do
+      [[ $old == "$version" ]] || rm -rf -- "$data/releases/$old"
+    done
+    ;;
+  *) exit 2 ;;
+esac
 EOF
 cat >"$fixture/bin/sudo" <<'EOF'
 #!/usr/bin/env bash
@@ -88,6 +135,15 @@ check=$($updater --check --json)
 [[ $(jq -r .available <<<"$check") == true ]]
 [[ $(jq -r .availableVersion <<<"$check") == 1.2.3 ]]
 
+jq '.tag_name = "v01.2.3"' "$fixture/release.json" >"$fixture/release-invalid.json"
+mv -- "$fixture/release-invalid.json" "$fixture/release.json"
+if $updater --check >/dev/null 2>"$fixture/invalid-semver.err"; then
+  echo 'invalid SemVer release tag was accepted' >&2
+  exit 1
+fi
+grep -F 'release tag is not strict SemVer' "$fixture/invalid-semver.err" >/dev/null
+release_json true
+
 # SemVer precedence, rather than version-sort punctuation rules, determines
 # whether a prerelease is actually newer than the installed source.
 jq '.tag_name = "v1.2.3-beta.1" |
@@ -104,24 +160,46 @@ check=$($updater --check --json)
 release_json true
 printf '0.0.0\n' >"$fixture/source/VERSION"
 
-export MOCK_BACKEND_FAIL=true
+export MOCK_BACKEND_ATTACH_RC=42
 if $updater --no-packages >/dev/null 2>"$fixture/apply-failed.err"; then
   echo 'failed release apply was accepted' >&2
   exit 1
 fi
 cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
 [[ ! -e $fixture/data/fedora-config/current ]]
-grep -F 'Restored the pre-update installer configuration after failure.' \
-  "$fixture/apply-failed.err" >/dev/null
+
+# Detaching the client must leave configuration and activation to the durable
+# worker instead of attempting either operation in this terminal process.
+export MOCK_BACKEND_ATTACH_RC=130
+set +e
+$updater --no-packages >/dev/null 2>"$fixture/detached.err"
+detached_rc=$?
+set -e
+[[ $detached_rc -eq 130 ]]
+cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
+[[ ! -e $fixture/data/fedora-config/current ]]
+
+# A release transaction never attaches to an unrelated active worker.
+unset MOCK_BACKEND_ATTACH_RC
+export MOCK_BACKEND_EXISTING=true
+set +e
+$updater --no-packages >/dev/null 2>"$fixture/existing.err"
+existing_rc=$?
+set -e
+[[ $existing_rc -eq 75 ]]
+grep -F 'another update is active' "$fixture/existing.err" >/dev/null
+cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
+[[ ! -e $fixture/data/fedora-config/current ]]
+unset MOCK_BACKEND_EXISTING
 
 # A staged candidate is untrusted cache: the next attempt must replace it from
 # the newly verified archive instead of accepting locally modified contents.
+mkdir -p "$fixture/data/fedora-config/releases/1.2.3"
 touch "$fixture/data/fedora-config/releases/1.2.3/UNTRUSTED"
 mkdir -p "$fixture/data/fedora-config/releases/1.2.3-beta.1" \
   "$fixture/data/fedora-config/releases/1.2.2" \
   "$fixture/data/fedora-config/releases/1.2.1" \
   "$fixture/data/fedora-config/releases/not-a-version"
-export MOCK_BACKEND_FAIL=false
 $updater --no-packages >/dev/null
 [[ -d $fixture/data/fedora-config/releases/1.2.3 ]]
 [[ ! -e $fixture/data/fedora-config/releases/1.2.3/UNTRUSTED ]]
@@ -131,7 +209,8 @@ $updater --no-packages >/dev/null
 [[ -d $fixture/data/fedora-config/releases/not-a-version ]]
 [[ $(readlink "$fixture/data/fedora-config/current") == releases/1.2.3 ]]
 [[ $(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["config_schema_version"])' "$fixture/config.yml") == 1 ]]
-grep -F -- 'run --full --skip-tests --repo' "$fixture/backend.log" >/dev/null
+grep -F -- 'start --json --system-unit --full --skip-tests --repo' "$fixture/backend.log" >/dev/null
+grep -F -- '--release-version 1.2.3 --release-data-root' "$fixture/backend.log" >/dev/null
 grep -F -- '--no-packages -- -e' "$fixture/backend.log" >/dev/null
 grep -F -- 'release verify v1.2.3 --repo example/fedora-config' "$fixture/gh.log" >/dev/null
 grep -F -- 'release verify-asset v1.2.3' "$fixture/gh.log" >/dev/null

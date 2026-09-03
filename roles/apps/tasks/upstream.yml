@@ -355,6 +355,7 @@
     label: "{{ item.item.item.name | default('unknown') }}"
   when:
     - not ansible_check_mode
+    - not (item.skipped | default(false) | bool)
     - >-
       not (item.finished | default(false) | bool)
       or (item.rc | default(1) | int) not in [0, 75]
@@ -377,14 +378,31 @@
       | selectattr('changed', 'defined') | selectattr('changed')
       | selectattr('item.item.kind', 'equalto', 'font') | list | length > 0
 
-- name: Remove source-built command links when source builds are disabled
-  ansible.builtin.file:
+- name: Inspect source-built command links before owned cleanup
+  ansible.builtin.stat:
     path: "/usr/local/bin/{{ item.1 }}"
-    state: absent
+    follow: false
+  register: apps_source_command_links
   loop: "{{ source_apps | subelements('binary_names') }}"
   loop_control:
     label: "{{ item.1 }}"
-  when: not features.source_builds | bool
+  when:
+    - not features.source_builds | bool
+    - apps_feature_owned.source_builds | bool
+
+- name: Remove unchanged Fedora Config source-built command links
+  ansible.builtin.file:
+    path: "/usr/local/bin/{{ item.item.1 }}"
+    state: absent
+  loop: "{{ apps_source_command_links.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.1 }}"
+  when:
+    - not (item.skipped | default(false) | bool)
+    - item.stat.islnk | default(false)
+    - >-
+      item.stat.lnk_source ==
+      '/opt/fedora-config-builds/' ~ item.item.0.name ~ '/current/bin/' ~ item.item.1
 
 - name: Remove developer-only upstream applications when developer tooling is disabled
   ansible.builtin.file:
@@ -412,4 +430,6 @@
   loop: "{{ source_apps }}"
   loop_control:
     label: "{{ item.name }}"
-  when: not features.source_builds | bool
+  when:
+    - not features.source_builds | bool
+    - apps_feature_owned.source_builds | bool

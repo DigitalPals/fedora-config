@@ -9,6 +9,7 @@ channel=${FEDORA_CONFIG_CHANNEL:-stable}
 channel_explicit=false
 [[ -n ${FEDORA_CONFIG_CHANNEL:-} ]] && channel_explicit=true
 source_dir=${FEDORA_CONFIG_SOURCE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}
+semver_helper=${FEDORA_CONFIG_SEMVER_HELPER:-$source_dir/scripts/semver}
 config_file=${FEDORA_CONFIG_FILE:-/etc/fedora-config/config.yml}
 data_root=${XDG_DATA_HOME:-$HOME/.local/share}/fedora-config
 releases_root=$data_root/releases
@@ -68,6 +69,10 @@ for required_command in curl gh jq python3 sha256sum tar; do
     exit 2
   }
 done
+[[ -x $semver_helper ]] || {
+  printf 'update: Semantic Version helper is missing: %s\n' "$semver_helper" >&2
+  exit 2
+}
 gh release verify --help >/dev/null 2>&1 && gh release verify-asset --help >/dev/null 2>&1 || {
   echo 'update: this GitHub CLI is too old; upgrade gh before project updates' >&2
   exit 2
@@ -91,6 +96,10 @@ fi
 
 current_version=0.0.0
 [[ -r $source_dir/VERSION ]] && current_version=$(tr -d '[:space:]' <"$source_dir/VERSION")
+"$semver_helper" validate "$current_version" || {
+  printf 'update: installed VERSION is not strict SemVer: %s\n' "$current_version" >&2
+  exit 2
+}
 
 release_json=$(mktemp)
 archive=$(mktemp --suffix=.tar.zst)
@@ -111,8 +120,12 @@ fetch_release() {
     mv -f -- "$release_json.selected" "$release_json"
   fi
 
-  tag=$(jq -er '.tag_name | select(test("^v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*)?$"))' "$release_json")
+  tag=$(jq -er '.tag_name | strings | select(startswith("v"))' "$release_json")
   release_version=${tag#v}
+  "$semver_helper" validate "$release_version" || {
+    printf 'update: release tag is not strict SemVer: %s\n' "$tag" >&2
+    return 1
+  }
   asset_name="fedora-config-$release_version.tar.zst"
   asset_url=$(jq -er --arg name "$asset_name" \
     '.assets[] | select(.name == $name) | .browser_download_url' "$release_json")
@@ -126,50 +139,7 @@ fetch_release() {
 }
 
 version_newer() {
-  python3 - "$1" "$2" <<'PY'
-import re
-import sys
-
-pattern = re.compile(
-    r"^(?P<major>0|[1-9][0-9]*)[.]"
-    r"(?P<minor>0|[1-9][0-9]*)[.]"
-    r"(?P<patch>0|[1-9][0-9]*)"
-    r"(?:-(?P<pre>[0-9A-Za-z-]+(?:[.][0-9A-Za-z-]+)*))?$"
-)
-
-
-def parse(value):
-    match = pattern.fullmatch(value)
-    if match is None:
-        raise SystemExit(2)
-    core = tuple(int(match.group(name)) for name in ("major", "minor", "patch"))
-    prerelease = match.group("pre")
-    identifiers = None if prerelease is None else prerelease.split(".")
-    return core, identifiers
-
-
-def newer(candidate, current):
-    candidate_core, candidate_pre = parse(candidate)
-    current_core, current_pre = parse(current)
-    if candidate_core != current_core:
-        return candidate_core > current_core
-    if candidate_pre is None or current_pre is None:
-        return candidate_pre is None and current_pre is not None
-    for left, right in zip(candidate_pre, current_pre):
-        if left == right:
-            continue
-        left_numeric = left.isdigit()
-        right_numeric = right.isdigit()
-        if left_numeric and right_numeric:
-            return int(left) > int(right)
-        if left_numeric != right_numeric:
-            return not left_numeric
-        return left > right
-    return len(candidate_pre) > len(current_pre)
-
-
-raise SystemExit(0 if newer(sys.argv[1], sys.argv[2]) else 1)
-PY
+  "$semver_helper" newer "$1" "$2"
 }
 
 compatible_manifest() {
@@ -185,8 +155,9 @@ compatible_manifest() {
      and (.supportedFedora | index($fedora)) != null
      and (.architectures | index($architecture)) != null' \
     "$tree/release-manifest.json" >/dev/null || return 1
-  minimum_updater=$(jq -er '.minimumUpdater | select(test("^[0-9]+[.][0-9]+[.][0-9]+$"))' \
+  minimum_updater=$(jq -er '.minimumUpdater | strings' \
     "$tree/release-manifest.json") || return 1
+  "$semver_helper" validate "$minimum_updater" || return 1
   [[ $minimum_updater == "$updater_version" ]] \
     || version_newer "$updater_version" "$minimum_updater"
 }
@@ -210,7 +181,6 @@ if [[ $command_name == check ]]; then
 fi
 
 candidate=
-config_backup=
 if [[ $available == true ]]; then
   printf 'Downloading Fedora Config %s...\n' "$release_version"
   curl --fail --silent --show-error --location --retry 3 \
@@ -238,33 +208,24 @@ if [[ $available == true ]]; then
     printf 'update: Fedora Config %s is incompatible with this system or saved configuration\n' "$release_version" >&2
     exit 1
   }
-  candidate="$releases_root/$release_version"
-  [[ $candidate == "$releases_root/"* \
-      && $release_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] || {
+  candidate=$stage
+  [[ $candidate == "$releases_root/.stage.$release_version."* ]] \
+    && "$semver_helper" validate "$release_version" || {
     echo 'update: unsafe release staging path' >&2
     exit 1
   }
-  # Every attempt replaces an old candidate with the freshly downloaded and
-  # verified tree. A cached directory is not trusted merely because its name
-  # matches the release version.
-  [[ ! -e $candidate && ! -L $candidate ]] || rm -rf -- "$candidate"
-  mv -- "$stage" "$candidate"
+  # Transfer cleanup ownership before asking the backend to launch. The worker
+  # promotes this unique verified tree to its canonical version path while it
+  # owns the global update lock; no competing client can replace a tree already
+  # being applied. An interruption during launch may leave a harmless hidden
+  # stage for explicit maintenance, but can never remove a worker-owned tree.
   stage=
 fi
 
 if [[ -n $candidate ]]; then
-  migrated_config=$(mktemp)
-  "$candidate/scripts/migrate-config" "$config_file" >"$migrated_config"
-  if ! cmp -s -- "$config_file" "$migrated_config"; then
-    config_backup="$data_root/config-before-$release_version.yml"
-    cp -- "$config_file" "$config_backup"
-    sudo install -m 0644 "$migrated_config" "$config_file"
-  fi
-  rm -f -- "$migrated_config"
-fi
-
-if [[ -n $candidate ]]; then
-  update_args=(run --full --skip-tests --repo "$candidate")
+  update_args=(start --json --system-unit --full --skip-tests --repo "$candidate"
+    --release-version "$release_version" --release-data-root "$data_root"
+    --release-config "$config_file")
   [[ $with_packages == true ]] || update_args+=(--no-packages)
   [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
   update_args+=(-- -e "@$config_file")
@@ -276,77 +237,32 @@ else
   exit 0
 fi
 set +e
-"$backend" "${update_args[@]}" "${backend_args[@]}"
+backend_output=$("$backend" "${update_args[@]}" "${backend_args[@]}")
 backend_rc=$?
 set -e
-if ((backend_rc != 0)); then
-  if [[ -n $config_backup ]]; then
-    sudo install -m 0644 "$config_backup" "$config_file"
-    printf 'Restored the pre-update installer configuration after failure.\n' >&2
-  fi
+if [[ -z $candidate ]]; then
+  printf '%s\n' "$backend_output"
   exit "$backend_rc"
 fi
-
-if [[ -n $candidate ]]; then
-  ln -sfn "releases/$release_version" "$data_root/current.new"
-  mv -Tf -- "$data_root/current.new" "$data_root/current"
-  printf 'Activated Fedora Config %s.\n' "$release_version"
-
-  # Retain the active release and two recent fallbacks. Only directories with
-  # release-version names under the dedicated store are eligible for pruning.
-  mapfile -t installed_releases < <(
-    find "$releases_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
-      | python3 -c '
-import functools
-import re
-import sys
-
-pattern = re.compile(
-    r"^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)"
-    r"(?:-([0-9A-Za-z-]+(?:[.][0-9A-Za-z-]+)*))?$"
-)
-
-
-def parse(value):
-    match = pattern.fullmatch(value)
-    if match is None:
-        return None
-    return tuple(int(match.group(index)) for index in range(1, 4)), (
-        None if match.group(4) is None else match.group(4).split(".")
-    )
-
-
-def compare(left, right):
-    left_core, left_pre = parse(left)
-    right_core, right_pre = parse(right)
-    if left_core != right_core:
-        return (left_core > right_core) - (left_core < right_core)
-    if left_pre is None or right_pre is None:
-        return (left_pre is None) - (right_pre is None)
-    for left_id, right_id in zip(left_pre, right_pre):
-        if left_id == right_id:
-            continue
-        left_numeric = left_id.isdigit()
-        right_numeric = right_id.isdigit()
-        if left_numeric and right_numeric:
-            return (int(left_id) > int(right_id)) - (int(left_id) < int(right_id))
-        if left_numeric != right_numeric:
-            return -1 if left_numeric else 1
-        return (left_id > right_id) - (left_id < right_id)
-    return (len(left_pre) > len(right_pre)) - (len(left_pre) < len(right_pre))
-
-
-versions = [line.strip() for line in sys.stdin if parse(line.strip()) is not None]
-for version in sorted(versions, key=functools.cmp_to_key(compare), reverse=True):
-    print(version)
-'
-  )
-  if ((${#installed_releases[@]} > 3)); then
-    for old_release in "${installed_releases[@]:3}"; do
-      old_path="$releases_root/$old_release"
-      [[ $old_path == "$releases_root/"* && $old_release != "$release_version" ]] \
-        || continue
-      rm -rf -- "$old_path"
-    done
-  fi
+if ((backend_rc == 3)); then
+  active_id=$(jq -r '.id // empty' <<<"$backend_output" 2>/dev/null || true)
+  printf 'update: another update is active%s; retry after it finishes\n' \
+    "${active_id:+ ($active_id)}" >&2
+  [[ $candidate == "$releases_root/.stage.$release_version."* ]] && rm -rf -- "$candidate"
+  exit 75
 fi
+if ((backend_rc != 0)); then
+  [[ -z $backend_output ]] || printf '%s\n' "$backend_output" >&2
+  [[ $candidate == "$releases_root/.stage.$release_version."* ]] && rm -rf -- "$candidate"
+  exit "$backend_rc"
+fi
+run_id=$(jq -er 'select(.existing == false) | .id' <<<"$backend_output") || {
+  echo 'update: backend did not return a new durable transaction' >&2
+  exit 1
+}
+printf 'Started durable release update %s. Ctrl+C detaches without cancelling it.\n' "$run_id"
+set +e
+"$backend" attach "$run_id"
+backend_rc=$?
+set -e
+exit "$backend_rc"

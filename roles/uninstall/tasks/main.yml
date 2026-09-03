@@ -250,11 +250,91 @@
     executable: /bin/bash
   changed_when: true
 
-- name: Remove Fedora Config system state when it is not retained
-  ansible.builtin.file:
-    path: /var/lib/fedora-config
-    state: absent
-  when: not fedora_config_keep_user_data | bool
+- name: Restore first-adoption NetworkManager profile zones
+  ansible.builtin.shell: |
+    set -euo pipefail
+    state=/var/lib/fedora-config/firewall/profiles
+    [[ -d $state ]] || exit 0
+    while IFS= read -r -d '' marker; do
+      uuid=${marker##*/}
+      [[ $uuid =~ ^[0-9A-Fa-f-]{36}$ ]] || continue
+      current=$(nmcli -g connection.zone connection show "$uuid" 2>/dev/null) || continue
+      [[ $current == "$MANAGED_ZONE" ]] || continue
+      prior=$(<"$marker")
+      nmcli connection modify "$uuid" connection.zone "$prior"
+      printf '%s\n' "$uuid"
+    done < <(find "$state" -mindepth 1 -maxdepth 1 -type f -print0)
+  args:
+    executable: /bin/bash
+  environment:
+    MANAGED_ZONE: "{{ firewall_zone }}"
+  register: uninstall_restored_firewall_profiles
+  changed_when: uninstall_restored_firewall_profiles.stdout_lines | length > 0
+
+- name: Find physical NetworkManager profiles still assigned to the project zone
+  ansible.builtin.shell: |
+    set -o pipefail
+    nmcli -t -f UUID,TYPE connection show |
+      while IFS=: read -r uuid type; do
+        case "$type" in
+          802-3-ethernet|802-11-wireless)
+            zone=$(nmcli -g connection.zone connection show "$uuid")
+            [[ $zone == {{ firewall_zone | quote }} ]] && printf '%s\n' "$uuid"
+            ;;
+        esac
+      done
+  args:
+    executable: /bin/bash
+  register: uninstall_remaining_firewall_profiles
+  changed_when: false
+  failed_when: false
+
+- name: Clear unrecorded project-zone bindings from physical profiles
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - connection
+      - modify
+      - "{{ item }}"
+      - connection.zone
+      - ""
+  loop: "{{ uninstall_remaining_firewall_profiles.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: true
+
+- name: Read active physical network devices before firewall restoration
+  ansible.builtin.shell: |
+    set -o pipefail
+    LC_ALL=C nmcli -t -f DEVICE,TYPE,STATE device status |
+      awk -F: '($2 == "ethernet" || $2 == "wifi") && $3 == "connected" {print $1}'
+  args:
+    executable: /bin/bash
+  register: uninstall_active_physical_devices
+  changed_when: false
+  failed_when: false
+
+- name: Reapply restored firewall bindings without reconnecting
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - device
+      - reapply
+      - "{{ item }}"
+  loop: "{{ uninstall_active_physical_devices.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  failed_when: false
+  when: >-
+    uninstall_restored_firewall_profiles.changed or
+    uninstall_remaining_firewall_profiles.stdout_lines | default([]) | length > 0
+
+- name: Read the first-adoption default firewalld zone
+  ansible.builtin.command: cat /var/lib/fedora-config/firewall/default-zone
+  register: uninstall_saved_default_firewall_zone
+  changed_when: false
+  failed_when: false
 
 - name: Read the default firewalld zone before removal
   ansible.builtin.command: firewall-cmd --get-default-zone
@@ -262,8 +342,19 @@
   changed_when: false
   failed_when: false
 
-- name: Restore Fedora's public zone before removing the project zone
-  ansible.builtin.command: firewall-cmd --set-default-zone=public
+- name: Select the recorded or safe fallback default firewall zone
+  ansible.builtin.set_fact:
+    uninstall_restore_default_firewall_zone: >-
+      {{ (uninstall_saved_default_firewall_zone.rc == 0 and
+          (uninstall_saved_default_firewall_zone.stdout | trim)
+            is regex('^[A-Za-z0-9_-]+$'))
+         | ternary(uninstall_saved_default_firewall_zone.stdout | trim, 'public') }}
+
+- name: Restore the first-adoption default zone before removing the project zone
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - "--set-default-zone={{ uninstall_restore_default_firewall_zone }}"
   when: uninstall_default_firewall_zone.stdout | default('') | trim == firewall_zone
   changed_when: true
 
@@ -276,6 +367,12 @@
   ansible.builtin.command: firewall-cmd --reload
   changed_when: false
   failed_when: false
+
+- name: Remove Fedora Config system state when it is not retained
+  ansible.builtin.file:
+    path: /var/lib/fedora-config
+    state: absent
+  when: not fedora_config_keep_user_data | bool
 
 - name: Remove the project-built XPS camera package
   ansible.builtin.dnf:

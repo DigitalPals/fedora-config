@@ -299,7 +299,9 @@
     - "{{ primary_home }}/.local/bin/dev-arch-shell"
     - "{{ primary_home }}/.local/bin/dev-debian-shell"
     - "{{ primary_home }}/.config/distrobox/distrobox.conf"
-  when: not features.podman | bool
+  when:
+    - not features.podman | bool
+    - apps_feature_owned.podman | default(false) | bool
 
 - name: Install Nautilus LocalSend extension
   become: true
