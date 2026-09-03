@@ -6,7 +6,8 @@ import "../Common"
 // The Day sheet: the surface the clock (and the weather pill) unrolls under
 // the bar — big time, today's sky, the week at a glance with each day's
 // forecast and event dots, and the next few events. Attached flush under the
-// bar and centred on the clock (PanelRegistryData `attached`).
+// bar and centred on the bar regardless of which trigger opened it
+// (PanelRegistryData `attached` + `centerAnchored`).
 Surface {
     id: root
 

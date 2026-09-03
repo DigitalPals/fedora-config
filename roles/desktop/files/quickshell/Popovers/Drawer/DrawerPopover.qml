@@ -12,10 +12,9 @@ import ".."
 //
 // Each established popout name (control, audio, wifi, battery, notifications,
 // usage, …) presents one tab of this same component, so IPC names, the bar's
-// held states and hover-crossing all keep working unchanged. The tab is
-// snapshotted at creation rather than bound: while the host cross-fades two
-// instances during a switch, the outgoing one must keep showing what it
-// showed.
+// held states and hover-crossing all keep working unchanged. The host keys
+// its slots by source, so every one of those names reuses this same instance
+// and a tab switch swaps content in place instead of cross-fading a clone.
 Surface {
     id: root
 
@@ -34,16 +33,19 @@ Surface {
             highlight = "updates";
     }
 
-    // A same-tab reopen reuses this instance (the host keys slots by panel
-    // name), so refresh the deep link when the presenting name changes while
-    // this tab is the one on screen.
+    // Follow the presenting name while it is a drawer name. When another
+    // surface takes over (drawerTab resolves to ""), this instance is the
+    // outgoing half of a cross-fade and must keep showing what it showed.
     Connections {
         target: Popouts
 
         function onChanged() {
-            if (!Popouts.open
-                    || PanelRegistry.drawerTab(Popouts.currentName) !== root.tab)
+            if (!Popouts.open)
                 return;
+            const tab = PanelRegistry.drawerTab(Popouts.currentName);
+            if (tab === "")
+                return;
+            root.tab = tab;
             root.highlight = Popouts.currentName === "updates" ? "updates" : "";
         }
     }

@@ -53,9 +53,11 @@ var PANELS = [
     { name: "notifications", island: "right", moduleId: "notifications", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "notifications" },
     { name: "usage", island: "right", moduleId: "usage", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "usage" },
 
-    // The Day sheet hangs under the clock; the weather pill shares it.
-    { name: "calendar", island: "center", moduleId: "clock", source: DAY_SHEET_SOURCE, attached: true },
-    { name: "weather", island: "center", moduleId: "weather", source: DAY_SHEET_SOURCE, attached: true },
+    // The Day sheet: one view shared by the clock and the weather pill.
+    // centerAnchored so it opens in the same centred spot no matter which of
+    // the two triggers it — hovering between them must not move the surface.
+    { name: "calendar", island: "center", moduleId: "clock", source: DAY_SHEET_SOURCE, attached: true, centerAnchored: true },
+    { name: "weather", island: "center", moduleId: "weather", source: DAY_SHEET_SOURCE, attached: true, centerAnchored: true },
 
     { name: "reminders", island: "center", moduleId: "indicators", source: "Popovers/ReminderPopover.qml" },
     { name: "media", island: "left", moduleId: "media", source: "Popovers/MediaPopover.qml" },
@@ -65,7 +67,7 @@ var PANELS = [
     { name: "overflow", island: "right", moduleId: "", source: "Popovers/OverflowPopover.qml" },
 
     // Opened from the settings window and from IPC. The only panel carrying
-    // any of the three flags; they exist so no consumer has to name it.
+    // fillsBody; the flags exist so no consumer has to name it.
     {
         name: "settings",
         island: "center",

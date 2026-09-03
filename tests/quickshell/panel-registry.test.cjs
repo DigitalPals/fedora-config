@@ -101,15 +101,18 @@ test("a bar module that owns a panel registers it under the registry's name", ()
 });
 
 test("calendar, weather, and notifications each have one widget and one view", () => {
-    // The clock and the weather pill both unroll the attached Day sheet;
+    // The clock and the weather pill both unroll the attached Day sheet —
+    // centerAnchored, so both triggers present it in the same centred spot;
     // the bell presents the drawer's Notifications tab.
     assert.deepEqual(R.byName("calendar"), {
         name: "calendar", island: "center", moduleId: "clock",
-        source: "Popovers/DaySheetPopover.qml", attached: true
+        source: "Popovers/DaySheetPopover.qml", attached: true,
+        centerAnchored: true
     });
     assert.deepEqual(R.byName("weather"), {
         name: "weather", island: "center", moduleId: "weather",
-        source: "Popovers/DaySheetPopover.qml", attached: true
+        source: "Popovers/DaySheetPopover.qml", attached: true,
+        centerAnchored: true
     });
     assert.deepEqual(R.byName("notifications"), {
         name: "notifications", island: "right", moduleId: "notifications",
@@ -165,12 +168,17 @@ test("panels no module owns are exactly the ones the bar sweep must skip", () =>
         ["control", "overflow", "settings", "tailscale"]);
 });
 
-test("only settings carries the behaviour flags", () => {
-    // Each flag replaced a hardcoded `=== "settings"`. If a second panel ever
-    // needs one, the consumers already handle it — but say so deliberately.
-    for (const flag of ["centerAnchored", "fillsBody"]) {
-        const carrying = R.PANELS.filter(p => p[flag]).map(p => p.name);
-        assert.deepEqual(carrying, [R.SETTINGS], `unexpected panels carry ${flag}`);
+test("the behaviour flags are carried deliberately", () => {
+    // Each flag replaced a hardcoded `=== "settings"`; the Day sheet later
+    // adopted centerAnchored so its two triggers share one centred surface.
+    // A new carrier means a new deliberate entry here.
+    const expected = {
+        centerAnchored: ["calendar", "settings", "weather"],
+        fillsBody: [R.SETTINGS]
+    };
+    for (const [flag, carriers] of Object.entries(expected)) {
+        const carrying = R.PANELS.filter(p => p[flag]).map(p => p.name).sort();
+        assert.deepEqual(carrying, carriers, `unexpected panels carry ${flag}`);
     }
 });
 
@@ -243,11 +251,41 @@ test("every drawer name carries a tab and the strip can route to each tab", () =
         assert.equal(R.drawerTab(name), tab,
             `tab "${tab}" does not round-trip through nameForTab`);
     }
-    // The Day sheet attaches too, centred on its trigger rather than pinned.
+    // The Day sheet attaches too, centred on the bar rather than pinned to
+    // an edge or hanging under whichever trigger opened it.
     for (const name of ["calendar", "weather"]) {
         assert.ok(R.attached(name), `${name} must attach under the bar`);
         assert.equal(R.edge(name), "");
+        assert.ok(R.centerAnchored(name), `${name} must stay centred`);
     }
+});
+
+test("names sharing one view switch the front slot in place, never cross-fade a clone", () => {
+    const host = read("Bar/PopoutHost.qml");
+    const drawer = read("Popovers/Drawer/DrawerPopover.qml");
+
+    // The Day sheet's two triggers and the six drawer tabs all present one
+    // source each. Slot reuse is therefore keyed by source, not by opening
+    // name: a same-source switch renames the live slot and morphs, instead of
+    // incubating an identical second instance whose cross-fade reads as the
+    // panel blinking off and back on.
+    assert.match(host, /function sameSource\(/);
+    assert.match(host,
+        /if \(frontSlot >= 0 && loaderFor\(frontSlot\)\.item\s*&& sameSource\(nameFor\(frontSlot\), Popouts\.currentName\)\)/,
+        "sync must keep the front slot across a same-source name change");
+    assert.match(host, /sameSource\(held, name\) && loader\.item !== null/,
+        "a back slot holding the view under a sibling name must be reused");
+    assert.match(host, /sameSource\(held, name\) && loader\.status === Loader\.Loading/,
+        "a same-source request must not restart an incubation");
+    assert.match(host, /warmNames\.some\(warm => sameSource\(warm, nameFor\(slot\)\)\)/,
+        "the warm latch must match by source, whatever name last presented it");
+    // Because its instance now survives a tab switch, the drawer follows the
+    // presenting name while one is up — and freezes on its last tab when
+    // another surface takes over (drawerTab resolves to "").
+    assert.match(drawer,
+        /const tab = PanelRegistry\.drawerTab\(Popouts\.currentName\);/);
+    assert.match(drawer, /if \(tab === ""\)\s*return;/);
+    assert.match(drawer, /root\.tab = tab;/);
 });
 
 test("panelName is what actually drives the panel wiring", () => {

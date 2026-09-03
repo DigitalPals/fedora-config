@@ -15,6 +15,9 @@ import "../Common/Format.js" as Format
 // following the pointer rather than a series of windows.
 //
 // Two content slots stay alive so a switch can cross-fade rather than blink.
+// The slots are keyed by the view's source, not the opening name: names that
+// share one view (the drawer tabs, the Day sheet's two triggers) keep the
+// front slot and swap in place, so those switches never fade at all.
 Item {
     id: host
 
@@ -73,6 +76,10 @@ Item {
     // edge instead of centring it on its trigger.
     readonly property bool attachedPanel: PanelRegistry.attached(Popouts.currentName)
     readonly property bool rightEdgePanel: PanelRegistry.edge(Popouts.currentName) === "right"
+    // Centre-anchored panels sit at the output's true centre, period: not on
+    // the centre island, whose rect breathes when the clock discloses its
+    // quick actions, and not on whichever trigger opened them.
+    readonly property bool centerAnchoredPanel: PanelRegistry.centerAnchored(Popouts.currentName)
 
     // Where the card is going, and where it is now. The rendered values are
     // what animate; the targets are recomputed whenever the panel or the
@@ -115,6 +122,16 @@ Item {
         return slot === 0 ? loaderA : loaderB;
     }
 
+    // Different names can present the same view: the two Day-sheet triggers,
+    // every drawer tab. For slot reuse the view is what matters — switching
+    // between two such names must not incubate a second identical instance
+    // and cross-fade to it, which reads as the panel blinking off and on.
+    function sameSource(a, b) {
+        // Both names must resolve; an unknown or empty name shares no view
+        // with anything, itself included.
+        return !!sources[a] && sources[a] === sources[b];
+    }
+
     function nameFor(slot) {
         return slot === 0 ? slotAName : slotBName;
     }
@@ -129,11 +146,14 @@ Item {
     // At most one slot survives a close: the most recently fronted panel that
     // is safe to keep warm. Everything else is released, so the retained tree
     // stays bounded to a single view no matter how many panels get opened.
+    // Matched by source, not name: a drawer slot last presented as "wifi"
+    // holds the same warm view "control" names.
     function latchSlot() {
         for (const slot of [frontSlot, 1 - frontSlot]) {
             if (slot < 0 || slot > 1)
                 continue;
-            if (warmNames.indexOf(nameFor(slot)) !== -1 && loaderFor(slot).item)
+            if (warmNames.some(warm => sameSource(warm, nameFor(slot)))
+                    && loaderFor(slot).item)
                 return slot;
         }
         return -1;
@@ -151,7 +171,10 @@ Item {
     }
 
     function geometryFor(item) {
-        const anchor = effectiveAnchor;
+        // The full host width as a centre-anchored panel's anchor makes every
+        // downstream centring below resolve to the screen's midline.
+        const anchor = centerAnchoredPanel
+            ? Qt.rect(0, 0, host.width, 0) : effectiveAnchor;
         const panel = item as PopoutPanel;
         const contentW = item && item.implicitWidth > 0 ? item.implicitWidth : Theme.popWidth;
         const contentH = item && item.implicitHeight > 0 ? item.implicitHeight : 1;
@@ -244,20 +267,24 @@ Item {
         requestSerial++;
         const slot = frontSlot < 0 ? 0 : 1 - frontSlot;
         const loader = loaderFor(slot);
-        const reusable = nameFor(slot) === name && loader.item !== null;
+        const held = nameFor(slot);
         setSerialFor(slot, requestSerial);
 
         contentAnimations = false;
         loader.opacity = 0;
         contentAnimations = true;
-        if (reusable) {
-            // A previously inactive slot already contains this component and
-            // therefore will not emit loaded again.
+        if (sameSource(held, name) && loader.item !== null) {
+            // A previously inactive slot already contains this view —
+            // possibly under a sibling name — and therefore will not emit
+            // loaded again. It takes over the new name; the view itself
+            // follows Popouts.currentName for what to show.
+            setNameFor(slot, name);
             Qt.callLater(() => slotLoaded(slot));
-        } else if (nameFor(slot) === name && loader.status === Loader.Loading) {
-            // A second Popouts.changed while this panel is still incubating —
+        } else if (sameSource(held, name) && loader.status === Loader.Loading) {
+            // A second Popouts.changed while this view is still incubating —
             // the serial bump above re-armed it; another setSource would
             // restart the incubation from scratch.
+            setNameFor(slot, name);
         } else {
             // The envelope travels as initial properties, not as post-load
             // writes: a panel's first layout then happens against its real
@@ -421,9 +448,20 @@ Item {
 
         closing = false;
         closeTimer.stop();
-        if (frontSlot >= 0 && nameFor(frontSlot) === Popouts.currentName
-                && loaderFor(frontSlot).item) {
+        if (frontSlot >= 0 && loaderFor(frontSlot).item
+                && sameSource(nameFor(frontSlot), Popouts.currentName)) {
             const loader = loaderFor(frontSlot);
+            // A sibling name presenting the view already in front — clock to
+            // weather on the Day sheet, one drawer tab to another — takes
+            // over the slot in place. The switch is then at most a geometry
+            // morph: no second instance, no cross-fade, no blink. The serial
+            // bump orphans any pending present from a superseded request.
+            if (nameFor(frontSlot) !== Popouts.currentName) {
+                setNameFor(frontSlot, Popouts.currentName);
+                requestedName = Popouts.currentName;
+                requestSerial++;
+                setSerialFor(frontSlot, requestSerial);
+            }
             presented = true;
             // A reused slot starts from wherever the card last closed, which
             // for a latched panel may be a different module's position. Seat
@@ -484,10 +522,6 @@ Item {
     }
 
     onLiveChanged: sync()
-    onCenterIslandRectChanged: {
-        if (PanelRegistry.centerAnchored(Popouts.currentName))
-            retargetFront();
-    }
     onWidthChanged: retargetFront()
     onOutputAvailableHeightChanged: retargetFront()
     Component.onCompleted: sync()
