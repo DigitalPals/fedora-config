@@ -110,7 +110,11 @@ function defaultModOpts() {
         t3: { showLabel: true },
         hermes: { showLabel: true, activityDetail: "verb" },
         usage: {
+            source: "cliproxy",
+            cliproxyUrl: "https://10.10.0.235:8317/management.html",
+            cliproxyTlsVerify: false,
             claude: true, claudeAutoRefresh: true, codex: true, kimi: true,
+            xai: true,
             warnAt: 25, critAt: 10
         },
         gh: {
@@ -504,10 +508,14 @@ var MOD_OPT_CHECKS = {
         }
     },
     usage: {
+        source: function(v, d) { return enumIn(v, ["direct", "cliproxy"], d); },
+        cliproxyUrl: function(v, d) { return textIn(v, 400, d); },
+        cliproxyTlsVerify: boolIn,
         claude: boolIn,
         claudeAutoRefresh: boolIn,
         codex: boolIn,
         kimi: boolIn,
+        xai: boolIn,
         warnAt: function(v, d) { return intIn(v, 10, 50, 5, d); },
         critAt: function(v, d) { return intIn(v, 5, 25, 5, d); }
     },

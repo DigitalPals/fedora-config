@@ -9,14 +9,23 @@ import "Format.js" as Format
 Singleton {
     id: root
 
-    readonly property var providerKeys: ["claude", "codex", "kimi"]
+    readonly property var providerKeys: ["claude", "codex", "kimi", "xai"]
     readonly property var meta: ({
             claude: { name: "Claude", title: "Claude Code", icon: "claude", cmd: "claude auth login" },
             codex: { name: "Codex", title: "Codex CLI", icon: "openai", cmd: "codex login" },
-            kimi: { name: "Kimi", title: "Kimi Code", icon: "kimi", cmd: "kimi login" }
+            kimi: { name: "Kimi", title: "Kimi Code", icon: "kimi", cmd: "kimi login" },
+            xai: { name: "xAI", title: "xAI Grok", icon: "grok", cmd: "" }
         })
 
     readonly property int pollIntervalSecs: Settings.pollMax
+    readonly property string fetchConfiguration: {
+        const opts = Settings.modOpts.usage;
+        return [opts.source, opts.cliproxyUrl, opts.cliproxyTlsVerify,
+            opts.claudeAutoRefresh].join("|");
+    }
+    property bool cliproxyKeyConfigured: false
+    property string credentialError: ""
+    readonly property bool credentialBusy: credentialProc.running
 
     // The Model usage chip is the only thing that needs fresh figures without
     // being asked; with it off the bar, polling `usage-fetch.py` every few
@@ -88,7 +97,11 @@ Singleton {
         const p = provider(key);
         if (!p || p.status !== "ok" || !p.windows || p.windows.length === 0)
             return -1;
-        return Math.round(Math.min(...p.windows.map(w => 100 - w.used)));
+        const numeric = p.windows.filter(w => typeof w.used === "number"
+            && isFinite(w.used));
+        if (numeric.length === 0)
+            return -1;
+        return Math.round(Math.min(...numeric.map(w => 100 - w.used)));
     }
 
     // "ok" | "warn" | "crit" | "stale" | "error" | "none"
@@ -127,6 +140,28 @@ Singleton {
             pollStartedAt = Date.now();
             pollTimer.restart();
         }
+    }
+
+    function checkCliProxyKey() {
+        if (credentialProc.running)
+            return;
+        credentialProc.action = "status";
+        credentialProc.running = true;
+    }
+
+    function saveCliProxyKey(key) {
+        if (credentialProc.running || key.trim() === "")
+            return;
+        credentialProc.action = "store";
+        credentialProc.pendingKey = key;
+        credentialProc.running = true;
+    }
+
+    function clearCliProxyKey() {
+        if (credentialProc.running)
+            return;
+        credentialProc.action = "clear";
+        credentialProc.running = true;
     }
 
     function formatReset(resetsAt) {
@@ -197,10 +232,19 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: Settings.modOpts.usage.claudeAutoRefresh
-            ? ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py",
-                "--refresh-claude"]
-            : ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py"]
+        command: {
+            const opts = Settings.modOpts.usage;
+            const args = ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py",
+                "--source", opts.source];
+            if (opts.source === "cliproxy") {
+                args.push("--cliproxy-url", opts.cliproxyUrl);
+                if (!opts.cliproxyTlsVerify)
+                    args.push("--cliproxy-insecure");
+            } else if (opts.claudeAutoRefresh) {
+                args.push("--refresh-claude");
+            }
+            return args;
+        }
 
         stdout: StdioCollector {
             onStreamFinished: fetchProc.body = text
@@ -220,6 +264,55 @@ Singleton {
                 lastExit = 0;
             } else {
                 root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
+            }
+        }
+    }
+
+    Process {
+        id: credentialProc
+        property string action: "status"
+        property string pendingKey: ""
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["python3", Quickshell.shellDir + "/scripts/usage-credential.py", action]
+        stdinEnabled: action === "store"
+        stdout: StdioCollector { onStreamFinished: credentialProc.body = text }
+        stderr: StdioCollector {}
+        onStarted: {
+            if (action === "store") {
+                write(pendingKey + "\n");
+                pendingKey = "";
+            }
+        }
+        onExited: (exitCode, exitStatus) => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            pendingKey = "";
+            let result = null;
+            try {
+                result = JSON.parse(body);
+            } catch (e) {
+                result = null;
+            }
+            const success = exitSeen && lastExit === 0 && result && result.success;
+            if (success) {
+                root.cliproxyKeyConfigured = result.configured === true;
+                root.credentialError = "";
+                if (action !== "status" && Settings.modOpts.usage.source === "cliproxy")
+                    root.refresh();
+            } else {
+                root.credentialError = result && result.error
+                    ? result.error : "Could not update the CLIProxyAPI management key.";
             }
         }
     }
@@ -266,5 +359,13 @@ Singleton {
 
     onPollEnabledChanged: warmUp()
 
-    Component.onCompleted: warmUp()
+    onFetchConfigurationChanged: {
+        if (Settings.loaded)
+            refresh();
+    }
+
+    Component.onCompleted: {
+        checkCliProxyKey();
+        warmUp();
+    }
 }

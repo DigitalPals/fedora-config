@@ -384,6 +384,70 @@ SettingsPage {
         Column {
             spacing: 8
 
+            PickerRow {
+                width: parent.width
+                label: "Usage source"
+                model: [
+                    { value: "cliproxy", label: "CLIProxyAPI" },
+                    { value: "direct", label: "Provider CLIs" }
+                ]
+                current: view.opts.source
+                dirty: view.optDirty("source")
+                onPicked: value => view.setOpt("source", value)
+                onResetRequested: view.resetOpt("source")
+            }
+
+            SettingsTextRow {
+                visible: view.opts.source === "cliproxy"
+                width: parent.width
+                minimumLabelWidth: 126
+                label: "Management URL"
+                value: view.opts.cliproxyUrl
+                placeholder: "https://host:8317/management.html"
+                dirty: view.optDirty("cliproxyUrl")
+                onCommitted: text => view.setOpt("cliproxyUrl", text)
+                onResetRequested: view.resetOpt("cliproxyUrl")
+            }
+
+            SwitchRow {
+                visible: view.opts.source === "cliproxy"
+                width: parent.width
+                label: "Verify TLS"
+                description: "Require a certificate trusted by this computer"
+                checked: view.opts.cliproxyTlsVerify
+                dirty: view.optDirty("cliproxyTlsVerify")
+                onToggled: value => view.setOpt("cliproxyTlsVerify", value)
+                onResetRequested: view.resetOpt("cliproxyTlsVerify")
+            }
+
+            SettingsTextRow {
+                visible: view.opts.source === "cliproxy"
+                width: parent.width
+                minimumLabelWidth: 126
+                label: "Management key"
+                value: ""
+                placeholder: Usage.cliproxyKeyConfigured
+                    ? "Configured — enter to replace" : "Required"
+                secret: true
+                dirty: Usage.cliproxyKeyConfigured
+                onCommitted: text => Usage.saveCliProxyKey(text)
+                onResetRequested: Usage.clearCliProxyKey()
+            }
+
+            Text {
+                visible: view.opts.source === "cliproxy"
+                width: parent.width
+                text: Usage.credentialBusy ? "Checking private key…"
+                    : Usage.credentialError ? Usage.credentialError
+                    : Usage.cliproxyKeyConfigured
+                        ? "Key stored privately; it is not saved in shell settings."
+                        : "A CLIProxyAPI management key is required."
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontMicro
+                color: Usage.credentialError ? Theme.redText : Theme.textFaint
+                wrapMode: Text.Wrap
+            }
+
             SwitchRow {
                 width: parent.width
                 label: "Claude"
@@ -394,6 +458,7 @@ SettingsPage {
             }
 
             SwitchRow {
+                visible: view.opts.source === "direct"
                 width: parent.width
                 label: "Keep Claude signed in"
                 description: "Let Claude Code refresh its saved login for usage checks"
@@ -419,6 +484,18 @@ SettingsPage {
                 dirty: view.optDirty("kimi")
                 onToggled: value => view.setOpt("kimi", value)
                 onResetRequested: view.resetOpt("kimi")
+            }
+
+            SwitchRow {
+                width: parent.width
+                label: "xAI / Grok"
+                description: view.opts.source === "cliproxy"
+                    ? "Show Grok quota when CLIProxyAPI exposes a percentage"
+                    : "Grok usage requires the CLIProxyAPI source"
+                checked: view.opts.xai
+                dirty: view.optDirty("xai")
+                onToggled: value => view.setOpt("xai", value)
+                onResetRequested: view.resetOpt("xai")
             }
 
             SliderRow {

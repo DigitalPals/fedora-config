@@ -65,6 +65,8 @@ Surface {
     function errorTitle(prov) {
         const name = Usage.meta[Usage.selected].name;
         switch (prov.kind) {
+        case "config":
+            return "CLIProxyAPI setup required";
         case "nocreds":
             return name + " sign-in required";
         case "expired":
@@ -82,10 +84,17 @@ Surface {
 
     function errorBody(prov) {
         const cmd = Usage.meta[Usage.selected].cmd;
+        const proxied = Settings.modOpts.usage.source === "cliproxy";
         switch (prov.kind) {
+        case "config":
+            return prov.message || "Check the CLIProxyAPI connection in widget settings.";
         case "nocreds":
+            if (proxied)
+                return prov.message || "No matching managed credential is enabled in CLIProxyAPI.";
             return `No CLI credentials found. Run <font color="${Theme.textMid}" face="${Theme.fontMono}">${cmd}</font> in a terminal, complete the sign-in, then press Refresh.`;
         case "expired":
+            if (proxied)
+                return prov.message || "CLIProxyAPI's managed provider token was rejected.";
             return `The stored token has expired. Run <font color="${Theme.textMid}" face="${Theme.fontMono}">${cmd}</font> in a terminal, then press Refresh.`;
         case "rate":
             return "The usage endpoint is rate limiting requests. Polling will retry automatically.";
@@ -105,7 +114,9 @@ Surface {
             message = "The usage endpoint is rate limited. These are the last valid readings.";
             break;
         case "expired":
-            message = Settings.modOpts.usage.claudeAutoRefresh
+            message = Settings.modOpts.usage.source === "cliproxy"
+                ? "A managed provider token was rejected. These are the last valid readings."
+                : Settings.modOpts.usage.claudeAutoRefresh
                 ? "Claude's login could not be refreshed. These are the last valid readings."
                 : "Claude auto-refresh is off. These are the last valid readings.";
             break;
@@ -355,9 +366,12 @@ Surface {
                 id: card
 
                 required property var modelData
-                readonly property int remaining: Math.round(100 - modelData.used)
-                readonly property bool crit: remaining <= 10
-                readonly property bool low: remaining > 10 && remaining <= 25
+                readonly property bool hasUsage: typeof modelData.used === "number"
+                    && isFinite(modelData.used)
+                readonly property int remaining: hasUsage
+                    ? Math.round(100 - modelData.used) : -1
+                readonly property bool crit: hasUsage && remaining <= 10
+                readonly property bool low: hasUsage && remaining > 10 && remaining <= 25
                 readonly property bool hasReset: modelData.resetsAt !== null
                     && modelData.resetsAt !== undefined
 
@@ -400,11 +414,12 @@ Surface {
                             id: remainingValue
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
-                            text: card.remaining
+                            text: card.hasUsage ? card.remaining : "—"
                             font.family: Theme.fontMono
                             font.pixelSize: Theme.fontProminent
                             font.weight: Theme.weightSemibold
-                            color: root.remainColor(card.remaining)
+                            color: card.hasUsage
+                                ? root.remainColor(card.remaining) : Theme.textHi
                         }
 
                         Text {
@@ -412,7 +427,7 @@ Surface {
                             anchors.left: remainingValue.right
                             anchors.leftMargin: 3
                             anchors.baseline: remainingValue.baseline
-                            text: "% left"
+                            text: card.hasUsage ? "% left" : "usage unavailable"
                             font.family: Theme.fontMono
                             font.pixelSize: Theme.fontCaption
                             color: Theme.textLow
@@ -442,9 +457,10 @@ Surface {
                     }
 
                     BlockMeter {
+                        visible: card.hasUsage
                         width: parent.width
                         height: 10
-                        value: card.remaining / 100
+                        value: card.hasUsage ? card.remaining / 100 : 0
                         fillColor: root.barColor(card.remaining)
                     }
 
@@ -527,7 +543,9 @@ Surface {
                     Text {
                         id: creditsLabel
                         anchors.verticalCenter: parent.verticalCenter
-                        text: creditsCard.creditsStyle ? "CREDITS" : "EXTRA USAGE"
+                        text: creditsCard.c && creditsCard.c.label
+                            ? String(creditsCard.c.label).toUpperCase()
+                            : creditsCard.creditsStyle ? "CREDITS" : "EXTRA USAGE"
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontCaption
                         font.weight: Theme.weightSemibold
@@ -573,7 +591,10 @@ Surface {
 
                 Text {
                     width: parent.width
-                    text: creditsCard.creditsStyle ? "use credits beyond plan limits" : "pay-as-you-go beyond plan limits"
+                    text: creditsCard.c && creditsCard.c.description
+                        ? creditsCard.c.description
+                        : creditsCard.creditsStyle ? "use credits beyond plan limits"
+                        : "pay-as-you-go beyond plan limits"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.fontCaption
                     color: Theme.textDim

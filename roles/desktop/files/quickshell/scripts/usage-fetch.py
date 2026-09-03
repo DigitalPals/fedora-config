@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Model-usage fetcher for the Quickshell menubar.
 
-Reads the credential files the provider CLIs (Claude Code, Codex CLI, Kimi
-Code) write locally and polls each provider's own usage endpoint.  With
-``--refresh-claude``, an expiring Claude access token is handed back to the
-official Claude CLI for refresh; this helper never implements OAuth or writes
-Claude's credential file itself.
+In direct mode this reads the credential files the provider CLIs (Claude Code,
+Codex CLI, Kimi Code) write locally.  In CLIProxyAPI mode it asks the protected
+management API to call the same usage endpoints with each managed credential,
+including xAI/Grok; provider tokens never leave CLIProxyAPI.  With
+``--refresh-claude``, an expiring direct-mode Claude access token is handed
+back to the official Claude CLI for refresh.
 
 Successful readings are cached privately.  Endpoint failures retain a marked
 stale reading until its reset passes, and repeated failures back off instead
 of hammering a rate-limited endpoint.
 
-Prints one JSON object: {"claude": {...}, "codex": {...}, "kimi": {...}}
+Prints one JSON object with ``claude``, ``codex``, ``kimi``, and ``xai`` rows.
 Each provider is {"status": "ok", ...} or {"status": "error", "kind": ...}.
 """
 
@@ -19,16 +20,20 @@ import argparse
 import base64
 import copy
 import fcntl
+import hashlib
 import json
 import math
 import os
 import re
 import shutil
+import ssl
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -39,6 +44,15 @@ REFRESH_TIMEOUT = 30
 
 FIVE_HOURS = 5 * 3600
 SEVEN_DAYS = 7 * 24 * 3600
+XAI_BILLING_WEEKLY_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+XAI_BILLING_MONTHLY_URL = "https://cli-chat-proxy.grok.com/v1/billing"
+XAI_REQUEST_HEADERS = {
+    "Authorization": "Bearer $TOKEN$",
+    "x-xai-token-auth": "xai-grok-cli",
+    "x-grok-client-version": "0.2.91",
+    "Accept": "*/*",
+    "User-Agent": "grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)",
+}
 CLAUDE_MIN_INTERVAL = 5 * 60
 MAX_BACKOFF = 15 * 60
 MAX_STALE_AGE = 2 * 24 * 3600
@@ -60,15 +74,20 @@ def err(kind, message="", **details):
     return value
 
 
-def http_get(url, headers):
-    req = urllib.request.Request(url, headers=headers)
+def http_request(url, headers, method="GET", body=None, ssl_context=None):
+    req = urllib.request.Request(url, headers=headers, method=method, data=body)
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT,
+                                    context=ssl_context) as resp:
             return resp.status, resp.read(), resp.headers
     except urllib.error.HTTPError as e:
         return e.code, e.read(), e.headers
     except Exception as e:  # DNS, timeout, TLS…
         return None, str(e), {}
+
+
+def http_get(url, headers):
+    return http_request(url, headers)
 
 
 def retry_after_seconds(headers, now=None):
@@ -139,6 +158,16 @@ def jwt_claims(token):
         return json.loads(base64.urlsafe_b64decode(payload))
     except Exception:
         return {}
+
+
+def first_text(mapping, *keys):
+    if not isinstance(mapping, dict):
+        return None
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 # ---------------------------------------------------------------- State/cache
@@ -396,43 +425,9 @@ def claude_limit_window(raw):
             "resetsAt": parse_rfc3339(raw.get("resets_at"))}
 
 
-def fetch_claude(auto_refresh=False):
-    path = claude_credentials_path()
-    if not os.path.isfile(path):
-        return err("nocreds", "claude")
-    oauth = read_claude_oauth(path)
-    if not oauth:
-        return err("nocreds", "claude")
-    refreshed = False
-    if token_expired(oauth.get("expiresAt"), skew=60):
-        if not auto_refresh:
-            return err("expired", "claude")
-        oauth, refresh_error = refresh_claude_oauth(path, oauth)
-        if refresh_error:
-            return refresh_error
-        refreshed = True
-    token = oauth["accessToken"]
-
-    plan = claude_plan(oauth)
-
-    data, e = http_json("claude", "https://api.anthropic.com/api/oauth/usage", {
-        "Authorization": f"Bearer {token}",
-        "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": "claude-code/2.1.0 (external, cli)",
-    })
-    # Expiry metadata can lag server-side revocation. Give the CLI one chance
-    # to refresh and retry, but never loop on a rejected replacement token.
-    if e and e.get("kind") == "expired" and auto_refresh and not refreshed:
-        oauth, refresh_error = refresh_claude_oauth(path, oauth)
-        if refresh_error:
-            return refresh_error
-        data, e = http_json("claude", "https://api.anthropic.com/api/oauth/usage", {
-            "Authorization": f"Bearer {oauth['accessToken']}",
-            "anthropic-beta": "oauth-2025-04-20",
-            "User-Agent": "claude-code/2.1.0 (external, cli)",
-        })
-    if e:
-        return e
+def parse_claude_usage(data, plan=None):
+    if not isinstance(data, dict):
+        return err("parse", "Claude returned an invalid usage payload.")
 
     # Newer Claude usage responses expose a structured list, including
     # account-specific scoped limits such as Fable. Prefer it so new model
@@ -471,6 +466,47 @@ def fetch_claude(auto_refresh=False):
 
     return {"status": "ok", "plan": plan,
             "windows": windows, "credits": credits}
+
+
+def fetch_claude(auto_refresh=False):
+    path = claude_credentials_path()
+    if not os.path.isfile(path):
+        return err("nocreds", "claude")
+    oauth = read_claude_oauth(path)
+    if not oauth:
+        return err("nocreds", "claude")
+    refreshed = False
+    if token_expired(oauth.get("expiresAt"), skew=60):
+        if not auto_refresh:
+            return err("expired", "claude")
+        oauth, refresh_error = refresh_claude_oauth(path, oauth)
+        if refresh_error:
+            return refresh_error
+        refreshed = True
+    token = oauth["accessToken"]
+
+    plan = claude_plan(oauth)
+
+    data, e = http_json("claude", "https://api.anthropic.com/api/oauth/usage", {
+        "Authorization": f"Bearer {token}",
+        "anthropic-beta": "oauth-2025-04-20",
+        "User-Agent": "claude-code/2.1.0 (external, cli)",
+    })
+    # Expiry metadata can lag server-side revocation. Give the CLI one chance
+    # to refresh and retry, but never loop on a rejected replacement token.
+    if e and e.get("kind") == "expired" and auto_refresh and not refreshed:
+        oauth, refresh_error = refresh_claude_oauth(path, oauth)
+        if refresh_error:
+            return refresh_error
+        data, e = http_json("claude", "https://api.anthropic.com/api/oauth/usage", {
+            "Authorization": f"Bearer {oauth['accessToken']}",
+            "anthropic-beta": "oauth-2025-04-20",
+            "User-Agent": "claude-code/2.1.0 (external, cli)",
+        })
+    if e:
+        return e
+
+    return parse_claude_usage(data, plan)
 
 
 # ---------------------------------------------------------------- Codex
@@ -513,6 +549,43 @@ def humanize_window(secs):
     return f"{hours} hour"
 
 
+def parse_codex_usage(data, plan=None, account=None):
+    if not isinstance(data, dict):
+        return err("parse", "Codex returned an invalid usage payload.")
+
+    windows = []
+
+    def push(rate_limit, model=None):
+        if not isinstance(rate_limit, dict):
+            return
+        for key in ("primary_window", "secondary_window"):
+            raw = rate_limit.get(key)
+            if isinstance(raw, dict):
+                window = codex_window(raw, model)
+                if window:
+                    windows.append(window)
+
+    push(data.get("rate_limit"))
+    for extra in data.get("additional_rate_limits") or []:
+        if isinstance(extra, dict):
+            push(extra.get("rate_limit"), extra.get("limit_name"))
+
+    if plan is None and data.get("plan_type"):
+        raw_plan = str(data["plan_type"])
+        plan = CODEX_PLANS.get(raw_plan.lower(), f"ChatGPT {raw_plan}")
+    account = account or data.get("email")
+
+    credits = None
+    raw_credits = data.get("credits")
+    if isinstance(raw_credits, dict) and (raw_credits.get("has_credits")
+                                          or raw_credits.get("unlimited")):
+        credits = {"remaining": lenient_num(raw_credits.get("balance")),
+                   "unlimited": bool(raw_credits.get("unlimited"))}
+
+    return {"status": "ok", "plan": plan, "account": account,
+            "source": "codex-oauth", "windows": windows, "credits": credits}
+
+
 def fetch_codex():
     codex_home = os.environ.get("CODEX_HOME") or home(".codex")
     path = os.path.join(codex_home, "auth.json")
@@ -539,35 +612,7 @@ def fetch_codex():
     if e:
         return e
 
-    windows = []
-    def push(rate_limit, model=None):
-        if not isinstance(rate_limit, dict):
-            return
-        for key in ("primary_window", "secondary_window"):
-            raw = rate_limit.get(key)
-            if isinstance(raw, dict):
-                w = codex_window(raw, model)
-                if w:
-                    windows.append(w)
-
-    push(data.get("rate_limit"))
-    for extra in data.get("additional_rate_limits") or []:
-        if isinstance(extra, dict):
-            push(extra.get("rate_limit"), extra.get("limit_name"))
-
-    if plan is None and data.get("plan_type"):
-        plan = f"ChatGPT {data['plan_type']}"
-    email = email or data.get("email")
-
-    credits = None
-    raw_credits = data.get("credits")
-    if isinstance(raw_credits, dict) and (raw_credits.get("has_credits")
-                                          or raw_credits.get("unlimited")):
-        credits = {"remaining": lenient_num(raw_credits.get("balance")),
-                   "unlimited": bool(raw_credits.get("unlimited"))}
-
-    return {"status": "ok", "plan": plan, "account": email,
-            "source": "codex-oauth", "windows": windows, "credits": credits}
+    return parse_codex_usage(data, plan, email)
 
 
 # ---------------------------------------------------------------- Kimi
@@ -604,41 +649,25 @@ def kimi_row(counters, window_secs, fallback_label):
     return {"label": label, "used": pct, "windowSecs": window_secs, "resetsAt": resets_at}
 
 
-def fetch_kimi():
-    kimi_home = os.environ.get("KIMI_CODE_HOME") or home(".kimi-code")
-    path = os.path.join(kimi_home, "credentials", "kimi-code.json")
-    if not os.path.isfile(path):
-        return err("nocreds", "kimi")
-    try:
-        creds = read_json(path)
-        token = creds["access_token"]
-    except Exception:
-        return err("nocreds", "kimi")
-    expires_at = creds.get("expires_at")
-    if isinstance(expires_at, (int, float)) and expires_at <= time.time():
-        return err("expired", "kimi")
-
-    base = (os.environ.get("KIMI_CODE_BASE_URL") or "https://api.kimi.com/coding/v1").rstrip("/")
-    data, e = http_json("kimi", f"{base}/usages", {
-        "Authorization": f"Bearer {token}", "Accept": "application/json"})
-    if e:
-        return e
+def parse_kimi_usage(data):
+    if not isinstance(data, dict):
+        return err("parse", "Kimi returned an invalid usage payload.")
 
     windows = []
     usage = data.get("usage")
     if isinstance(usage, dict):
-        w = kimi_row(usage, SEVEN_DAYS, "Weekly limit")
-        if w:
-            windows.append(w)
+        window = kimi_row(usage, SEVEN_DAYS, "Weekly limit")
+        if window:
+            windows.append(window)
     for limit in data.get("limits") or []:
         if not isinstance(limit, dict):
             continue
         counters = limit.get("detail") if isinstance(limit.get("detail"), dict) else limit
         secs = kimi_window_secs(limit.get("window"))
         fallback = "5 hour limit" if secs == FIVE_HOURS else "Usage limit"
-        w = kimi_row(counters, secs, fallback)
-        if w:
-            windows.append(w)
+        window = kimi_row(counters, secs, fallback)
+        if window:
+            windows.append(window)
 
     plan = None
     membership = (data.get("user") or {}).get("membership") or {}
@@ -665,7 +694,435 @@ def fetch_kimi():
             "source": "kimi-oauth", "windows": windows, "credits": credits}
 
 
-PROVIDERS = (("claude", fetch_claude), ("codex", fetch_codex), ("kimi", fetch_kimi))
+def fetch_kimi():
+    kimi_home = os.environ.get("KIMI_CODE_HOME") or home(".kimi-code")
+    path = os.path.join(kimi_home, "credentials", "kimi-code.json")
+    if not os.path.isfile(path):
+        return err("nocreds", "kimi")
+    try:
+        creds = read_json(path)
+        token = creds["access_token"]
+    except Exception:
+        return err("nocreds", "kimi")
+    expires_at = creds.get("expires_at")
+    if isinstance(expires_at, (int, float)) and expires_at <= time.time():
+        return err("expired", "kimi")
+
+    base = (os.environ.get("KIMI_CODE_BASE_URL") or "https://api.kimi.com/coding/v1").rstrip("/")
+    data, e = http_json("kimi", f"{base}/usages", {
+        "Authorization": f"Bearer {token}", "Accept": "application/json"})
+    if e:
+        return e
+
+    return parse_kimi_usage(data)
+
+
+# --------------------------------------------------------------- xAI / Grok
+
+def xai_config(payload):
+    if not isinstance(payload, dict):
+        return None
+    config = payload.get("config")
+    return config if isinstance(config, dict) else None
+
+
+def xai_cent(config, *keys):
+    if not isinstance(config, dict):
+        return None
+    raw = None
+    for key in keys:
+        if key in config:
+            raw = config[key]
+            break
+    if isinstance(raw, dict):
+        raw = raw.get("val")
+    return lenient_num(raw)
+
+
+def xai_plan(monthly_limit_cents):
+    if monthly_limit_cents == 15_000:
+        return "SuperGrok"
+    if monthly_limit_cents == 150_000:
+        return "SuperGrok Heavy"
+    return None
+
+
+def xai_period(config):
+    if not isinstance(config, dict):
+        return None, None, None
+    period = config.get("currentPeriod", config.get("current_period"))
+    if not isinstance(period, dict):
+        return None, None, None
+    kind = str(period.get("type") or "").lower()
+    start = parse_rfc3339(period.get("start"))
+    end = parse_rfc3339(period.get("end"))
+    return kind, start, end
+
+
+def parse_xai_usage(weekly_payload, monthly_payload=None):
+    """Convert Grok's weekly quota and monthly billing responses for the UI."""
+    weekly = xai_config(weekly_payload)
+    monthly = xai_config(monthly_payload)
+    if weekly is None and monthly is None:
+        return err("parse", "xAI returned an invalid billing payload.")
+
+    quota = weekly or monthly
+    kind, period_start, period_end = xai_period(quota)
+    used = lenient_num(quota.get(
+        "creditUsagePercent", quota.get("credit_usage_percent")))
+    products = quota.get("productUsage", quota.get("product_usage"))
+    products = products if isinstance(products, list) else []
+    is_weekly = "weekly" in (kind or "") or used is not None or bool(products)
+
+    windows = []
+    if is_weekly:
+        window_secs = (period_end - period_start
+                       if period_start is not None and period_end is not None
+                       and period_end > period_start else SEVEN_DAYS)
+        windows.append({
+            "label": "Weekly limit",
+            # A newly-created period can omit the percentage. Preserve that
+            # as unknown instead of reporting a fabricated 0% reading.
+            "used": min(max(used, 0.0), 100.0) if used is not None else None,
+            "windowSecs": window_secs,
+            "resetsAt": period_end,
+        })
+        for index, item in enumerate(products):
+            if not isinstance(item, dict):
+                continue
+            product_used = lenient_num(item.get(
+                "usagePercent", item.get("usage_percent")))
+            product = first_text(item, "product") or f"Product {index + 1}"
+            windows.append({
+                "label": f"{product} usage",
+                "used": (min(max(product_used, 0.0), 100.0)
+                         if product_used is not None else None),
+                "windowSecs": window_secs,
+                "resetsAt": period_end,
+            })
+
+    billing = monthly or weekly
+    monthly_limit = xai_cent(billing, "monthlyLimit", "monthly_limit")
+    total_used = xai_cent(billing, "used")
+    on_demand_cap = xai_cent(billing, "onDemandCap", "on_demand_cap")
+    on_demand_used = xai_cent(billing, "onDemandUsed", "on_demand_used")
+    credits = None
+    if monthly_limit is not None and monthly_limit > 0:
+        included_used = min(total_used, monthly_limit) if total_used is not None else None
+        credits = {
+            "label": "Monthly credits",
+            "description": "included allowance for this billing cycle",
+            "used": included_used / 100 if included_used is not None else None,
+            "limit": monthly_limit / 100,
+            "currency": "USD",
+            "unlimited": False,
+        }
+    elif on_demand_cap is not None and on_demand_cap > 0:
+        if on_demand_used is None and total_used is not None and monthly_limit is not None:
+            on_demand_used = max(0.0, total_used - monthly_limit)
+        credits = {
+            "label": "Extra usage",
+            "description": "pay-as-you-go beyond plan limits",
+            "used": on_demand_used / 100 if on_demand_used is not None else None,
+            "limit": on_demand_cap / 100,
+            "currency": "USD",
+            "unlimited": False,
+        }
+
+    if not windows and credits is None:
+        return err("parse", "xAI billing did not include quota data.")
+    return {"status": "ok", "plan": xai_plan(monthly_limit),
+            "account": None, "source": "xai-oauth",
+            "windows": windows, "credits": credits}
+
+
+# ------------------------------------------------------------- CLIProxyAPI
+
+def cliproxy_key_path():
+    override = os.environ.get("QUICKSHELL_USAGE_CLIPROXY_KEY_PATH")
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
+    state_home = os.environ.get("XDG_STATE_HOME") or home(".local", "state")
+    return os.path.join(os.path.expanduser(state_home), "quickshell",
+                        "model-usage-cliproxy.key")
+
+
+def read_cliproxy_key(path=None):
+    """Read a small, owner-only key file without following a symlink."""
+    key_path = path or cliproxy_key_path()
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(key_path, flags)
+    except FileNotFoundError:
+        return None, err(
+            "config",
+            "CLIProxyAPI management key is not configured. Add it in widget settings.")
+    except OSError:
+        return None, err("config", "CLIProxyAPI management key could not be opened safely.")
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) & 0o077):
+            return None, err(
+                "config", "CLIProxyAPI management key file must be owned by you and mode 0600.")
+        raw = os.read(fd, 8193)
+        if len(raw) > 8192:
+            return None, err("config", "CLIProxyAPI management key is too large.")
+    finally:
+        os.close(fd)
+    try:
+        key = raw.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        key = ""
+    if not key or any(ord(char) < 0x20 for char in key):
+        return None, err("config", "CLIProxyAPI management key is empty or invalid.")
+    return key, None
+
+
+def normalize_cliproxy_url(value):
+    """Accept the dashboard URL or an API base and return the server base."""
+    text = (value or "").strip()
+    try:
+        parsed = urllib.parse.urlsplit(text)
+        # Reading .port validates malformed ports as well.
+        parsed.port
+    except (TypeError, ValueError):
+        raise ValueError("CLIProxyAPI management address is invalid.") from None
+    if (parsed.scheme not in ("http", "https") or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None
+            or parsed.query or parsed.fragment):
+        raise ValueError("CLIProxyAPI management address must be an HTTP(S) server URL.")
+
+    path = parsed.path.rstrip("/")
+    for suffix in ("/management.html", "/v0/management/auth-files",
+                   "/v0/management"):
+        if path.endswith(suffix):
+            path = path[:-len(suffix)].rstrip("/")
+            break
+    if any(part in (".", "..") for part in path.split("/")):
+        raise ValueError("CLIProxyAPI management address contains an invalid path.")
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+class CliProxyClient:
+    def __init__(self, address, key, verify_tls=True):
+        self.base = normalize_cliproxy_url(address)
+        self.key = key
+        self.ssl_context = None
+        if self.base.startswith("https://") and not verify_tls:
+            self.ssl_context = ssl._create_unverified_context()  # noqa: SLF001
+
+    def management_json(self, path, payload=None):
+        headers = {"Authorization": f"Bearer {self.key}",
+                   "Accept": "application/json"}
+        body = None
+        method = "GET"
+        if payload is not None:
+            method = "POST"
+            headers["Content-Type"] = "application/json"
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        status_code, response, response_headers = http_request(
+            self.base + path, headers, method, body, self.ssl_context)
+        if status_code is None:
+            message = str(response)
+            if "CERTIFICATE_VERIFY_FAILED" in message:
+                message = ("CLIProxyAPI TLS certificate could not be verified. "
+                           "Install its CA or turn off Verify TLS in widget settings.")
+            return None, err("network", message)
+        if status_code in (401, 403):
+            return None, err("config", "CLIProxyAPI rejected the management key.")
+        if status_code == 429:
+            return None, err("rate", "CLIProxyAPI management API is rate limited.",
+                             retryAfter=retry_after_seconds(response_headers))
+        if not 200 <= status_code < 300:
+            return None, err("http", f"CLIProxyAPI returned HTTP {status_code}.")
+        try:
+            return json.loads(response), None
+        except (TypeError, ValueError):
+            return None, err("parse", "CLIProxyAPI returned invalid JSON.")
+
+    def auth_files(self):
+        data, failure = self.management_json("/v0/management/auth-files")
+        if failure:
+            return None, failure
+        files = data.get("files") if isinstance(data, dict) else None
+        if not isinstance(files, list):
+            return None, err("parse", "CLIProxyAPI returned an invalid auth-file list.")
+        return [entry for entry in files if isinstance(entry, dict)], None
+
+    def api_json(self, auth_index, url, headers):
+        response, failure = self.management_json("/v0/management/api-call", {
+            "auth_index": auth_index,
+            "method": "GET",
+            "url": url,
+            "header": headers,
+        })
+        if failure:
+            return None, failure
+        if not isinstance(response, dict):
+            return None, err("parse", "CLIProxyAPI returned an invalid API-call response.")
+        status_code = response.get("status_code", response.get("statusCode"))
+        try:
+            status_code = int(status_code)
+        except (TypeError, ValueError):
+            return None, err("parse", "CLIProxyAPI omitted the upstream status code.")
+        if status_code == 429:
+            return None, err("rate", "Rate limited by the usage endpoint.")
+        if status_code in (401, 403):
+            return None, err("expired", "Managed provider token was rejected.")
+        if not 200 <= status_code < 300:
+            return None, err("http", f"Usage endpoint returned HTTP {status_code}.")
+        body = response.get("body")
+        if isinstance(body, dict):
+            return body, None
+        try:
+            return json.loads(body), None
+        except (TypeError, ValueError):
+            return None, err("parse", "Usage endpoint returned invalid JSON.")
+
+
+def cliproxy_codex_identity(entry):
+    id_token = entry.get("id_token")
+    if not isinstance(id_token, dict):
+        id_token = {}
+    account_id = (first_text(entry, "chatgpt_account_id", "chatgptAccountId")
+                  or first_text(id_token, "chatgpt_account_id", "chatgptAccountId"))
+    raw_plan = (first_text(entry, "plan_type", "planType")
+                or first_text(id_token, "plan_type", "planType"))
+    plan = CODEX_PLANS.get(raw_plan.lower(), f"ChatGPT {raw_plan}") if raw_plan else None
+    return account_id, plan
+
+
+def cliproxy_claude_plan(entry):
+    raw_plan = first_text(entry, "subscription_type", "subscriptionType",
+                          "plan_type", "planType")
+    if not raw_plan:
+        return None
+    return CLAUDE_PLANS.get(raw_plan.lower(), raw_plan)
+
+
+def fetch_cliproxy_account(provider, entry, client):
+    auth_index = first_text(entry, "auth_index", "authIndex")
+    if not auth_index:
+        return err("config", f"CLIProxyAPI {provider} credential has no auth_index.")
+    if provider == "claude":
+        data, failure = client.api_json(auth_index,
+            "https://api.anthropic.com/api/oauth/usage", {
+                "Authorization": "Bearer $TOKEN$",
+                "anthropic-beta": "oauth-2025-04-20",
+                "User-Agent": "claude-code/2.1.0 (external, cli)",
+            })
+        return failure or parse_claude_usage(data, cliproxy_claude_plan(entry))
+    if provider == "codex":
+        account_id, plan = cliproxy_codex_identity(entry)
+        if not account_id:
+            return err("config", "CLIProxyAPI Codex credential has no ChatGPT account ID.")
+        data, failure = client.api_json(auth_index,
+            "https://chatgpt.com/backend-api/wham/usage", {
+                "Authorization": "Bearer $TOKEN$",
+                "ChatGPT-Account-Id": account_id,
+                "User-Agent": "codex-cli",
+            })
+        return failure or parse_codex_usage(data, plan)
+    if provider == "kimi":
+        data, failure = client.api_json(auth_index,
+            "https://api.kimi.com/coding/v1/usages", {
+                "Authorization": "Bearer $TOKEN$",
+                "Accept": "application/json",
+            })
+        return failure or parse_kimi_usage(data)
+    if provider == "xai":
+        def request(url):
+            return client.api_json(auth_index, url, XAI_REQUEST_HEADERS)
+
+        # These are both read-only billing calls. Do not use the management
+        # panel's paid-account health fallback here: it sends a billable chat
+        # completion and is inappropriate for a background widget poll.
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="xai-billing") as pool:
+            weekly_future = pool.submit(request, XAI_BILLING_WEEKLY_URL)
+            monthly_future = pool.submit(request, XAI_BILLING_MONTHLY_URL)
+            weekly, weekly_failure = weekly_future.result()
+            monthly, monthly_failure = monthly_future.result()
+        if weekly_failure and monthly_failure:
+            priority = {"expired": 0, "rate": 1, "network": 2,
+                        "http": 3, "parse": 4}
+            return min((weekly_failure, monthly_failure),
+                       key=lambda value: priority.get(value.get("kind"), 99))
+        parsed = parse_xai_usage(weekly, monthly)
+        if parsed.get("status") != "ok":
+            return weekly_failure or monthly_failure or parsed
+        return parsed
+    return err("config", f"Unsupported CLIProxyAPI provider: {provider}")
+
+
+def provider_remaining_score(reading):
+    windows = reading.get("windows") if isinstance(reading, dict) else None
+    if not isinstance(windows, list) or not windows:
+        return -1
+    remaining = [100.0 - window["used"] for window in windows
+                 if isinstance(window, dict)
+                 and isinstance(window.get("used"), (int, float))]
+    return min(remaining) if remaining else -1
+
+
+def fetch_cliproxy_provider(provider, entries, client):
+    matching = [entry for entry in entries
+                if (first_text(entry, "provider", "type") or "").lower() == provider
+                and entry.get("disabled") is not True]
+    if not matching:
+        return err("nocreds", f"No enabled {provider} credentials in CLIProxyAPI.")
+    readings = [fetch_cliproxy_account(provider, entry, client) for entry in matching]
+    successful = [value for value in readings
+                  if isinstance(value, dict) and value.get("status") == "ok"]
+    if not successful:
+        priority = {"config": 0, "expired": 1, "rate": 2, "network": 3,
+                    "http": 4, "parse": 5}
+        return min(readings, key=lambda value: priority.get(value.get("kind"), 99))
+
+    # CLIProxyAPI may rotate across several subscriptions. The most usable
+    # account is the meaningful pool-level reading; summing percentages would
+    # be dimensionally wrong and showing the fullest account would create
+    # false alarms while another account still has capacity.
+    best = copy.deepcopy(max(successful, key=provider_remaining_score))
+    best.pop("account", None)
+    best["source"] = "cliproxy"
+    best["accountCount"] = len(matching)
+    if len(matching) > 1:
+        suffix = f"best of {len(successful)}/{len(matching)} accounts"
+        best["plan"] = f"{best.get('plan')} · {suffix}" if best.get("plan") else suffix.title()
+    return best
+
+
+def make_cliproxy_providers(address, verify_tls):
+    provider_names = ("claude", "codex", "kimi", "xai")
+    key, key_error = read_cliproxy_key()
+    if key_error:
+        return tuple((name, lambda failure=key_error: copy.deepcopy(failure))
+                     for name in provider_names), "no-key"
+    try:
+        client = CliProxyClient(address, key, verify_tls)
+    except ValueError as failure:
+        value = err("config", str(failure))
+        return tuple((name, lambda failure=value: copy.deepcopy(failure))
+                     for name in provider_names), "invalid-url"
+    files, list_error = client.auth_files()
+    if list_error:
+        providers = tuple((name, lambda failure=list_error: copy.deepcopy(failure))
+                          for name in provider_names)
+    else:
+        providers = tuple((name, lambda provider=name:
+                          fetch_cliproxy_provider(provider, files, client))
+                          for name in provider_names)
+    fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+    return providers, f"{client.base}|{verify_tls}|{fingerprint}"
+
+
+PROVIDERS = (("claude", fetch_claude), ("codex", fetch_codex),
+             ("kimi", fetch_kimi),
+             ("xai", lambda: err(
+                 "config", "xAI usage is available through CLIProxyAPI.")))
 MIN_INTERVALS = {"claude": CLAUDE_MIN_INTERVAL}
 
 
@@ -776,17 +1233,37 @@ def fetch_all_resilient(providers, state, now=None, min_intervals=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--source", choices=("direct", "cliproxy"), default="direct",
+        help="credential source (default: direct)",
+    )
+    parser.add_argument(
+        "--cliproxy-url",
+        default="http://127.0.0.1:8317",
+        help="CLIProxyAPI server or management.html URL",
+    )
+    parser.add_argument(
+        "--cliproxy-insecure", action="store_true",
+        help="disable TLS certificate verification for CLIProxyAPI only",
+    )
+    parser.add_argument(
         "--refresh-claude",
         action="store_true",
         help="let the installed Claude CLI refresh expiring Claude credentials",
     )
     args = parser.parse_args()
 
-    providers = (
-        ("claude", lambda: fetch_claude(args.refresh_claude)),
-        ("codex", fetch_codex),
-        ("kimi", fetch_kimi),
-    )
+    source_fingerprint = "direct"
+    if args.source == "cliproxy":
+        providers, source_fingerprint = make_cliproxy_providers(
+            args.cliproxy_url, not args.cliproxy_insecure)
+    else:
+        providers = (
+            ("claude", lambda: fetch_claude(args.refresh_claude)),
+            ("codex", fetch_codex),
+            ("kimi", fetch_kimi),
+            ("xai", lambda: err(
+                "config", "xAI usage is available through CLIProxyAPI.")),
+        )
     path = usage_state_path()
     state = empty_state()
     lock = None
@@ -810,12 +1287,16 @@ def main():
             os.close(lock_fd)
         lock = None
 
-    update_cached_claude_metadata(state)
+    if state.get("sourceFingerprint") != source_fingerprint:
+        state["providers"] = {}
+    state["sourceFingerprint"] = source_fingerprint
+    if args.source == "direct":
+        update_cached_claude_metadata(state)
 
     # Enabling refresh should immediately recover an auth failure left by the
     # disabled setting, but a failed enabled refresh still observes backoff.
     previous_refresh = state.get("claudeAutoRefresh")
-    if args.refresh_claude and previous_refresh is not True:
+    if args.source == "direct" and args.refresh_claude and previous_refresh is not True:
         claude_state = state.get("providers", {}).get("claude", {})
         if not isinstance(claude_state, dict):
             claude_state = {}
@@ -825,7 +1306,7 @@ def main():
             last_error = {}
         if last_error.get("kind") in ("expired", "refresh"):
             claude_state["nextAttemptAt"] = 0
-    state["claudeAutoRefresh"] = args.refresh_claude
+    state["claudeAutoRefresh"] = args.source == "direct" and args.refresh_claude
 
     try:
         result = fetch_all_resilient(providers, state)

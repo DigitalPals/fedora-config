@@ -6,7 +6,7 @@ const { shellDir } = require("./shell.cjs");
 
 const assetsDir = path.join(shellDir, "assets");
 const brands = [
-    "claude", "fedora", "github", "kimi", "openai",
+    "claude", "fedora", "github", "grok", "kimi", "openai",
     "slack", "t3", "tailscale", "whatsapp", "youtube"
 ];
 const whiteVariants = brands.filter(name => name !== "t3");
@@ -119,5 +119,5 @@ test("every bundled product mark records pinned provenance and licensing", () =>
     assert.match(licenses, /CC0 1\.0 Universal/);
     assert.match(licenses, /CC BY-SA 4\.0/);
     assert.match(licenses, /Fedora®/);
-    assert.equal((licenses.match(/MIT License/g) || []).length, 2);
+    assert.equal((licenses.match(/MIT License/g) || []).length, 3);
 });

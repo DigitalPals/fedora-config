@@ -11,6 +11,7 @@ SettingsRow {
     property string value: root.stored !== undefined ? String(root.stored) : ""
     property string placeholder: ""
     property bool numeric: false
+    property bool secret: false
     signal committed(string text)
 
     onValueChanged: {
@@ -44,7 +45,11 @@ SettingsRow {
             selectedTextColor: Theme.textHi
             clip: true
             activeFocusOnTab: true
-            inputMethodHints: root.numeric ? Qt.ImhFormattedNumbersOnly : Qt.ImhNone
+            echoMode: root.secret ? TextInput.Password : TextInput.Normal
+            passwordCharacter: "•"
+            inputMethodHints: root.numeric ? Qt.ImhFormattedNumbersOnly
+                : root.secret ? Qt.ImhHiddenText | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
+                : Qt.ImhNone
             Accessible.role: Accessible.EditableText
             Accessible.name: root.label
             Component.onCompleted: text = root.value

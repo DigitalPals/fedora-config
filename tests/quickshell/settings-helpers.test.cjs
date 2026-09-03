@@ -83,6 +83,11 @@ test("defaults carry the design values", () => {
     assert.equal(d.modOpts.usage.warnAt, 25);
     assert.equal(d.modOpts.usage.critAt, 10);
     assert.equal(d.modOpts.usage.claudeAutoRefresh, true);
+    assert.equal(d.modOpts.usage.source, "cliproxy");
+    assert.equal(d.modOpts.usage.cliproxyUrl,
+        "https://10.10.0.235:8317/management.html");
+    assert.equal(d.modOpts.usage.cliproxyTlsVerify, false);
+    assert.equal(d.modOpts.usage.xai, true);
     assert.equal(d.modOpts.vol.step, 5);
     assert.equal(d.modOpts.vol.middleClick, "mute");
     assert.deepEqual(d.modOpts.batt, { showPct: true, warnAt: 20, critAt: 10 });
@@ -205,7 +210,9 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
         hermes: { showLabel: "yes", activityDetail: "full" },
         usage: {
-            warnAt: 8, critAt: 60, claude: "yes", claudeAutoRefresh: false
+            warnAt: 8, critAt: 60, claude: "yes", claudeAutoRefresh: false,
+            source: "unknown", cliproxyUrl: "  https://proxy.test/management.html  ",
+            cliproxyTlsVerify: true, xai: false
         },
         gh: {
             badge: "flag", repos: 99, pollMins: 0,
@@ -245,6 +252,10 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.usage.critAt, 25);
     assert.equal(next.usage.claude, true, "non-boolean falls back to default");
     assert.equal(next.usage.claudeAutoRefresh, false);
+    assert.equal(next.usage.source, "cliproxy");
+    assert.equal(next.usage.cliproxyUrl, "https://proxy.test/management.html");
+    assert.equal(next.usage.cliproxyTlsVerify, true);
+    assert.equal(next.usage.xai, false);
     assert.equal(next.vol.step, 1);
     assert.equal(next.vol.middleClick, "mute");
     assert.equal(next.batt.warnAt, 35, "snaps to step 5");

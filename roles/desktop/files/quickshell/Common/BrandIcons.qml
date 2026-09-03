@@ -12,13 +12,14 @@ Singleton {
     id: root
 
     readonly property var names: [
-        "claude", "fedora", "github", "kimi", "openai",
+        "claude", "fedora", "github", "grok", "kimi", "openai",
         "slack", "t3", "tailscale", "whatsapp", "youtube"
     ]
     readonly property var files: ({
         claude: "claude.svg",
         fedora: "fedora.svg",
         github: "github.svg",
+        grok: "grok.svg",
         kimi: "kimi.svg",
         openai: "openai.svg",
         slack: "slack.svg",
@@ -34,6 +35,7 @@ Singleton {
         claude: "claude-white.svg",
         fedora: "fedora-white.svg",
         github: "github-white.svg",
+        grok: "grok-white.svg",
         kimi: "kimi-white.svg",
         openai: "openai-white.svg",
         slack: "slack-white.svg",
@@ -47,6 +49,7 @@ Singleton {
         claude: "Claude",
         fedora: "Fedora",
         github: "GitHub",
+        grok: "Grok",
         kimi: "Kimi",
         openai: "OpenAI",
         slack: "Slack",

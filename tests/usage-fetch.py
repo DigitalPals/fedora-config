@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import stat
+import subprocess
 import threading
 import tempfile
 import time
@@ -21,6 +22,9 @@ SPEC = importlib.util.spec_from_file_location("usage_fetch", PATH)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+
+CREDENTIAL_PATH = (ROOT / "roles/desktop/files/quickshell/scripts/"
+                   "usage-credential.py")
 
 
 class FetchAllTests(unittest.TestCase):
@@ -181,6 +185,180 @@ class ClaudePlanTests(unittest.TestCase):
         self.assertEqual(cached["plan"], "Claude Max 20x")
         self.assertNotIn("account", cached)
         self.assertNotIn("source", cached)
+
+
+class XaiUsageTests(unittest.TestCase):
+    def test_weekly_period_without_percentage_remains_unknown(self):
+        result = MODULE.parse_xai_usage({"config": {
+            "currentPeriod": {
+                "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                "start": "2026-09-03T05:37:29+00:00",
+                "end": "2026-09-10T05:37:29+00:00",
+            },
+        }}, {"config": {
+            "monthlyLimit": {"val": 0},
+            "used": {"val": 0},
+            "onDemandCap": {"val": 0},
+        }})
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(len(result["windows"]), 1)
+        self.assertIsNone(result["windows"][0]["used"])
+        self.assertEqual(result["windows"][0]["windowSecs"], MODULE.SEVEN_DAYS)
+        self.assertEqual(result["windows"][0]["resetsAt"],
+                         MODULE.parse_rfc3339("2026-09-10T05:37:29+00:00"))
+        self.assertIsNone(result["credits"])
+
+    def test_percent_products_plan_and_monthly_credits_are_normalized(self):
+        result = MODULE.parse_xai_usage({"config": {
+            "current_period": {
+                "type": "weekly",
+                "start": "2026-09-03T05:37:29Z",
+                "end": "2026-09-10T05:37:29Z",
+            },
+            "credit_usage_percent": "31.25",
+            "product_usage": [
+                {"product": "Grok Code", "usage_percent": "80"},
+            ],
+        }}, {"config": {
+            "monthly_limit": {"val": 15_000},
+            "used": {"val": 2_500},
+        }})
+
+        self.assertEqual(result["plan"], "SuperGrok")
+        self.assertEqual([row["used"] for row in result["windows"]],
+                         [31.25, 80.0])
+        self.assertEqual(result["windows"][1]["label"], "Grok Code usage")
+        self.assertEqual(result["credits"]["label"], "Monthly credits")
+        self.assertEqual(result["credits"]["used"], 25)
+        self.assertEqual(result["credits"]["limit"], 150)
+
+
+class CliProxyTests(unittest.TestCase):
+    def test_dashboard_and_management_urls_normalize_to_server_base(self):
+        self.assertEqual(MODULE.normalize_cliproxy_url(
+            "https://10.10.0.235:8317/management.html"),
+            "https://10.10.0.235:8317")
+        self.assertEqual(MODULE.normalize_cliproxy_url(
+            "https://proxy.test/prefix/v0/management/"),
+            "https://proxy.test/prefix")
+        with self.assertRaises(ValueError):
+            MODULE.normalize_cliproxy_url("https://user:secret@proxy.test")
+
+    def test_management_key_reader_rejects_broad_permissions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "key"
+            path.write_text("management-secret\n")
+            path.chmod(0o600)
+            key, failure = MODULE.read_cliproxy_key(str(path))
+            self.assertEqual(key, "management-secret")
+            self.assertIsNone(failure)
+
+            path.chmod(0o644)
+            key, failure = MODULE.read_cliproxy_key(str(path))
+            self.assertIsNone(key)
+            self.assertEqual(failure["kind"], "config")
+
+    def test_api_call_uses_auth_index_and_token_placeholder(self):
+        calls = []
+
+        def request(url, headers, method, body, ssl_context):
+            calls.append((url, headers, method, json.loads(body)))
+            response = {"status_code": 200, "body": json.dumps({"limits": []})}
+            return 200, json.dumps(response).encode(), {}
+
+        client = MODULE.CliProxyClient("https://proxy.test/management.html",
+                                       "management-secret", verify_tls=False)
+        with mock.patch.object(MODULE, "http_request", side_effect=request):
+            data, failure = client.api_json("auth-17", "https://upstream.test/usage", {
+                "Authorization": "Bearer $TOKEN$",
+            })
+
+        self.assertIsNone(failure)
+        self.assertEqual(data, {"limits": []})
+        url, headers, method, payload = calls[0]
+        self.assertEqual(url, "https://proxy.test/v0/management/api-call")
+        self.assertEqual(method, "POST")
+        self.assertEqual(headers["Authorization"], "Bearer management-secret")
+        self.assertEqual(payload["auth_index"], "auth-17")
+        self.assertEqual(payload["header"]["Authorization"], "Bearer $TOKEN$")
+
+    def test_account_pool_uses_most_available_successful_subscription(self):
+        entries = [
+            {"provider": "codex", "auth_index": "full"},
+            {"provider": "codex", "auth_index": "open"},
+            {"provider": "codex", "auth_index": "broken"},
+        ]
+
+        def account(provider, entry, client):
+            if entry["auth_index"] == "broken":
+                return MODULE.err("expired", "rejected")
+            used = 90 if entry["auth_index"] == "full" else 20
+            return {"status": "ok", "plan": "ChatGPT Plus",
+                    "account": "private@example.test",
+                    "windows": [{"label": "5 hour limit", "used": used}],
+                    "credits": None}
+
+        with mock.patch.object(MODULE, "fetch_cliproxy_account", side_effect=account):
+            result = MODULE.fetch_cliproxy_provider("codex", entries, object())
+
+        self.assertEqual(result["windows"][0]["used"], 20)
+        self.assertEqual(result["accountCount"], 3)
+        self.assertIn("best of 2/3 accounts", result["plan"])
+        self.assertNotIn("account", result)
+
+    def test_xai_account_uses_only_the_two_read_only_billing_endpoints(self):
+        calls = []
+
+        class Client:
+            def api_json(self, auth_index, url, headers):
+                calls.append((auth_index, url, dict(headers)))
+                if url == MODULE.XAI_BILLING_WEEKLY_URL:
+                    return {"config": {
+                        "currentPeriod": {"type": "weekly"},
+                        "creditUsagePercent": 12,
+                    }}, None
+                return {"config": {
+                    "monthlyLimit": {"val": 15_000},
+                    "used": {"val": 3_000},
+                }}, None
+
+        result = MODULE.fetch_cliproxy_account(
+            "xai", {"auth_index": "xai-9"}, Client())
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual({call[1] for call in calls}, {
+            MODULE.XAI_BILLING_WEEKLY_URL,
+            MODULE.XAI_BILLING_MONTHLY_URL,
+        })
+        self.assertTrue(all(call[0] == "xai-9" for call in calls))
+        self.assertTrue(all(call[2]["Authorization"] == "Bearer $TOKEN$"
+                            for call in calls))
+        self.assertTrue(all("chat/completions" not in call[1] for call in calls))
+
+
+class CliProxyCredentialHelperTests(unittest.TestCase):
+    def test_store_status_and_clear_keep_the_key_private_and_out_of_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "private" / "management.key"
+            environment = dict(os.environ,
+                QUICKSHELL_USAGE_CLIPROXY_KEY_PATH=str(path))
+            secret = b"not-a-real-management-secret"
+            stored = subprocess.run(
+                [str(CREDENTIAL_PATH), "store"], input=secret,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env=environment, check=False)
+            self.assertEqual(stored.returncode, 0, stored.stderr)
+            self.assertNotIn(secret, stored.stdout)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            self.assertEqual(json.loads(stored.stdout),
+                             {"success": True, "configured": True})
+
+            cleared = subprocess.run(
+                [str(CREDENTIAL_PATH), "clear"], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, env=environment, check=False)
+            self.assertEqual(cleared.returncode, 0, cleared.stderr)
+            self.assertFalse(path.exists())
 
 
 class ResilientFetchTests(unittest.TestCase):
