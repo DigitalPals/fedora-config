@@ -26,10 +26,14 @@ Item {
     // so the longest label yields first instead of pushing the send action off
     // the end.
     property real maxWidth: 1000
+    property real minimumWidth: 48
+    readonly property real naturalWidth: trigger.implicitWidth
     signal triggered()
 
-    implicitWidth: Math.min(maxWidth, trigger.implicitWidth)
+    implicitWidth: Math.min(maxWidth,
+        Math.max(Math.min(minimumWidth, maxWidth), naturalWidth))
     implicitHeight: 26
+    clip: true
     activeFocusOnTab: enabled && visible
     Accessible.role: Accessible.ComboBox
     Accessible.name: root.text

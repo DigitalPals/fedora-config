@@ -14,7 +14,7 @@ const files = [
     "T3NewThreadPage.qml"
 ];
 
-test("T3 adapts the shell palette through one product-theme boundary", () => {
+test("T3 adapts the shell palette inside the shared-width full-height drawer", () => {
     const theme = read("Common/T3Theme.qml");
     const popover = read("Popovers/T3CodePopover.qml");
     const panel = read("Popovers/PopoutPanel.qml");
@@ -30,12 +30,77 @@ test("T3 adapts the shell palette through one product-theme boundary", () => {
         "T3 must not retain a competing hard-coded blue accent");
     assert.match(popover, /surfaceColor:\s*T3Theme\.canvas/);
     assert.match(popover,
-        /readonly property int pageMaxWidth:\s*workspaceExpanded \? 760[\s\S]{0,80}?page === "inbox" \? 460 : 520/);
+        /implicitWidth:\s*availableWidth > 0[\s\S]{0,100}?Math\.min\(Theme\.drawerWidth, availableWidth\)/);
+    assert.match(popover, /implicitHeight:\s*availableHeight > 0 \? availableHeight/);
+    assert.doesNotMatch(popover,
+        /workspaceExpanded|pageMaxWidth|threadMaxHeight|\b460\b|\b520\b|\b760\b/,
+        "the dedicated drawer has no compact/expanded presentation modes");
     assert.match(popover,
         /BrandIcon\s*\{[\s\S]{0,220}?name:\s*"t3"[\s\S]{0,220}?colorized:\s*true[\s\S]{0,220}?T3Theme\.textPrimary\s*:\s*T3Theme\.textFaint/,
         "the one wordmark asset must follow the connected canvas tone");
     assert.match(panel, /property color surfaceColor:\s*Theme\.panelSurface/);
     assert.match(host, /host\.activePanel\.surfaceColor/);
+});
+
+test("T3 pages keep navigation and actions fixed around remaining-height scrollers", () => {
+    const popover = read("Popovers/T3CodePopover.qml");
+    const inbox = read("Popovers/T3InboxPage.qml");
+    const thread = read("Popovers/T3ThreadPage.qml");
+    const newPage = read("Popovers/T3NewThreadPage.qml");
+
+    assert.match(popover,
+        /readonly property int pageBodyHeight:[\s\S]*?root\.implicitHeight[\s\S]*?headerHeight[\s\S]*?footerHeight/);
+    assert.match(popover, /id:\s*pageLoader[\s\S]*?height:\s*root\.pageBodyHeight/);
+
+    const searchAt = inbox.indexOf("id: searchBox");
+    const viewportAt = inbox.indexOf("id: viewport");
+    const bodyAt = inbox.indexOf("id: body");
+    assert.ok(searchAt >= 0 && searchAt < viewportAt && viewportAt < bodyAt,
+        "inbox search must be fixed above the scrolling grouped list");
+    assert.match(inbox,
+        /id:\s*searchBox[\s\S]*?visible:\s*root\.totalThreadCount > 0 \|\| root\.searchText !== ""/);
+    assert.match(inbox,
+        /id:\s*viewport[\s\S]*?anchors\.top:\s*searchBox\.visible \? searchBox\.bottom : parent\.top[\s\S]*?anchors\.bottom:\s*parent\.bottom/);
+
+    assert.match(thread, /id:\s*header[\s\S]*?anchors\.top:\s*parent\.top/);
+    assert.match(thread,
+        /id:\s*viewport[\s\S]*?anchors\.top:\s*gitFeedback\.bottom[\s\S]*?anchors\.bottom:\s*bottomDock\.top/);
+    assert.match(thread,
+        /id:\s*bottomDock[\s\S]*?anchors\.bottom:\s*parent\.bottom[\s\S]*?id:\s*composerAttachmentsViewport[\s\S]*?id:\s*composerDock/);
+
+    assert.match(newPage,
+        /id:\s*header[\s\S]*?anchors\.top:\s*parent\.top/);
+    assert.match(newPage,
+        /id:\s*viewport[\s\S]*?anchors\.top:\s*header\.bottom[\s\S]*?anchors\.bottom:\s*parent\.bottom/);
+});
+
+test("T3 inbox switches to two-line thread tiles below 360px", () => {
+    const inbox = read("Popovers/T3InboxPage.qml");
+
+    assert.match(inbox, /readonly property bool narrowRows:\s*width < 360/);
+    assert.match(inbox,
+        /id:\s*row[\s\S]*?height:\s*entry\.narrow \? 54 : T3Theme\.quietRowHeight/);
+    assert.match(inbox,
+        /id:\s*threadTitle[\s\S]*?y:\s*entry\.narrow \? 6/);
+    assert.match(inbox,
+        /id:\s*meta[\s\S]*?y:\s*entry\.narrow \? parent\.height - height - 6/);
+});
+
+test("Escape closes T3 layers, then navigates back, then reaches the host", () => {
+    const popover = read("Popovers/T3CodePopover.qml");
+
+    const escape = popover.match(/function handleEscape\(\): bool \{([\s\S]*?)\n    \}/);
+    assert.ok(escape);
+    const body = escape[1];
+    const connection = body.indexOf("connectionMenuOpen");
+    const threadLayer = body.indexOf("loadedThreadPage.closeOpenLayer()");
+    const newLayer = body.indexOf("loadedNewThreadPage.closeOpenLayer()");
+    const inbox = body.indexOf('page === "inbox"');
+    const back = body.indexOf("showInbox()");
+    assert.ok(connection >= 0 && connection < threadLayer && threadLayer < newLayer
+        && newLayer < inbox && inbox < back);
+    assert.match(body, /if \(page === "inbox"\)\s*return false;/,
+        "Inbox must leave the final Escape for PopoutHost");
 });
 
 test("T3 navigation uses one contextual header and hides relay detail in overflow", () => {
@@ -212,11 +277,12 @@ test("composer-attached questions keep numbered options keyboard actionable", ()
     assert.match(request, /event\.key >= Qt\.Key_1 && event\.key <= Qt\.Key_9/);
 });
 
-test("inbox uses one flat row form, search, and inline state", () => {
+test("inbox keeps flat wide rows, fixed search, and inline state", () => {
     const inbox = read("Popovers/T3InboxPage.qml");
 
     assert.match(inbox, /id:\s*searchBox/);
-    assert.match(inbox, /height:\s*T3Theme\.quietRowHeight/);
+    assert.match(inbox,
+        /height:\s*entry\.narrow \? 54 : T3Theme\.quietRowHeight/);
     // A parked thread is still quieter than working one — in type, not in
     // chrome. Nothing but attention and error paints a fill.
     assert.match(inbox, /entry\.subdued \? T3Theme\.textSecondary : T3Theme\.textPrimary/);

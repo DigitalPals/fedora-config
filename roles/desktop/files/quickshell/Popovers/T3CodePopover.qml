@@ -2,57 +2,36 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
-// Responsive T3 Code mini-client. T3 owns the inner canvas and type system;
-// the surrounding popout still supplies the shell shadow and opening motion.
+// T3 Code's dedicated edge drawer. It shares the configurable drawer width
+// with the status drawer, but keeps its own source, navigation, and IPC name.
+// The host attaches it to the bar, pins it right, and supplies the output
+// envelope after reserving the bottom shadow margin.
 Surface {
     id: root
-
-    readonly property Item loadedPage: pageLoader.item as Item
 
     spacing: 6
     padding: T3Theme.pagePadding
     surfaceColor: T3Theme.canvas
     surfaceBorderColor: T3Theme.borderStrong
 
-    availableWidth: 484 - Theme.barSideMargin * 2
-    availableHeight: 800 - Theme.barTopMargin - Theme.barHeight - 16
-
-    property bool workspaceExpanded: false
-    readonly property int pageMaxWidth: workspaceExpanded ? 760
-        : page === "inbox" ? 460 : 520
-    implicitWidth: Math.max(Theme.t3MinWidth,
-        Math.min(pageMaxWidth, root.availableWidth))
+    implicitWidth: availableWidth > 0
+        ? Math.min(Theme.drawerWidth, availableWidth) : Theme.drawerWidth
+    implicitHeight: availableHeight > 0 ? availableHeight : 720
 
     readonly property int headerHeight: inboxHeader.visible ? inboxHeader.height : 0
     readonly property int footerHeight: footer.visible ? footer.height : 0
-    readonly property int maxPageHeight: Math.max(300, root.availableHeight
-        - root.padding * 2 - headerHeight
-        - (inboxHeader.visible ? root.spacing : 0)
-        - footerHeight - (footer.visible ? root.spacing : 0)
-        - (noReadBanner.visible ? noReadBanner.height + root.spacing : 0))
-
-    // A thread is the one page that would take every pixel the screen offers.
-    // The inbox and the new-thread form end, so the budget above is a ceiling
-    // they rarely touch; a transcript does not end, so uncapped it stretched
-    // the panel down the whole output. The timeline already scrolls, so give
-    // it half the room below the bar instead: transcript enough to read on a
-    // tall screen, without a panel that reaches the bottom edge.
-    //
-    // The floor is what keeps a short output usable. Half is generous on a
-    // 1440px screen and mean on a 900px one, where it would land under the
-    // reading window a thread needs — so below roughly 1080px the thread
-    // takes more than half rather than less, and maxPageHeight still has the
-    // last word on the smallest outputs.
-    readonly property int threadMaxHeight: workspaceExpanded ? root.maxPageHeight
-        : Math.min(root.maxPageHeight,
-            Math.max(520, Math.round(root.availableHeight / 2)))
+    readonly property int bannerHeight: noReadBanner.visible ? noReadBanner.height : 0
+    readonly property int visibleSectionCount: 1
+        + (inboxHeader.visible ? 1 : 0)
+        + (noReadBanner.visible ? 1 : 0)
+        + (footer.visible ? 1 : 0)
+    readonly property int pageBodyHeight: Math.max(0, root.implicitHeight
+        - root.padding * 2 - headerHeight - bannerHeight - footerHeight
+        - Math.max(0, visibleSectionCount - 1) * root.spacing)
+    readonly property T3ThreadPage loadedThreadPage: root.page === "thread"
+        ? pageLoader.item as T3ThreadPage : null
     readonly property T3NewThreadPage loadedNewThreadPage: root.page === "new"
         ? pageLoader.item as T3NewThreadPage : null
-
-    detachedOverflowHeight: loadedNewThreadPage
-        ? loadedNewThreadPage.detachedOverflowHeight : 0
-    detachedOverflowItem: loadedNewThreadPage
-        ? loadedNewThreadPage.detachedOverflowItem : null
 
     property string page: "inbox"
     property string selectedThreadId: ""
@@ -104,10 +83,12 @@ Surface {
             connectionMenuOpen = false;
             return true;
         }
-        if (page === "inbox" && workspaceExpanded) {
-            workspaceExpanded = false;
+        if (page === "thread" && loadedThreadPage
+                && loadedThreadPage.closeOpenLayer())
             return true;
-        }
+        if (page === "new" && loadedNewThreadPage
+                && loadedNewThreadPage.closeOpenLayer())
+            return true;
         if (page === "inbox")
             return false;
         showInbox();
@@ -139,7 +120,8 @@ Surface {
 
         T3InboxPage {
             width: root.width - root.padding * 2
-            maxHeight: root.maxPageHeight
+            height: root.pageBodyHeight
+            maxHeight: root.pageBodyHeight
             snoozedExpanded: root.inboxSnoozedExpanded
             settledExpanded: root.inboxSettledExpanded
             onSnoozedExpandedChanged: root.inboxSnoozedExpanded = snoozedExpanded
@@ -153,7 +135,8 @@ Surface {
 
         T3ThreadPage {
             width: root.width - root.padding * 2
-            maxHeight: root.threadMaxHeight
+            height: root.pageBodyHeight
+            maxHeight: root.pageBodyHeight
             threadId: root.selectedThreadId
             onBackRequested: root.showInbox()
             onNewPlanRequested: plan => root.showPlanInNewThread(plan)
@@ -165,7 +148,8 @@ Surface {
 
         T3NewThreadPage {
             width: root.width - root.padding * 2
-            maxHeight: root.maxPageHeight
+            height: root.pageBodyHeight
+            maxHeight: root.pageBodyHeight
             contextThreadId: root.selectedThreadId
             onBackRequested: root.showInbox()
         }
@@ -173,7 +157,7 @@ Surface {
 
     // The header is a block of copy over the panel, closed by a hairline —
     // not a card sitting on one. The branded wash went with the card: an
-    // accent field behind a title is the loudest thing a 460px panel can do,
+    // accent field behind a title is the loudest thing a narrow drawer can do,
     // and the menubar earns its identity from the marks inside it instead.
     Item {
         id: inboxHeader
@@ -279,16 +263,6 @@ Surface {
             anchors.rightMargin: 0
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
-
-            IconButton {
-                symbol: root.workspaceExpanded ? "close_fullscreen" : "open_in_full"
-                accessibleName: root.workspaceExpanded
-                    ? "Use compact T3 Code popover" : "Expand T3 Code workspace"
-                accessibleDescription: root.workspaceExpanded
-                    ? "Return to the glanceable view" : "Use more width and transcript height"
-                tint: root.workspaceExpanded ? T3Theme.accent : T3Theme.textMuted
-                onTriggered: root.workspaceExpanded = !root.workspaceExpanded
-            }
 
             IconButton {
                 id: newButton
@@ -439,7 +413,7 @@ Surface {
         width: parent.width
         sourceComponent: root.page === "thread" ? threadPage
             : root.page === "new" ? newPage : inboxPage
-        height: root.loadedPage ? root.loadedPage.implicitHeight : 0
+        height: root.pageBodyHeight
     }
 
     Item {

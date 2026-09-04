@@ -26,6 +26,7 @@ Item {
     property bool expanded: false
     property bool openUpward: true
     property real maxWidth: 1000
+    property Item popupBoundsItem: null
     signal selected(string instanceId, string model)
 
     readonly property var rail: T3Code.providerRail()
@@ -42,22 +43,37 @@ Item {
 
     implicitWidth: trigger.implicitWidth
     implicitHeight: trigger.implicitHeight
+    readonly property real naturalWidth: trigger.naturalWidth
     z: expanded ? 100 : 0
 
-    readonly property int panelWidth: 336
+    readonly property point popupBoundsOrigin: popupBoundsItem
+        ? root.mapFromItem(popupBoundsItem, 0, 0) : Qt.point(0, 0)
+    readonly property real popupBoundsLeft: popupBoundsItem
+        ? popupBoundsOrigin.x : 0
+    readonly property real popupBoundsTop: popupBoundsItem
+        ? popupBoundsOrigin.y : -100000
+    readonly property real popupBoundsRight: popupBoundsItem
+        ? popupBoundsOrigin.x + popupBoundsItem.width : 100000
+    readonly property real popupBoundsBottom: popupBoundsItem
+        ? popupBoundsOrigin.y + popupBoundsItem.height : 100000
+    readonly property int panelWidth: Math.min(336,
+        Math.max(1, Math.floor(popupBoundsRight - popupBoundsLeft)))
     readonly property int railWidth: 40
     readonly property int rowHeight: 42
 
     // Sized to what it holds, capped so a long list scrolls rather than
     // covering the transcript. The rail sets the floor: a panel shorter than
     // its own provider column would clip the last provider.
-    readonly property int panelHeight: {
+    readonly property int naturalPanelHeight: {
         const list = 55 + Math.max(1, rows.length) * (rowHeight + 2) - 2;
         const rail = 8 + (T3Code.favoriteModels.length > 0
             ? railWidth - 8 + 4 + 1 + 4 : 0)
             + root.rail.length * (railWidth - 4) - 4;
         return Math.max(searching ? 0 : rail, Math.min(300, list));
     }
+    readonly property int panelHeight: Math.min(naturalPanelHeight,
+        Math.max(rowHeight + 12,
+            Math.floor(popupBoundsBottom - popupBoundsTop)))
     readonly property int popupHeight: panelHeight
     readonly property Item popupItem: panel
 
@@ -199,8 +215,12 @@ Item {
 
         z: 1000
         visible: root.expanded && root.enabled
-        x: 0
-        y: root.openUpward ? -height - 6 : root.height + 6
+        readonly property real preferredY: root.openUpward
+            ? -height - 6 : root.height + 6
+        x: Math.max(root.popupBoundsLeft,
+            Math.min(0, root.popupBoundsRight - width))
+        y: Math.max(root.popupBoundsTop,
+            Math.min(preferredY, root.popupBoundsBottom - height))
         width: root.panelWidth
         height: root.panelHeight
         radius: T3Theme.panelRadius

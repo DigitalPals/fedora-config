@@ -23,15 +23,17 @@ function intToken(source, name, theme) {
     return intToken(theme, match[1]);
 }
 
-test("every T3 thread row is one flat line with room for its hover icons", () => {
+test("T3 rows stay flat when wide and become two-line tiles when narrow", () => {
     const theme = read("Common/Theme.qml");
     const t3Theme = read("Common/T3Theme.qml");
     const inbox = read("Popovers/T3InboxPage.qml");
 
     const rowHeight = intToken(t3Theme, "quietRowHeight", theme);
 
-    assert.match(inbox, /height:\s*T3Theme\.quietRowHeight/,
-        "the inbox draws one row height; a thread is not a card");
+    assert.match(inbox, /readonly property bool narrowRows:\s*width < 360/);
+    assert.match(inbox,
+        /height:\s*entry\.narrow \? 54 : T3Theme\.quietRowHeight/,
+        "only the sub-360 layout should grow into a two-line tile");
     assert.doesNotMatch(inbox, /T3Theme\.activeRowHeight/,
         "the two-height row is gone — the tall form belongs to GitHub rows now");
 
@@ -48,8 +50,8 @@ test("every T3 thread row is one flat line with room for its hover icons", () =>
         "the row control must be denser than the shared inline pill");
 
     assert.match(inbox,
-        /id:\s*actionsScope[\s\S]*?anchors\.verticalCenter:\s*row\.verticalCenter/,
-        "hover actions must be centered against the full thread row");
+        /id:\s*actionsScope[\s\S]*?y:\s*entry\.narrow \? row\.height - height - 5[\s\S]*?: \(row\.height - height\) \/ 2/,
+        "hover actions share the metadata line only in the narrow tile");
 });
 
 test("the thread row paints no neutral card and no redundant Open pill", () => {
@@ -68,5 +70,5 @@ test("the thread row paints no neutral card and no redundant Open pill", () => {
     assert.doesNotMatch(inbox, /label:\s*"Open"/,
         "opening is what the row itself does; the pill only repeated it");
     assert.match(inbox, /id:\s*meta\b[\s\S]*?entry\.thread\.project/,
-        "the project moved onto the title line rather than being dropped");
+        "the project remains visible in the wide or narrow metadata lane");
 });

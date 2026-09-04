@@ -27,31 +27,23 @@ Item {
     // gap in the declared growth so the card/background split stays exact.
     readonly property real projectPickerLayoutHeight: projectPickerNeededHeight > 0
         ? Math.max(form.spacing, projectPickerNeededHeight) : 0
-    readonly property real activePickerLayoutHeight: projectPicker.expanded
-        ? projectPickerLayoutHeight : composer.barPickerLayoutHeight
-    readonly property Item activePopupItem: projectPicker.expanded
-        ? projectPicker.popupItem : composer.activeBarPopupItem
-    // Only the part by which the viewport actually grew is outside the normal
-    // card. On a height-capped output the remainder stays inside the scrolling
-    // page, so it must not be subtracted from the card background.
-    readonly property real detachedOverflowHeight: {
-        const overflow = root.activePickerLayoutHeight;
-        if (overflow <= 0)
-            return 0;
-        const limit = root.maxHeight - header.height - 6;
-        const baseFormHeight = Math.max(0, form.implicitHeight - overflow);
-        const baseViewportHeight = Math.max(150, Math.min(limit, baseFormHeight));
-        return Math.max(0, viewport.height - baseViewportHeight);
-    }
-    readonly property Item detachedOverflowItem: detachedOverflowHeight > 0
-        ? root.activePopupItem : null
 
-    implicitHeight: header.height + 6 + viewport.height
+    implicitHeight: maxHeight
+
+    function closeOpenLayer(): bool {
+        if (projectPicker.expanded) {
+            projectPicker.expanded = false;
+            return true;
+        }
+        return composer.closeOpenLayer();
+    }
 
     // Contextual page header replaces the inbox brand header while composing.
     Item {
         id: header
-        width: parent.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
         height: Theme.controlHeight
 
         IconButton {
@@ -81,8 +73,9 @@ Item {
         id: viewport
         anchors.top: header.bottom
         anchors.topMargin: 6
-        width: parent.width
-        height: Math.max(150, Math.min(root.maxHeight - header.height - 6, form.implicitHeight))
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
 
         Flickable {
             id: flick
@@ -144,6 +137,7 @@ Item {
                         value: root.draft.projectId ?? ""
                         options: root.projects
                         openUpward: false
+                        popupBoundsItem: root
                         enabled: T3Code.hasReadyProvider && root.draft.projectFixed !== true
                             && !T3Code.actionPending("new", "", "")
                         onSelected: value => T3Code.setNewProject(value)
@@ -176,6 +170,7 @@ Item {
                         && T3Code.canDispatch && !T3Code.actionPending("new", "", "")
                     sendEnabled: editable && root.draft.projectId !== ""
                     sendLabel: "Start"
+                    popupBoundsItem: root
                     onSendRequested: T3Code.submitNewThread()
                     onBarPickerReserveChanged: Qt.callLater(() => {
                         if (barPickerReserve > 0)
@@ -210,9 +205,9 @@ Item {
                     color: T3Theme.textFaint
                 }
 
-                // Like the composer's bar-menu spacer, this is geometry only:
-                // the host leaves the added tail transparent while the Project
-                // menu paints over it and remains part of the input mask.
+                // Popup reserve stays inside this scrolling viewport. The
+                // drawer remains full-height while the form scrolls far enough
+                // to expose the Project menu without a detached window tail.
                 Item {
                     id: projectPickerSpace
                     visible: root.projectPickerLayoutHeight > 0

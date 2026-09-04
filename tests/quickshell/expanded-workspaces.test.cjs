@@ -7,9 +7,8 @@ const root = path.resolve(__dirname,
     "../../roles/desktop/files/quickshell/Popovers");
 const source = name => fs.readFileSync(path.join(root, name), "utf8");
 
-test("integration popovers offer bounded, keyboard-collapsible workspaces", () => {
+test("GitHub and Hermes retain bounded, keyboard-collapsible workspaces", () => {
     for (const [name, compact] of [
-        ["T3CodePopover.qml", 460],
         ["GitHubPopover.qml", 460],
         ["HermesPopover.qml", 520]
     ]) {
@@ -25,6 +24,14 @@ test("integration popovers offer bounded, keyboard-collapsible workspaces", () =
         assert.match(qml, /symbol:\s*root\.workspaceExpanded\s*\? "close_fullscreen" : "open_in_full"/);
         assert.match(qml, /accessibleName:\s*root\.workspaceExpanded/);
     }
+});
+
+test("T3 uses its dedicated drawer instead of an expandable workspace", () => {
+    const qml = source("T3CodePopover.qml");
+    assert.doesNotMatch(qml, /workspaceExpanded|open_in_full|close_fullscreen/);
+    assert.match(qml,
+        /implicitWidth:\s*availableWidth > 0[\s\S]{0,100}?Math\.min\(Theme\.drawerWidth, availableWidth\)/);
+    assert.match(qml, /implicitHeight:\s*availableHeight > 0 \? availableHeight/);
 });
 
 test("Hermes exposes the same workspace action on conversations and setup", () => {

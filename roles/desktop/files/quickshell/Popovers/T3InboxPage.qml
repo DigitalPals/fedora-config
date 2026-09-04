@@ -2,10 +2,11 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
-Column {
+Item {
     id: root
 
     property int maxHeight: 560
+    property int spacing: 5
     property bool snoozedExpanded: false
     property bool settledExpanded: false
     property string searchText: ""
@@ -25,8 +26,12 @@ Column {
         (thread.cls === "running" || thread.cls === "monitoring") && !thread.planReady)
     readonly property var quietThreads: filtered(T3Code.threads).filter(thread =>
         (thread.cls === "done" || thread.cls === "idle") && !thread.planReady)
+    // The configured drawer reaches 320px. Below a 360px effective content
+    // measure, preserve both context and state by stacking them under the
+    // title instead of squeezing all three lanes onto one line.
+    readonly property bool narrowRows: width < 360
 
-    spacing: 5
+    implicitHeight: maxHeight
 
     function filtered(threads) {
         const query = searchText.trim().toLowerCase();
@@ -38,9 +43,9 @@ Column {
     }
 
     // The row's hover actions. Icons rather than word pills, matching the
-    // reference client: four words do not fit beside a title and a project on
-    // a one-line row, and the row is 42px, so the shared 32px control height
-    // would leave no margin.
+    // reference client: four words do not fit beside a title, project, and
+    // status even when the narrow layout gives them a second line, so the
+    // shared 32px control height would leave no margin.
     component RowAction: IconButton {
         controlSize: Theme.chipInnerHeight
     }
@@ -127,10 +132,8 @@ Column {
         readonly property bool pinned: thread.pinned === true
         readonly property bool quiet: settled || snoozed
             || thread.cls === "done" || thread.cls === "idle"
-        // Not a row height any more — every row is one line. What is left is
-        // the de-emphasised type a parked thread gets, the sense
-        // DrawerHeader.subdued already carries below.
         readonly property bool subdued: quiet && !pinned
+        readonly property bool narrow: root.narrowRows
         readonly property bool flagged: thread.cls === "error" || thread.cls === "attention"
         readonly property bool revealed: rowHover.hovered || row.activeFocus
             || actionsScope.activeFocus
@@ -181,11 +184,11 @@ Column {
         Rectangle {
             id: row
             width: parent.width
-            height: T3Theme.quietRowHeight
+            height: entry.narrow ? 54 : T3Theme.quietRowHeight
             radius: T3Theme.rowRadius
             // Only a thread that wants something paints a fill. The neutral
             // card the working rows used to carry split the list in two down
-            // the middle and crowded a 460px popover; amber and red stay,
+            // the middle and crowded a narrow surface; amber and red stay,
             // because those are a signal rather than chrome.
             color: entry.flagged ? (entry.thread.cls === "error"
                     ? T3Theme.redSoft : T3Theme.amberSoft) : "transparent"
@@ -279,9 +282,9 @@ Column {
 
                 Text {
                     id: threadTitle
-                    anchors.left: parent.left
-                    anchors.right: meta.left
-                    anchors.verticalCenter: parent.verticalCenter
+                    x: 0
+                    y: entry.narrow ? 6 : (parent.height - height) / 2
+                    width: Math.max(0, (entry.narrow ? side.x : meta.x) - 8)
                     text: entry.thread.title
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
@@ -290,19 +293,27 @@ Column {
                     color: entry.subdued ? T3Theme.textSecondary : T3Theme.textPrimary
                 }
 
-                // The project, and why a thread is parked, used to be a
-                // second line only the full-height rows drew. On one line
-                // it trails the title and carries its own lead-in gap,
-                // capped so a long project elides instead of squeezing the
-                // title out of the row.
+                // Wide drawers keep context trailing the title. Narrow ones
+                // turn the row into a two-line tile: title first, then project
+                // and status, with hover actions still occupying the status
+                // lane rather than covering the primary action target.
+                TextMetrics {
+                    id: metaMetrics
+                    text: meta.text
+                    font.family: T3Theme.fontUi
+                    font.pixelSize: Theme.fontMicro
+                }
+
                 Text {
                     id: meta
-                    anchors.right: side.left
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    leftPadding: text === "" ? 0 : 8
-                    width: text === "" ? 0
-                        : Math.min(implicitWidth, parent.width * 0.38)
+                    x: entry.narrow ? 0 : Math.max(0, side.x - width - 8)
+                    y: entry.narrow ? parent.height - height - 6
+                        : (parent.height - height) / 2
+                    leftPadding: !entry.narrow && text !== "" ? 8 : 0
+                    width: text === "" ? 0 : entry.narrow
+                        ? Math.max(0, side.x - 6)
+                        : Math.min(metaMetrics.advanceWidth + leftPadding,
+                            parent.width * 0.38)
                     text: {
                         const parts = [];
                         if (entry.thread.project !== "")
@@ -334,10 +345,12 @@ Column {
                 Item {
                     id: side
                     anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: entry.narrow ? parent.height - height - 5 : 0
                     width: entry.revealed ? actionsScope.implicitWidth
                         : statusRow.implicitWidth
-                    height: parent.height
+                    height: entry.narrow
+                        ? Math.max(statusRow.implicitHeight, actionsScope.implicitHeight)
+                        : parent.height
 
                     Row {
                         id: statusRow
@@ -373,7 +386,8 @@ Column {
                 visible: entry.revealed
                 anchors.right: row.right
                 anchors.rightMargin: 9
-                anchors.verticalCenter: row.verticalCenter
+                y: entry.narrow ? row.height - height - 5
+                    : (row.height - height) / 2
                 implicitWidth: actions.implicitWidth
                 implicitHeight: actions.implicitHeight
 
@@ -543,10 +557,78 @@ Column {
         }
     }
 
+    Rectangle {
+        id: searchBox
+        visible: root.totalThreadCount > 0 || root.searchText !== ""
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 36
+        radius: T3Theme.controlRadius
+        color: T3Theme.surface
+        border.width: searchInput.activeFocus ? 1 : 0
+        border.color: T3Theme.focus
+
+        Sym {
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            name: "search"
+            size: Theme.iconSmall
+            symWeight: 450
+            color: T3Theme.textFaint
+        }
+
+        TextInput {
+            id: searchInput
+            anchors.left: parent.left
+            anchors.leftMargin: 32
+            anchors.right: clearSearch.visible ? clearSearch.left : parent.right
+            anchors.rightMargin: clearSearch.visible ? 4 : 10
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.searchText
+            onTextEdited: root.searchText = text
+            clip: true
+            selectByMouse: true
+            font.family: T3Theme.fontUi
+            font.pixelSize: Theme.fontSecondary
+            color: T3Theme.textPrimary
+
+            Text {
+                visible: searchInput.text === ""
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Search threads"
+                font.family: T3Theme.fontUi
+                font.pixelSize: Theme.fontSecondary
+                color: T3Theme.textFaint
+            }
+        }
+
+        IconButton {
+            id: clearSearch
+            visible: searchInput.text !== ""
+            anchors.right: parent.right
+            anchors.rightMargin: 5
+            anchors.verticalCenter: parent.verticalCenter
+            controlSize: 26
+            symbol: "close"
+            accessibleName: "Clear thread search"
+            tint: T3Theme.textFaint
+            onTriggered: {
+                root.searchText = "";
+                searchInput.text = "";
+                searchInput.forceActiveFocus();
+            }
+        }
+    }
+
     Item {
         id: viewport
-        width: parent.width
-        height: Math.min(root.maxHeight, body.implicitHeight)
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: searchBox.visible ? searchBox.bottom : parent.top
+        anchors.topMargin: searchBox.visible ? root.spacing : 0
+        anchors.bottom: parent.bottom
 
         Flickable {
             id: flick
@@ -562,69 +644,6 @@ Column {
                 id: body
                 width: flick.width - (flick.contentHeight > flick.height ? 5 : 0)
                 spacing: 4
-
-                Rectangle {
-                    id: searchBox
-                    visible: root.totalThreadCount > 6 || root.searchText !== ""
-                    width: parent.width
-                    height: 36
-                    radius: T3Theme.controlRadius
-                    color: T3Theme.surface
-                    border.width: searchInput.activeFocus ? 1 : 0
-                    border.color: T3Theme.focus
-
-                    Sym {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "search"
-                        size: Theme.iconSmall
-                        symWeight: 450
-                        color: T3Theme.textFaint
-                    }
-
-                    TextInput {
-                        id: searchInput
-                        anchors.left: parent.left
-                        anchors.leftMargin: 32
-                        anchors.right: clearSearch.visible ? clearSearch.left : parent.right
-                        anchors.rightMargin: clearSearch.visible ? 4 : 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.searchText
-                        onTextEdited: root.searchText = text
-                        clip: true
-                        selectByMouse: true
-                        font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontSecondary
-                        color: T3Theme.textPrimary
-
-                        Text {
-                            visible: searchInput.text === ""
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Search threads"
-                            font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontSecondary
-                            color: T3Theme.textFaint
-                        }
-                    }
-
-                    IconButton {
-                        id: clearSearch
-                        visible: searchInput.text !== ""
-                        anchors.right: parent.right
-                        anchors.rightMargin: 5
-                        anchors.verticalCenter: parent.verticalCenter
-                        controlSize: 26
-                        symbol: "close"
-                        accessibleName: "Clear thread search"
-                        tint: T3Theme.textFaint
-                        onTriggered: {
-                            root.searchText = "";
-                            searchInput.text = "";
-                            searchInput.forceActiveFocus();
-                        }
-                    }
-                }
 
                 Text {
                     visible: T3Code.readOnly

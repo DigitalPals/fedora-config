@@ -13,8 +13,23 @@ Item {
     property bool expanded: false
     property bool openUpward: true
     property int menuRows: 7
-    readonly property int popupHeight:
+    property bool alignRight: false
+    property Item popupBoundsItem: null
+    readonly property point popupBoundsOrigin: popupBoundsItem
+        ? root.mapFromItem(popupBoundsItem, 0, 0) : Qt.point(0, 0)
+    readonly property real popupBoundsLeft: popupBoundsItem
+        ? popupBoundsOrigin.x : 0
+    readonly property real popupBoundsTop: popupBoundsItem
+        ? popupBoundsOrigin.y : -100000
+    readonly property real popupBoundsRight: popupBoundsItem
+        ? popupBoundsOrigin.x + popupBoundsItem.width : 100000
+    readonly property real popupBoundsBottom: popupBoundsItem
+        ? popupBoundsOrigin.y + popupBoundsItem.height : 100000
+    readonly property int naturalPopupHeight:
         Math.min(menuRows, options.length) * Theme.pickerRowHeight + 8
+    readonly property int popupHeight: Math.min(naturalPopupHeight,
+        Math.max(Theme.pickerRowHeight + 8,
+            Math.floor(popupBoundsBottom - popupBoundsTop)))
     readonly property Item popupItem: menu
     signal selected(string value)
 
@@ -184,9 +199,16 @@ Item {
 
         z: 1000
         visible: root.expanded && root.enabled
-        anchors.left: parent.left
-        anchors.right: parent.right
-        y: root.openUpward ? -height - 4 : root.height + 4
+        readonly property real preferredX: root.alignRight
+            ? root.width - width : 0
+        readonly property real preferredY: root.openUpward
+            ? -height - 4 : root.height + 4
+        x: Math.max(root.popupBoundsLeft,
+            Math.min(preferredX, root.popupBoundsRight - width))
+        y: Math.max(root.popupBoundsTop,
+            Math.min(preferredY, root.popupBoundsBottom - height))
+        width: Math.min(root.width,
+            Math.max(1, root.popupBoundsRight - root.popupBoundsLeft))
         height: root.popupHeight
         radius: T3Theme.panelRadius
         // This panel floats over the rest of the composer. A recessed tile

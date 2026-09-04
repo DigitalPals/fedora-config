@@ -3,6 +3,34 @@
 Use a connected T3 Code server whose token has `orchestration:operate`, plus
 threads whose project checkouts can be put into each git state below.
 
+## Dedicated drawer layout and navigation
+
+- [ ] Set Drawer width to 320, 400, and 480px in turn. At every width, T3 opens
+  as its own right-pinned attached drawer, separate from the six status tabs,
+  and fills the usable height below the bar while retaining the bottom shadow
+  margin.
+- [ ] At 320px, thread rows are two-line tiles with title above project/status
+  metadata. At 400 and 480px they use the single-line layout. Test both short
+  and long inboxes: search remains fixed whenever threads exist, the grouped
+  list alone scrolls, and the connection/status footer stays at the bottom.
+- [ ] Open short and long conversations. The contextual header stays fixed,
+  the transcript takes the remaining height, and approvals, ready plans, task
+  progress, and the composer remain docked at the bottom.
+- [ ] Exercise New Thread, Project, model, access, and Run settings at all three
+  widths. Menus stay within the drawer; right-side menus open inward; New
+  Thread scrolls to reserved popup room without growing a detached tail. At
+  320px reasoning lives in Run settings, model text elides before access text,
+  and the tune and send/stop actions remain reachable.
+- [ ] Check ready plans, approvals, task progress, signed-out, disconnected,
+  and read-only states at the narrow and wide settings. Drafts, lifecycle
+  actions, authentication, and Git behavior must remain unchanged.
+- [ ] Verify pointer and keyboard focus, then press Escape repeatedly: close
+  the active connection/picker/menu layer first, return from Thread or New
+  Thread to Inbox second, and close the drawer through the host last.
+- [ ] Open with `qs ipc call popouts toggle t3code`, then hover between T3 and
+  status-drawer glyphs. T3 keeps its own source and navigation while the
+  existing hover transition and held-state behavior remain intact.
+
 ## Visibility (options must only appear when they apply)
 
 - [ ] Open a thread whose checkout has uncommitted changes: the ellipsis menu
@@ -12,7 +40,7 @@ threads whose project checkouts can be put into each git state below.
 - [ ] Open a thread whose checkout is clean and up to date with no PR: no Git
   status, action, card, or tile is visible.
 - [ ] Open a thread whose branch has an open PR: `View PR ↗` appears in the
-  ellipsis menu; it opens the PR in the browser and closes the popover.
+  ellipsis menu; it opens the PR in the browser and closes the drawer.
 - [ ] Open a thread whose project folder is not a git repository: no Git UI is
   shown.
 - [ ] With a read-only pairing (token without `orchestration:operate`), confirm
@@ -61,6 +89,7 @@ threads whose project checkouts can be put into each git state below.
 ## Automated and runtime checks
 
 - [ ] Run `tests/run` (Node tests plus qmllint over the whole shell).
-- [ ] Reload `quickshell.service` and inspect that invocation's journal for QML
-  load failures, syntax errors, and binding loops; open the popover with
-  `qs ipc call popouts toggle t3code`.
+- [ ] Deploy through the Quickshell Ansible tag, wrapping the entire live check
+  with `qs_live_begin` / `qs_live_end`. Inspect that service invocation's
+  journal for QML load failures, syntax errors, and binding loops; open the
+  drawer with `qs ipc call popouts toggle t3code`.

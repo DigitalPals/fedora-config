@@ -6,26 +6,27 @@ select trait and a boolean trait.
 ## Disclosure and layout
 
 - [ ] Open an existing thread and New Thread. Confirm each uses one rounded
-  glass composer: prompt above, compact provider/model/mode summary and access
-  chip below, and a circular send arrow at the lower right.
+  glass composer: prompt above, compact model/reasoning/access controls below,
+  and a circular send arrow at the lower right.
 - [ ] Open New Thread and confirm the prompt starts focused with its placeholder
   still visible, typing lands immediately, and `Escape` still returns to the
   inbox.
 - [ ] Activate the tune/summary row and confirm the Run settings drawer attaches
   immediately above the composer. Leave the page, reopen it, and confirm the
   drawer resets to collapsed instead of persisting the previous choice.
-- [ ] Confirm the toolbar stays one row and its summary elides before colliding
-  with the access chip or send button. The drawer must have a Material Symbol
-  close control rather than a typographic chevron.
+- [ ] Confirm the toolbar stays one row: model text elides before access text,
+  while the tune and send/stop actions never clip. Run settings must have a
+  Material Symbol close control rather than a typographic chevron.
 - [ ] Confirm `Full access` is amber in both the toolbar chip and expanded Access
-  picker. Below 405 px, confirm the chip folds away but Access remains available
-  in the drawer and in the toolbar's accessible description.
+  picker. Below 360px of effective composer width, confirm reasoning moves into
+  Run settings while model and access remain available in the toolbar and its
+  accessible description.
 - [ ] On New Thread, confirm Project appears as a compact shoulder directly
   above the composer rather than as a separate full-page form section.
-- [ ] At 520 px popover width, confirm controls use two columns. At 360 px,
-  confirm the summary elides and expanded controls stack without horizontal
-  clipping. On a short screen, confirm the popover stays bounded and its scroll
-  areas remain usable.
+- [ ] At 320, 400, and 480px drawer widths, confirm expanded controls use the
+  available columns and stack without horizontal clipping when needed. On a
+  short screen, confirm the full-height drawer stays bounded and its form,
+  transcript, attachment, and picker scroll areas remain usable.
 
 ## Input and state
 
@@ -40,7 +41,7 @@ select trait and a boolean trait.
 - [ ] Open every picker in both New Thread and an existing thread. Confirm its
   menu is opaque and stays above the other settings, prompt, buttons, and error
   text; opening a second picker must close the first. Reopen it and click
-  elsewhere in the popout without selecting an option; the menu must close and
+  elsewhere in the drawer without selecting an option; the menu must close and
   the underlying control must still receive that click. Selected options should
   show a check and the first nine choices should show shortcut numbers.
 - [ ] Test idle, running, read-only, sending, plan-ready, and provider-locked
@@ -59,6 +60,6 @@ select trait and a boolean trait.
 ## Automated and runtime checks
 
 - [ ] Run `tests/run` (Node tests plus qmllint over the whole shell).
-- [ ] Reload `quickshell.service` and inspect that invocation's journal for QML
-  load failures, syntax errors, binding loops, invalid sizing, and oversized
-  buffers.
+- [ ] Deploy through the Quickshell Ansible tag with `qs_live_begin` /
+  `qs_live_end`; inspect that service invocation's journal for QML load
+  failures, syntax errors, binding loops, invalid sizing, and oversized buffers.

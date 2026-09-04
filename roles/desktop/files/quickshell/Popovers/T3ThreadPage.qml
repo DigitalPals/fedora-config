@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import "../Common"
 
-Column {
+Item {
     id: root
 
     required property string threadId
@@ -82,7 +82,8 @@ Column {
     readonly property string copyPath: thread !== null ? T3Code.threadPath(threadId) : ""
     readonly property string copyBranch: thread !== null && thread.branch ? thread.branch : ""
 
-    spacing: 5
+    property int spacing: 5
+    implicitHeight: maxHeight
 
     function scrollToEnd() {
         if (!followTail)
@@ -130,6 +131,19 @@ Column {
 
     function themedMarkdown(markdown) {
         return T3Code.styleMarkdownLinks(markdown, T3Theme.link.toString());
+    }
+
+    function closeOpenLayer(): bool {
+        if (menuOpen) {
+            menuOpen = false;
+            confirmStop = false;
+            return true;
+        }
+        if (snoozeOpen) {
+            snoozeOpen = false;
+            return true;
+        }
+        return composer.closeOpenLayer();
     }
 
     // Tightest pill: the thread page packs several of these per row.
@@ -393,7 +407,9 @@ Column {
     Item {
         id: header
         z: 10
-        width: parent.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
         height: headerColumn.implicitHeight
 
         readonly property bool sessionLive: T3Code.detailSession !== null
@@ -744,7 +760,10 @@ Column {
     Item {
         id: gitFeedback
         visible: root.gitFeedbackText !== ""
-        width: parent.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: header.bottom
+        anchors.topMargin: visible ? root.spacing : 0
         height: visible ? Math.max(22, gitFeedbackText.implicitHeight + 6) : 0
 
         Rectangle {
@@ -786,13 +805,12 @@ Column {
 
     Item {
         id: viewport
-        width: parent.width
-        height: {
-            const room = root.maxHeight - header.height - composer.implicitHeight
-                - taskProgressCard.height - gitFeedback.height - backgroundBanner.height
-                - composerAttachmentsViewport.height - composerError.implicitHeight - 18;
-            return Math.max(140, Math.min(room, timeline.implicitHeight));
-        }
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: gitFeedback.bottom
+        anchors.topMargin: root.spacing
+        anchors.bottom: bottomDock.top
+        anchors.bottomMargin: root.spacing
 
         Flickable {
             id: flick
@@ -1119,6 +1137,13 @@ Column {
         }
     }
 
+    Column {
+        id: bottomDock
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        spacing: root.spacing
+
     Rectangle {
         id: backgroundBanner
 
@@ -1189,7 +1214,10 @@ Column {
         id: composerAttachmentsViewport
         width: parent.width
         visible: composerAttachments.implicitHeight > 0
-        height: visible ? Math.min(300, composerAttachments.implicitHeight) : 0
+        height: visible ? Math.min(300, composerAttachments.implicitHeight,
+            Math.max(80, root.height - header.height - gitFeedback.height
+                - backgroundBanner.height - composerDock.implicitHeight
+                - composerError.implicitHeight - root.spacing * 5 - 140)) : 0
 
         Flickable {
             id: attachmentsFlick
@@ -1507,6 +1535,7 @@ Column {
             // above, so only the foreground turn borrows the composer's
             // action slot.
             stoppable: root.working
+            popupBoundsItem: root
             onSendRequested: T3Code.submitExisting(root.threadId, undefined, undefined,
                 null, true)
             onStopRequested: T3Code.interrupt(root.threadId)
@@ -1533,6 +1562,7 @@ Column {
         font.family: T3Theme.fontUi
         font.pixelSize: Theme.fontCaption
         color: T3Theme.red
+    }
     }
 
     onThreadIdChanged: {

@@ -138,6 +138,19 @@ test("Hermes Agent owns one right-side conversation client panel", () => {
     assert.match(read("Bar/Modules/Hermes.qml"), /panelName:\s*"hermes"/);
 });
 
+test("T3 Code owns a dedicated attached right-edge drawer", () => {
+    const panel = R.byName("t3code");
+    assert.deepEqual(panel, {
+        name: "t3code", island: "right", moduleId: "t3",
+        source: "Popovers/T3CodePopover.qml", attached: true, edge: "right"
+    });
+    assert.notEqual(panel.source, "Popovers/Drawer/DrawerPopover.qml",
+        "T3 must not become a status-drawer tab");
+    assert.equal(R.drawerTab("t3code"), "");
+    assert.equal(Object.hasOwn(panel, "tab"), false);
+    assert.match(read("Bar/Modules/T3.qml"), /panelName:\s*"t3code"/);
+});
+
 test("the four status widgets each present their drawer tab", () => {
     const expected = {
         vol: ["audio", "Bar/Modules/Volume.qml", "sound"],

@@ -25,17 +25,33 @@ Item {
     property bool openUpward: true
     property int menuRows: 8
     property int menuWidth: 200
-    readonly property int popupHeight:
+    property real maxWidth: 1000
+    property bool alignRight: false
+    property Item popupBoundsItem: null
+    readonly property point popupBoundsOrigin: popupBoundsItem
+        ? root.mapFromItem(popupBoundsItem, 0, 0) : Qt.point(0, 0)
+    readonly property real popupBoundsLeft: popupBoundsItem
+        ? popupBoundsOrigin.x : 0
+    readonly property real popupBoundsTop: popupBoundsItem
+        ? popupBoundsOrigin.y : -100000
+    readonly property real popupBoundsRight: popupBoundsItem
+        ? popupBoundsOrigin.x + popupBoundsItem.width : 100000
+    readonly property real popupBoundsBottom: popupBoundsItem
+        ? popupBoundsOrigin.y + popupBoundsItem.height : 100000
+    readonly property int naturalPopupHeight:
         Math.min(menuRows, options.length) * Theme.pickerRowHeight + 8
+    readonly property int popupHeight: Math.min(naturalPopupHeight,
+        Math.max(Theme.pickerRowHeight + 8,
+            Math.floor(popupBoundsBottom - popupBoundsTop)))
     readonly property Item popupItem: menu
     // The bar is a fixed width the prompt above it does not have to respect,
     // so the longest label yields first instead of pushing the send action off
     // the end.
-    property real maxWidth: 1000
     signal selected(string value)
 
     implicitWidth: trigger.implicitWidth
     implicitHeight: trigger.implicitHeight
+    readonly property real naturalWidth: trigger.naturalWidth
     z: expanded ? 100 : 0
 
     function optionId(option) {
@@ -143,9 +159,16 @@ Item {
 
         z: 1000
         visible: root.expanded && root.enabled
-        x: 0
-        y: root.openUpward ? -height - 6 : root.height + 6
-        width: Math.max(root.menuWidth, root.width)
+        readonly property real preferredX: root.alignRight
+            ? root.width - width : 0
+        readonly property real preferredY: root.openUpward
+            ? -height - 6 : root.height + 6
+        x: Math.max(root.popupBoundsLeft,
+            Math.min(preferredX, root.popupBoundsRight - width))
+        y: Math.max(root.popupBoundsTop,
+            Math.min(preferredY, root.popupBoundsBottom - height))
+        width: Math.min(Math.max(root.menuWidth, root.width),
+            Math.max(1, root.popupBoundsRight - root.popupBoundsLeft))
         height: root.popupHeight
         radius: T3Theme.panelRadius
         color: T3Theme.overlay

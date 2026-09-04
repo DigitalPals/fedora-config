@@ -47,10 +47,9 @@ test("the composer bar names the run in place and each part is its own menu", ()
         "the bar shows live controls, not a read-only summary of them");
 });
 
-// New Thread is content-sized: opening below the composer should make the page
-// and layer-shell window taller. Existing threads already have a transcript
-// above the composer, so their menus can overlay that space instead.
-test("new-thread bar menus grow the page while thread menus open upward", () => {
+// New Thread is now full-height: opening below the composer reserves room in
+// its scrolling form, while existing threads overlay their transcript.
+test("new-thread bar menus reserve scroll room while thread menus open upward", () => {
     const bar = composer.match(/Item\s*\{\s*id:\s*actionRow\b([\s\S]*?)\n\s{12}\}/);
     const newPage = fs.readFileSync(
         path.join(shellDir, "Popovers/T3NewThreadPage.qml"), "utf8");
@@ -67,17 +66,16 @@ test("new-thread bar menus grow the page while thread menus open upward", () => 
         "the floating menu must contribute its height to the composer's Column");
     assert.match(newPage,
         /onBarPickerReserveChanged:[\s\S]*?flick\.contentHeight - flick\.height/,
-        "a height-capped page must scroll the newly reserved menu into view");
+        "the fixed-height page must scroll the newly reserved menu into view");
     assert.match(newPage,
-        /readonly property real detachedOverflowHeight:[\s\S]*?viewport\.height - baseViewportHeight/,
-        "only real page growth belongs outside the normal card");
+        /id:\s*viewport[\s\S]*?anchors\.bottom:\s*parent\.bottom/,
+        "the form viewport must consume the drawer below its fixed header");
 
     const popover = fs.readFileSync(
         path.join(shellDir, "Popovers/T3CodePopover.qml"), "utf8");
-    assert.match(popover,
-        /detachedOverflowHeight:\s*loadedNewThreadPage[\s\S]*?loadedNewThreadPage\.detachedOverflowHeight/);
-    assert.match(popover,
-        /detachedOverflowItem:\s*loadedNewThreadPage[\s\S]*?loadedNewThreadPage\.detachedOverflowItem/);
+    assert.doesNotMatch(newPage, /detachedOverflowHeight|detachedOverflowItem/);
+    assert.doesNotMatch(popover, /detachedOverflowHeight|detachedOverflowItem/,
+        "T3 no longer asks the host for a transparent tail");
 
     for (const host of ["Popovers/T3InlineSelect.qml", "Popovers/T3ModelPicker.qml"])
         for (const property of ["popupHeight", "popupItem"])
@@ -86,7 +84,7 @@ test("new-thread bar menus grow the page while thread menus open upward", () => 
                 `${host} must publish the popup geometry its parent reserves`);
 });
 
-test("the New Thread project menu floats beyond the normal card", () => {
+test("the New Thread project menu reserves room inside its scroll viewport", () => {
     const newPage = fs.readFileSync(
         path.join(shellDir, "Popovers/T3NewThreadPage.qml"), "utf8");
     const picker = fs.readFileSync(
@@ -104,10 +102,11 @@ test("the New Thread project menu floats beyond the normal card", () => {
         /readonly property real projectPickerLayoutHeight:[\s\S]*?projectPickerNeededHeight/);
     assert.match(newPage,
         /id:\s*projectPickerSpace[\s\S]*?root\.projectPickerLayoutHeight - form\.spacing/,
-        "only the part extending below the normal form should grow the surface");
+        "only the part extending below the normal form should grow scroll content");
     assert.match(newPage,
-        /readonly property Item activePopupItem:\s*projectPicker\.expanded[\s\S]*?projectPicker\.popupItem/,
-        "the detached input mask must follow the Project menu while it is open");
+        /id:\s*projectPicker[\s\S]*?popupBoundsItem:\s*root/,
+        "the Project menu must stay inside the page body");
+    assert.doesNotMatch(newPage, /activePopupItem|detachedOverflow/);
     assert.match(newPage,
         /onExpandedChanged:[\s\S]*?root\.projectPopupBottom - flick\.height/,
         "a height-capped view must scroll just enough to reveal the menu");
@@ -122,10 +121,19 @@ test("the composer bar yields the model name before it yields the send action", 
     assert.ok(bar);
     assert.match(bar[1],
         /readonly property real inlineRoom:\s*width - sendButton\.width/);
-    assert.match(bar[1], /id:\s*modelSelect[\s\S]*?maxWidth:\s*Math\.max\(\d+,\s*actionRow\.inlineRoom/);
+    assert.match(bar[1],
+        /readonly property real accessRoom:[\s\S]*?Math\.max\(48, selectorRoom - 48\)/);
+    assert.match(bar[1],
+        /readonly property real modelRoom:\s*Math\.max\(48,[\s\S]*?selectorRoom - accessRoom\)/,
+        "model must consume the residual room and therefore elide before access");
+    assert.match(bar[1], /id:\s*modelSelect[\s\S]*?maxWidth:\s*actionRow\.modelRoom/);
+    assert.match(bar[1], /id:\s*accessSelect[\s\S]*?maxWidth:\s*actionRow\.accessRoom/);
+    assert.ok(bar[1].indexOf("id: settingsButton") < bar[1].indexOf("id: sendButton"));
 
     const control = fs.readFileSync(path.join(shellDir, "Popovers/T3BarControl.qml"), "utf8");
-    assert.match(control, /implicitWidth:\s*Math\.min\(maxWidth,\s*trigger\.implicitWidth\)/);
+    assert.match(control, /readonly property real naturalWidth:\s*trigger\.implicitWidth/);
+    assert.match(control, /implicitWidth:\s*Math\.min\(maxWidth,/);
+    assert.match(control, /property real minimumWidth:\s*48/);
     assert.match(control, /elide:\s*Text\.ElideRight/);
     assert.doesNotMatch(control, /implicitWidth:\s*triggerRow\.implicitWidth/,
         "measuring the laid-out Row closes a binding loop against the clamped label");
@@ -137,6 +145,38 @@ test("the composer bar yields the model name before it yields the send action", 
         assert.match(source, /T3BarControl\s*\{\s*\n\s*id:\s*trigger\b/,
             `${host} must reuse the shared bar button`);
     }
+});
+
+test("narrow composers move reasoning into Run settings", () => {
+    assert.match(composer,
+        /readonly property bool narrow:\s*root\.width < 360/);
+    assert.match(composer,
+        /readonly property bool reasoningInDrawer:\s*narrow && reasoningDescriptor !== null/);
+    assert.match(composer,
+        /id:\s*reasoningPicker[\s\S]*?visible:\s*settingsPresentation\.reasoningInDrawer/);
+    assert.match(composer,
+        /id:\s*effortSelect[\s\S]*?visible:\s*!settingsPresentation\.narrow/);
+    assert.match(composer,
+        /id:\s*settingsButton[\s\S]*?visible:\s*settingsPresentation\.hasDrawer/,
+        "the tune action remains available when it owns narrow reasoning");
+});
+
+test("model and option popups clamp to their drawer body", () => {
+    for (const file of ["T3Picker.qml", "T3InlineSelect.qml", "T3ModelPicker.qml"]) {
+        const source = fs.readFileSync(path.join(shellDir, "Popovers", file), "utf8");
+        assert.match(source, /property Item popupBoundsItem:\s*null/);
+        assert.match(source, /popupBoundsRight/);
+        assert.match(source, /popupBoundsBottom/);
+        assert.match(source,
+            /x:\s*Math\.max\(root\.popupBoundsLeft,[\s\S]*?root\.popupBoundsRight - width\)/);
+        assert.match(source,
+            /y:\s*Math\.max\(root\.popupBoundsTop,[\s\S]*?root\.popupBoundsBottom - height\)/);
+    }
+    const bar = composer.match(/Item\s*\{\s*id:\s*actionRow\b([\s\S]*?)\n\s{12}\}/);
+    assert.match(bar[1],
+        /id:\s*effortSelect[\s\S]*?alignRight:\s*true/);
+    assert.match(bar[1],
+        /id:\s*accessSelect[\s\S]*?alignRight:\s*true/);
 });
 
 // One field, not a text box stacked on a toolbar.

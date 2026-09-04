@@ -364,6 +364,18 @@ surfaces:
   canonical name for the wanted tab (`PanelRegistryData.nameForTab`), so the
   bar's held states, hover-crossing and the module-ownership sweep all keep
   working unchanged.
+- **T3 Code is a separate edge drawer**, not a seventh status tab. Its existing
+  `t3code` panel name, bar ownership, source, and IPC route are unchanged; the
+  registry only marks that source `attached` and `edge: "right"`. It shares
+  `Settings.drawerWidth` with the status drawer and fills the host's usable
+  height below the bar (including the host's existing bottom shadow margin).
+  Inbox search and connection chrome stay fixed around a scrolling grouped
+  list; thread headers and response/composer controls stay fixed around the
+  transcript; New Thread scrolls its form below a fixed header. Below 360px of
+  effective content width, inbox rows become two-line tiles and composer
+  reasoning moves into Run settings. Picker geometry is clamped to the drawer
+  body and New Thread reserves popup room in its own scroller rather than
+  extending a transparent surface tail.
 - **The Day sheet** (`Popovers/DaySheetPopover.qml`) hangs under the clock
   (and the weather pill): big time, today's sky, a Monday-first week strip
   with per-day forecast and calendar event dots, and the next three events.

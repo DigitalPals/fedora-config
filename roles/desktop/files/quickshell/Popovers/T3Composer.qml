@@ -13,6 +13,10 @@ Column {
     property bool editable: true
     property bool sendEnabled: true
     property string sendLabel: "Send"
+    // Every floating picker is clamped to this page-sized item. Thread pages
+    // overlay the transcript; New Thread reserves equivalent room inside its
+    // scrolling form, but neither may escape the drawer body.
+    property Item popupBoundsItem: null
     // While the thread is working the prompt is locked, so the round action
     // has nothing to send. That is exactly when the user wants to stop the
     // turn, and the slot they are already reaching for is this one.
@@ -36,19 +40,13 @@ Column {
     readonly property bool sending: T3Code.actionPending(actionKind, actionThreadId, "")
     readonly property bool stopping: T3Code.actionPending("interrupt", actionThreadId, "")
     readonly property bool stopMode: stoppable && !newThread
-    // A New Thread page sizes itself from this Column. Its bar menus open below
-    // the composer and reserve their full panel height, so the page — and in
-    // turn the layer-shell window — grows instead of clipping the menu. Thread
-    // pages have a transcript above the composer and keep overlaying it there.
+    // New Thread menus open below the composer and reserve their height in the
+    // page's scrolling form. Thread pages already have a transcript above the
+    // composer and overlay that space instead.
     readonly property real barPickerReserve: !newThread ? 0
         : modelSelect.expanded ? modelSelect.popupHeight
         : effortSelect.expanded ? effortSelect.popupHeight
         : accessSelect.expanded ? accessSelect.popupHeight : 0
-    readonly property real barPickerLayoutHeight:
-        barPickerReserve > 0 ? barPickerReserve + spacing : 0
-    readonly property Item activeBarPopupItem: modelSelect.expanded ? modelSelect.popupItem
-        : effortSelect.expanded ? effortSelect.popupItem
-        : accessSelect.expanded ? accessSelect.popupItem : null
 
     // One primary action, two meanings. Both the pointer and the keyboard
     // path route through here so they cannot drift apart.
@@ -68,7 +66,7 @@ Column {
         property bool expanded: false
         property Item activePicker: null
         property string activePickerGroup: ""
-        readonly property bool narrow: root.width < 400
+        readonly property bool narrow: root.width < 360
         readonly property var accessOptions: [
             { id: "approval-required", label: "Ask first" },
             { id: "auto-accept-edits", label: "Auto edits" },
@@ -88,7 +86,9 @@ Column {
                 .find(candidate => root.traitLabel(candidate) === "Reasoning") ?? null
         readonly property var extraTraits: (Array.isArray(root.traits) ? root.traits : [])
             .filter(candidate => root.traitLabel(candidate) !== "Reasoning")
+        readonly property bool reasoningInDrawer: narrow && reasoningDescriptor !== null
         readonly property bool hasDrawer: root.showInteraction || extraTraits.length > 0
+            || reasoningInDrawer
         readonly property var reasoningOptions: {
             if (!reasoningDescriptor)
                 return [];
@@ -308,6 +308,18 @@ Column {
         promptEdit.cursorPosition = position + 1;
     }
 
+    function closeOpenLayer(): bool {
+        if (settingsPresentation.activePicker !== null) {
+            settingsPresentation.activePicker.expanded = false;
+            return true;
+        }
+        if (settingsPresentation.expanded) {
+            settingsPresentation.expanded = false;
+            return true;
+        }
+        return false;
+    }
+
     Rectangle {
         id: settingsDrawer
         visible: settingsPresentation.expanded
@@ -376,10 +388,27 @@ Column {
                     value: root.draft.interactionMode ?? "default"
                     options: settingsPresentation.interactionOptions
                     openUpward: !root.newThread
+                    popupBoundsItem: root.popupBoundsItem
                     enabled: root.editable && !root.sending
                     onSelected: value => root.chooseInteraction(value)
                     onExpandedChanged: settingsPresentation.trackPicker(
                         interactionPicker, "runtime")
+                }
+
+                T3Picker {
+                    id: reasoningPicker
+                    visible: settingsPresentation.reasoningInDrawer
+                        && settingsPresentation.reasoningOptions.length > 0
+                    width: parent.width
+                    label: "Reasoning"
+                    value: settingsPresentation.reasoningValue
+                    options: settingsPresentation.reasoningOptions
+                    openUpward: !root.newThread
+                    popupBoundsItem: root.popupBoundsItem
+                    enabled: root.editable && !root.sending
+                    onSelected: value => root.chooseReasoning(value)
+                    onExpandedChanged: settingsPresentation.trackPicker(
+                        reasoningPicker, "runtime")
                 }
             }
 
@@ -407,6 +436,7 @@ Column {
                             label: root.traitLabel(traitRow.modelData)
                             value: traitRow.modelData.currentValue ?? ""
                             options: traitRow.modelData.options ?? []
+                            popupBoundsItem: root.popupBoundsItem
                             enabled: root.editable && !root.sending
                             onSelected: value => root.chooseTrait(traitRow.modelData.id, value)
                             onExpandedChanged: settingsPresentation.trackPicker(
@@ -611,6 +641,19 @@ Column {
                 readonly property real inlineRoom: width - sendButton.width - 8
                     - (workingIndicator.visible ? workingIndicator.width + 8 : 0)
                     - (settingsButton.visible ? settingsButton.width + 2 : 0)
+                readonly property real selectorChrome: accessDivider.width
+                    + inlineSettings.spacing * 2
+                    + (effortSelect.visible ? effortDivider.width
+                        + effortSelect.implicitWidth + inlineSettings.spacing * 2 : 0)
+                readonly property real selectorRoom: Math.max(96,
+                    inlineRoom - selectorChrome)
+                // Model text yields first. Once it reaches an icon-safe 48px,
+                // access begins eliding too; the tune and primary action sit
+                // outside inlineRoom and therefore never enter this tradeoff.
+                readonly property real accessRoom: Math.min(accessSelect.naturalWidth,
+                    Math.max(48, selectorRoom - 48))
+                readonly property real modelRoom: Math.max(48,
+                    selectorRoom - accessRoom)
 
                 Row {
                     id: inlineSettings
@@ -630,12 +673,8 @@ Column {
                         label: settingsPresentation.modelSummary()
                         value: root.selectionValue
                         openUpward: !root.newThread
-                        maxWidth: Math.max(72, actionRow.inlineRoom
-                            - (effortSelect.visible
-                                ? effortSelect.implicitWidth + effortDivider.width
-                                    + inlineSettings.spacing * 2 : 0)
-                            - accessSelect.implicitWidth - accessDivider.width
-                            - inlineSettings.spacing * 2)
+                        maxWidth: actionRow.modelRoom
+                        popupBoundsItem: root.popupBoundsItem
                         enabled: root.editable && !root.sending
                         onSelected: (instanceId, model) =>
                             root.chooseSelection(instanceId, model)
@@ -650,12 +689,15 @@ Column {
 
                     T3InlineSelect {
                         id: effortSelect
-                        visible: settingsPresentation.reasoningOptions.length > 0
+                        visible: !settingsPresentation.narrow
+                            && settingsPresentation.reasoningOptions.length > 0
                         text: root.traitLabel(settingsPresentation.reasoningDescriptor)
                         value: settingsPresentation.reasoningValue
                         options: settingsPresentation.reasoningOptions
                         openUpward: !root.newThread
                         menuWidth: 168
+                        alignRight: true
+                        popupBoundsItem: root.popupBoundsItem
                         enabled: root.editable && !root.sending
                         onSelected: value => root.chooseReasoning(value)
                         onExpandedChanged: settingsPresentation.trackPicker(
@@ -672,6 +714,9 @@ Column {
                         options: settingsPresentation.accessOptions
                         openUpward: !root.newThread
                         menuWidth: 190
+                        maxWidth: actionRow.accessRoom
+                        alignRight: true
+                        popupBoundsItem: root.popupBoundsItem
                         // Full access is the one mode with nothing standing
                         // between the agent and the machine. It says so.
                         tint: root.draft?.runtimeMode === "full-access"
@@ -811,9 +856,9 @@ Column {
         }
     }
 
-    // Floating menus do not contribute to a positioner's implicit size. This
-    // transparent tail makes the New Thread page account for the menu drawn
-    // below the shell; it disappears with the menu and is absent on threads.
+    // Floating menus do not contribute to a positioner's implicit size. New
+    // Thread keeps this reserve inside its scrolling viewport; it no longer
+    // extends the host surface beyond the full-height drawer.
     Item {
         id: barPickerSpace
         visible: root.barPickerReserve > 0
