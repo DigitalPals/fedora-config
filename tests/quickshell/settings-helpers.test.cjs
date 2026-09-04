@@ -320,7 +320,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(H.normalizeModOpts({ indicators: { mode: "active" } }).indicators.mode,
         "active");
     assert.deepEqual(next.indicators.order,
-        ["dnd", "dictation", "recording", "reminder", "night-light", "stay-awake"]);
+        ["dnd", "dictation", "recording", "ocr", "reminder", "night-light", "stay-awake"]);
     assert.deepEqual(next.indicators.enabled, ["recording"]);
     assert.equal(next.indicators.dictationPrimaryLanguage, "en");
     assert.equal(next.indicators.dictationSecondaryLanguage, "off");
@@ -955,6 +955,49 @@ test("schema-8 validates persisted action and system toggle state", () => {
     assert.equal(invalid.nightLight, false);
     assert.equal(invalid.idleInhibitMode, "off");
     assert.equal(invalid.modOpts.indicators.mode, "hover");
+});
+
+test("pre-OCR action lists place OCR beside recording without overriding visibility", () => {
+    const priorIds = [
+        "dictation", "recording", "reminder", "night-light", "dnd", "stay-awake"
+    ];
+    const untouched = H.merge({
+        v: H.VERSION,
+        modOpts: { indicators: { order: priorIds, enabled: priorIds } }
+    }).modOpts.indicators;
+    assert.deepEqual(untouched.order, [
+        "dictation", "recording", "ocr", "reminder", "night-light", "dnd", "stay-awake"
+    ]);
+    assert.deepEqual(untouched.enabled, [
+        "dictation", "recording", "ocr", "reminder", "night-light", "dnd", "stay-awake"
+    ]);
+
+    const customized = H.merge({
+        v: H.VERSION,
+        modOpts: {
+            indicators: {
+                order: ["dnd", "recording", "dictation", "reminder",
+                    "night-light", "stay-awake"],
+                enabled: ["recording", "dnd"]
+            }
+        }
+    }).modOpts.indicators;
+    assert.deepEqual(customized.order, [
+        "dnd", "recording", "ocr", "dictation", "reminder", "night-light", "stay-awake"
+    ]);
+    assert.deepEqual(customized.enabled, ["recording", "dnd"]);
+
+    const explicitlyHidden = H.merge({
+        v: H.VERSION,
+        modOpts: {
+            indicators: {
+                order: H.INDICATOR_ACTION_IDS,
+                enabled: priorIds
+            }
+        }
+    }).modOpts.indicators;
+    assert.deepEqual(explicitlyHidden.enabled, priorIds,
+        "an order that already knows OCR makes its absent enabled id intentional");
 });
 
 test("schema-22 migrates and validates restart-safe timed toggle state", () => {

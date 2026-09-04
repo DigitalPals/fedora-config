@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import Quickshell
 import ".."
 import "../../Common"
 import "../../Common/SettingsHelpers.js" as SettingsHelpers
@@ -12,6 +13,8 @@ BarModule {
 
     moduleId: "indicators"
     readonly property string panelName: "reminders"
+    readonly property string ocrScript:
+        Quickshell.env("HOME") + "/.local/bin/screen-ocr"
     spacing: 2
     property bool disclosureLatched: false
     property var actionButtons: []
@@ -59,6 +62,7 @@ BarModule {
         switch (id) {
         case "dictation": return Dictation.busy;
         case "recording": return Recorder.active;
+        case "ocr": return false;
         case "reminder": return Reminders.count > 0;
         case "night-light": return SysInfo.nightLight;
         case "dnd": return Notifs.dnd;
@@ -115,6 +119,8 @@ BarModule {
             return Recorder.active ? "Stop recording" + (Recorder.outputFile !== ""
                 ? " · " + Recorder.outputFile.split("/").pop() : "")
                 : "Record a " + Settings.modOpts.indicators.recordingMode;
+        case "ocr":
+            return "OCR a region · copies text · Super Shift O";
         case "reminder":
             return Reminders.tooltip + (Settings.modOpts.indicators.reminderClick === "quick-add"
                 ? " · click adds " + Settings.modOpts.indicators.reminderMinutes + " min"
@@ -143,6 +149,9 @@ BarModule {
             break;
         case "recording":
             Recorder.toggle(Settings.modOpts.indicators.recordingMode);
+            break;
+        case "ocr":
+            Quickshell.execDetached([root.ocrScript]);
             break;
         case "reminder": {
             const primaryAdds = Settings.modOpts.indicators.reminderClick === "quick-add";

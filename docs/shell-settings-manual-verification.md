@@ -147,6 +147,8 @@ is manual.
 - [ ] Indicators expands inline with Clock hover / Always show / Active only,
       per-action switches, and drag/keyboard ordering. A hidden Dictation or
       Screen recording action returns while running so it can always be stopped.
+- [ ] The OCR clock-side action starts region selection, copies recognized text
+      to the clipboard, and remains hidden in Active only mode.
 - [ ] Indicator action options apply live: dictation languages/model, recording
       region/window/screen and elapsed label, reminder icon/count and quick-add
       duration, DND click lifetime, and Stay awake click duration/countdown.

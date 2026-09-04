@@ -37,7 +37,7 @@ var ROWS = [
     // Widgets
     { page: "modules", pageLabel: "Widgets", group: "Lanes", label: "Arrange widgets", key: "", terms: "drag order left center right lane module notification group grouping status pill separate" },
     { page: "modules", pageLabel: "Widgets", group: "Catalog", label: "Show or hide widgets", key: "", terms: "enable disable toggle module clock weather notes battery tray workspaces media" },
-    { page: "modules", pageLabel: "Widgets", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
+    { page: "modules", pageLabel: "Widgets", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
     { page: "modules", pageLabel: "Widgets", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
 
     // Drawer

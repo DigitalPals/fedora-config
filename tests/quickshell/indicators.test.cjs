@@ -10,15 +10,30 @@ function read(relative) {
 
 const indicators = read("Bar/Modules/Indicators.qml");
 
-test("indicators declares the six canonical quick actions in order", () => {
+test("indicators declares the seven canonical quick actions in order", () => {
     const helpers = load("SettingsHelpers.js");
     assert.deepEqual(helpers.INDICATOR_ACTION_IDS, [
-        "dictation", "recording", "reminder", "night-light", "dnd", "stay-awake"
+        "dictation", "recording", "ocr", "reminder", "night-light", "dnd", "stay-awake"
     ]);
     assert.deepEqual(helpers.defaultModOpts().indicators.order,
         helpers.INDICATOR_ACTION_IDS);
     assert.match(indicators, /SettingsHelpers\.INDICATOR_ACTION_CHOICES/);
     assert.match(indicators, /Settings\.modOpts\.indicators\.order/);
+});
+
+test("OCR is an orderable stateless action that launches the installed helper", () => {
+    const helpers = load("SettingsHelpers.js");
+    assert.deepEqual(
+        helpers.INDICATOR_ACTION_CHOICES.find(action => action.id === "ocr"),
+        { id: "ocr", label: "OCR", glyph: "document_scanner" }
+    );
+    assert.match(indicators, /case "ocr": return false;/,
+        "OCR must stay in the inactive disclosure instead of claiming persistent state");
+    assert.match(indicators, /OCR a region · copies text · Super Shift O/);
+    assert.match(indicators,
+        /case "ocr":\s*Quickshell\.execDetached\(\[root\.ocrScript\]\);/);
+    assert.match(indicators,
+        /Quickshell\.env\("HOME"\) \+ "\/\.local\/bin\/screen-ocr"/);
 });
 
 test("inactive disclosure and persistent active actions use separate animated blocks", () => {

@@ -101,6 +101,7 @@ var NOTIFICATION_GROUPS = ["solo", "status"];
 var INDICATOR_ACTION_CHOICES = [
     { id: "dictation", label: "Dictation", glyph: "mic" },
     { id: "recording", label: "Screen recording", glyph: "radio_button_checked" },
+    { id: "ocr", label: "OCR", glyph: "document_scanner" },
     { id: "reminder", label: "Reminders", glyph: "notifications_active" },
     { id: "night-light", label: "Night light", glyph: "nightlight" },
     { id: "dnd", label: "Do Not Disturb", glyph: "do_not_disturb_on" },
@@ -843,6 +844,36 @@ function migrateModOpts(raw, sourceVersion, rawSettings) {
     if ((typeof sourceVersion !== "number" || sourceVersion < 22)
             && rawSettings && rawSettings.idleInhibited === true)
         next.indicators.idleStartup = "remember";
+
+    // An action order written before OCR existed cannot place the new action:
+    // normalization appends unknown-to-that-file ids at the end. Put OCR next
+    // to Screen recording instead. If the old visibility list still enabled
+    // every action, it was effectively the default, so adopt OCR too; a
+    // customized list keeps the new action opt-in. Once OCR appears in the
+    // stored order this block no longer runs, so explicitly hiding it sticks.
+    var rawIndicators = raw && typeof raw === "object" ? raw.indicators : null;
+    if (rawIndicators && Array.isArray(rawIndicators.order)
+            && rawIndicators.order.indexOf("ocr") === -1) {
+        next.indicators.order = next.indicators.order.filter(function(id) {
+            return id !== "ocr";
+        });
+        var recordingIndex = next.indicators.order.indexOf("recording");
+        next.indicators.order.splice(recordingIndex === -1
+            ? next.indicators.order.length : recordingIndex + 1, 0, "ocr");
+
+        var priorIds = INDICATOR_ACTION_IDS.filter(function(id) {
+            return id !== "ocr";
+        });
+        var priorEnabled = Array.isArray(rawIndicators.enabled)
+            && priorIds.every(function(id) {
+                return rawIndicators.enabled.indexOf(id) !== -1;
+            });
+        if (priorEnabled) {
+            var enabledRecordingIndex = next.indicators.enabled.indexOf("recording");
+            next.indicators.enabled.splice(enabledRecordingIndex === -1
+                ? next.indicators.enabled.length : enabledRecordingIndex + 1, 0, "ocr");
+        }
+    }
     return next;
 }
 
