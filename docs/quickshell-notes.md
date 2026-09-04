@@ -353,19 +353,23 @@ background when it over-clears, so each step lands on its own floor.
 ## The edge drawer and the Day sheet (2026-09 redesign)
 
 The 2026-09-03 redesign ("Quickshell Menubar", Claude Design project
-`8cf85161`, direction 2) folded the status popovers into two attached
-surfaces:
+`8cf85161`, direction 2) introduced the attached surface family:
 
-- **The edge drawer** (`Popovers/Drawer/`) is one surface with six tabs —
+- **The Control Dashboard** (`Popovers/Drawer/`) is one edge-drawer surface
+  with six tabs —
   Overview · Sound · Network · Power · Notifications · Usage. Every
   established popout name (`control`, `audio`, `wifi`, `bluetooth`,
-  `tailscale`, `battery`, `notifications`, `usage`, `updates`) still works
-  from IPC and the bar; each one now presents its tab of
+  `tailscale`, `battery`, `notifications`, `usage`) still works from IPC and
+  the bar; each one presents its tab of
   `DrawerPopover.qml`. The tab is derived from `Popouts.currentName` at
   creation, and the drawer's own tab strip navigates by reopening the
   canonical name for the wanted tab (`PanelRegistryData.nameForTab`), so the
   bar's held states, hover-crossing and the module-ownership sweep all keep
   working unchanged.
+- **Updates is a dedicated edge drawer** (`Popovers/UpdatesPopover.qml`). The
+  widget and `updates` IPC name open its full pending, running, completed, and
+  failed views rather than deep-linking to Overview. It still carries the new
+  drawer template's width, attached geometry, Hug corners, palette, and type.
 - **T3 Code is a separate attached panel**, not a seventh status tab. Its
   existing `t3code` panel name, bar ownership, source, and IPC route are
   unchanged; unlike the status drawer, it is not pinned to a screen edge, so

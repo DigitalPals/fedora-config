@@ -4,8 +4,10 @@ import "../Common"
 import "../Common/Format.js" as Format
 import "../Common/UpdatesHelpers.js" as UpdatesHelpers
 
-// Pending updates, the native run that installs them, and the transcript it
-// leaves behind.
+// The dedicated Updates drawer: pending updates, the native run that installs
+// them, and the transcript it leaves behind. PanelRegistryData attaches this
+// surface to the right edge; using the shared drawer width keeps it on the
+// current edge-drawer template without folding it into Control Dashboard.
 //
 // Four faces of one surface, keyed by Updates.runState: the pending list with
 // the one button that starts the run; the live view — two step rows over a
@@ -19,9 +21,9 @@ Surface {
 
     readonly property string mode: Updates.runState
 
-    // The run views hold a transaction table; full package names are the
-    // point, so they take the wide panel width.
-    implicitWidth: mode === "idle" ? 340 : Theme.popWideWidth
+    // Match the current edge-drawer template in every state. Keeping one width
+    // also prevents the surface shifting when a check turns into a live run.
+    implicitWidth: Theme.drawerWidth
     spacing: 10
 
     readonly property var rows: {

@@ -30,21 +30,21 @@
 //                        with Hug corners (the edge drawer, the Day sheet)
 //   edge                 "right" pins the surface to the screen edge instead
 //                        of centring it on its trigger (the edge drawer)
-//   tab                  which drawer tab this name presents. Every name that
-//                        routes into Popovers/Drawer/DrawerPopover.qml names
-//                        one, which is also how the drawer knows what to show
+//   tab                  which Control Dashboard tab this name presents. Every
+//                        name that routes into Popovers/Drawer/DrawerPopover.qml
+//                        names one, which is also how the drawer knows what to
+//                        show
 
 var DRAWER_SOURCE = "Popovers/Drawer/DrawerPopover.qml";
 var DAY_SHEET_SOURCE = "Popovers/DaySheetPopover.qml";
 
 var PANELS = [
-    // The edge drawer. One surface, six tabs; each established popout name
-    // stays a valid IPC target and simply presents its tab of the drawer.
+    // The Control Dashboard. One surface, six tabs; each established status
+    // popout name stays a valid IPC target and presents its tab of the drawer.
     // The Fedora button is fixed bar furniture rather than a configurable
     // module. It still registers the panel's live anchor, but `control` stays
     // ownerless so module enablement and movement never close it.
     { name: "control", island: "right", moduleId: "", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "overview" },
-    { name: "updates", island: "right", moduleId: "updates", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "overview" },
     { name: "audio", island: "right", moduleId: "vol", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "sound" },
     { name: "wifi", island: "right", moduleId: "wifi", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
     { name: "bluetooth", island: "right", moduleId: "bt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
@@ -52,6 +52,11 @@ var PANELS = [
     { name: "battery", island: "right", moduleId: "batt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "power" },
     { name: "notifications", island: "right", moduleId: "notifications", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "notifications" },
     { name: "usage", island: "right", moduleId: "usage", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "usage" },
+
+    // Updates keeps its purpose-built state machine and transaction transcript
+    // in a dedicated drawer. It uses the redesign's attached right-edge
+    // geometry, but is deliberately not a Control Dashboard tab.
+    { name: "updates", island: "right", moduleId: "updates", source: "Popovers/UpdatesPopover.qml", attached: true, edge: "right" },
 
     // The Day sheet: one view shared by the clock and the weather pill.
     // centerAnchored so it opens in the same centred spot no matter which of
