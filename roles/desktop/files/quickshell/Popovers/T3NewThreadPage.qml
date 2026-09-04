@@ -13,7 +13,7 @@ Item {
         id: project.id, label: project.title
     }))
     readonly property real projectPopupBottom: projectShoulder.y + projectPicker.y
-        + projectPicker.popupItem.y + projectPicker.popupHeight
+        + projectPicker.popupOffsetY + projectPicker.popupHeight
     readonly property real baseFormBottom: {
         if (pendingText.visible)
             return pendingText.y + pendingText.height;

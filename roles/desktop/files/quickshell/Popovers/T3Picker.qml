@@ -15,8 +15,11 @@ Item {
     property int menuRows: 7
     property bool alignRight: false
     property Item popupBoundsItem: null
-    readonly property point popupBoundsOrigin: popupBoundsItem
-        ? root.mapFromItem(popupBoundsItem, 0, 0) : Qt.point(0, 0)
+    // Host the menu at the page boundary so a clipped form viewport does not
+    // clip its choices or remove them from pointer hit testing.
+    readonly property Item popupHostItem: popupBoundsItem ? popupBoundsItem : root
+    property point popupHostOrigin: Qt.point(0, 0)
+    property point popupBoundsOrigin: Qt.point(0, 0)
     readonly property real popupBoundsLeft: popupBoundsItem
         ? popupBoundsOrigin.x : 0
     readonly property real popupBoundsTop: popupBoundsItem
@@ -31,6 +34,9 @@ Item {
         Math.max(Theme.pickerRowHeight + 8,
             Math.floor(popupBoundsBottom - popupBoundsTop)))
     readonly property Item popupItem: menu
+    // Kept in trigger coordinates for parents that reserve scroll space even
+    // though the painted menu itself is reparented to popupHostItem.
+    readonly property real popupOffsetY: menu.triggerY
     signal selected(string value)
 
     implicitHeight: 34
@@ -59,14 +65,42 @@ Item {
         return found ? optionLabel(found) : (value !== "" ? value : "Unavailable");
     }
 
+    function updatePopupGeometry() {
+        popupHostOrigin = popupHostItem === root ? Qt.point(0, 0)
+            : popupHostItem.mapFromItem(root, 0, 0);
+        popupBoundsOrigin = popupBoundsItem
+            ? root.mapFromItem(popupBoundsItem, 0, 0) : Qt.point(0, 0);
+    }
+
+    function open() {
+        updatePopupGeometry();
+        expanded = true;
+        // The containing form may scroll after expansion to reserve the
+        // menu's height, so refresh after that deferred layout settles.
+        Qt.callLater(updatePopupGeometry);
+    }
+
+    function close() {
+        expanded = false;
+    }
+
+    function toggle() {
+        if (expanded)
+            close();
+        else
+            open();
+    }
+
     function containsPickerPoint(item, x, y) {
         if (!item)
             return false;
-        const point = root.mapFromItem(item, x, y);
-        const inButton = point.x >= 0 && point.x <= root.width
-            && point.y >= 0 && point.y <= root.height;
-        const inMenu = menu.visible && point.x >= menu.x && point.x <= menu.x + menu.width
-            && point.y >= menu.y && point.y <= menu.y + menu.height;
+        const buttonPoint = root.mapFromItem(item, x, y);
+        const menuPoint = menu.mapFromItem(item, x, y);
+        const inButton = buttonPoint.x >= 0 && buttonPoint.x <= root.width
+            && buttonPoint.y >= 0 && buttonPoint.y <= root.height;
+        const inMenu = menu.visible && menuPoint.x >= 0
+            && menuPoint.x <= menu.width && menuPoint.y >= 0
+            && menuPoint.y <= menu.height;
         return inButton || inMenu;
     }
 
@@ -85,7 +119,7 @@ Item {
             return;
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
-            root.expanded = !root.expanded;
+            root.toggle();
             event.accepted = true;
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) {
             root.move(1);
@@ -97,23 +131,23 @@ Item {
             const at = event.key - Qt.Key_1;
             if (at < root.options.length && root.options[at].disabled !== true) {
                 root.selected(root.optionId(root.options[at]));
-                root.expanded = false;
+                root.close();
                 event.accepted = true;
             }
         } else if (event.key === Qt.Key_Escape && root.expanded) {
-            root.expanded = false;
+            root.close();
             event.accepted = true;
         }
     }
 
     onEnabledChanged: {
         if (!enabled)
-            expanded = false;
+            close();
     }
 
     onVisibleChanged: {
         if (!visible)
-            expanded = false;
+            close();
     }
 
     // Observe the entire popout window without consuming the click. This
@@ -126,7 +160,7 @@ Item {
         onTapped: eventPoint => {
             if (!root.containsPickerPoint(root,
                     eventPoint.position.x, eventPoint.position.y))
-                root.expanded = false;
+                root.close();
         }
     }
 
@@ -189,7 +223,7 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: {
                 root.forceActiveFocus();
-                root.expanded = !root.expanded;
+                root.toggle();
             }
         }
     }
@@ -197,16 +231,19 @@ Item {
     Rectangle {
         id: menu
 
+        parent: root.popupHostItem
         z: 1000
         visible: root.expanded && root.enabled
         readonly property real preferredX: root.alignRight
             ? root.width - width : 0
         readonly property real preferredY: root.openUpward
             ? -height - 4 : root.height + 4
-        x: Math.max(root.popupBoundsLeft,
+        readonly property real triggerX: Math.max(root.popupBoundsLeft,
             Math.min(preferredX, root.popupBoundsRight - width))
-        y: Math.max(root.popupBoundsTop,
+        readonly property real triggerY: Math.max(root.popupBoundsTop,
             Math.min(preferredY, root.popupBoundsBottom - height))
+        x: root.popupHostOrigin.x + triggerX
+        y: root.popupHostOrigin.y + triggerY
         width: Math.min(root.width,
             Math.max(1, root.popupBoundsRight - root.popupBoundsLeft))
         height: root.popupHeight
@@ -244,7 +281,7 @@ Item {
                         readonly property string choiceId: root.optionId(modelData)
                         readonly property bool chosen: choiceId === root.value
 
-                        width: parent.width
+                        width: parent ? parent.width : 0
                         height: Theme.pickerRowHeight
                         radius: T3Theme.controlRadius
                         color: chosen ? T3Theme.accentSoft
@@ -296,7 +333,7 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 root.selected(choice.choiceId);
-                                root.expanded = false;
+                                root.close();
                                 root.forceActiveFocus();
                             }
                         }

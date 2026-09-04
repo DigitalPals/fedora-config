@@ -93,8 +93,14 @@ test("the New Thread project menu reserves room inside its scroll viewport", () 
     for (const property of ["popupHeight", "popupItem"])
         assert.match(picker, new RegExp(`readonly property (?:int|Item) ${property}:`),
             `the Project picker must publish its ${property}`);
+    assert.match(picker,
+        /readonly property real popupOffsetY:\s*menu\.triggerY/,
+        "the Project picker must publish its trigger-relative popup position");
     assert.match(picker, /height:\s*root\.popupHeight/,
         "the published height and the painted menu must remain identical");
+    assert.match(newPage,
+        /projectPicker\.popupOffsetY \+ projectPicker\.popupHeight/,
+        "scroll-space math must not treat the page-hosted menu as a picker child");
     assert.match(newPage,
         /id:\s*projectShoulder[\s\S]*?z:\s*projectPicker\.expanded \? 200 : 0/,
         "the Project menu must paint above the composer that follows it");
@@ -161,16 +167,40 @@ test("narrow composers move reasoning into Run settings", () => {
         "the tune action remains available when it owns narrow reasoning");
 });
 
-test("model and option popups clamp to their drawer body", () => {
+test("model and option popups are hosted by and clamp to their drawer body", () => {
     for (const file of ["T3Picker.qml", "T3InlineSelect.qml", "T3ModelPicker.qml"]) {
         const source = fs.readFileSync(path.join(shellDir, "Popovers", file), "utf8");
         assert.match(source, /property Item popupBoundsItem:\s*null/);
+        assert.match(source,
+            /readonly property Item popupHostItem:\s*popupBoundsItem \? popupBoundsItem : root/,
+            `${file} must lift the popup out of a clipped trigger subtree`);
+        assert.match(source, /parent:\s*root\.popupHostItem/,
+            `${file} must put popup rows in the page's pointer-delivery tree`);
+        assert.match(source,
+            /function updatePopupGeometry\(\)[\s\S]*?popupHostItem\.mapFromItem\(root, 0, 0\)/);
+        assert.match(source,
+            /expanded = true;[\s\S]*?Qt\.callLater\(updatePopupGeometry\)/,
+            `${file} must refresh its portal position after New Thread scrolls`);
         assert.match(source, /popupBoundsRight/);
         assert.match(source, /popupBoundsBottom/);
+        if (file === "T3Picker.qml") {
+            assert.match(source,
+                /triggerX:\s*Math\.max\(root\.popupBoundsLeft,[\s\S]*?root\.popupBoundsRight - width\)/);
+            assert.match(source,
+                /triggerY:\s*Math\.max\(root\.popupBoundsTop,[\s\S]*?root\.popupBoundsBottom - height\)/);
+            assert.match(source, /x:\s*root\.popupHostOrigin\.x \+ triggerX/);
+            assert.match(source, /y:\s*root\.popupHostOrigin\.y \+ triggerY/);
+        } else {
+            assert.match(source,
+                /x:\s*root\.popupHostOrigin\.x \+ Math\.max\(root\.popupBoundsLeft,[\s\S]*?root\.popupBoundsRight - width\)/);
+            assert.match(source,
+                /y:\s*root\.popupHostOrigin\.y \+ Math\.max\(root\.popupBoundsTop,[\s\S]*?root\.popupBoundsBottom - height\)/);
+        }
         assert.match(source,
-            /x:\s*Math\.max\(root\.popupBoundsLeft,[\s\S]*?root\.popupBoundsRight - width\)/);
-        assert.match(source,
-            /y:\s*Math\.max\(root\.popupBoundsTop,[\s\S]*?root\.popupBoundsBottom - height\)/);
+            /const (?:menu|panel)Point = (?:menu|panel)\.mapFromItem\(item, x, y\)/,
+            `${file} must hit-test the reparented popup in its own coordinates`);
+        assert.match(source, /width:\s*parent \? parent\.width : 0/,
+            `${file} delegates must tolerate their transient null parent`);
     }
     const bar = composer.match(/Item\s*\{\s*id:\s*actionRow\b([\s\S]*?)\n\s{12}\}/);
     assert.match(bar[1],

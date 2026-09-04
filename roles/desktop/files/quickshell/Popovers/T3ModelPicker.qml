@@ -29,6 +29,13 @@ Item {
     property Item popupBoundsItem: null
     signal selected(string instanceId, string model)
 
+    // Float the panel at the page boundary rather than leaving it underneath
+    // the tiny bar trigger. Besides escaping a scrolling viewport's clip, this
+    // keeps every row in the page's pointer-delivery tree: painting a child
+    // outside the trigger made it visible but not mouse-addressable.
+    readonly property Item popupHostItem: popupBoundsItem ? popupBoundsItem : root
+    property point popupHostOrigin: Qt.point(0, 0)
+
     readonly property var rail: T3Code.providerRail()
     property string railId: ""
     property string query: ""
@@ -46,8 +53,7 @@ Item {
     readonly property real naturalWidth: trigger.naturalWidth
     z: expanded ? 100 : 0
 
-    readonly property point popupBoundsOrigin: popupBoundsItem
-        ? root.mapFromItem(popupBoundsItem, 0, 0) : Qt.point(0, 0)
+    property point popupBoundsOrigin: Qt.point(0, 0)
     readonly property real popupBoundsLeft: popupBoundsItem
         ? popupBoundsOrigin.x : 0
     readonly property real popupBoundsTop: popupBoundsItem
@@ -82,6 +88,13 @@ Item {
         return at < 0 ? "" : value.slice(0, at);
     }
 
+    function updatePopupGeometry() {
+        popupHostOrigin = popupHostItem === root ? Qt.point(0, 0)
+            : popupHostItem.mapFromItem(root, 0, 0);
+        popupBoundsOrigin = popupBoundsItem
+            ? root.mapFromItem(popupBoundsItem, 0, 0) : Qt.point(0, 0);
+    }
+
     // The rail starts wherever the user already is: on their shortlist if
     // they have one, otherwise on the provider serving this thread.
     function defaultRailId() {
@@ -98,7 +111,9 @@ Item {
         query = "";
         legacyExpanded = false;
         highlighted = 0;
+        updatePopupGeometry();
         expanded = true;
+        Qt.callLater(updatePopupGeometry);
         searchInput.forceActiveFocus();
     }
 
@@ -153,12 +168,13 @@ Item {
     function containsPickerPoint(item, x, y) {
         if (!item)
             return false;
-        const point = root.mapFromItem(item, x, y);
-        const inButton = point.x >= 0 && point.x <= root.width
-            && point.y >= 0 && point.y <= root.height;
-        const inPanel = panel.visible && point.x >= panel.x
-            && point.x <= panel.x + panel.width
-            && point.y >= panel.y && point.y <= panel.y + panel.height;
+        const buttonPoint = root.mapFromItem(item, x, y);
+        const panelPoint = panel.mapFromItem(item, x, y);
+        const inButton = buttonPoint.x >= 0 && buttonPoint.x <= root.width
+            && buttonPoint.y >= 0 && buttonPoint.y <= root.height;
+        const inPanel = panel.visible && panelPoint.x >= 0
+            && panelPoint.x <= panel.width && panelPoint.y >= 0
+            && panelPoint.y <= panel.height;
         return inButton || inPanel;
     }
 
@@ -213,13 +229,14 @@ Item {
     Rectangle {
         id: panel
 
+        parent: root.popupHostItem
         z: 1000
         visible: root.expanded && root.enabled
         readonly property real preferredY: root.openUpward
             ? -height - 6 : root.height + 6
-        x: Math.max(root.popupBoundsLeft,
+        x: root.popupHostOrigin.x + Math.max(root.popupBoundsLeft,
             Math.min(0, root.popupBoundsRight - width))
-        y: Math.max(root.popupBoundsTop,
+        y: root.popupHostOrigin.y + Math.max(root.popupBoundsTop,
             Math.min(preferredY, root.popupBoundsBottom - height))
         width: root.panelWidth
         height: root.panelHeight
@@ -525,7 +542,7 @@ Item {
                             readonly property bool blocked: !isLegacyHeader
                                 && modelData.disabledReason !== ""
 
-                            width: parent.width
+                            width: parent ? parent.width : 0
                             height: root.rowHeight
                             radius: T3Theme.controlRadius
                             color: chosen ? T3Theme.accentSoft
