@@ -1,8 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
-import "../Common/ExternalUrl.js" as ExternalUrl
 import "../Common/NotesHelpers.js" as NotesHelpers
 import "../Common/PanelRegistryData.js" as PanelRegistry
 
@@ -21,6 +19,8 @@ Surface {
     property bool editing: false
     property string editingId: ""
     property int editorGeneration: 0
+    property string observedTitle: ""
+    property bool persistingTitle: false
 
     readonly property string statusText: Notes.error !== "" ? Notes.error
         : !Notes.ready ? "Loading…"
@@ -46,13 +46,46 @@ Surface {
         noteEdit.syncing = false;
     }
 
+    function setEditorTitle(title) {
+        titleEdit.syncing = true;
+        titleEdit.text = title;
+        titleEdit.cursorPosition = titleEdit.text.length;
+        titleEdit.syncing = false;
+    }
+
+    function syncEditorTitle() {
+        if (editingId === "")
+            return;
+        const note = Notes.record(editingId);
+        if (!note || note.title === observedTitle)
+            return;
+        observedTitle = note.title;
+        if (!persistingTitle && titleEdit.text !== note.title)
+            setEditorTitle(note.title);
+    }
+
     function persistEditor() {
         if (!editing || noteEdit.syncing || NotesHelpers.isBlank(noteEdit.text))
             return;
-        if (editingId === "")
-            editingId = Notes.add(noteEdit.text);
-        else
+        if (editingId === "") {
+            editingId = Notes.add(noteEdit.text, titleEdit.text);
+            const note = Notes.record(editingId);
+            observedTitle = note ? note.title : "";
+        } else {
             Notes.update(editingId, noteEdit.text);
+        }
+    }
+
+    function persistTitle() {
+        if (!editing || titleEdit.syncing)
+            return;
+        if (editingId !== "") {
+            persistingTitle = true;
+            Notes.updateTitle(editingId, titleEdit.text);
+            const note = Notes.record(editingId);
+            observedTitle = note ? note.title : "";
+            persistingTitle = false;
+        }
     }
 
     function beginNew() {
@@ -61,6 +94,8 @@ Surface {
         finishEditing(false);
         editingId = "";
         setEditorText("");
+        setEditorTitle("");
+        observedTitle = "";
         editorGeneration++;
         editing = true;
         editorScope.hadFocus = false;
@@ -77,6 +112,8 @@ Surface {
         finishEditing(false);
         editingId = note.id;
         setEditorText(note.body);
+        setEditorTitle(note.title);
+        observedTitle = note.title;
         editorGeneration++;
         editing = true;
         editorScope.hadFocus = false;
@@ -88,6 +125,8 @@ Surface {
             return;
         const id = editingId;
         const body = noteEdit.text;
+        const autoGenerateTitle = NotesHelpers.shouldAutoGenerateTitle(
+            titleEdit.text, Settings.modOpts.notes.titleProvider);
         editorGeneration++;
         editing = false;
         editingId = "";
@@ -95,8 +134,11 @@ Surface {
         if (id !== "") {
             if (NotesHelpers.isBlank(body))
                 Notes.remove(id);
-            else
+            else {
                 Notes.update(id, body);
+                if (autoGenerateTitle)
+                    Notes.requestTitle(id);
+            }
         }
         Notes.flush();
         if (restoreFocus)
@@ -134,12 +176,6 @@ Surface {
         noteEdit.syncing = false;
         persistEditor();
         noteEdit.forceActiveFocus();
-    }
-
-    function openLink(link) {
-        const safe = ExternalUrl.safeHttpUrl(String(link));
-        if (safe !== "")
-            Quickshell.execDetached(["xdg-open", safe]);
     }
 
     function handleEscape(): bool {
@@ -287,7 +323,7 @@ Surface {
 
         visible: root.editing
         width: parent.width
-        height: visible ? 204 : 0
+        height: visible ? 266 : 0
         onActiveFocusChanged: {
             if (activeFocus) {
                 hadFocus = true;
@@ -327,15 +363,126 @@ Surface {
                     color: Theme.textLow
                 }
 
-                NoteIconButton {
-                    visible: root.editingId !== ""
+                Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    controlSize: 28
-                    symbol: "delete"
-                    actionName: "Delete note"
+                    spacing: 3
+
+                    ActionButton {
+                        visible: root.editingId !== ""
+                            && Settings.modOpts.notes.titleProvider !== "off"
+                        label: "Generate"
+                        hPadding: 10
+                        enabled: !Notes.titlePending(root.editingId)
+                        onTriggered: {
+                            root.persistEditor();
+                            Notes.requestTitle(root.editingId);
+                        }
+                    }
+
+                    NoteIconButton {
+                        visible: root.editingId !== ""
+                        controlSize: 28
+                        symbol: "delete"
+                        actionName: "Delete note"
+                        tint: Theme.redText
+                        onTriggered: root.deleteEditing()
+                    }
+                }
+            }
+
+            Rectangle {
+                id: titleFrame
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: editorHeader.bottom
+                anchors.leftMargin: 9
+                anchors.rightMargin: 9
+                height: 32
+                radius: Theme.rowRadius
+                color: titleEdit.activeFocus ? Theme.hoverFillStrong : Theme.cardFill
+                border.width: titleEdit.activeFocus ? 1 : 0
+                border.color: Theme.accent
+
+                TextInput {
+                    id: titleEdit
+
+                    property bool syncing: false
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    maximumLength: NotesHelpers.MAX_TITLE_LENGTH
+                    selectByMouse: true
+                    activeFocusOnTab: true
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Theme.weightSemibold
+                    color: Theme.textHi
+                    selectionColor: Theme.accentBg
+                    selectedTextColor: Theme.textHi
+                    Accessible.role: Accessible.EditableText
+                    Accessible.name: "Note title"
+                    Accessible.description: "Editable plain-text title"
+                    onTextEdited: root.persistTitle()
+
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Escape) {
+                            root.finishEditing(true);
+                            event.accepted = true;
+                        }
+                    }
+
+                    Text {
+                        visible: titleEdit.text === ""
+                        text: "Title"
+                        font: titleEdit.font
+                        color: Theme.textFaint
+                    }
+                }
+            }
+
+            Item {
+                id: titleStatus
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: titleFrame.bottom
+                anchors.leftMargin: 11
+                anchors.rightMargin: 9
+                readonly property string failure: root.editingId === "" ? ""
+                    : Notes.titleError(root.editingId)
+                readonly property bool pending: root.editingId !== ""
+                    && Notes.titlePending(root.editingId)
+                visible: pending || failure !== ""
+                height: visible ? 25 : 0
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: retryTitleButton.left
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: titleStatus.pending ? "Generating title…" : titleStatus.failure
+                    elide: Text.ElideRight
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontMicro
+                    color: titleStatus.failure !== "" ? Theme.redText : Theme.textLow
+                    Accessible.role: titleStatus.failure !== ""
+                        ? Accessible.AlertMessage : Accessible.StaticText
+                    Accessible.name: text
+                }
+
+                ActionButton {
+                    id: retryTitleButton
+                    visible: titleStatus.failure !== ""
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    label: "Retry title"
+                    hPadding: 10
                     tint: Theme.redText
-                    onTriggered: root.deleteEditing()
+                    fill: Theme.redBgSoft
+                    onTriggered: Notes.retryTitle(root.editingId)
                 }
             }
 
@@ -343,7 +490,7 @@ Surface {
                 id: editorFlick
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.top: editorHeader.bottom
+                anchors.top: titleStatus.bottom
                 anchors.bottom: formatRow.top
                 anchors.leftMargin: 10
                 anchors.rightMargin: 10
@@ -389,7 +536,7 @@ Surface {
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Tab
                                 && !(event.modifiers & Qt.ControlModifier)) {
-                            boldButton.forceActiveFocus();
+                            titleEdit.forceActiveFocus();
                             event.accepted = true;
                         }
                     }
@@ -472,7 +619,7 @@ Surface {
         width: parent.width
         height: Notes.count > 0
             ? Math.min(noteColumn.implicitHeight,
-                Math.max(80, root.availableHeight - (root.editing ? 330 : 130))) : 0
+                Math.max(80, root.availableHeight - (root.editing ? 392 : 130))) : 0
         // Do not derive visibility from a height which is itself derived from
         // invisible descendants: that cycle leaves the first records at zero
         // height on some Qt versions. Count is the canonical visibility gate.
@@ -494,11 +641,12 @@ Surface {
                     id: noteCard
 
                     required property var modelData
-                    property string pointedLink: ""
+                    readonly property bool titleBusy: Notes.titlePending(modelData.id)
+                    readonly property string titleFailure: Notes.titleError(modelData.id)
 
                     visible: modelData.id !== root.editingId
                     width: parent.width
-                    height: visible ? Math.max(52, notePreview.implicitHeight + 20) : 0
+                    height: visible ? Math.max(44, cardActions.implicitHeight + 12) : 0
                     radius: Theme.cardRadius
                     color: noteMouse.containsMouse || activeFocus
                         ? Theme.hoverFillStrong : Theme.tile
@@ -506,8 +654,9 @@ Surface {
                     border.color: Theme.accent
                     activeFocusOnTab: visible
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Edit note"
-                    Accessible.description: modelData.body
+                    Accessible.name: "Edit note: " + modelData.title
+                    Accessible.description: titleBusy ? "Generating title"
+                        : titleFailure
                     Accessible.onPressAction: root.beginEdit(modelData)
 
                     Keys.onPressed: event => {
@@ -524,54 +673,69 @@ Surface {
                     MouseArea {
                         id: noteMouse
                         anchors.left: parent.left
-                        anchors.right: trashButton.left
+                        anchors.right: cardActions.left
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onPositionChanged: mouse => {
-                            noteCard.pointedLink = notePreview.linkAt(
-                                mouse.x - notePreview.x, mouse.y - notePreview.y) || "";
-                        }
-                        onExited: noteCard.pointedLink = ""
-                        onClicked: mouse => {
+                        onClicked: {
                             noteCard.forceActiveFocus();
-                            const link = notePreview.linkAt(
-                                mouse.x - notePreview.x, mouse.y - notePreview.y) || "";
-                            if (link !== "")
-                                root.openLink(link);
-                            else
-                                root.beginEdit(noteCard.modelData);
+                            root.beginEdit(noteCard.modelData);
                         }
                     }
 
                     Text {
-                        id: notePreview
-                        x: 11
+                        anchors.left: parent.left
+                        anchors.right: cardActions.left
+                        anchors.leftMargin: 11
+                        anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 56
-                        text: NotesHelpers.styleMarkdownLinks(
-                            noteCard.modelData.body, Theme.accent.toString())
-                        textFormat: Text.MarkdownText
-                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                        maximumLineCount: 6
+                        text: noteCard.modelData.title
+                        maximumLineCount: 1
                         elide: Text.ElideRight
-                        lineHeight: Theme.proseLineHeight
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontBody
-                        color: Theme.textMid
-                        onLinkActivated: link => root.openLink(link)
+                        font.weight: Theme.weightSemibold
+                        color: noteCard.titleFailure !== ""
+                            ? Theme.redText : Theme.textHi
                     }
 
-                    NoteIconButton {
-                        id: trashButton
+                    Row {
+                        id: cardActions
                         anchors.right: parent.right
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        symbol: "delete"
-                        actionName: "Delete note"
-                        tint: Theme.redText
-                        onTriggered: root.deleteCard(noteCard.modelData.id)
+                        spacing: 2
+
+                        Item {
+                            visible: noteCard.titleBusy
+                            width: visible ? 30 : 0
+                            height: 30
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: "Generating title"
+
+                            Sym {
+                                anchors.centerIn: parent
+                                name: "progress_activity"
+                                size: Theme.iconMedium
+                                color: Theme.textLow
+                            }
+                        }
+
+                        NoteIconButton {
+                            visible: noteCard.titleFailure !== ""
+                            symbol: "refresh"
+                            actionName: "Retry title generation"
+                            tint: Theme.accent
+                            onTriggered: Notes.retryTitle(noteCard.modelData.id)
+                        }
+
+                        NoteIconButton {
+                            symbol: "delete"
+                            actionName: "Delete note"
+                            tint: Theme.redText
+                            onTriggered: root.deleteCard(noteCard.modelData.id)
+                        }
                     }
                 }
             }
@@ -589,6 +753,15 @@ Surface {
         function onChanged() {
             if (!Popouts.open || Popouts.currentName !== PanelRegistry.NOTES)
                 root.finishEditing(false);
+        }
+    }
+
+    Connections {
+        target: Notes
+
+        function onRecordsChanged() {
+            if (root.editing)
+                root.syncEditorTitle();
         }
     }
 

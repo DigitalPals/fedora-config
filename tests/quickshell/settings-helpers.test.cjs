@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 20);
+    assert.equal(H.VERSION, 21);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "power", "notifications", "usage"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -79,7 +79,7 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "indicators", "clock", "weather", "t3", "hermes", "usage", "gh", "updates",
+        ["ws", "media", "indicators", "clock", "weather", "notes", "t3", "hermes", "usage", "gh", "updates",
          "tray", "notifications", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
@@ -95,6 +95,13 @@ test("defaults carry the design values", () => {
     assert.deepEqual(d.modOpts.notifications, { group: "status" });
     assert.deepEqual(d.modOpts.weather,
         { place: "", lat: 0, lon: 0, pollMins: 20 });
+    assert.deepEqual(d.modOpts.notes, {
+        titleProvider: "off",
+        codexModel: "gpt-5.6-luna",
+        codexEffort: "none",
+        claudeModel: "fable",
+        claudeEffort: "low"
+    });
     assert.deepEqual(d.modOpts.t3, { showLabel: true });
     assert.deepEqual(d.modOpts.hermes, { showLabel: true, activityDetail: "verb" });
     assert.equal(d.modOpts.usage.warnAt, 25);
@@ -224,6 +231,11 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
         indicators: { mode: "sometimes" },
         clock: { showEvents: "yes", daysAhead: 99, pollMins: 7 },
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
+        notes: {
+            titleProvider: "automatic", codexModel: " bad model ",
+            codexEffort: "minimal", claudeModel: "claude-fable-5",
+            claudeEffort: "none"
+        },
         hermes: { showLabel: "yes", activityDetail: "full" },
         usage: {
             warnAt: 8, critAt: 60, claude: "yes", claudeAutoRefresh: false,
@@ -264,6 +276,21 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.weather.lon, -12.3457);
     assert.equal(next.weather.place, "Emmen Centrum");
     assert.equal(next.weather.pollMins, 5);
+    assert.equal(next.notes.titleProvider, "off");
+    assert.equal(next.notes.codexModel, "gpt-5.6-luna");
+    assert.equal(next.notes.codexEffort, "none");
+    assert.equal(next.notes.claudeModel, "fable");
+    assert.equal(next.notes.claudeEffort, "low");
+    const codex = H.normalizeModOpts({ notes: {
+        titleProvider: "codex", codexModel: "gpt-5.6-sol", codexEffort: "max"
+    } }).notes;
+    assert.deepEqual([codex.titleProvider, codex.codexModel, codex.codexEffort],
+        ["codex", "gpt-5.6-sol", "max"]);
+    const claude = H.normalizeModOpts({ notes: {
+        titleProvider: "claude", claudeModel: "opus", claudeEffort: "xhigh"
+    } }).notes;
+    assert.deepEqual([claude.titleProvider, claude.claudeModel, claude.claudeEffort],
+        ["claude", "opus", "xhigh"]);
     assert.equal(next.hermes.showLabel, true, "non-boolean falls back to default");
     assert.equal(next.hermes.activityDetail, "full");
     assert.equal(H.normalizeModOpts({ hermes: { activityDetail: "generic" } })
@@ -856,6 +883,23 @@ test("serialize is stable, versioned, and round-trips through merge", () => {
     assert.ok(text.endsWith("\n"));
     const reparsed = H.merge(H.parse(text).value);
     assert.equal(H.serialize(reparsed), text);
+});
+
+test("selected Notes models and efforts survive a settings round trip", () => {
+    const selected = H.merge({
+        v: H.VERSION,
+        modOpts: {
+            notes: {
+                titleProvider: "codex",
+                codexModel: "gpt-5.6-sol",
+                codexEffort: "high",
+                claudeModel: "opus",
+                claudeEffort: "max"
+            }
+        }
+    });
+    const restored = H.merge(H.parse(H.serialize(selected)).value);
+    assert.deepEqual(restored.modOpts.notes, selected.modOpts.notes);
 });
 
 test("v1 and v2 layouts migrate to v3 detail policies without losing placement", () => {

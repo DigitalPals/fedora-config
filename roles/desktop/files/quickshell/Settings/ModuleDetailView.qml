@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
+import "../Common/SettingsHelpers.js" as SettingsHelpers
 
 // Per-widget settings sub-page, opened by the cog on a Widgets-page row.
 // The detail policy control lives here (storage stays in Settings.mods);
@@ -109,6 +110,7 @@ SettingsPage {
                 case "indicators": return indicatorsOptions;
                 case "clock": return clockOptions;
                 case "weather": return weatherOptions;
+                case "notes": return notesOptions;
                 case "t3": return t3Options;
                 case "hermes": return hermesOptions;
                 case "usage": return usageOptions;
@@ -365,6 +367,84 @@ SettingsPage {
                 dirty: view.optDirty("pollMins")
                 onMoved: value => view.setOpt("pollMins", value)
                 onResetRequested: view.resetOpt("pollMins")
+            }
+        }
+    }
+
+    Component {
+        id: notesOptions
+
+        Column {
+            spacing: 8
+
+            PickerRow {
+                width: parent.width
+                label: "Title provider"
+                model: [
+                    { value: "off", label: "Off" },
+                    { value: "codex", label: "Codex CLI" },
+                    { value: "claude", label: "Claude Code CLI" }
+                ]
+                current: view.opts.titleProvider
+                dirty: view.optDirty("titleProvider")
+                onPicked: value => view.setOpt("titleProvider", value)
+                onResetRequested: view.resetOpt("titleProvider")
+            }
+
+            PickerRow {
+                visible: view.opts.titleProvider === "codex"
+                width: parent.width
+                label: "Codex model"
+                model: SettingsHelpers.NOTE_CODEX_MODEL_CHOICES
+                current: view.opts.codexModel
+                dirty: view.optDirty("codexModel")
+                onPicked: value => view.setOpt("codexModel", value)
+                onResetRequested: view.resetOpt("codexModel")
+            }
+
+            PickerRow {
+                visible: view.opts.titleProvider === "codex"
+                width: parent.width
+                label: "Effort"
+                model: SettingsHelpers.NOTE_CODEX_EFFORT_CHOICES
+                current: view.opts.codexEffort
+                dirty: view.optDirty("codexEffort")
+                onPicked: value => view.setOpt("codexEffort", value)
+                onResetRequested: view.resetOpt("codexEffort")
+            }
+
+            PickerRow {
+                visible: view.opts.titleProvider === "claude"
+                width: parent.width
+                label: "Claude model"
+                model: SettingsHelpers.NOTE_CLAUDE_MODEL_CHOICES
+                current: view.opts.claudeModel
+                dirty: view.optDirty("claudeModel")
+                onPicked: value => view.setOpt("claudeModel", value)
+                onResetRequested: view.resetOpt("claudeModel")
+            }
+
+            PickerRow {
+                visible: view.opts.titleProvider === "claude"
+                width: parent.width
+                label: "Effort"
+                model: SettingsHelpers.NOTE_CLAUDE_EFFORT_CHOICES
+                current: view.opts.claudeEffort
+                dirty: view.optDirty("claudeEffort")
+                onPicked: value => view.setOpt("claudeEffort", value)
+                onResetRequested: view.resetOpt("claudeEffort")
+            }
+
+            Text {
+                width: parent.width
+                leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
+                text: view.opts.titleProvider === "off"
+                    ? "Titles stay local. Choose a CLI to enable Generate in the note editor."
+                    : "Uses your existing CLI sign-in. Text is sent when you click Generate or leave a note untitled, up to 12,000 characters."
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: Theme.textDim
+                wrapMode: Text.Wrap
             }
         }
     }

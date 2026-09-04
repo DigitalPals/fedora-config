@@ -438,9 +438,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema twenty keeps safe defaults and exposes accessibility preferences", () => {
+test("schema twenty-one keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 20/);
+    assert.match(helpers, /var VERSION = 21/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -458,6 +458,8 @@ test("schema twenty keeps safe defaults and exposes accessibility preferences", 
     assert.match(helpers, /"updates", "gh", "t3", "hermes",\s*"usage", "tray"/);
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers, /claudeAutoRefresh:\s*true/);
+    assert.match(helpers,
+        /notes:\s*\{[\s\S]*?titleProvider:\s*"off"[\s\S]*?codexModel:\s*"gpt-5\.6-luna"[\s\S]*?codexEffort:\s*"none"[\s\S]*?claudeModel:\s*"fable"[\s\S]*?claudeEffort:\s*"low"/);
     assert.match(helpers, /mod\("tray", true\), mod\("notifications", true\), mod\("vol", true\)/);
     assert.match(helpers, /notifications:\s*\{ group: "status" \}/);
     assert.match(helpers, /warmth:\s*3400/);
@@ -811,7 +813,7 @@ test("per-module options live under one validated modOpts key", () => {
 
     assert.match(helpers, /function defaultModOpts/);
     assert.match(helpers, /function normalizeModOpts/);
-    assert.match(helpers, /modOpts:\s*normalizeModOpts\(parsed\.modOpts\)/);
+    assert.match(helpers, /modOpts:\s*migrateModOpts\(parsed\.modOpts, parsed\.v\)/);
     assert.match(settings, /"mods", "modOpts"/);
     assert.match(settings, /function setModuleOption/);
     assert.match(settings, /onModOptsChanged:\s*scheduleSave/);

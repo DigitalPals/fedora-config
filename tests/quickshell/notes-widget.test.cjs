@@ -12,13 +12,30 @@ function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
 }
 
-test("schema 20 enables Notes immediately after Weather", () => {
-    assert.equal(Settings.VERSION, 20);
+test("schema 21 enables Notes immediately after Weather with opt-in title settings", () => {
+    assert.equal(Settings.VERSION, 21);
     const center = Settings.defaultMods().center;
     const weather = center.findIndex(entry => entry.id === "weather");
     assert.equal(center[weather + 1].id, "notes");
     assert.equal(center[weather + 1].on, true);
     assert.equal(Settings.moduleGroup("notes", Settings.defaultModOpts()), "solo");
+    assert.deepEqual(Settings.defaultModOpts().notes, {
+        titleProvider: "off",
+        codexModel: "gpt-5.6-luna",
+        codexEffort: "none",
+        claudeModel: "fable",
+        claudeEffort: "low"
+    });
+    assert.equal(Settings.merge({ v: 20, modOpts: {
+        notes: { titleProvider: "codex", codexModel: "gpt-5.6-luna" }
+    } }).modOpts.notes.titleProvider, "off",
+    "a pre-provider schema must not accidentally opt in");
+    const migrated = Settings.merge({ v: 21, modOpts: {
+        notes: { titleProvider: "codex", codexModel: "gpt-5.6-terra" }
+    } }).modOpts.notes;
+    assert.equal(migrated.titleProvider, "codex");
+    assert.equal(migrated.codexModel, "gpt-5.6-terra");
+    assert.equal(migrated.codexEffort, "none");
     assert.deepEqual(Catalog.WIDGETS.notes, { name: "Notes", short: "Notes" });
 });
 
@@ -71,11 +88,12 @@ test("the bar widget is icon-only and its tooltip owns the count", () => {
         "the menubar must not render a label or count beside the icon");
 });
 
-test("Notes persistence is strict, atomic, debounced, queued, and retryable", () => {
+test("Notes persistence and title generation are independently queued and retryable", () => {
     const notes = read("Common/Notes.qml");
     for (const property of ["records", "ready", "saving", "error", "undoAvailable"])
         assert.match(notes, new RegExp(`property[^\\n]*${property}|property ${property}`));
-    for (const fn of ["add", "update", "remove", "undoDelete", "retrySave"])
+    for (const fn of ["add", "update", "updateTitle", "remove", "undoDelete",
+        "retrySave", "requestTitle", "retryTitle", "titlePending", "titleError"])
         assert.match(notes, new RegExp(`function ${fn}\\(`));
     assert.match(notes, /\.local\/state\/quickshell\/notes\.json/);
     assert.match(notes, /atomicWrites:\s*true/);
@@ -86,23 +104,51 @@ test("Notes persistence is strict, atomic, debounced, queued, and retryable", ()
     assert.match(notes, /status === "corrupt"[\s\S]*?ready = false/);
     assert.match(notes, /errorKind !== "load"/,
         "a malformed file must close every mutation path");
+    assert.match(notes, /property var titleQueue:\s*\[\]/);
+    assert.doesNotMatch(notes, /finishInitialTitle|initialTitleIds/,
+        "closing a new note must never request a title automatically");
+    assert.match(notes,
+        /titleRequestCurrent\(records, request, provider,[\s\S]*?titleModel\(provider\), titleEffort\(provider\)\)/,
+        "provider, model, effort, body, and title changes must stale a result");
+    assert.match(notes, /effort:\s*request\.effort/);
+    assert.match(notes, /body:\s*request\.body\.slice\(0, 12000\)/);
+    assert.match(notes, /command:\s*\["python3", Quickshell\.shellDir \+ "\/scripts\/note-title\.py"\]/);
+    assert.match(notes, /stderr:\s*StdioCollector\s*\{\}/,
+        "CLI diagnostics must not be copied into the shell journal");
+    assert.match(notes, /dirty = parsed\.migrated === true[\s\S]*?saveTimer\.restart\(\)/,
+        "a valid v1 file must be rewritten atomically as v2");
 });
 
-test("the popover exposes editing, formatting, previews, safe links, and Undo", () => {
+test("the popover exposes title-only cards, editing, generation state, and Undo", () => {
     const panel = read("Popovers/NotesPopover.qml");
+    const finishEditing = panel.slice(panel.indexOf("function finishEditing"),
+        panel.indexOf("function deleteEditing"));
     assert.match(panel, /text:\s*"Notes"/);
     assert.match(panel, /actionName:\s*"Add note"/);
     assert.match(panel, /Accessible\.role:\s*Accessible\.EditableText/);
     for (const action of ["bold", "italic", "bullet", "checklist", "link", "code"])
         assert.match(panel, new RegExp(`applyFormat\\("${action}"\\)`));
-    assert.match(panel, /textFormat:\s*Text\.MarkdownText/);
-    assert.match(panel, /maximumLineCount:\s*6/);
+    assert.match(panel,
+        /id:\s*titleEdit[\s\S]*?maximumLength:\s*NotesHelpers\.MAX_TITLE_LENGTH/);
+    assert.match(panel, /Accessible\.name:\s*"Note title"/);
+    assert.match(panel, /label:\s*"Generate"/);
+    assert.match(panel,
+        /visible:\s*root\.editingId !== ""[\s\S]*?Settings\.modOpts\.notes\.titleProvider !== "off"/,
+        "Generate is offered only after a note exists and a provider is configured");
+    assert.match(panel, /Notes\.requestTitle\(root\.editingId\)/);
+    assert.match(panel, /label:\s*"Retry title"[\s\S]*?Notes\.retryTitle/);
+    assert.match(panel, /text:\s*noteCard\.modelData\.title/);
+    assert.match(panel, /Generating title…/);
+    assert.match(panel, /Accessible\.AlertMessage/,
+        "persistence and generation failures must be announced accessibly");
+    assert.doesNotMatch(panel, /id:\s*notePreview|Text\.MarkdownText/,
+        "the overview must not render note-body excerpts");
     assert.match(panel, /id:\s*noteList[\s\S]*?visible:\s*Notes\.count > 0/,
         "the list must not create a visibility/implicit-height cycle");
     assert.match(panel, /id:\s*noteEdit[\s\S]*?activeFocusOnTab:\s*true/,
         "the active editor must remain in the keyboard focus chain");
-    assert.match(panel, /ExternalUrl\.safeHttpUrl/);
-    assert.match(panel, /Quickshell\.execDetached\(\["xdg-open", safe\]\)/);
+    assert.doesNotMatch(panel, /modelData\.body|ExternalUrl/,
+        "the overview must expose only stored titles");
     assert.match(panel, /visible:\s*modelData\.id !== root\.editingId/,
         "an active note's preview must be hidden behind its full-source editor");
     assert.ok((panel.match(/actionName:\s*"Delete note"/g) || []).length >= 2,
@@ -120,4 +166,53 @@ test("the popover exposes editing, formatting, previews, safe links, and Undo", 
         /lostGeneration[\s\S]*?editorGeneration === lostGeneration/,
         "a deferred focus exit must not close a newly selected note");
     assert.match(panel, /Component\.onDestruction:\s*finishEditing\(false\)/);
+    assert.match(panel, /property string observedTitle:\s*""/);
+    assert.match(panel, /property bool persistingTitle:\s*false/);
+    assert.match(panel, /observedTitle = note \? note\.title : ""/,
+        "persisting the first body edit may observe the stored title without filling the input");
+    assert.match(panel,
+        /if \(!persistingTitle && titleEdit\.text !== note\.title\)[\s\S]*?setEditorTitle\(note\.title\)/,
+        "a generated title must reach the separate input even if it still owns focus");
+    assert.doesNotMatch(panel,
+        /persistEditor\(\)[\s\S]*?if \(!titleTouched\)[\s\S]*?syncEditorTitle/,
+        "body persistence must not mirror a fallback into the title input");
+    assert.match(panel, /visible:\s*titleEdit\.text === ""[\s\S]*?text:\s*"Title"/);
+    assert.doesNotMatch(panel, /Title from the first line/);
+    assert.match(finishEditing,
+        /shouldAutoGenerateTitle\([\s\S]*?titleEdit\.text,[\s\S]*?Settings\.modOpts\.notes\.titleProvider\)/,
+        "closing an untitled editor must require an explicitly configured provider");
+    assert.match(finishEditing,
+        /Notes\.update\(id, body\);[\s\S]*?if \(autoGenerateTitle\)[\s\S]*?Notes\.requestTitle\(id\)/,
+        "the latest body must persist before background title generation starts");
+});
+
+test("Notes widget settings expose provider-specific model and effort selectors", () => {
+    const detail = read("Settings/ModuleDetailView.qml");
+    const search = read("Common/SettingsSearchData.js");
+    const notesOptions = detail.slice(detail.indexOf("id: notesOptions"),
+        detail.indexOf("id: t3Options"));
+    assert.match(detail, /case "notes": return notesOptions/);
+    assert.match(detail,
+        /id:\s*notesOptions[\s\S]*?label:\s*"Title provider"[\s\S]*?value:\s*"off", label:\s*"Off"[\s\S]*?value:\s*"codex", label:\s*"Codex CLI"[\s\S]*?value:\s*"claude", label:\s*"Claude Code CLI"/);
+    assert.match(detail,
+        /label:\s*"Codex model"[\s\S]*?model:\s*SettingsHelpers\.NOTE_CODEX_MODEL_CHOICES[\s\S]*?current:\s*view\.opts\.codexModel/);
+    assert.match(detail,
+        /label:\s*"Claude model"[\s\S]*?model:\s*SettingsHelpers\.NOTE_CLAUDE_MODEL_CHOICES[\s\S]*?current:\s*view\.opts\.claudeModel/);
+    assert.match(detail,
+        /model:\s*SettingsHelpers\.NOTE_CODEX_EFFORT_CHOICES[\s\S]*?current:\s*view\.opts\.codexEffort/);
+    assert.match(detail,
+        /model:\s*SettingsHelpers\.NOTE_CLAUDE_EFFORT_CHOICES[\s\S]*?current:\s*view\.opts\.claudeEffort/);
+    assert.deepEqual(Settings.NOTE_CODEX_MODEL_CHOICES.map(choice => choice.value),
+        ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"]);
+    assert.deepEqual(Settings.NOTE_CLAUDE_MODEL_CHOICES.map(choice => choice.value),
+        ["fable", "sonnet", "opus"]);
+    assert.deepEqual(Settings.NOTE_CODEX_EFFORT_CHOICES.map(choice => choice.value),
+        ["none", "low", "medium", "high", "xhigh", "max"]);
+    assert.deepEqual(Settings.NOTE_CLAUDE_EFFORT_CHOICES.map(choice => choice.value),
+        ["low", "medium", "high", "xhigh", "max"]);
+    assert.doesNotMatch(notesOptions, /SettingsTextRow/,
+        "model and effort values must be selected, not typed");
+    assert.match(detail,
+        /sent when you click Generate or leave a note untitled, up to 12,000 characters/);
+    assert.match(search, /AI note titles[\s\S]*?codex claude model provider effort/);
 });

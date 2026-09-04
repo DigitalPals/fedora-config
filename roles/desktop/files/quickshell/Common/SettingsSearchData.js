@@ -37,6 +37,7 @@ var ROWS = [
     // Widgets
     { page: "modules", pageLabel: "Widgets", group: "Lanes", label: "Arrange widgets", key: "", terms: "drag order left center right lane module notification group grouping status pill separate" },
     { page: "modules", pageLabel: "Widgets", group: "Catalog", label: "Show or hide widgets", key: "", terms: "enable disable toggle module clock weather notes battery tray workspaces media" },
+    { page: "modules", pageLabel: "Widgets", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
 
     // Drawer
     { page: "drawer", pageLabel: "Drawer", group: "Tabs", label: "Tab order", key: "", terms: "reorder overview sound network power notifications usage" },

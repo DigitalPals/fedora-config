@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 20;
+var VERSION = 21;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -94,6 +94,39 @@ var MODULE_GROUPS = {
 
 var NOTIFICATION_GROUPS = ["solo", "status"];
 
+// Notes title generation deliberately uses a small, reviewed model catalog.
+// Besides making the settings selectable, this prevents a typo from reaching
+// either CLI. Claude's aliases are the ones advertised by the installed CLI;
+// the Codex tiers and effort support come from the OpenAI model catalog.
+var NOTE_CODEX_MODEL_CHOICES = [
+    { value: "gpt-5.6-luna", label: "Luna" },
+    { value: "gpt-5.6-terra", label: "Terra" },
+    { value: "gpt-5.6-sol", label: "Sol" }
+];
+var NOTE_CLAUDE_MODEL_CHOICES = [
+    { value: "fable", label: "Fable" },
+    { value: "sonnet", label: "Sonnet" },
+    { value: "opus", label: "Opus" }
+];
+var NOTE_CODEX_EFFORT_CHOICES = [
+    { value: "none", label: "None" },
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "xhigh", label: "XHigh" },
+    { value: "max", label: "Max" }
+];
+var NOTE_CLAUDE_EFFORT_CHOICES = NOTE_CODEX_EFFORT_CHOICES.filter(
+    function(choice) { return choice.value !== "none"; });
+var NOTE_CODEX_MODELS = NOTE_CODEX_MODEL_CHOICES.map(
+    function(choice) { return choice.value; });
+var NOTE_CLAUDE_MODELS = NOTE_CLAUDE_MODEL_CHOICES.map(
+    function(choice) { return choice.value; });
+var NOTE_CODEX_EFFORTS = NOTE_CODEX_EFFORT_CHOICES.map(
+    function(choice) { return choice.value; });
+var NOTE_CLAUDE_EFFORTS = NOTE_CLAUDE_EFFORT_CHOICES.map(
+    function(choice) { return choice.value; });
+
 // Group kinds that rest on a visible pill fill rather than transparent
 // furniture. Cluster.qml reads this so the decision lives beside the map.
 var FILLED_GROUP_KINDS = ["time", "status"];
@@ -139,6 +172,13 @@ function defaultModOpts() {
             showEvents: true, daysAhead: 14, pollMins: 15
         },
         weather: { place: "", lat: 0, lon: 0, pollMins: 20 },
+        notes: {
+            titleProvider: "off",
+            codexModel: "gpt-5.6-luna",
+            codexEffort: "none",
+            claudeModel: "fable",
+            claudeEffort: "low"
+        },
         t3: { showLabel: true },
         hermes: { showLabel: true, activityDetail: "verb" },
         usage: {
@@ -590,6 +630,15 @@ var MOD_OPT_CHECKS = {
         lon: function(v, d) { return realIn(v, -180, 180, 0.0001, d); },
         pollMins: function(v, d) { return intIn(v, 5, 60, 5, d); }
     },
+    notes: {
+        titleProvider: function(v, d) {
+            return enumIn(v, ["off", "codex", "claude"], d);
+        },
+        codexModel: function(v, d) { return enumIn(v, NOTE_CODEX_MODELS, d); },
+        codexEffort: function(v, d) { return enumIn(v, NOTE_CODEX_EFFORTS, d); },
+        claudeModel: function(v, d) { return enumIn(v, NOTE_CLAUDE_MODELS, d); },
+        claudeEffort: function(v, d) { return enumIn(v, NOTE_CLAUDE_EFFORTS, d); }
+    },
     t3: { showLabel: boolIn },
     hermes: {
         showLabel: boolIn,
@@ -653,6 +702,17 @@ function normalizeModOpts(raw) {
                 next[id][key] = MOD_OPT_CHECKS[id][key](entry[key], next[id][key]);
         });
     });
+    return next;
+}
+
+// Provider selection did not exist before schema 21. Even if an older file
+// happens to contain a future-shaped key, do not interpret it as consent to
+// transmit note text. Model names may migrate harmlessly; enabling a provider
+// requires a schema-21-or-newer settings write made through the current UI.
+function migrateModOpts(raw, sourceVersion) {
+    var next = normalizeModOpts(raw);
+    if (typeof sourceVersion !== "number" || sourceVersion < 21)
+        next.notes.titleProvider = "off";
     return next;
 }
 
@@ -1013,7 +1073,7 @@ function merge(raw) {
         drawerHover: enumIn(parsed.drawerHover, DRAWER_HOVER_MODES, d.drawerHover),
         drawerWidth: intIn(parsed.drawerWidth, 320, 480, 10, d.drawerWidth),
         mods: migrateMods(parsed.mods, parsed.v),
-        modOpts: normalizeModOpts(parsed.modOpts)
+        modOpts: migrateModOpts(parsed.modOpts, parsed.v)
     };
 }
 
@@ -1115,6 +1175,10 @@ var exported = {
     RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
     MODULE_GROUPS: MODULE_GROUPS,
     NOTIFICATION_GROUPS: NOTIFICATION_GROUPS,
+    NOTE_CODEX_MODEL_CHOICES: NOTE_CODEX_MODEL_CHOICES,
+    NOTE_CLAUDE_MODEL_CHOICES: NOTE_CLAUDE_MODEL_CHOICES,
+    NOTE_CODEX_EFFORT_CHOICES: NOTE_CODEX_EFFORT_CHOICES,
+    NOTE_CLAUDE_EFFORT_CHOICES: NOTE_CLAUDE_EFFORT_CHOICES,
     moduleGroup: moduleGroup,
     FILLED_GROUP_KINDS: FILLED_GROUP_KINDS,
     groupFilled: groupFilled,
@@ -1137,6 +1201,7 @@ var exported = {
     normalizeDrawerOverview: normalizeDrawerOverview,
     normalizeMods: normalizeMods,
     normalizeModOpts: normalizeModOpts,
+    migrateModOpts: migrateModOpts,
     migrateMods: migrateMods,
     migrateBarStyle: migrateBarStyle,
     migratePaletteMode: migratePaletteMode,

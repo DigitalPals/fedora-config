@@ -2,9 +2,17 @@
 // Keep this file free of Qt APIs so malformed-file handling and editor
 // transformations can be verified without constructing the shell.
 
-var VERSION = 1;
+var VERSION = 2;
+var LEGACY_VERSION = 1;
+var MAX_TITLE_LENGTH = 50;
+var UNTITLED_TITLE = "Untitled note";
 var ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-var RECORD_KEYS = ["id", "body", "createdAt", "updatedAt"];
+var RECORD_KEYS = ["id", "title", "body", "createdAt", "updatedAt"];
+var LEGACY_RECORD_KEYS = ["id", "body", "createdAt", "updatedAt"];
+var TITLE_EFFORTS = {
+    codex: ["none", "low", "medium", "high", "xhigh", "max"],
+    claude: ["low", "medium", "high", "xhigh", "max"]
+};
 
 function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -22,6 +30,77 @@ function isBlank(body) {
     return typeof body !== "string" || body.trim() === "";
 }
 
+function normalizeTitle(value) {
+    if (typeof value !== "string")
+        return "";
+    var compact = value.replace(/[\u0000-\u001f\u007f]/g, " ")
+        .replace(/\s+/g, " ").trim();
+    var title = "";
+    var characters = 0;
+    for (var i = 0; i < compact.length && characters < MAX_TITLE_LENGTH; i++) {
+        var first = compact.charCodeAt(i);
+        title += compact.charAt(i);
+        if (first >= 0xd800 && first <= 0xdbff && i + 1 < compact.length) {
+            var second = compact.charCodeAt(i + 1);
+            if (second >= 0xdc00 && second <= 0xdfff) {
+                title += compact.charAt(++i);
+            }
+        }
+        characters++;
+    }
+    return title.trim();
+}
+
+function shouldAutoGenerateTitle(title, provider) {
+    return normalizeTitle(title) === ""
+        && (provider === "codex" || provider === "claude");
+}
+
+function titleLength(value) {
+    var count = 0;
+    for (var i = 0; i < value.length; i++, count++) {
+        var first = value.charCodeAt(i);
+        if (first >= 0xd800 && first <= 0xdbff && i + 1 < value.length) {
+            var second = value.charCodeAt(i + 1);
+            if (second >= 0xdc00 && second <= 0xdfff)
+                i++;
+        }
+    }
+    return count;
+}
+
+// Take the first line that contains prose after common Markdown decorations
+// are removed. This is deliberately local and deterministic, and is only used
+// to migrate schema-v1 notes. New drafts keep their title separate from their
+// body and use the generic untitled label until the user types or generates one.
+function fallbackTitle(body) {
+    var lines = typeof body === "string" ? body.split(/\r?\n/) : [];
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line === "" || /^(?:```|~~~)/.test(line)
+                || /^(?:-{3,}|\*{3,}|_{3,})$/.test(line))
+            continue;
+        line = line.replace(/^(?:>\s*)+/, "")
+            .replace(/^#{1,6}\s*/, "")
+            .replace(/^(?:[-*+] |[0-9]+[.)] )/, "")
+            .replace(/^\[[ xX]\]\s*/, "")
+            .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+            .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+            .replace(/<[^>]+>/g, "")
+            .replace(/\\([\\`*{}\[\]()#+.!_>~-])/g, "$1")
+            .replace(/[`*_~]/g, "");
+        var title = normalizeTitle(line);
+        if (title !== "")
+            return title;
+    }
+    return UNTITLED_TITLE;
+}
+
+function validTitle(title) {
+    return typeof title === "string" && title !== ""
+        && titleLength(title) <= MAX_TITLE_LENGTH && normalizeTitle(title) === title;
+}
+
 function validId(id) {
     return typeof id === "string" && ID_PATTERN.test(id);
 }
@@ -33,6 +112,14 @@ function validTimestamp(value) {
 
 function validRecord(record) {
     return isObject(record) && hasOnlyKeys(record, RECORD_KEYS)
+        && validId(record.id) && validTitle(record.title)
+        && typeof record.body === "string"
+        && !isBlank(record.body) && validTimestamp(record.createdAt)
+        && validTimestamp(record.updatedAt) && record.updatedAt >= record.createdAt;
+}
+
+function validLegacyRecord(record) {
+    return isObject(record) && hasOnlyKeys(record, LEGACY_RECORD_KEYS)
         && validId(record.id) && typeof record.body === "string"
         && !isBlank(record.body) && validTimestamp(record.createdAt)
         && validTimestamp(record.updatedAt) && record.updatedAt >= record.createdAt;
@@ -41,6 +128,7 @@ function validRecord(record) {
 function copyRecord(record) {
     return {
         id: record.id,
+        title: record.title,
         body: record.body,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt
@@ -61,12 +149,12 @@ function sortRecords(records) {
     return (Array.isArray(records) ? records : []).map(copyRecord).sort(compareRecords);
 }
 
-function validateRecords(records) {
+function validateRecords(records, legacy) {
     if (!Array.isArray(records))
         return { ok: false, reason: "notes is not an array" };
     var seen = Object.create(null);
     for (var i = 0; i < records.length; i++) {
-        if (!validRecord(records[i]))
+        if (!(legacy ? validLegacyRecord(records[i]) : validRecord(records[i])))
             return { ok: false, reason: "invalid note at index " + i };
         if (Object.prototype.hasOwnProperty.call(seen, records[i].id))
             return { ok: false, reason: "duplicate note id" };
@@ -90,19 +178,30 @@ function parseState(text) {
         return { status: "corrupt", value: null, records: [], error: "Invalid JSON" };
     }
     if (!isObject(parsed) || !hasOnlyKeys(parsed, ["v", "notes"])
-            || parsed.v !== VERSION) {
+            || (parsed.v !== VERSION && parsed.v !== LEGACY_VERSION)) {
         return { status: "corrupt", value: null, records: [],
             error: "Unsupported Notes state" };
     }
-    var checked = validateRecords(parsed.notes);
+    var migrated = parsed.v === LEGACY_VERSION;
+    var checked = validateRecords(parsed.notes, migrated);
     if (!checked.ok)
         return { status: "corrupt", value: null, records: [], error: checked.reason };
-    var records = sortRecords(parsed.notes);
+    var source = migrated ? parsed.notes.map(function(record) {
+        return {
+            id: record.id,
+            title: fallbackTitle(record.body),
+            body: record.body,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt
+        };
+    }) : parsed.notes;
+    var records = sortRecords(source);
     return {
         status: "ok",
         value: { v: VERSION, notes: records },
         records: records,
-        error: ""
+        error: "",
+        migrated: migrated
     };
 }
 
@@ -128,12 +227,19 @@ function findRecord(records, id) {
     return null;
 }
 
-function addRecord(records, body, id, now) {
+function addRecord(records, body, id, now, title) {
     var list = Array.isArray(records) ? records : [];
     if (isBlank(body) || !validId(id) || !validTimestamp(now)
             || findRecord(list, id) !== null)
         return { changed: false, records: sortRecords(list), record: null };
-    var record = { id: id, body: body, createdAt: now, updatedAt: now };
+    var normalizedTitle = normalizeTitle(title);
+    var record = {
+        id: id,
+        title: normalizedTitle === "" ? UNTITLED_TITLE : normalizedTitle,
+        body: body,
+        createdAt: now,
+        updatedAt: now
+    };
     return {
         changed: true,
         records: sortRecords(list.concat([record])),
@@ -156,6 +262,7 @@ function updateRecord(records, id, body, now) {
             return copyRecord(record);
         updated = {
             id: record.id,
+            title: record.title,
             body: body,
             createdAt: record.createdAt,
             updatedAt: Math.max(now, record.updatedAt)
@@ -163,6 +270,85 @@ function updateRecord(records, id, body, now) {
         return updated;
     });
     return { changed: true, records: sortRecords(next), record: copyRecord(updated) };
+}
+
+// Manual title changes participate in the note's edit ordering. An empty
+// title is represented by the generic untitled label rather than copying any
+// part of the note body into the title field.
+function updateTitleRecord(records, id, title, now) {
+    var list = Array.isArray(records) ? records : [];
+    if (!validTimestamp(now))
+        return { changed: false, records: sortRecords(list), record: null };
+    var found = findRecord(list, id);
+    if (!found)
+        return { changed: false, records: sortRecords(list), record: null };
+    var normalized = normalizeTitle(title);
+    if (normalized === "")
+        normalized = UNTITLED_TITLE;
+    if (normalized === found.title)
+        return { changed: false, records: sortRecords(list), record: found };
+    var updated = null;
+    var next = list.map(function(record) {
+        if (record.id !== id)
+            return copyRecord(record);
+        updated = {
+            id: record.id,
+            title: normalized,
+            body: record.body,
+            createdAt: record.createdAt,
+            updatedAt: Math.max(now, record.updatedAt)
+        };
+        return updated;
+    });
+    return { changed: true, records: sortRecords(next), record: copyRecord(updated) };
+}
+
+// Model results are metadata: applying one must not make an otherwise
+// untouched note look newly edited or disturb its list position.
+function applyGeneratedTitle(records, id, title) {
+    var list = Array.isArray(records) ? records : [];
+    var found = findRecord(list, id);
+    var normalized = normalizeTitle(title);
+    if (!found || normalized === "" || normalized === found.title)
+        return { changed: false, records: sortRecords(list), record: found };
+    var updated = null;
+    var next = list.map(function(record) {
+        if (record.id !== id)
+            return copyRecord(record);
+        updated = {
+            id: record.id,
+            title: normalized,
+            body: record.body,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt
+        };
+        return updated;
+    });
+    return { changed: true, records: sortRecords(next), record: copyRecord(updated) };
+}
+
+function captureTitleRequest(record, provider, model, effort) {
+    if (!validRecord(record) || ["codex", "claude"].indexOf(provider) === -1
+            || typeof model !== "string" || model.trim() === ""
+            || TITLE_EFFORTS[provider].indexOf(effort) === -1)
+        return null;
+    return {
+        id: record.id,
+        title: record.title,
+        body: record.body,
+        provider: provider,
+        model: model,
+        effort: effort
+    };
+}
+
+function titleRequestCurrent(records, request, provider, model, effort) {
+    if (!request || request.provider !== provider || request.model !== model
+            || request.effort !== effort)
+        return false;
+    var record = findRecord(records, request.id);
+    return record !== null && record.title === request.title
+        && record.body === request.body;
 }
 
 function removeRecord(records, id) {
@@ -341,7 +527,14 @@ function styleMarkdownLinks(markdown, linkColor) {
 
 var exported = {
     VERSION: VERSION,
+    LEGACY_VERSION: LEGACY_VERSION,
+    MAX_TITLE_LENGTH: MAX_TITLE_LENGTH,
+    UNTITLED_TITLE: UNTITLED_TITLE,
     isBlank: isBlank,
+    normalizeTitle: normalizeTitle,
+    shouldAutoGenerateTitle: shouldAutoGenerateTitle,
+    fallbackTitle: fallbackTitle,
+    validTitle: validTitle,
     validId: validId,
     validTimestamp: validTimestamp,
     validRecord: validRecord,
@@ -353,6 +546,10 @@ var exported = {
     findRecord: findRecord,
     addRecord: addRecord,
     updateRecord: updateRecord,
+    updateTitleRecord: updateTitleRecord,
+    applyGeneratedTitle: applyGeneratedTitle,
+    captureTitleRequest: captureTitleRequest,
+    titleRequestCurrent: titleRequestCurrent,
     removeRecord: removeRecord,
     restoreDeleted: restoreDeleted,
     commitDraft: commitDraft,
