@@ -144,7 +144,7 @@ SettingsPage {
                     ? 0 : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
                 text: SysInfo.idleInhibited
                     ? "Active · " + SysInfo.idleInhibitStatus
-                    : "Temporary choices reset automatically and are not saved across login."
+                    : "Off · default duration and sign-in behavior are configured under Widgets → Indicators."
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
                 color: SysInfo.idleInhibited ? Theme.amber : Theme.textDim

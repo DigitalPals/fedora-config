@@ -2,10 +2,11 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import ".."
 import "../../Common"
+import "../../Common/SettingsHelpers.js" as SettingsHelpers
 
 // Clock-side quick actions. Inactive and active actions live in distinct
 // blocks: disclosure grows outward, while active actions stay pinned against
-// the clock and newly activated ones enter at that block's outer edge.
+// the clock. Both blocks retain the user's configured relative ordering.
 BarModule {
     id: root
 
@@ -13,38 +14,45 @@ BarModule {
     readonly property string panelName: "reminders"
     spacing: 2
     property bool disclosureLatched: false
-    property bool orderReady: false
-    property var activeOrder: []
     property var actionButtons: []
 
-    readonly property var actions: [
-        { id: "dictation", glyph: "mic" },
-        { id: "recording", glyph: "radio_button_checked" },
-        { id: "reminder", glyph: "notifications_active" },
-        { id: "night-light", glyph: "nightlight" },
-        { id: "dnd", glyph: "do_not_disturb_on" },
-        { id: "stay-awake", glyph: "coffee" }
-    ]
+    readonly property var actionCatalog: {
+        const catalog = {};
+        for (const action of SettingsHelpers.INDICATOR_ACTION_CHOICES)
+            catalog[action.id] = action;
+        return catalog;
+    }
+    readonly property var actions: {
+        void Settings.revision;
+        return Settings.modOpts.indicators.order
+            .map(id => actionCatalog[id]).filter(action => action !== undefined);
+    }
     readonly property string actionStateKey: [
         Dictation.state, Recorder.active, Reminders.count,
-        SysInfo.nightLight, Notifs.dnd, SysInfo.idleInhibited
+        SysInfo.nightLight, Notifs.dnd, SysInfo.idleInhibited, Settings.revision
     ].join(":")
     readonly property bool reminderOpen: host !== null
         && host.popoutOpen("reminders")
     readonly property bool revealInactive: Settings.modOpts.indicators.mode === "always"
-        || disclosureLatched || reminderOpen
+        || (Settings.modOpts.indicators.mode === "hover"
+            && (disclosureLatched || reminderOpen))
     readonly property bool disclosureAnimating: inactiveRevealer.widthAnimating
     readonly property var inactiveActions: {
         void actionStateKey;
-        return actions.filter(action => !isActive(action.id));
+        return actions.filter(action => actionEnabled(action.id) && !isActive(action.id));
     }
     readonly property var activeActions: {
         void actionStateKey;
-        return activeOrder.map(id => actionFor(id)).filter(action => action !== null);
+        return actions.filter(action => isActive(action.id)
+            && (actionEnabled(action.id) || mandatoryWhileActive(action.id)));
     }
 
-    function actionFor(id) {
-        return actions.find(action => action.id === id) ?? null;
+    function actionEnabled(id) {
+        return Settings.modOpts.indicators.enabled.indexOf(id) !== -1;
+    }
+
+    function mandatoryWhileActive(id) {
+        return id === "dictation" || id === "recording";
     }
 
     function isActive(id) {
@@ -59,21 +67,26 @@ BarModule {
         }
     }
 
-    function syncActiveOrder() {
-        const current = actions.filter(action => isActive(action.id)).map(action => action.id);
-        if (!orderReady) {
-            activeOrder = current;
-            orderReady = true;
-            return;
-        }
-        let next = activeOrder.filter(id => current.indexOf(id) !== -1);
-        // Unshift puts a new state on the outer (left) edge. Existing actions
-        // therefore keep their screen position against the pinned clock.
-        for (const id of current) {
-            if (next.indexOf(id) === -1)
-                next.unshift(id);
-        }
-        activeOrder = next;
+    function shortDuration(seconds) {
+        const minutes = Math.max(1, Math.ceil(seconds / 60));
+        if (minutes < 60)
+            return minutes + "m";
+        return Math.floor(minutes / 60) + "h"
+            + (minutes % 60 === 0 ? "" : " " + (minutes % 60) + "m");
+    }
+
+    function labelFor(id) {
+        if (id === "recording" && Recorder.active
+                && Settings.modOpts.indicators.recordingShowElapsed)
+            return Recorder.elapsedLabel;
+        if (id === "reminder" && Reminders.count > 0
+                && Settings.modOpts.indicators.reminderDisplay === "count")
+            return String(Reminders.count);
+        if (id === "stay-awake" && SysInfo.idleInhibited
+                && SysInfo.idleInhibitUntilMs > 0
+                && Settings.modOpts.indicators.idleShowRemaining)
+            return shortDuration(SysInfo.idleInhibitRemainingSecs);
+        return "";
     }
 
     function registerAction(button) {
@@ -94,15 +107,29 @@ BarModule {
         case "dictation":
             return Dictation.recording ? "Stop dictation"
                 : Dictation.transcribing ? "Cancel transcription"
-                : "Dictate · English click · Dutch middle click";
+                : "Dictate in " + Settings.modOpts.indicators.dictationPrimaryLanguage
+                    + (Settings.modOpts.indicators.dictationSecondaryLanguage === "off"
+                        ? "" : " · middle click "
+                            + Settings.modOpts.indicators.dictationSecondaryLanguage);
         case "recording":
             return Recorder.active ? "Stop recording" + (Recorder.outputFile !== ""
                 ? " · " + Recorder.outputFile.split("/").pop() : "")
-                : "Record a selected region";
-        case "reminder": return Reminders.tooltip;
-        case "night-light": return SysInfo.nightLight ? "Turn off night light" : "Turn on night light";
-        case "dnd": return Notifs.dnd ? "Turn off Do Not Disturb" : "Turn on Do Not Disturb";
-        case "stay-awake": return SysInfo.idleInhibited ? "Allow idle and sleep" : "Stay awake";
+                : "Record a " + Settings.modOpts.indicators.recordingMode;
+        case "reminder":
+            return Reminders.tooltip + (Settings.modOpts.indicators.reminderClick === "quick-add"
+                ? " · click adds " + Settings.modOpts.indicators.reminderMinutes + " min"
+                : " · middle click adds " + Settings.modOpts.indicators.reminderMinutes + " min");
+        case "night-light":
+            return (SysInfo.nightLight ? "Turn off night light" : "Turn on night light")
+                + " · middle click settings";
+        case "dnd":
+            return (Notifs.dnd ? "Turn off Do Not Disturb · " + Notifs.dndStatus
+                : "Turn on Do Not Disturb") + " · middle click settings";
+        case "stay-awake":
+            return (SysInfo.idleInhibited ? "Allow idle and sleep · "
+                + SysInfo.idleInhibitStatus : "Stay awake · "
+                    + Settings.modOpts.indicators.idleDefaultMode)
+                + " · middle click durations";
         default: return "";
         }
     }
@@ -110,18 +137,45 @@ BarModule {
     function trigger(id, button, mouseButton) {
         switch (id) {
         case "dictation":
-            Dictation.toggle(mouseButton === Qt.MiddleButton ? "nl" : "en");
+            Dictation.toggle(mouseButton === Qt.MiddleButton
+                ? Settings.modOpts.indicators.dictationSecondaryLanguage
+                : Settings.modOpts.indicators.dictationPrimaryLanguage);
             break;
-        case "recording": Recorder.toggle(); break;
-        case "reminder": host.togglePopout("reminders", isle, button); break;
-        case "night-light": SysInfo.toggleNightLight(); break;
-        case "dnd": Notifs.setDnd(!Notifs.dnd); break;
-        case "stay-awake": SysInfo.toggleIdleInhibited(); break;
+        case "recording":
+            Recorder.toggle(Settings.modOpts.indicators.recordingMode);
+            break;
+        case "reminder": {
+            const primaryAdds = Settings.modOpts.indicators.reminderClick === "quick-add";
+            const add = mouseButton === Qt.MiddleButton ? !primaryAdds : primaryAdds;
+            if (add)
+                Reminders.add(Settings.modOpts.indicators.reminderMinutes, "");
+            else
+                host.togglePopout("reminders", isle, button);
+            break;
+        }
+        case "night-light":
+            if (mouseButton === Qt.MiddleButton)
+                Settings.showPanel("system", host.outputName);
+            else
+                SysInfo.toggleNightLight();
+            break;
+        case "dnd":
+            if (mouseButton === Qt.MiddleButton)
+                Settings.showPanel("notifications", host.outputName);
+            else
+                Notifs.toggleDefaultDnd();
+            break;
+        case "stay-awake":
+            if (mouseButton === Qt.MiddleButton)
+                Settings.showPanel("system", host.outputName);
+            else
+                SysInfo.toggleIdleInhibited();
+            break;
         }
     }
 
     onGroupHoveredChanged: {
-        if (groupHovered) {
+        if (groupHovered && Settings.modOpts.indicators.mode === "hover") {
             collapseDelay.stop();
             disclosureLatched = true;
         }
@@ -150,32 +204,10 @@ BarModule {
             if (root.host.tooltipPointerInside) {
                 collapseDelay.stop();
             } else if (!root.reminderOpen
-                    && Settings.modOpts.indicators.mode !== "always") {
+                    && Settings.modOpts.indicators.mode === "hover") {
                 collapseDelay.restart();
             }
         }
-    }
-
-    Connections {
-        target: Dictation
-        function onStateChanged() { root.syncActiveOrder(); }
-    }
-    Connections {
-        target: Recorder
-        function onActiveChanged() { root.syncActiveOrder(); }
-    }
-    Connections {
-        target: Reminders
-        function onCountChanged() { root.syncActiveOrder(); }
-    }
-    Connections {
-        target: SysInfo
-        function onNightLightChanged() { root.syncActiveOrder(); }
-        function onIdleInhibitedChanged() { root.syncActiveOrder(); }
-    }
-    Connections {
-        target: Notifs
-        function onDndChanged() { root.syncActiveOrder(); }
     }
     Connections {
         target: Popouts
@@ -184,7 +216,7 @@ BarModule {
                 collapseDelay.stop();
                 root.disclosureLatched = true;
             } else if (root.host !== null && !root.host.tooltipPointerInside
-                    && Settings.modOpts.indicators.mode !== "always") {
+                    && Settings.modOpts.indicators.mode === "hover") {
                 collapseDelay.restart();
             }
         }
@@ -196,7 +228,7 @@ BarModule {
         onTriggered: {
             if (root.host !== null && !root.host.tooltipPointerInside
                     && !root.reminderOpen
-                    && Settings.modOpts.indicators.mode !== "always")
+                    && Settings.modOpts.indicators.mode === "hover")
                 root.disclosureLatched = false;
         }
     }
@@ -208,7 +240,7 @@ BarModule {
         readonly property bool activeState: root.isActive(actionId)
         readonly property bool recording: actionId === "recording" && Recorder.active
         readonly property bool transcribing: actionId === "dictation" && Dictation.transcribing
-        readonly property string actionLabel: recording ? Recorder.elapsedLabel : ""
+        readonly property string actionLabel: root.labelFor(actionId)
         readonly property color ink: recording ? Theme.barRedFg
             : activeState ? Theme.barAccent
             : hovered ? Theme.barTextHi : Theme.barTextDim
@@ -344,7 +376,6 @@ BarModule {
         }
     }
 
-    Component.onCompleted: syncActiveOrder()
     Component.onDestruction: {
         if (host !== null)
             host.indicatorDisclosureAnimating = false;

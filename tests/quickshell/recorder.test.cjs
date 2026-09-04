@@ -23,6 +23,13 @@ test("the recording PID is published last as a verified ready marker", () => {
     assert.match(script,
         /if kill -0 "\$pid"[\s\S]*recording state was retained[\s\S]*return 2/,
         "a timed-out stop must keep its truthful active marker");
+    assert.match(script, /capture_mode=\$\{1:-region\}/,
+        "existing keybindings retain region capture as their default");
+    assert.match(script, /slurp -o >"\$selection_file"/,
+        "screen capture restricts selection to an output");
+    assert.match(script, /hyprctl -j clients \| jq -r/);
+    assert.match(script, /slurp -r <"\$window_boxes_file"/,
+        "window capture restricts selection to compositor-provided boxes");
 });
 
 test("the recording indicator validates a marker against the live process", () => {
@@ -33,6 +40,9 @@ test("the recording indicator validates a marker against the live process", () =
         /expectedStartTicks === actualStartTicks/,
         "PID identity must include process start time to reject reuse");
     assert.match(recorder, /path: root\.stateDir \+ "\/wf-recorder\.start-ticks"/);
+    assert.match(recorder, /\["region", "window", "screen"\]/);
+    assert.match(recorder, /Quickshell\.execDetached\(\[root\.script, selected\]\)/,
+        "the configured capture type is passed as one safe argv item");
     assert.match(recorder, /root\.recorderName = "";[\s\S]*root\.recomputeActive\(\)/,
         "a process that dies after startup must clear the indicator on the next poll");
 });

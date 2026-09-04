@@ -38,8 +38,10 @@ Singleton {
         return minutes + ":" + String(seconds).padStart(2, "0");
     }
 
-    function toggle() {
-        Quickshell.execDetached(["sh", "-c", root.script]);
+    function toggle(mode) {
+        const selected = ["region", "window", "screen"].indexOf(mode) !== -1
+            ? mode : Settings.modOpts.indicators.recordingMode;
+        Quickshell.execDetached([root.script, selected]);
         // The script selects a region before it writes any state, so give the
         // user time to drag one out before looking again.
         settle.restart();

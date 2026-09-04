@@ -144,6 +144,15 @@ is manual.
       volume percentage toggles and thresholds, media title format and width,
       usage provider toggles and warn/critical thresholds, T3 label and pulse,
       workspaces min slots / hide empty / dots, notification grouping.
+- [ ] Indicators expands inline with Clock hover / Always show / Active only,
+      per-action switches, and drag/keyboard ordering. A hidden Dictation or
+      Screen recording action returns while running so it can always be stopped.
+- [ ] Indicator action options apply live: dictation languages/model, recording
+      region/window/screen and elapsed label, reminder icon/count and quick-add
+      duration, DND click lifetime, and Stay awake click duration/countdown.
+- [ ] Night light, DND, and Stay awake each honor Remember / Off / On after a
+      new desktop login. Restarting only `quickshell.service` preserves the
+      live state; timed DND/idle requests keep their original absolute deadline.
 - [ ] Weather place/latitude/longitude edits commit on Enter or focus loss and
       refetch; Esc inside a text field restores the value without closing
       anything; junk input snaps back to the stored value.

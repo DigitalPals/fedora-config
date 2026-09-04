@@ -73,8 +73,10 @@ Singleton {
     property int pollMax: defaults.pollMax
     property real scrollFactor: defaults.scrollFactor
     property bool nightLight: defaults.nightLight
-    property bool idleInhibited: defaults.idleInhibited
+    property string idleInhibitMode: defaults.idleInhibitMode
+    property double idleInhibitUntilMs: defaults.idleInhibitUntilMs
     property bool notifDnd: defaults.notifDnd
+    property double notifDndUntilMs: defaults.notifDndUntilMs
     property string notifQuiet: defaults.notifQuiet
     property int notifQuietStart: defaults.notifQuietStart
     property int notifQuietEnd: defaults.notifQuietEnd
@@ -144,11 +146,11 @@ Singleton {
             "exclusive"],
         modules: ["mods", "modOpts"],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
-        notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
+        notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
             "notifProgress", "notifBodyLines"],
         system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor",
-            "nightLight", "idleInhibited"]
+            "nightLight", "idleInhibitMode", "idleInhibitUntilMs"]
     })
 
     // ---- Shared-popout lifecycle ----------------------------------------
@@ -222,10 +224,17 @@ Singleton {
     }
 
     function setModuleOption(id, key, value) {
+        const changes = {};
+        changes[key] = value;
+        setModuleOptions(id, changes);
+    }
+
+    function setModuleOptions(id, changes) {
         clearUndo();
         migrationPending = false;
         const next = SettingsHelpers.clone(modOpts);
-        next[id][key] = value;
+        for (const key of Object.keys(changes || ({})))
+            next[id][key] = changes[key];
         modOpts = SettingsHelpers.normalizeModOpts(next);
     }
 
@@ -567,12 +576,14 @@ Singleton {
     onOsdChanged: scheduleSave()
     onPollMaxChanged: scheduleSave()
     onNightLightChanged: scheduleSave()
-    onIdleInhibitedChanged: scheduleSave()
+    onIdleInhibitModeChanged: scheduleSave()
+    onIdleInhibitUntilMsChanged: scheduleSave()
     onScrollFactorChanged: {
         scheduleSave();
         applyScrollFactor();
     }
     onNotifDndChanged: scheduleSave()
+    onNotifDndUntilMsChanged: scheduleSave()
     onNotifQuietChanged: scheduleSave()
     onNotifQuietStartChanged: scheduleSave()
     onNotifQuietEndChanged: scheduleSave()

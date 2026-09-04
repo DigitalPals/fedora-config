@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 21;
+var VERSION = 22;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -94,6 +94,32 @@ var MODULE_GROUPS = {
 
 var NOTIFICATION_GROUPS = ["solo", "status"];
 
+// The clock-side action inventory is schema, not presentation: persisted
+// order and visibility lists are normalized against it so an upgrade can add
+// an action without losing the user's existing arrangement. Labels and glyphs
+// are shared by the bar and its settings editor to keep both surfaces honest.
+var INDICATOR_ACTION_CHOICES = [
+    { id: "dictation", label: "Dictation", glyph: "mic" },
+    { id: "recording", label: "Screen recording", glyph: "radio_button_checked" },
+    { id: "reminder", label: "Reminders", glyph: "notifications_active" },
+    { id: "night-light", label: "Night light", glyph: "nightlight" },
+    { id: "dnd", label: "Do Not Disturb", glyph: "do_not_disturb_on" },
+    { id: "stay-awake", label: "Stay awake", glyph: "coffee" }
+];
+var INDICATOR_ACTION_IDS = INDICATOR_ACTION_CHOICES.map(
+    function(choice) { return choice.id; });
+
+var DICTATION_MODEL_CHOICES = [
+    { value: "tiny", label: "Tiny" },
+    { value: "base", label: "Base" },
+    { value: "small", label: "Small" },
+    { value: "medium", label: "Medium" },
+    { value: "large-v3", label: "Large v3" },
+    { value: "large-v3-turbo", label: "Large v3 Turbo" }
+];
+var DICTATION_MODELS = DICTATION_MODEL_CHOICES.map(
+    function(choice) { return choice.value; });
+
 // Notes title generation deliberately uses a small, reviewed model catalog.
 // Besides making the settings selectable, this prevents a typo from reaching
 // either CLI. Claude's aliases are the ones advertised by the installed CLI;
@@ -166,7 +192,25 @@ function defaultModOpts() {
     return {
         ws: { minSlots: 5, hideEmpty: false, style: "numbers" },
         media: { titleFormat: "title-artist", maxWidth: 180 },
-        indicators: { mode: "hover" },
+        indicators: {
+            mode: "hover",
+            order: INDICATOR_ACTION_IDS.slice(),
+            enabled: INDICATOR_ACTION_IDS.slice(),
+            dictationPrimaryLanguage: "en",
+            dictationSecondaryLanguage: "nl",
+            dictationModel: "base",
+            recordingMode: "region",
+            recordingShowElapsed: true,
+            reminderDisplay: "icon",
+            reminderClick: "list",
+            reminderMinutes: 15,
+            nightLightStartup: "remember",
+            dndStartup: "remember",
+            dndDefaultMode: "always",
+            idleStartup: "off",
+            idleDefaultMode: "1h",
+            idleShowRemaining: false
+        },
         clock: {
             seconds: false, showDate: true, dateFormat: "ddd dd",
             showEvents: true, daysAhead: 14, pollMins: 15
@@ -280,10 +324,14 @@ function defaults() {
         pollMax: 300,
         scrollFactor: 1.0,
         nightLight: false,
-        // Staying awake is an explicit, normally time-bounded action. Existing
-        // settings that opted in remain respected; a fresh session may idle.
-        idleInhibited: false,
+        // Runtime choices are persisted so a Quickshell service reload can
+        // resume them. The Indicators startup policy decides what survives a
+        // new login; timed modes retain an absolute deadline rather than
+        // receiving a fresh duration after every reload.
+        idleInhibitMode: "off",
+        idleInhibitUntilMs: 0,
         notifDnd: false,
+        notifDndUntilMs: 0,
         notifQuiet: "off",
         notifQuietStart: 1320,
         notifQuietEnd: 420,
@@ -331,6 +379,46 @@ function textIn(value, maxLen, fallback) {
         return fallback;
     var trimmed = value.trim();
     return trimmed !== "" && trimmed.length <= maxLen ? trimmed : fallback;
+}
+
+function orderedIdsIn(value, known, fallback, appendMissing) {
+    if (!Array.isArray(value))
+        return fallback.slice();
+    var seen = {};
+    var next = [];
+    value.forEach(function(id) {
+        if (typeof id === "string" && known.indexOf(id) !== -1 && !seen[id]) {
+            seen[id] = true;
+            next.push(id);
+        }
+    });
+    if (appendMissing) {
+        known.forEach(function(id) {
+            if (!seen[id])
+                next.push(id);
+        });
+    }
+    return next;
+}
+
+// Voxtype accepts ISO-like language tags, `auto`, and comma-separated
+// candidates. Keeping this validation deliberately narrower than arbitrary
+// command text makes the value safe to pass as one argv item.
+function dictationLanguageIn(value, fallback, allowOff) {
+    if (typeof value !== "string")
+        return fallback;
+    var normalized = value.trim().toLowerCase();
+    if (allowOff && normalized === "off")
+        return normalized;
+    var tag = "(?:auto|[a-z]{2,3}(?:-[a-z0-9]{2,8})?)";
+    return new RegExp("^" + tag + "(?:," + tag + ")*$").test(normalized)
+        ? normalized : fallback;
+}
+
+function timestampIn(value, fallback) {
+    return typeof value === "number" && isFinite(value)
+        && value >= 0 && value <= 1000000000000000
+        ? Math.floor(value) : fallback;
 }
 
 function hexIn(value, fallback) {
@@ -612,7 +700,43 @@ var MOD_OPT_CHECKS = {
         maxWidth: function(v, d) { return intIn(v, 120, 360, 20, d); }
     },
     indicators: {
-        mode: function(v, d) { return enumIn(v, ["hover", "always"], d); }
+        mode: function(v, d) { return enumIn(v, ["hover", "always", "active"], d); },
+        order: function(v, d) {
+            return orderedIdsIn(v, INDICATOR_ACTION_IDS, d, true);
+        },
+        enabled: function(v, d) {
+            return orderedIdsIn(v, INDICATOR_ACTION_IDS, d, false);
+        },
+        dictationPrimaryLanguage: function(v, d) {
+            return dictationLanguageIn(v, d, false);
+        },
+        dictationSecondaryLanguage: function(v, d) {
+            return dictationLanguageIn(v, d, true);
+        },
+        dictationModel: function(v, d) { return enumIn(v, DICTATION_MODELS, d); },
+        recordingMode: function(v, d) {
+            return enumIn(v, ["region", "window", "screen"], d);
+        },
+        recordingShowElapsed: boolIn,
+        reminderDisplay: function(v, d) { return enumIn(v, ["icon", "count"], d); },
+        reminderClick: function(v, d) { return enumIn(v, ["list", "quick-add"], d); },
+        reminderMinutes: function(v, d) { return enumIn(v, [5, 15, 30, 60], d); },
+        nightLightStartup: function(v, d) {
+            return enumIn(v, ["remember", "off", "on"], d);
+        },
+        dndStartup: function(v, d) {
+            return enumIn(v, ["remember", "off", "on"], d);
+        },
+        dndDefaultMode: function(v, d) {
+            return enumIn(v, ["always", "1h", "quiet-boundary"], d);
+        },
+        idleStartup: function(v, d) {
+            return enumIn(v, ["remember", "off", "on"], d);
+        },
+        idleDefaultMode: function(v, d) {
+            return enumIn(v, ["30m", "1h", "unplugged", "always"], d);
+        },
+        idleShowRemaining: boolIn
     },
     clock: {
         seconds: boolIn,
@@ -709,10 +833,16 @@ function normalizeModOpts(raw) {
 // happens to contain a future-shaped key, do not interpret it as consent to
 // transmit note text. Model names may migrate harmlessly; enabling a provider
 // requires a schema-21-or-newer settings write made through the current UI.
-function migrateModOpts(raw, sourceVersion) {
+function migrateModOpts(raw, sourceVersion, rawSettings) {
     var next = normalizeModOpts(raw);
     if (typeof sourceVersion !== "number" || sourceVersion < 21)
         next.notes.titleProvider = "off";
+    // The old persistent boolean meant the user explicitly chose Always.
+    // Preserve that opt-in on the first schema-22 session even though a fresh
+    // install's safer startup default is Off.
+    if ((typeof sourceVersion !== "number" || sourceVersion < 22)
+            && rawSettings && rawSettings.idleInhibited === true)
+        next.indicators.idleStartup = "remember";
     return next;
 }
 
@@ -1021,6 +1151,16 @@ function merge(raw) {
         return d;
     var parsed = adoptClassicMenubar(
         adoptSofterTypography(adoptRedesign(raw)));
+    var idleMode = enumIn(parsed.idleInhibitMode,
+        ["off", "30m", "1h", "unplugged", "always"],
+        parsed.idleInhibited === true ? "always" : d.idleInhibitMode);
+    var idleUntil = timestampIn(parsed.idleInhibitUntilMs,
+        d.idleInhibitUntilMs);
+    if (idleMode !== "30m" && idleMode !== "1h")
+        idleUntil = 0;
+    var dnd = boolIn(parsed.notifDnd, d.notifDnd);
+    var dndUntil = dnd
+        ? timestampIn(parsed.notifDndUntilMs, d.notifDndUntilMs) : 0;
     return {
         wall: nameIn(parsed.wall, d.wall),
         wallDir: pathIn(parsed.wallDir, d.wallDir),
@@ -1055,8 +1195,10 @@ function merge(raw) {
         pollMax: enumIn(parsed.pollMax, [60, 300, 600], d.pollMax),
         scrollFactor: realIn(parsed.scrollFactor, 0.2, 2.0, 0.1, d.scrollFactor),
         nightLight: boolIn(parsed.nightLight, d.nightLight),
-        idleInhibited: boolIn(parsed.idleInhibited, d.idleInhibited),
-        notifDnd: boolIn(parsed.notifDnd, d.notifDnd),
+        idleInhibitMode: idleMode,
+        idleInhibitUntilMs: idleUntil,
+        notifDnd: dnd,
+        notifDndUntilMs: dndUntil,
         notifQuiet: enumIn(parsed.notifQuiet, ["off", "nights", "custom"], d.notifQuiet),
         notifQuietStart: intIn(parsed.notifQuietStart, 0, 1425, 15, d.notifQuietStart),
         notifQuietEnd: intIn(parsed.notifQuietEnd, 0, 1425, 15, d.notifQuietEnd),
@@ -1073,7 +1215,7 @@ function merge(raw) {
         drawerHover: enumIn(parsed.drawerHover, DRAWER_HOVER_MODES, d.drawerHover),
         drawerWidth: intIn(parsed.drawerWidth, 320, 480, 10, d.drawerWidth),
         mods: migrateMods(parsed.mods, parsed.v),
-        modOpts: migrateModOpts(parsed.modOpts, parsed.v)
+        modOpts: migrateModOpts(parsed.modOpts, parsed.v, parsed)
     };
 }
 
@@ -1175,6 +1317,9 @@ var exported = {
     RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
     MODULE_GROUPS: MODULE_GROUPS,
     NOTIFICATION_GROUPS: NOTIFICATION_GROUPS,
+    INDICATOR_ACTION_CHOICES: INDICATOR_ACTION_CHOICES,
+    INDICATOR_ACTION_IDS: INDICATOR_ACTION_IDS,
+    DICTATION_MODEL_CHOICES: DICTATION_MODEL_CHOICES,
     NOTE_CODEX_MODEL_CHOICES: NOTE_CODEX_MODEL_CHOICES,
     NOTE_CLAUDE_MODEL_CHOICES: NOTE_CLAUDE_MODEL_CHOICES,
     NOTE_CODEX_EFFORT_CHOICES: NOTE_CODEX_EFFORT_CHOICES,

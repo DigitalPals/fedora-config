@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Toggle a selected-area screen recording.
+# Toggle a region, window, or output screen recording.
 
 set -euo pipefail
 
@@ -12,6 +12,12 @@ OUTPUT_FILE_STATE="$STATE_DIR/output-file"
 # reads it so its elapsed clock survives a shell reload mid-recording.
 STARTED_AT_STATE="$STATE_DIR/started-at"
 LOG_FILE="$STATE_DIR/wf-recorder.log"
+
+capture_mode=${1:-region}
+if (($# > 1)) || [[ ! $capture_mode =~ ^(region|window|screen)$ ]]; then
+  printf 'usage: screen-record [region|window|screen]\n' >&2
+  exit 2
+fi
 
 mkdir -p "$OUTPUT_DIR" "$STATE_DIR"
 chmod 0700 "$STATE_DIR"
@@ -137,6 +143,9 @@ cleanup() {
   if [ -n "${selection_file:-}" ]; then
     rm -f -- "$selection_file"
   fi
+  if [ -n "${window_boxes_file:-}" ]; then
+    rm -f -- "$window_boxes_file"
+  fi
   if [ -n "${SLURP_PID:-}" ]; then
     kill "$SLURP_PID" 2>/dev/null || true
     wait "$SLURP_PID" 2>/dev/null || true
@@ -152,7 +161,32 @@ FREEZE_PID=$!
 sleep 0.1
 
 selection_file="$(mktemp "$STATE_DIR/selection.XXXXXX")"
-slurp >"$selection_file" 2>/dev/null 9>&- &
+case $capture_mode in
+  region)
+    capture_label="selected area"
+    slurp >"$selection_file" 2>/dev/null 9>&- &
+    ;;
+  screen)
+    capture_label="screen"
+    slurp -o >"$selection_file" 2>/dev/null 9>&- &
+    ;;
+  window)
+    capture_label="window"
+    window_boxes_file="$(mktemp "$STATE_DIR/windows.XXXXXX")"
+    hyprctl -j clients | jq -r '
+      .[]
+      | select(.mapped != false and .hidden != true)
+      | select((.at | type) == "array" and (.at | length) >= 2)
+      | select((.size | type) == "array" and (.size | length) >= 2)
+      | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1]) \(.class // "Window"): \(.title // "")"
+    ' >"$window_boxes_file"
+    if [ ! -s "$window_boxes_file" ]; then
+      notify "Screen Recording" "No recordable window was found"
+      exit 1
+    fi
+    slurp -r <"$window_boxes_file" >"$selection_file" 2>/dev/null 9>&- &
+    ;;
+esac
 SLURP_PID=$!
 wait "$SLURP_PID" || true
 unset SLURP_PID
@@ -193,4 +227,4 @@ publish_state "$START_TICKS_STATE" "$record_start_ticks"
 # newly active recording can never be observed without its output and clock.
 publish_state "$PID_FILE" "$RECORD_PID"
 
-notify "Screen Recording" "Recording selected area. Press Super+Shift+~ to stop."
+notify "Screen Recording" "Recording $capture_label. Press Super+Shift+~ to stop."

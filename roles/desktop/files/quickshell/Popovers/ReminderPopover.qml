@@ -121,7 +121,7 @@ Surface {
                 anchors.leftMargin: 10
                 anchors.rightMargin: 10
                 verticalAlignment: TextInput.AlignVCenter
-                text: "15"
+                text: String(Settings.modOpts.indicators.reminderMinutes)
                 inputMethodHints: Qt.ImhDigitsOnly
                 validator: IntValidator { bottom: 1 }
                 font.family: Theme.fontMono

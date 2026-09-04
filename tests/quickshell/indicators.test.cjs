@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const { shellDir, load } = require("./shell.cjs");
 
 function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
@@ -11,11 +11,14 @@ function read(relative) {
 const indicators = read("Bar/Modules/Indicators.qml");
 
 test("indicators declares the six canonical quick actions in order", () => {
-    const actionBlock = indicators.match(/readonly property var actions:\s*\[([\s\S]*?)\n\s*\]/)?.[1] ?? "";
-    const ids = [...actionBlock.matchAll(/id:\s*"([^"]+)"/g)].map(match => match[1]);
-    assert.deepEqual(ids, [
+    const helpers = load("SettingsHelpers.js");
+    assert.deepEqual(helpers.INDICATOR_ACTION_IDS, [
         "dictation", "recording", "reminder", "night-light", "dnd", "stay-awake"
     ]);
+    assert.deepEqual(helpers.defaultModOpts().indicators.order,
+        helpers.INDICATOR_ACTION_IDS);
+    assert.match(indicators, /SettingsHelpers\.INDICATOR_ACTION_CHOICES/);
+    assert.match(indicators, /Settings\.modOpts\.indicators\.order/);
 });
 
 test("inactive disclosure and persistent active actions use separate animated blocks", () => {
@@ -26,11 +29,14 @@ test("inactive disclosure and persistent active actions use separate animated bl
     assert.match(indicators,
         /Revealer\s*\{[\s\S]{0,180}?orientation:\s*Qt\.Horizontal[\s\S]{0,180}?reveal:\s*root\.revealInactive/);
     assert.match(indicators, /opacity:\s*reveal \? 0\.58 : 0/);
-    assert.match(indicators, /activeOrder = current/,
-        "already-active actions initialize in canonical order");
-    assert.match(indicators, /next\.unshift\(id\)/,
-        "new actions enter on the outer side without reordering existing states");
+    assert.match(indicators,
+        /actionEnabled\(action\.id\) && !isActive\(action\.id\)/,
+        "inactive shortcuts honor per-action visibility");
+    assert.match(indicators,
+        /actionEnabled\(action\.id\) \|\| mandatoryWhileActive\(action\.id\)/,
+        "running recording and dictation controls can override being hidden");
     assert.match(indicators, /Settings\.modOpts\.indicators\.mode === "always"/);
+    assert.match(indicators, /Settings\.modOpts\.indicators\.mode === "hover"/);
     assert.match(indicators, /interval:\s*180/,
         "leaving the bar should use a short anti-oscillation delay");
     assert.match(indicators, /root\.host\.tooltipPointerInside/,
@@ -83,7 +89,12 @@ test("recording and dictation expose their complete live state", () => {
     assert.match(indicators, /Dictation\.transcribing/);
     assert.match(indicators, /"progress_activity"/);
     assert.match(indicators, /RotationAnimation on rotation/);
-    assert.match(indicators, /mouseButton === Qt\.MiddleButton \? "nl" : "en"/);
+    assert.match(indicators,
+        /dictationSecondaryLanguage[\s\S]*dictationPrimaryLanguage/);
+    assert.match(read("Common/Dictation.qml"),
+        /Settings\.modOpts\.indicators\.dictationModel/);
+    assert.match(read("Common/Recorder.qml"),
+        /Settings\.modOpts\.indicators\.recordingMode/);
 
     const clock = read("Bar/Modules/Clock.qml");
     const bar = read("Bar/Bar.qml");
@@ -108,12 +119,36 @@ test("active clock-side actions light only their glyph", () => {
         /\n\s*color:\s*[\s\S]{0,100}?activeState/);
 });
 
+test("indicator settings cover ordering, display, actions, and feature defaults", () => {
+    const detail = read("Settings/ModuleDetailView.qml");
+    for (const key of [
+        "order", "enabled", "dictationPrimaryLanguage", "dictationSecondaryLanguage",
+        "dictationModel", "recordingMode", "recordingShowElapsed",
+        "reminderDisplay", "reminderClick", "reminderMinutes",
+        "nightLightStartup", "dndStartup", "dndDefaultMode",
+        "idleStartup", "idleDefaultMode", "idleShowRemaining"
+    ])
+        assert.match(detail, new RegExp(`(?:view\\.opts\\.|view\\.(?:set|reset)Opt\\(\")${key}`),
+            `${key} must be reachable from the Indicators settings page`);
+    assert.match(detail, /value:\s*"active", label:\s*"Active only"/);
+    assert.match(detail, /function beginIndicatorDrag/);
+    assert.match(detail, /function commitIndicatorDrag/);
+    assert.match(detail, /SettingsHelpers\.DICTATION_MODEL_CHOICES/);
+    assert.match(detail, /Restarting only the menubar resumes its current state/);
+    assert.match(indicators, /Settings\.modOpts\.indicators\.reminderDisplay/);
+    assert.match(indicators, /Settings\.modOpts\.indicators\.idleShowRemaining/);
+    assert.match(indicators, /Notifs\.toggleDefaultDnd\(\)/);
+    assert.match(indicators, /Reminders\.add\(Settings\.modOpts\.indicators\.reminderMinutes/);
+});
+
 test("all shared toggles use one persisted write path", () => {
     const sys = read("Common/SysInfo.qml");
     const control = read("Popovers/ControlCenterPopover.qml");
     assert.match(sys, /readonly property bool nightLight:\s*Settings\.nightLight/);
     assert.match(sys,
         /readonly property bool idleInhibited:\s*idleInhibitMode !== "off"/);
+    assert.match(sys, /readonly property string idleInhibitMode:\s*Settings\.idleInhibitMode/);
+    assert.match(sys, /readonly property double idleInhibitUntilMs:\s*Settings\.idleInhibitUntilMs/);
     assert.match(sys, /function setIdleInhibitMode\(mode\)/);
     assert.match(sys, /\["off", "30m", "1h", "unplugged", "always"\]/);
     assert.match(sys, /idleInhibitUntilMs/);
@@ -122,6 +157,9 @@ test("all shared toggles use one persisted write path", () => {
     assert.match(sys, /function toggleNightLight\(\)/);
     assert.match(sys, /function setIdleInhibited\(value\)/);
     assert.match(sys, /function toggleIdleInhibited\(\)/);
+    assert.match(sys, /Settings\.modOpts\.indicators\.idleDefaultMode/);
+    assert.match(sys, /function applyStartupPolicies\(\)/);
+    assert.match(sys, /Startup\.firstStart/);
     for (const state of ["nightLightPending", "nightLightEffective",
         "nightLightError", "idleInhibitPending", "idleInhibitEffective",
         "idleInhibitError"])
@@ -142,6 +180,24 @@ test("all shared toggles use one persisted write path", () => {
     for (const mode of ["off", "30m", "1h", "unplugged", "always"])
         assert.match(systemPage, new RegExp(`value: "${mode}"`));
     assert.match(systemPage, /SysInfo\.setIdleInhibitMode\(value\)/);
+
+    const notifs = read("Common/Notifs.qml");
+    assert.match(notifs, /function setDndMode\(mode\)/);
+    assert.match(notifs, /function toggleDefaultDnd\(\)/);
+    assert.match(notifs, /Settings\.notifDndUntilMs/);
+    assert.match(notifs, /Settings\.modOpts\.indicators\.dndDefaultMode/);
+    assert.match(notifs, /Startup\.firstStart/);
+
+    const startup = read("Common/Startup.qml");
+    assert.match(startup, /XDG_RUNTIME_DIR/);
+    assert.match(startup, /HYPRLAND_INSTANCE_SIGNATURE/,
+        "a lingering user manager must still distinguish compositor sessions");
+    assert.match(startup, /text\(\)\.trim\(\) !== root\.sessionKey/,
+        "service reloads in one compositor session must not reapply login policy");
+    assert.match(startup, /error === FileViewError\.FileNotFound/,
+        "an absent marker must be treated as a fresh login");
+    assert.match(startup, /else \{[\s\S]{0,180}?root\.finish\(false\)/,
+        "permission and IO failures must not be mistaken for a fresh login");
 });
 
 test("Control Panel fills use their intended accent strength", () => {

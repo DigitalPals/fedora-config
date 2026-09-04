@@ -13,14 +13,13 @@ Singleton {
     readonly property string user: Quickshell.env("USER") || "user"
     property string host: "linux"
 
-    // Shared idle-inhibit state (bar module + control center toggle). Only
-    // "Always" is persisted through Settings; normal requests expire in this
-    // Quickshell session or when external power is removed.
-    property string temporaryIdleInhibitMode: "off"
-    property double idleInhibitUntilMs: 0
+    // Shared idle-inhibit state (bar module + control center toggle). The mode
+    // and absolute deadline are persisted so a service reload resumes the
+    // request without granting it a fresh duration. Startup.qml distinguishes
+    // that reload from a new login, where the configured policy is applied.
     property double idleInhibitClockMs: Date.now()
-    readonly property string idleInhibitMode: Settings.idleInhibited
-        ? "always" : temporaryIdleInhibitMode
+    readonly property string idleInhibitMode: Settings.idleInhibitMode
+    readonly property double idleInhibitUntilMs: Settings.idleInhibitUntilMs
     readonly property bool idleInhibited: idleInhibitMode !== "off"
     readonly property int idleInhibitRemainingSecs: idleInhibitUntilMs > 0
         ? Math.max(0, Math.ceil((idleInhibitUntilMs - idleInhibitClockMs) / 1000)) : 0
@@ -39,6 +38,7 @@ Singleton {
     property string idleInhibitError: ""
     property string idleInhibitLifecycle: "stopped"
     property int idleInhibitRetrySecs: 5
+    property bool startupApplied: false
 
     // Night light: hyprsunset warms the screen while enabled and restores
     // neutral gamma when the process is killed.
@@ -198,19 +198,18 @@ Singleton {
         if (accepted.indexOf(mode) === -1)
             mode = "off";
 
-        if (mode === "always") {
-            temporaryIdleInhibitMode = "off";
-            idleInhibitUntilMs = 0;
-            Settings.set("idleInhibited", true);
-            return;
-        }
-
-        temporaryIdleInhibitMode = mode;
-        idleInhibitUntilMs = mode === "30m" ? Date.now() + 30 * 60000
+        const until = mode === "30m" ? Date.now() + 30 * 60000
             : mode === "1h" ? Date.now() + 60 * 60000 : 0;
-        if (Settings.idleInhibited)
-            Settings.set("idleInhibited", false);
-        else
+        // Publish a deadline before enabling its timed mode. Readers can see
+        // either endpoint during the two synchronous notifications, but never
+        // an enabled timed request with a stale or zero deadline.
+        if (until > 0)
+            Settings.set("idleInhibitUntilMs", until);
+        Settings.set("idleInhibitMode", mode);
+        if (until === 0)
+            Settings.set("idleInhibitUntilMs", 0);
+        idleInhibitClockMs = Date.now();
+        if (Settings.idleInhibitMode === mode)
             syncIdleInhibit();
 
         if (mode === "unplugged" && Battery.isLaptop && !Battery.pluggedIn)
@@ -222,13 +221,51 @@ Singleton {
     }
 
     function toggleIdleInhibited() {
-        // The dashboard's quick action is intentionally safe by default. The
-        // System page offers the explicit persistent choice.
-        setIdleInhibitMode(idleInhibited ? "off" : "1h");
+        setIdleInhibitMode(idleInhibited ? "off"
+            : Settings.modOpts.indicators.idleDefaultMode);
     }
 
-    onNightLightChanged: syncNightLight()
-    onIdleInhibitedChanged: syncIdleInhibit()
+    function applyStartupPolicies() {
+        if (startupApplied || !Startup.ready || !Settings.loaded)
+            return;
+        startupApplied = true;
+
+        if (Startup.firstStart) {
+            const nightPolicy = Settings.modOpts.indicators.nightLightStartup;
+            if (nightPolicy === "off" && Settings.nightLight)
+                Settings.set("nightLight", false);
+            else if (nightPolicy === "on" && !Settings.nightLight)
+                Settings.set("nightLight", true);
+
+            const idlePolicy = Settings.modOpts.indicators.idleStartup;
+            if (idlePolicy === "off")
+                setIdleInhibitMode("off");
+            else if (idlePolicy === "on")
+                setIdleInhibitMode("always");
+        }
+
+        // A remembered deadline may have elapsed while the shell or the whole
+        // session was down. Never turn that into a fresh request.
+        idleInhibitClockMs = Date.now();
+        if ((idleInhibitMode === "30m" || idleInhibitMode === "1h")
+                && idleInhibitUntilMs <= idleInhibitClockMs)
+            setIdleInhibitMode("off");
+        else if (idleInhibitMode === "unplugged" && Battery.isLaptop
+                && !Battery.pluggedIn)
+            setIdleInhibitMode("off");
+
+        syncIdleInhibit();
+        syncNightLight();
+    }
+
+    onNightLightChanged: {
+        if (startupApplied)
+            syncNightLight();
+    }
+    onIdleInhibitModeChanged: {
+        if (startupApplied)
+            syncIdleInhibit();
+    }
 
     Timer {
         interval: 1000
@@ -245,7 +282,13 @@ Singleton {
         target: Battery
 
         function onPluggedInChanged() {
-            if (root.temporaryIdleInhibitMode === "unplugged"
+            if (root.idleInhibitMode === "unplugged"
+                    && Battery.isLaptop && !Battery.pluggedIn)
+                root.setIdleInhibitMode("off");
+        }
+
+        function onIsLaptopChanged() {
+            if (root.idleInhibitMode === "unplugged"
                     && Battery.isLaptop && !Battery.pluggedIn)
                 root.setIdleInhibitMode("off");
         }
@@ -319,10 +362,23 @@ Singleton {
         }
     }
 
-    Component.onCompleted: {
-        syncIdleInhibit();
-        syncNightLight();
+    Connections {
+        target: Startup
+
+        function onReadyChanged() {
+            root.applyStartupPolicies();
+        }
     }
+
+    Connections {
+        target: Settings
+
+        function onLoadedChanged() {
+            root.applyStartupPolicies();
+        }
+    }
+
+    Component.onCompleted: applyStartupPolicies()
 
     Process {
         command: ["cat", "/etc/hostname"]

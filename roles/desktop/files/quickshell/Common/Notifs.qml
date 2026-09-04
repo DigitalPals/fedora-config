@@ -13,6 +13,22 @@ Singleton {
     // toasts on a schedule the same way. Both only gate the popup — every
     // notification still lands in the center.
     readonly property bool dnd: Settings.notifDnd
+    property double dndClockMs: Date.now()
+    readonly property int dndRemainingSecs: Settings.notifDndUntilMs > 0
+        ? Math.max(0, Math.ceil((Settings.notifDndUntilMs - dndClockMs) / 1000)) : 0
+    readonly property string dndStatus: {
+        if (!dnd)
+            return "Off";
+        if (Settings.notifDndUntilMs <= 0)
+            return "Until turned off";
+        const mins = Math.max(1, Math.ceil(dndRemainingSecs / 60));
+        if (mins < 60)
+            return mins + " min left";
+        const remainder = mins % 60;
+        return Math.floor(mins / 60) + "h"
+            + (remainder === 0 ? "" : " " + remainder + "m") + " left";
+    }
+    property bool startupApplied: false
     readonly property bool quietActive: SettingsHelpers.quietActive(Settings.notifQuiet,
         Settings.notifQuietStart, Settings.notifQuietEnd,
         quietClock.date.getHours() * 60 + quietClock.date.getMinutes())
@@ -24,13 +40,100 @@ Singleton {
     readonly property int count: entries.length
     readonly property bool hasUrgent: entries.some(e => e.urgency === NotificationUrgency.Critical)
 
+    function nextQuietBoundaryMs() {
+        const range = SettingsHelpers.quietRange(Settings.notifQuiet,
+            Settings.notifQuietStart, Settings.notifQuietEnd) || ({
+                start: Settings.notifQuietStart,
+                end: Settings.notifQuietEnd
+            });
+        if (range.start === range.end)
+            return Date.now() + 60 * 60000;
+        const now = new Date();
+        function occurrence(minutes) {
+            const value = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                Math.floor(minutes / 60), minutes % 60, 0, 0);
+            if (value.getTime() <= now.getTime())
+                value.setDate(value.getDate() + 1);
+            return value.getTime();
+        }
+        return Math.min(occurrence(range.start), occurrence(range.end));
+    }
+
+    function setDndMode(mode) {
+        if (["off", "always", "1h", "quiet-boundary"].indexOf(mode) === -1)
+            mode = "off";
+        if (mode === "off") {
+            Settings.set("notifDnd", false);
+            Settings.set("notifDndUntilMs", 0);
+        } else {
+            const until = mode === "1h" ? Date.now() + 60 * 60000
+                : mode === "quiet-boundary" ? nextQuietBoundaryMs() : 0;
+            Settings.set("notifDndUntilMs", until);
+            Settings.set("notifDnd", true);
+            dndClockMs = Date.now();
+        }
+    }
+
     function setDnd(value) {
-        Settings.set("notifDnd", value);
+        setDndMode(value ? "always" : "off");
+    }
+
+    function toggleDefaultDnd() {
+        setDndMode(dnd ? "off" : Settings.modOpts.indicators.dndDefaultMode);
+    }
+
+    function applyStartupPolicy() {
+        if (startupApplied || !Startup.ready || !Settings.loaded)
+            return;
+        startupApplied = true;
+        if (Startup.firstStart) {
+            const policy = Settings.modOpts.indicators.dndStartup;
+            if (policy === "off")
+                setDnd(false);
+            else if (policy === "on")
+                setDnd(true);
+        }
+        dndClockMs = Date.now();
+        if (dnd && Settings.notifDndUntilMs > 0
+                && Settings.notifDndUntilMs <= dndClockMs)
+            setDnd(false);
     }
 
     SystemClock {
         id: quietClock
         precision: SystemClock.Minutes
+    }
+
+    Timer {
+        interval: 1000
+        running: root.dnd && Settings.notifDndUntilMs > 0
+        repeat: true
+        onTriggered: {
+            root.dndClockMs = Date.now();
+            if (root.dndClockMs >= Settings.notifDndUntilMs)
+                root.setDnd(false);
+        }
+    }
+
+    onDndChanged: {
+        if (startupApplied && !dnd && Settings.notifDndUntilMs !== 0)
+            Settings.set("notifDndUntilMs", 0);
+    }
+
+    Connections {
+        target: Startup
+
+        function onReadyChanged() {
+            root.applyStartupPolicy();
+        }
+    }
+
+    Connections {
+        target: Settings
+
+        function onLoadedChanged() {
+            root.applyStartupPolicy();
+        }
     }
 
     onToastsSuppressedChanged: {
@@ -283,4 +386,6 @@ Singleton {
             return Math.floor(s / Format.HOUR) + "h";
         return Math.floor(s / Format.DAY) + "d";
     }
+
+    Component.onCompleted: applyStartupPolicy()
 }

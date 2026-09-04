@@ -438,9 +438,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema twenty-one keeps safe defaults and exposes accessibility preferences", () => {
+test("schema twenty-two keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 21/);
+    assert.match(helpers, /var VERSION = 22/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -454,7 +454,8 @@ test("schema twenty-one keeps safe defaults and exposes accessibility preference
     assert.match(helpers, /interfaceDensity: "default"/);
     assert.match(helpers, /"media", "indicators", "clock"/);
     assert.match(helpers, /nightLight:\s*false/);
-    assert.match(helpers, /idleInhibited:\s*false/);
+    assert.match(helpers, /idleInhibitMode:\s*"off"/);
+    assert.match(helpers, /idleInhibitUntilMs:\s*0/);
     assert.match(helpers, /"updates", "gh", "t3", "hermes",\s*"usage", "tray"/);
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers, /claudeAutoRefresh:\s*true/);
@@ -813,7 +814,8 @@ test("per-module options live under one validated modOpts key", () => {
 
     assert.match(helpers, /function defaultModOpts/);
     assert.match(helpers, /function normalizeModOpts/);
-    assert.match(helpers, /modOpts:\s*migrateModOpts\(parsed\.modOpts, parsed\.v\)/);
+    assert.match(helpers,
+        /modOpts:\s*migrateModOpts\(parsed\.modOpts, parsed\.v, parsed\)/);
     assert.match(settings, /"mods", "modOpts"/);
     assert.match(settings, /function setModuleOption/);
     assert.match(settings, /onModOptsChanged:\s*scheduleSave/);

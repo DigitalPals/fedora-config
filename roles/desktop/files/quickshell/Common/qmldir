@@ -59,6 +59,7 @@ singleton Dictation Dictation.qml
 singleton Reminders Reminders.qml
 singleton Notes Notes.qml
 singleton Session Session.qml
+singleton Startup Startup.qml
 
 # Plain types (not singletons). The two controls live here rather than in
 # Popovers/ or Settings/ because both directories draw them and both already

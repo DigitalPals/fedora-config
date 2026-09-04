@@ -28,20 +28,25 @@ SettingsPage {
             width: parent.width
             title: "Behavior"
             dirty: Settings.notifDnd !== Settings.defaults.notifDnd
+                || Settings.notifDndUntilMs !== Settings.defaults.notifDndUntilMs
                 || Settings.notifQuiet !== Settings.defaults.notifQuiet
                 || Settings.notifQuietStart !== Settings.defaults.notifQuietStart
                 || Settings.notifQuietEnd !== Settings.defaults.notifQuietEnd
                 || Settings.notifDuration !== Settings.defaults.notifDuration
                 || Settings.notifPosition !== Settings.defaults.notifPosition
-            onResetRequested: Settings.resetKeys(["notifDnd", "notifQuiet",
+            onResetRequested: Settings.resetKeys(["notifDnd", "notifDndUntilMs", "notifQuiet",
                 "notifQuietStart", "notifQuietEnd", "notifDuration", "notifPosition"],
                 "Notification behavior")
 
             SwitchRow {
                 width: parent.width
                 label: "Do Not Disturb"
-                settingKey: "notifDnd"
                 description: "Silence toasts — everything still lands in the center"
+                checked: Notifs.dnd
+                dirty: Settings.notifDnd !== Settings.defaults.notifDnd
+                    || Settings.notifDndUntilMs !== Settings.defaults.notifDndUntilMs
+                onToggled: value => Notifs.setDnd(value)
+                onResetRequested: Notifs.setDnd(Settings.defaults.notifDnd)
             }
             PickerRow {
                 width: parent.width

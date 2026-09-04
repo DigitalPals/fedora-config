@@ -30,9 +30,13 @@ Singleton {
             run(["voxtype", "record", "stop"]);
         else if (transcribing)
             run(["voxtype", "record", "cancel"]);
-        else
-            run(["voxtype", "--model", "base", "--language",
-                language || "en", "record", "start"]);
+        else {
+            const selected = language || Settings.modOpts.indicators.dictationPrimaryLanguage;
+            if (selected === "off")
+                return;
+            run(["voxtype", "--model", Settings.modOpts.indicators.dictationModel,
+                "--language", selected, "record", "start"]);
+        }
     }
 
     FileView {

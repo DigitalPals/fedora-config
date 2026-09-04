@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 21);
+    assert.equal(H.VERSION, 22);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "power", "notifications", "usage"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -41,10 +41,12 @@ test("defaults carry the design values", () => {
     assert.equal(d.pollMax, 300);
     assert.equal(d.scrollFactor, 1.0);
     assert.equal(d.nightLight, false);
-    assert.equal(d.idleInhibited, false);
+    assert.equal(d.idleInhibitMode, "off");
+    assert.equal(d.idleInhibitUntilMs, 0);
     assert.equal(d.shuffle, "Off");
     assert.equal(d.wallDir, "~/Pictures/Wallpapers");
     assert.equal(d.notifDnd, false);
+    assert.equal(d.notifDndUntilMs, 0);
     assert.equal(d.notifQuiet, "off");
     assert.equal(d.notifQuietStart, 1320);
     assert.equal(d.notifQuietEnd, 420);
@@ -84,7 +86,31 @@ test("defaults carry the design values", () => {
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
     assert.equal(d.modOpts.media.maxWidth, 180);
-    assert.deepEqual(d.modOpts.indicators, { mode: "hover" });
+    assert.equal(d.modOpts.indicators.mode, "hover");
+    assert.deepEqual(d.modOpts.indicators.order, H.INDICATOR_ACTION_IDS);
+    assert.deepEqual(d.modOpts.indicators.enabled, H.INDICATOR_ACTION_IDS);
+    assert.deepEqual({
+        primary: d.modOpts.indicators.dictationPrimaryLanguage,
+        secondary: d.modOpts.indicators.dictationSecondaryLanguage,
+        model: d.modOpts.indicators.dictationModel,
+        recording: d.modOpts.indicators.recordingMode,
+        elapsed: d.modOpts.indicators.recordingShowElapsed,
+        reminderDisplay: d.modOpts.indicators.reminderDisplay,
+        reminderClick: d.modOpts.indicators.reminderClick,
+        reminderMinutes: d.modOpts.indicators.reminderMinutes,
+        nightStartup: d.modOpts.indicators.nightLightStartup,
+        dndStartup: d.modOpts.indicators.dndStartup,
+        dndMode: d.modOpts.indicators.dndDefaultMode,
+        idleStartup: d.modOpts.indicators.idleStartup,
+        idleMode: d.modOpts.indicators.idleDefaultMode,
+        idleRemaining: d.modOpts.indicators.idleShowRemaining
+    }, {
+        primary: "en", secondary: "nl", model: "base",
+        recording: "region", elapsed: true,
+        reminderDisplay: "icon", reminderClick: "list", reminderMinutes: 15,
+        nightStartup: "remember", dndStartup: "remember", dndMode: "always",
+        idleStartup: "off", idleMode: "1h", idleRemaining: false
+    });
     assert.equal(d.modOpts.clock.seconds, false);
     assert.equal(d.modOpts.clock.dateFormat, "ddd dd");
     assert.equal(d.modOpts.clock.showEvents, true);
@@ -119,6 +145,10 @@ test("defaults carry the design values", () => {
     // A fresh list per call: a shared array would let one edit reach the
     // defaults every later comparison is made against.
     assert.notEqual(H.defaultModOpts().gh.watch, H.defaultModOpts().gh.watch);
+    assert.notEqual(H.defaultModOpts().indicators.order,
+        H.defaultModOpts().indicators.order);
+    assert.notEqual(H.defaultModOpts().indicators.enabled,
+        H.defaultModOpts().indicators.enabled);
 });
 
 test("menubar presets are a small intentional neutral palette", () => {
@@ -228,7 +258,25 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     const next = H.normalizeModOpts({
         ws: { minSlots: 99, style: "triangles" },
         media: { maxWidth: 133, titleFormat: "title" },
-        indicators: { mode: "sometimes" },
+        indicators: {
+            mode: "sometimes",
+            order: ["dnd", "bogus", "dnd", "dictation"],
+            enabled: ["recording", "bogus", "recording"],
+            dictationPrimaryLanguage: "not a language!",
+            dictationSecondaryLanguage: "OFF",
+            dictationModel: "enormous",
+            recordingMode: "desktop",
+            recordingShowElapsed: "yes",
+            reminderDisplay: "badge",
+            reminderClick: "create",
+            reminderMinutes: 17,
+            nightLightStartup: "sometimes",
+            dndStartup: "sometimes",
+            dndDefaultMode: "forever",
+            idleStartup: "sometimes",
+            idleDefaultMode: "2h",
+            idleShowRemaining: "yes"
+        },
         clock: { showEvents: "yes", daysAhead: 99, pollMins: 7 },
         weather: { lat: 200, lon: -12.34567, place: "  Emmen Centrum  ", pollMins: 7 },
         notes: {
@@ -269,6 +317,53 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.indicators.mode, "hover");
     assert.equal(H.normalizeModOpts({ indicators: { mode: "always" } }).indicators.mode,
         "always");
+    assert.equal(H.normalizeModOpts({ indicators: { mode: "active" } }).indicators.mode,
+        "active");
+    assert.deepEqual(next.indicators.order,
+        ["dnd", "dictation", "recording", "reminder", "night-light", "stay-awake"]);
+    assert.deepEqual(next.indicators.enabled, ["recording"]);
+    assert.equal(next.indicators.dictationPrimaryLanguage, "en");
+    assert.equal(next.indicators.dictationSecondaryLanguage, "off");
+    assert.equal(next.indicators.dictationModel, "base");
+    assert.equal(next.indicators.recordingMode, "region");
+    assert.equal(next.indicators.recordingShowElapsed, true);
+    assert.equal(next.indicators.reminderDisplay, "icon");
+    assert.equal(next.indicators.reminderClick, "list");
+    assert.equal(next.indicators.reminderMinutes, 15);
+    assert.equal(next.indicators.nightLightStartup, "remember");
+    assert.equal(next.indicators.dndStartup, "remember");
+    assert.equal(next.indicators.dndDefaultMode, "always");
+    assert.equal(next.indicators.idleStartup, "off");
+    assert.equal(next.indicators.idleDefaultMode, "1h");
+    assert.equal(next.indicators.idleShowRemaining, false);
+    const configuredIndicators = H.normalizeModOpts({ indicators: {
+        enabled: [], dictationPrimaryLanguage: "en,nl", dictationSecondaryLanguage: "de-de",
+        dictationModel: "large-v3-turbo", recordingMode: "window",
+        recordingShowElapsed: false, reminderDisplay: "count",
+        reminderClick: "quick-add", reminderMinutes: 60,
+        nightLightStartup: "on", dndStartup: "off",
+        dndDefaultMode: "quiet-boundary", idleStartup: "remember",
+        idleDefaultMode: "unplugged", idleShowRemaining: true
+    } }).indicators;
+    assert.deepEqual(configuredIndicators.enabled, []);
+    assert.deepEqual([
+        configuredIndicators.dictationPrimaryLanguage,
+        configuredIndicators.dictationSecondaryLanguage,
+        configuredIndicators.dictationModel,
+        configuredIndicators.recordingMode,
+        configuredIndicators.recordingShowElapsed,
+        configuredIndicators.reminderDisplay,
+        configuredIndicators.reminderClick,
+        configuredIndicators.reminderMinutes,
+        configuredIndicators.nightLightStartup,
+        configuredIndicators.dndStartup,
+        configuredIndicators.dndDefaultMode,
+        configuredIndicators.idleStartup,
+        configuredIndicators.idleDefaultMode,
+        configuredIndicators.idleShowRemaining
+    ], ["en,nl", "de-de", "large-v3-turbo", "window", false, "count",
+        "quick-add", 60, "on", "off", "quiet-boundary", "remember",
+        "unplugged", true]);
     assert.equal(next.clock.showEvents, true, "non-boolean falls back to default");
     assert.equal(next.clock.daysAhead, 31);
     assert.equal(next.clock.pollMins, 5);
@@ -849,7 +944,8 @@ test("schema-8 validates persisted action and system toggle state", () => {
         modOpts: { indicators: { mode: "always" } }
     });
     assert.equal(valid.nightLight, true);
-    assert.equal(valid.idleInhibited, false);
+    assert.equal(valid.idleInhibitMode, "off");
+    assert.equal(valid.idleInhibitUntilMs, 0);
     assert.equal(valid.modOpts.indicators.mode, "always");
 
     const invalid = H.merge({
@@ -857,8 +953,38 @@ test("schema-8 validates persisted action and system toggle state", () => {
         modOpts: { indicators: { mode: "visible" } }
     });
     assert.equal(invalid.nightLight, false);
-    assert.equal(invalid.idleInhibited, false);
+    assert.equal(invalid.idleInhibitMode, "off");
     assert.equal(invalid.modOpts.indicators.mode, "hover");
+});
+
+test("schema-22 migrates and validates restart-safe timed toggle state", () => {
+    const legacyOn = H.merge({ v: 21, idleInhibited: true });
+    assert.equal(legacyOn.idleInhibitMode, "always");
+    assert.equal(legacyOn.modOpts.indicators.idleStartup, "remember",
+        "an existing persistent opt-in must survive the safer fresh-install policy");
+
+    const timed = H.merge({
+        v: 22,
+        idleInhibitMode: "30m",
+        idleInhibitUntilMs: 2000000000000,
+        notifDnd: true,
+        notifDndUntilMs: 2000000000123
+    });
+    assert.equal(timed.idleInhibitMode, "30m");
+    assert.equal(timed.idleInhibitUntilMs, 2000000000000);
+    assert.equal(timed.notifDndUntilMs, 2000000000123);
+
+    const invalid = H.merge({
+        v: 22,
+        idleInhibitMode: "2h",
+        idleInhibitUntilMs: -1,
+        notifDnd: false,
+        notifDndUntilMs: 2000000000123
+    });
+    assert.equal(invalid.idleInhibitMode, "off");
+    assert.equal(invalid.idleInhibitUntilMs, 0);
+    assert.equal(invalid.notifDndUntilMs, 0,
+        "an inactive DND state cannot retain a deadline that later revives it");
 });
 
 test("version two normalization preserves usage independently and uniquely", () => {
@@ -934,6 +1060,8 @@ test("wallpaper paths and module detail policies are validated", () => {
 
 test("notification settings are validated, clamped, and snapped", () => {
     assert.equal(H.merge({ notifDnd: "yes" }).notifDnd, false);
+    assert.equal(H.merge({ notifDnd: false, notifDndUntilMs: 123 }).notifDndUntilMs, 0);
+    assert.equal(H.merge({ notifDnd: true, notifDndUntilMs: -1 }).notifDndUntilMs, 0);
     assert.equal(H.merge({ notifQuiet: "sometimes" }).notifQuiet, "off");
     assert.equal(H.merge({ notifQuiet: "nights" }).notifQuiet, "nights");
     assert.equal(H.merge({ notifQuietStart: 1322 }).notifQuietStart, 1320);

@@ -18,6 +18,17 @@ SettingsPage {
     property bool inlineMode: false
     signal backRequested()
 
+    readonly property var indicatorMeta: {
+        const out = {};
+        for (const action of SettingsHelpers.INDICATOR_ACTION_CHOICES)
+            out[action.id] = action;
+        return out;
+    }
+    property int indicatorDragIndex: -1
+    property int indicatorDropIndex: -1
+    readonly property bool indicatorDragActive: indicatorDragIndex !== -1
+    readonly property int indicatorRowPitch: 36
+
     readonly property var opts: Settings.modOpts[moduleId] ?? ({})
     readonly property var optDefaults: Settings.defaults.modOpts[moduleId] ?? ({})
     readonly property var modEntry: {
@@ -45,6 +56,69 @@ SettingsPage {
 
     function resetOpt(key) {
         Settings.setModuleOption(view.moduleId, key, view.optDefaults[key]);
+    }
+
+    function resetOpts(keys) {
+        const changes = {};
+        for (const key of keys)
+            changes[key] = view.optDefaults[key];
+        Settings.setModuleOptions(view.moduleId, changes);
+    }
+
+    function optsDirty(keys) {
+        return keys.some(key => JSON.stringify(view.opts[key])
+            !== JSON.stringify(view.optDefaults[key]));
+    }
+
+    function indicatorEnabled(id) {
+        return view.opts.enabled.indexOf(id) !== -1;
+    }
+
+    function setIndicatorEnabled(id, enabled) {
+        let next = view.opts.enabled.filter(candidate => candidate !== id);
+        if (enabled)
+            next.push(id);
+        // Store enablement in visual order so hand-edited settings remain
+        // readable and deterministic.
+        next = view.opts.order.filter(candidate => next.indexOf(candidate) !== -1);
+        view.setOpt("enabled", next);
+    }
+
+    function beginIndicatorDrag(index) {
+        indicatorDragIndex = index;
+        indicatorDropIndex = index;
+        const id = view.opts.order[index];
+        Settings.announcement = view.indicatorMeta[id].label
+            + " picked up. Use arrow keys to move.";
+    }
+
+    function moveIndicatorDrop(delta) {
+        if (!indicatorDragActive)
+            return;
+        indicatorDropIndex = Math.max(0, Math.min(view.opts.order.length - 1,
+            indicatorDropIndex + delta));
+    }
+
+    function cancelIndicatorDrag() {
+        indicatorDragIndex = -1;
+        indicatorDropIndex = -1;
+    }
+
+    function commitIndicatorDrag() {
+        if (!indicatorDragActive)
+            return;
+        const from = indicatorDragIndex;
+        const to = indicatorDropIndex;
+        const ids = view.opts.order.slice();
+        const moved = ids[from];
+        cancelIndicatorDrag();
+        if (from === to)
+            return;
+        ids.splice(from, 1);
+        ids.splice(to, 0, moved);
+        view.setOpt("order", ids);
+        Settings.announcement = view.indicatorMeta[moved].label
+            + " moved to position " + (to + 1) + ".";
     }
 
     function setNumericOpt(key, text) {
@@ -130,19 +204,467 @@ SettingsPage {
         id: indicatorsOptions
 
         Column {
-            spacing: 8
+            spacing: 12
 
-            PickerRow {
+            SettingsGroup {
                 width: parent.width
-                label: "Visibility"
-                model: [
-                    { value: "hover", label: "Hover" },
-                    { value: "always", label: "Always show" }
-                ]
-                current: view.opts.mode
-                dirty: view.optDirty("mode")
-                onPicked: value => view.setOpt("mode", value)
-                onResetRequested: view.resetOpt("mode")
+                title: "Behavior"
+                dirty: view.optsDirty(["mode"])
+                onResetRequested: view.resetOpts(["mode"])
+
+                PickerRow {
+                    width: parent.width
+                    label: "Visibility"
+                    model: [
+                        { value: "hover", label: "Clock hover" },
+                        { value: "always", label: "Always show" },
+                        { value: "active", label: "Active only" }
+                    ]
+                    current: view.opts.mode
+                    dirty: view.optDirty("mode")
+                    onPicked: value => view.setOpt("mode", value)
+                    onResetRequested: view.resetOpt("mode")
+                }
+            }
+
+            SettingsGroup {
+                width: parent.width
+                title: "Actions"
+                dirty: view.optsDirty(["order", "enabled"])
+                onResetRequested: view.resetOpts(["order", "enabled"])
+
+                Text {
+                    width: parent.width
+                    leftPadding: Theme.settingsMarkInset
+                    bottomPadding: 4
+                    text: "Drag to reorder. Hidden recording and dictation controls still return while active so they can be stopped."
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.textDim
+                    wrapMode: Text.Wrap
+                }
+
+                Item {
+                    width: parent.width
+                    height: view.opts.order.length * view.indicatorRowPitch
+
+                    Column {
+                        width: parent.width
+                        spacing: 2
+
+                        Repeater {
+                            id: indicatorActionRepeater
+                            model: view.opts.order
+
+                            delegate: Rectangle {
+                                id: indicatorRow
+
+                                required property string modelData
+                                required property int index
+                                readonly property var meta: view.indicatorMeta[modelData]
+                                readonly property bool shown: view.indicatorEnabled(modelData)
+                                readonly property bool dragged: view.indicatorDragIndex === index
+
+                                width: parent.width
+                                height: view.indicatorRowPitch - 2
+                                radius: Theme.rowRadius
+                                color: "transparent"
+                                opacity: dragged ? 0.35 : 1
+                                border.width: activeFocus ? 1 : 0
+                                border.color: Theme.accent
+                                activeFocusOnTab: index === 0
+                                Accessible.role: Accessible.ListItem
+                                Accessible.name: meta.label + " indicator"
+                                Accessible.description: view.indicatorDragActive
+                                    ? "Drag in progress" : "Press Space to pick up"
+                                Accessible.selected: dragged
+                                Accessible.onPressAction: {
+                                    if (view.indicatorDragActive)
+                                        view.commitIndicatorDrag();
+                                    else
+                                        view.beginIndicatorDrag(index);
+                                }
+
+                                Keys.onPressed: event => {
+                                    if (event.key === Qt.Key_Space) {
+                                        if (view.indicatorDragActive)
+                                            view.commitIndicatorDrag();
+                                        else
+                                            view.beginIndicatorDrag(index);
+                                        event.accepted = true;
+                                    } else if (event.key === Qt.Key_Escape
+                                            && view.indicatorDragActive) {
+                                        view.cancelIndicatorDrag();
+                                        event.accepted = true;
+                                    } else if (view.indicatorDragActive
+                                            && (event.key === Qt.Key_Up
+                                                || event.key === Qt.Key_Down)) {
+                                        view.moveIndicatorDrop(event.key === Qt.Key_Up ? -1 : 1);
+                                        event.accepted = true;
+                                    } else if (!view.indicatorDragActive
+                                            && (event.key === Qt.Key_Up
+                                                || event.key === Qt.Key_Down)) {
+                                        const next = indicatorActionRepeater.itemAt(index
+                                            + (event.key === Qt.Key_Up ? -1 : 1));
+                                        if (next)
+                                            next.forceActiveFocus();
+                                        event.accepted = true;
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: indicatorDragArea
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.right: indicatorToggle.left
+                                    cursorShape: view.indicatorDragActive
+                                        ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                    preventStealing: true
+                                    property real pressY
+
+                                    onPressed: mouse => pressY = mouse.y
+                                    onPositionChanged: mouse => {
+                                        if (!view.indicatorDragActive) {
+                                            if (Math.abs(mouse.y - pressY) < 4)
+                                                return;
+                                            view.beginIndicatorDrag(indicatorRow.index);
+                                        }
+                                        const local = indicatorDragArea.mapToItem(
+                                            indicatorRow.parent, mouse.x, mouse.y);
+                                        view.indicatorDropIndex = Math.max(0, Math.min(
+                                            view.opts.order.length - 1,
+                                            Math.floor(local.y / view.indicatorRowPitch)));
+                                    }
+                                    onReleased: {
+                                        if (view.indicatorDragActive)
+                                            view.commitIndicatorDrag();
+                                    }
+                                    onCanceled: view.cancelIndicatorDrag()
+                                    onClicked: indicatorRow.forceActiveFocus()
+                                }
+
+                                Text {
+                                    id: indicatorHandle
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "⠿"
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: Theme.fontCaption
+                                    color: Theme.textDim
+                                }
+
+                                Sym {
+                                    id: indicatorGlyph
+                                    anchors.left: indicatorHandle.right
+                                    anchors.leftMargin: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: indicatorRow.meta.glyph
+                                    size: Theme.iconMedium
+                                    color: indicatorRow.shown ? Theme.icon : Theme.textFaint
+                                }
+
+                                Text {
+                                    id: indicatorLabel
+                                    anchors.left: indicatorGlyph.right
+                                    anchors.leftMargin: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 130
+                                    text: indicatorRow.meta.label
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontSecondary
+                                    font.weight: Theme.weightMedium
+                                    color: indicatorRow.shown ? Theme.textHi : Theme.textLow
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    anchors.left: indicatorLabel.right
+                                    anchors.leftMargin: 8
+                                    anchors.right: indicatorToggle.left
+                                    anchors.rightMargin: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: indicatorRow.shown ? "available"
+                                        : (indicatorRow.modelData === "dictation"
+                                            || indicatorRow.modelData === "recording")
+                                            ? "hidden at rest · shown while active" : "hidden"
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontCaption
+                                    color: Theme.textDim
+                                    elide: Text.ElideRight
+                                }
+
+                                Toggle {
+                                    id: indicatorToggle
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    metrics: Theme.switchCompact
+                                    checked: indicatorRow.shown
+                                    accessibleName: "Show " + indicatorRow.meta.label
+                                    onToggled: value => view.setIndicatorEnabled(
+                                        indicatorRow.modelData, value)
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        visible: view.indicatorDragActive
+                        x: 2
+                        width: parent.width - 4
+                        height: 2
+                        radius: 1
+                        y: Math.max(0, view.indicatorDropIndex) * view.indicatorRowPitch - 1
+                            + (view.indicatorDropIndex > view.indicatorDragIndex
+                                ? view.indicatorRowPitch - 2 : 0)
+                        color: Theme.accent
+                        z: 10
+                    }
+                }
+            }
+
+            SettingsGroup {
+                width: parent.width
+                title: "Dictation"
+                dirty: view.optsDirty(["dictationPrimaryLanguage",
+                    "dictationSecondaryLanguage", "dictationModel"])
+                onResetRequested: view.resetOpts(["dictationPrimaryLanguage",
+                    "dictationSecondaryLanguage", "dictationModel"])
+
+                SettingsTextRow {
+                    width: parent.width
+                    label: "Primary language"
+                    value: view.opts.dictationPrimaryLanguage
+                    placeholder: "en, nl, auto, or a comma-separated list"
+                    dirty: view.optDirty("dictationPrimaryLanguage")
+                    onCommitted: text => view.setOpt("dictationPrimaryLanguage", text)
+                    onResetRequested: view.resetOpt("dictationPrimaryLanguage")
+                }
+
+                SettingsTextRow {
+                    width: parent.width
+                    label: "Alternate language"
+                    value: view.opts.dictationSecondaryLanguage
+                    placeholder: "Middle click · use off to disable"
+                    dirty: view.optDirty("dictationSecondaryLanguage")
+                    onCommitted: text => view.setOpt("dictationSecondaryLanguage", text)
+                    onResetRequested: view.resetOpt("dictationSecondaryLanguage")
+                }
+
+                PickerRow {
+                    width: parent.width
+                    label: "Model"
+                    model: SettingsHelpers.DICTATION_MODEL_CHOICES
+                    current: view.opts.dictationModel
+                    dirty: view.optDirty("dictationModel")
+                    onPicked: value => view.setOpt("dictationModel", value)
+                    onResetRequested: view.resetOpt("dictationModel")
+                }
+            }
+
+            SettingsGroup {
+                width: parent.width
+                title: "Screen recording"
+                dirty: view.optsDirty(["recordingMode", "recordingShowElapsed"])
+                onResetRequested: view.resetOpts(["recordingMode", "recordingShowElapsed"])
+
+                PickerRow {
+                    width: parent.width
+                    label: "Capture"
+                    model: [
+                        { value: "region", label: "Region" },
+                        { value: "window", label: "Window" },
+                        { value: "screen", label: "Screen" }
+                    ]
+                    current: view.opts.recordingMode
+                    dirty: view.optDirty("recordingMode")
+                    onPicked: value => view.setOpt("recordingMode", value)
+                    onResetRequested: view.resetOpt("recordingMode")
+                }
+
+                SwitchRow {
+                    width: parent.width
+                    label: "Elapsed time"
+                    description: "Show the running duration beside the recording icon"
+                    checked: view.opts.recordingShowElapsed
+                    dirty: view.optDirty("recordingShowElapsed")
+                    onToggled: value => view.setOpt("recordingShowElapsed", value)
+                    onResetRequested: view.resetOpt("recordingShowElapsed")
+                }
+            }
+
+            SettingsGroup {
+                width: parent.width
+                title: "Reminders"
+                dirty: view.optsDirty(["reminderDisplay", "reminderClick",
+                    "reminderMinutes"])
+                onResetRequested: view.resetOpts(["reminderDisplay", "reminderClick",
+                    "reminderMinutes"])
+
+                PickerRow {
+                    width: parent.width
+                    label: "Active display"
+                    model: [
+                        { value: "icon", label: "Icon" },
+                        { value: "count", label: "Count" }
+                    ]
+                    current: view.opts.reminderDisplay
+                    dirty: view.optDirty("reminderDisplay")
+                    onPicked: value => view.setOpt("reminderDisplay", value)
+                    onResetRequested: view.resetOpt("reminderDisplay")
+                }
+
+                PickerRow {
+                    width: parent.width
+                    label: "Primary click"
+                    model: [
+                        { value: "list", label: "Open list" },
+                        { value: "quick-add", label: "Quick add" }
+                    ]
+                    current: view.opts.reminderClick
+                    dirty: view.optDirty("reminderClick")
+                    onPicked: value => view.setOpt("reminderClick", value)
+                    onResetRequested: view.resetOpt("reminderClick")
+                }
+
+                PickerRow {
+                    width: parent.width
+                    label: "Quick add"
+                    model: [5, 15, 30, 60].map(minutes =>
+                        ({ value: minutes, label: minutes + " min" }))
+                    current: view.opts.reminderMinutes
+                    dirty: view.optDirty("reminderMinutes")
+                    onPicked: value => view.setOpt("reminderMinutes", value)
+                    onResetRequested: view.resetOpt("reminderMinutes")
+                }
+            }
+
+            SettingsGroup {
+                width: parent.width
+                title: "Night light"
+                dirty: view.optsDirty(["nightLightStartup"])
+                onResetRequested: view.resetOpts(["nightLightStartup"])
+
+                PickerRow {
+                    width: parent.width
+                    label: "At sign-in"
+                    model: [
+                        { value: "remember", label: "Remember" },
+                        { value: "off", label: "Off" },
+                        { value: "on", label: "On" }
+                    ]
+                    current: view.opts.nightLightStartup
+                    dirty: view.optDirty("nightLightStartup")
+                    onPicked: value => view.setOpt("nightLightStartup", value)
+                    onResetRequested: view.resetOpt("nightLightStartup")
+                }
+
+                SettingsAction {
+                    text: "Temperature settings"
+                    glyph: "arrow_forward"
+                    onTriggered: Settings.page = "system"
+                }
+            }
+
+            SettingsGroup {
+                width: parent.width
+                title: "Do Not Disturb"
+                dirty: view.optsDirty(["dndStartup", "dndDefaultMode"])
+                onResetRequested: view.resetOpts(["dndStartup", "dndDefaultMode"])
+
+                PickerRow {
+                    width: parent.width
+                    label: "At sign-in"
+                    model: [
+                        { value: "remember", label: "Remember" },
+                        { value: "off", label: "Off" },
+                        { value: "on", label: "On" }
+                    ]
+                    current: view.opts.dndStartup
+                    dirty: view.optDirty("dndStartup")
+                    onPicked: value => view.setOpt("dndStartup", value)
+                    onResetRequested: view.resetOpt("dndStartup")
+                }
+
+                PickerRow {
+                    width: parent.width
+                    label: "Primary click"
+                    model: [
+                        { value: "always", label: "Until off" },
+                        { value: "1h", label: "1 hour" },
+                        { value: "quiet-boundary", label: "Quiet boundary" }
+                    ]
+                    current: view.opts.dndDefaultMode
+                    dirty: view.optDirty("dndDefaultMode")
+                    onPicked: value => view.setOpt("dndDefaultMode", value)
+                    onResetRequested: view.resetOpt("dndDefaultMode")
+                }
+
+                SettingsAction {
+                    text: "Quiet-hours settings"
+                    glyph: "arrow_forward"
+                    onTriggered: Settings.page = "notifications"
+                }
+            }
+
+            SettingsGroup {
+                width: parent.width
+                title: "Stay awake"
+                dirty: view.optsDirty(["idleStartup", "idleDefaultMode",
+                    "idleShowRemaining"])
+                onResetRequested: view.resetOpts(["idleStartup", "idleDefaultMode",
+                    "idleShowRemaining"])
+
+                PickerRow {
+                    width: parent.width
+                    label: "At sign-in"
+                    model: [
+                        { value: "remember", label: "Remember" },
+                        { value: "off", label: "Off" },
+                        { value: "on", label: "On" }
+                    ]
+                    current: view.opts.idleStartup
+                    dirty: view.optDirty("idleStartup")
+                    onPicked: value => view.setOpt("idleStartup", value)
+                    onResetRequested: view.resetOpt("idleStartup")
+                }
+
+                PickerRow {
+                    width: parent.width
+                    label: "Primary click"
+                    model: [
+                        { value: "30m", label: "30 min" },
+                        { value: "1h", label: "1 hour" },
+                        { value: "unplugged", label: "Until unplugged" },
+                        { value: "always", label: "Until off" }
+                    ]
+                    current: view.opts.idleDefaultMode
+                    dirty: view.optDirty("idleDefaultMode")
+                    onPicked: value => view.setOpt("idleDefaultMode", value)
+                    onResetRequested: view.resetOpt("idleDefaultMode")
+                }
+
+                SwitchRow {
+                    width: parent.width
+                    label: "Time remaining"
+                    description: "Show the remaining time directly beside a timed icon"
+                    checked: view.opts.idleShowRemaining
+                    dirty: view.optDirty("idleShowRemaining")
+                    onToggled: value => view.setOpt("idleShowRemaining", value)
+                    onResetRequested: view.resetOpt("idleShowRemaining")
+                }
+
+                Text {
+                    width: parent.width
+                    leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
+                    text: "Sign-in policy applies after login or reboot. Restarting only the menubar resumes its current state and original deadline."
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    color: Theme.textDim
+                    wrapMode: Text.Wrap
+                }
             }
         }
     }
