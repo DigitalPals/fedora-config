@@ -28,8 +28,9 @@ trap cleanup EXIT
 
 mock_bin="$fixture/bin"
 active_dir="$fixture/active"
-mkdir -p -- "$mock_bin" "$active_dir" "$fixture/home" "$fixture/state" \
-  "$fixture/runtime"
+mock_libexec="$fixture/libexec"
+mkdir -p -- "$mock_bin" "$mock_libexec" "$active_dir" "$fixture/home" \
+  "$fixture/state" "$fixture/runtime"
 
 apply_mock() {
   local target=$1
@@ -103,6 +104,14 @@ apply_mock ansible-playbook \
 # on the supported non-Btrfs path so it never inspects or mutates the host FS.
 apply_mock findmnt 'printf "ext4\n"'
 
+# A pre-rename installation has only this root-owned helper. Its compatible
+# contract must bridge the first run of the renamed updater.
+printf '%s\n' '#!/usr/bin/env bash' \
+  'printf "%s\n" "$*" >>"$MOCK_LEGACY_SNAPSHOT_LOG"' \
+  'printf "skipped: fixture recovery helper\n"' \
+  >"$mock_libexec/xps-system-snapshot"
+chmod 0755 "$mock_libexec/xps-system-snapshot"
+
 export HOME="$fixture/home"
 export XDG_STATE_HOME="$fixture/state"
 export XDG_RUNTIME_DIR="$fixture/runtime"
@@ -113,12 +122,11 @@ export MOCK_DNF_LOG="$fixture/dnf.log"
 export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
 export MOCK_ANSIBLE_CONFIG_LOG="$fixture/ansible-config.log"
 export MOCK_ANSIBLE_ARGS_LOG="$fixture/ansible-args.log"
+export MOCK_LEGACY_SNAPSHOT_LOG="$fixture/legacy-snapshot.log"
 export FEDORA_CONFIG_UPDATE_BOOT_ID_FILE="$fixture/boot-id"
 export FEDORA_CONFIG_UPDATE_ASSUME_USER_UNIT=1
-# The now-installed production helper still executes inside this fixture's
-# mocked sudo process. Permit its non-root test mode; mocked findmnt below
-# forces the supported non-Btrfs no-op before any filesystem mutation.
-export FEDORA_CONFIG_SYSTEM_SNAPSHOT_TESTING=1
+export FEDORA_CONFIG_UPDATE_TESTING=1
+export FEDORA_CONFIG_UPDATE_TEST_LIBEXEC="$mock_libexec"
 export PATH="$mock_bin:$PATH"
 printf 'boot-a\n' >"$FEDORA_CONFIG_UPDATE_BOOT_ID_FILE"
 
@@ -126,6 +134,22 @@ idle=$($backend status --json)
 [[ $(jq -r .state <<<"$idle") == idle ]]
 [[ $(jq -r .bootId <<<"$idle") == boot-a ]]
 [[ $(jq -r .rebootRecommendation <<<"$idle") == unavailable ]]
+
+# A graphical client explicitly requests a system unit without an interactive
+# sudo timestamp. Both launch and cancellation must call the system manager
+# directly, allowing its native Polkit action to reach the desktop agent.
+polkit_start=$($backend start --json --system-unit --no-flatpak)
+polkit_id=$(jq -er .id <<<"$polkit_start")
+polkit_unit=$(jq -er .unit <<<"$polkit_start")
+[[ $(jq -r .systemUnit <<<"$polkit_start") == true ]]
+[[ -e $active_dir/$polkit_unit ]]
+$backend cancel "$polkit_id" >/dev/null
+[[ $(jq -r .state <<<"$($backend status --json "$polkit_id")") == cancelled ]]
+[[ ! -e $active_dir/$polkit_unit ]]
+[[ $(grep -Fxc -- '-n true' "$MOCK_PACKAGE_LOG") -eq 2 ]]
+! grep -Eq 'systemd-run|systemctl' "$MOCK_PACKAGE_LOG"
+: >"$MOCK_PACKAGE_LOG"
+: >"$MOCK_SYSTEMD_LOG"
 
 # Hold the first launch inside mocked systemd-run. The run is published before
 # registration, so a second start must resolve it immediately instead of
@@ -247,6 +271,28 @@ $backend cancel "$next_id" >/dev/null
 [[ ! -e $active_dir/$next_unit ]]
 [[ $(jq -r .state "$next_status") == cancelled ]]
 
+# A status reader cannot declare an active run abandoned while its worker owns
+# the lifecycle lock. This is the fast-terminal-write race that used to replace
+# a precise worker failure with the generic "worker disappeared" result.
+lock_race_start=$($backend start --json --no-flatpak)
+lock_race_id=$(jq -er .id <<<"$lock_race_start")
+lock_race_dir=$(jq -er .logDir <<<"$lock_race_start")
+lock_race_unit=$(jq -er .unit <<<"$lock_race_start")
+lock_race_status="$lock_race_dir/status.json"
+jq '.state = "running" | .phase = "snapshot" | .startedAt = 0' \
+  "$lock_race_status" >"$lock_race_status.new"
+mv -f -- "$lock_race_status.new" "$lock_race_status"
+rm -f -- "$active_dir/$lock_race_unit"
+exec {worker_lock_fd}>"$XDG_RUNTIME_DIR/update.lock"
+flock "$worker_lock_fd"
+locked_status=$($backend status --json "$lock_race_id")
+[[ $(jq -r .state <<<"$locked_status") == running ]]
+flock -u "$worker_lock_fd"
+exec {worker_lock_fd}>&-
+unlocked_status=$($backend status --json "$lock_race_id")
+[[ $(jq -r .state <<<"$unlocked_status") == failed ]]
+[[ $(jq -r .phase <<<"$unlocked_status") == abandoned ]]
+
 printf 'abcdefghi' >"$next_dir/dnf.log"
 [[ $($backend read-log "$next_id" dnf 2 4) == cdef ]]
 [[ $($backend read-log "$next_id" dnf 2) == cdefghi ]]
@@ -291,6 +337,7 @@ recommended=$($backend status --json "$recommended_id")
 [[ $(stat -c %a "$XDG_STATE_HOME/fedora-config/update/logs/$recommended_id/dnf.log") == 600 ]]
 [[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 4 ]]
 grep -q -- '--quiet --cacheonly needs-restarting --json' "$MOCK_DNF_LOG"
+grep -Fxq 'create update '"$recommended_id" "$MOCK_LEGACY_SNAPSHOT_LOG"
 
 # Dismissing the transcript does not dismiss a positive same-boot result. A
 # subsequent run inherits it, and malformed plugin output cannot erase it.

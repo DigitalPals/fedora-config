@@ -215,7 +215,7 @@ test("log readers accept bytes only for the exact run and source offset", () => 
 test("status readers cannot cross a local start or dismiss boundary", () => {
     assert.equal(H.acceptsStatusResponse(8, 8, false, true, 0), true);
     assert.equal(H.acceptsStatusResponse(9, 8, false, true, 0), false,
-        "the prior terminal run cannot overwrite a retry response");
+        "the prior status request cannot overwrite a retry response");
     assert.equal(H.acceptsStatusResponse(8, 8, true, true, 0), false,
         "start owns run discovery until its response is handled");
     assert.equal(H.acceptsStatusResponse(8, 8, false, false, 0), false);
@@ -226,10 +226,13 @@ test("status readers cannot cross a local start or dismiss boundary", () => {
         /statusGeneration\+\+;[\s\S]{0,100}?startPreviousStamp = runStamp;[\s\S]{0,100}?startPending = true;[\s\S]{0,100}?resetRun\(/,
         "a local start must invalidate an already-running old status request");
     assert.match(updates,
-        /pending\.id !== root\.startPreviousStamp[\s\S]{0,240}?root\.startPending = false/,
+        /function settleStartRequest\(\)[\s\S]{0,280}?statusGeneration\+\+;[\s\S]{0,80}?startPending = false/,
+        "settling a start must invalidate status reads launched before it");
+    assert.match(updates,
+        /pending\.id !== root\.startPreviousStamp[\s\S]{0,240}?root\.settleStartRequest\(\)/,
         "run discovery must ignore the prior durable status record");
     assert.match(updates, /running: root\.runActive\s*repeat: true/,
-        "status polling must continue while the terminal publishes its new run");
+        "status polling must continue while the client publishes its new run");
 });
 
 test("the QML coordinator settles every check and backend command", () => {
@@ -257,7 +260,12 @@ test("the menu routes checks and runs through its deployment-aware client", () =
     assert.match(updates,
         /updateClient:\s*\n?\s*Quickshell\.shellDir \+ "\/scripts\/update-client"/);
     assert.match(updates,
-        /\["kitty", "--class", "fedora-config-update",\s*\n?\s*"bash", updateClient, "run"\]/);
+        /const command = \["bash", updateClient, "start"\]/);
+    assert.match(updates,
+        /runStartProc\.command = command;\s*runStartProc\.running = true;/,
+        "the panel owns the short-lived start request and its JSON response");
+    assert.doesNotMatch(updates, /"--class", "fedora-config-update"/,
+        "starting an update must not open an external terminal");
     assert.match(updates,
         /command: \["timeout", "45s", "bash", root\.updateClient, "check"\]/);
     assert.doesNotMatch(updates, /"fedora-config", "update"/,

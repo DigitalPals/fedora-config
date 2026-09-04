@@ -164,6 +164,29 @@ check=$($updater --check --json)
 release_json true
 printf '0.0.0\n' >"$fixture/source/VERSION"
 
+# The panel-facing start mode returns one JSON record and never attaches. The
+# no-release path still launches a privileged durable system unit, while a
+# verified project candidate is left exclusively to that worker to promote.
+printf '1.2.3\n' >"$fixture/source/VERSION"
+machine_packages=$($updater --start --no-flatpak)
+[[ $(jq -r .id <<<"$machine_packages") == 20260903-120001-2-2 ]]
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit --no-flatpak' ]]
+printf '0.0.0\n' >"$fixture/source/VERSION"
+
+machine_release=$($updater --start --no-packages 2>"$fixture/machine-start.err")
+[[ $(jq -r .existing <<<"$machine_release") == false ]]
+grep -Fx 'Downloading Fedora Config 1.2.3...' \
+  "$fixture/machine-start.err" >/dev/null
+grep -F -- 'start --json --system-unit --full --skip-tests --repo' \
+  "$fixture/backend.log" >/dev/null
+machine_candidate=$(sed -n 's/.*--repo \([^ ]*\).*/\1/p' \
+  "$fixture/backend.log")
+[[ $machine_candidate == "$fixture/data/fedora-config/releases/.stage.1.2.3."* ]]
+[[ -d $machine_candidate ]]
+cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
+[[ ! -e $fixture/data/fedora-config/current ]]
+rm -rf -- "$machine_candidate"
+
 export MOCK_BACKEND_ATTACH_RC=42
 if $updater --no-packages >/dev/null 2>"$fixture/apply-failed.err"; then
   echo 'failed release apply was accepted' >&2

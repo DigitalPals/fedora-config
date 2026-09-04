@@ -128,13 +128,15 @@ fedora-config update --system-only
 
 ## Durable updater lifecycle
 
-The package/configuration worker is normally a transient user service. When
-sudo needs interactive authentication it starts a transient system service
-instead, after authorization, so closing the terminal or restarting
-Quickshell does not abandon the transaction. Release transactions always use a
-system service because their configuration migration and activation must
-outlive the client. Pressing Ctrl+C while attached only detaches the observer.
-At most one worker can own the update lock.
+The package/configuration worker is a transient service. Terminal invocations
+retain the sudo path and may use a user service while cached authorization is
+available. Quickshell explicitly requests a system service; when authorization
+is needed, systemd's own Polkit action is handled by the graphical session
+agent, so no terminal is opened and progress remains in the Updates view.
+Release transactions also use a system service because their configuration
+migration and activation must outlive the client. Closing the view or pressing
+Ctrl+C while attached only detaches the observer. At most one worker can own
+the update lock.
 
 Use the installed backend to inspect or control it:
 
@@ -225,8 +227,8 @@ compatibility with callback event objects.
 ## Shutdown and reboot expectations
 
 Do not shut down or reboot while `fedora-config-update-run status` reports `queued` or
-`running`. A durable user service survives a terminal or shell restart, not a
-machine power cycle. Wait for a terminal state (`done`, `failed`, or
+`running`. A durable transient service survives a terminal or shell restart,
+not a machine power cycle. Wait for a terminal state (`done`, `failed`, or
 `cancelled`), or cancel deliberately and confirm the terminal state first.
 
 No repository command automatically reboots or powers off the machine.

@@ -123,6 +123,30 @@ unit_active_state() {
   fi
 }
 
+system_manager_command() {
+  local command_name=$1 command_path
+  shift
+  if [[ ${FEDORA_CONFIG_UPDATE_TESTING:-0} == 1 ]]; then
+    command_path=$(command -v -- "$command_name") || {
+      printf 'fedora-config-update-run: required command is missing: %s\n' \
+        "$command_name" >&2
+      return 127
+    }
+  else
+    command_path="/usr/bin/$command_name"
+  fi
+
+  # A terminal invocation may already have a sudo timestamp, in which case
+  # preserve its non-interactive path. Quickshell deliberately requests a
+  # system unit without priming sudo: systemd then authorizes its own
+  # manage-units action through the graphical session's Polkit agent.
+  if ((EUID != 0)) && sudo -n true >/dev/null 2>&1; then
+    sudo -n "$command_path" "$@"
+  else
+    "$command_path" "$@"
+  fi
+}
+
 report_existing_run() {
   local id=$1 state=$2 json_mode=$3
   if [[ $json_mode == true ]]; then
@@ -132,8 +156,20 @@ report_existing_run() {
   fi
 }
 
-repair_stale_status() {
-  local id=$1 file state unit active_state started now temporary system_unit
+repair_stale_status() (
+  local id=$1 caller_holds_lock=${2:-false}
+  local file state unit active_state started now temporary system_unit
+
+  # The worker holds this lock until after publishing its terminal status.
+  # Take the same lock before synthesizing an abandoned result so a fast
+  # failure cannot be mistaken for a vanished worker between its last
+  # `running` write and its final write. start_run already owns the lock in
+  # its stale-record path and tells us not to acquire it a second time.
+  if [[ $caller_holds_lock != true ]]; then
+    exec 8>"$lock_file"
+    flock -n 8 || return 0
+  fi
+
   file=$(status_path "$id")
   [[ -r $file ]] || return 0
   state=$(jq -r '.state // "unknown"' "$file" 2>/dev/null || printf unknown)
@@ -163,7 +199,7 @@ repair_stale_status() {
      .message = "The update worker disappeared before recording completion" |
      .finishedAt = $now | .exitCode = 125' "$file" > "$temporary"
   mv -f -- "$temporary" "$file"
-}
+)
 
 prune_logs() {
   local keep_id=${1:-} dir id
@@ -372,7 +408,7 @@ start_run() {
 
   active_id=$(current_id || true)
   if [[ -n $active_id ]]; then
-    repair_stale_status "$active_id"
+    repair_stale_status "$active_id" true
     active_state=$(status_state "$active_id" || true)
   fi
   if is_active "$active_state"; then
@@ -414,7 +450,8 @@ start_run() {
   (( ${#ansible_args[@]} == 0 )) || worker_args+=(-- "${ansible_args[@]}")
   local launch_rc=0
   if [[ $system_unit == true ]]; then
-    sudo systemd-run --system --quiet --collect --unit="$unit_name" \
+    system_manager_command systemd-run --system --quiet --collect \
+      --unit="$unit_name" \
       --property=Type=exec \
       --setenv="HOME=$HOME" \
       --setenv="XDG_STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}" \
@@ -719,7 +756,20 @@ worker() {
     privileged_package=(sudo -n sh -c \
       'umask 022; exec "$@"' fedora-config-update-package)
   fi
-  local snapshot_helper=/usr/local/libexec/fedora-config-system-snapshot snapshot_rc=0
+  local snapshot_helper_root=/usr/local/libexec
+  if [[ ${FEDORA_CONFIG_UPDATE_TESTING:-0} == 1 \
+        && -n ${FEDORA_CONFIG_UPDATE_TEST_LIBEXEC:-} ]]; then
+    snapshot_helper_root=$FEDORA_CONFIG_UPDATE_TEST_LIBEXEC
+  fi
+  local snapshot_helper="$snapshot_helper_root/fedora-config-system-snapshot"
+  local legacy_snapshot_helper="$snapshot_helper_root/xps-system-snapshot"
+  local snapshot_rc=0
+  # Existing installations can receive the renamed updater before Ansible has
+  # renamed the root-owned helper. The legacy helper has the same recovery
+  # contract and safely bridges that first full convergence.
+  if [[ ! -x $snapshot_helper && -x $legacy_snapshot_helper ]]; then
+    snapshot_helper=$legacy_snapshot_helper
+  fi
   if [[ -x $snapshot_helper ]]; then
     tagged_command snapshot "$run_dir/snapshot.log" "$run_dir/snapshot.rc" \
       "${privileged_package[@]}" "$snapshot_helper" create "update $run_id"
@@ -883,7 +933,7 @@ cancel_run() {
   case $active_state in
     active|activating|reloading|deactivating)
       if [[ $system_unit == true ]]; then
-        sudo systemctl stop "$unit" >/dev/null 2>&1 || {
+        system_manager_command systemctl stop "$unit" >/dev/null 2>&1 || {
           printf 'fedora-config-update-run: could not stop %s; update remains active\n' "$unit" >&2
           return 1
         }

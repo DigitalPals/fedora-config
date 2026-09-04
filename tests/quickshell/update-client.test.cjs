@@ -51,6 +51,11 @@ test("an uninitialized source deployment checks cleanly and updates packages", t
         managed: false,
     });
 
+    const start = run(["start", "--no-flatpak"], f.env);
+    assert.equal(start.status, 0, start.stderr);
+    assert.equal(start.stdout,
+        "backend:start --json --system-unit --no-flatpak\n");
+
     const update = run(["run", "--no-flatpak"], f.env);
     assert.equal(update.status, 0, update.stderr);
     assert.equal(update.stdout, "backend:run --no-flatpak\n");
@@ -64,6 +69,10 @@ test("an initialized installation retains verified project updates", t => {
     const check = run(["check"], f.env);
     assert.equal(check.status, 0, check.stderr);
     assert.equal(check.stdout, "release:--check --json\n");
+
+    const start = run(["start", "--no-flatpak"], f.env);
+    assert.equal(start.status, 0, start.stderr);
+    assert.equal(start.stdout, "release:--start --json --no-flatpak\n");
 
     const update = run(["run", "--no-flatpak"], f.env);
     assert.equal(update.status, 0, update.stderr);

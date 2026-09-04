@@ -117,10 +117,13 @@ symlink change, so detaching the terminal cannot split the transaction. A
 failed apply restores the previous configuration. The active release and two
 recent fallbacks are kept.
 
-The same durable worker updates Fedora packages and system Flatpaks. It uses a
-transient system unit when sudo requires authentication, so a terminal or
-Quickshell restart does not interrupt package work. On Btrfs, package work
-first creates a paired read-only root snapshot and `/boot` archive.
+The same durable worker updates Fedora packages and system Flatpaks. From the
+Quickshell panel, systemd requests authorization through the desktop's native
+Polkit agent and progress remains in the Updates view; the worker then runs in
+a transient system unit, so a Quickshell restart does not interrupt package
+work. Terminal invocations retain their sudo-compatible path. On Btrfs,
+package work first creates a paired read-only root snapshot and `/boot`
+archive.
 
 Useful commands:
 

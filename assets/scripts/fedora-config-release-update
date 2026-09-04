@@ -18,12 +18,13 @@ command_name=run
 with_packages=true
 with_flatpak=true
 json=false
+start_only=false
 backend_args=()
 
 usage() {
   cat <<'EOF'
 Usage: fedora-config update [--check] [--channel stable|beta] [--system-only]
-                            [--no-packages] [--no-flatpak] [--json]
+                            [--no-packages] [--no-flatpak] [--start] [--json]
 
 By default, check GitHub for a verified Fedora Config release, stage and apply
 it when newer, and then update Fedora packages and system Flatpaks.
@@ -33,7 +34,8 @@ it when newer, and then update Fedora packages and system Flatpaks.
   --system-only  Skip the project release check and update system packages only
   --no-packages  Apply only a project release; do not update Fedora/Flatpak
   --no-flatpak   Skip system Flatpak updates
-  --json         Emit machine-readable output for --check
+  --start        Start the durable worker and return without attaching
+  --json         Emit machine-readable output for --check/--start
 EOF
 }
 
@@ -49,6 +51,7 @@ while (($#)); do
     --system-only) command_name=system-only ;;
     --no-packages) with_packages=false ;;
     --no-flatpak) with_flatpak=false ;;
+    --start) start_only=true; json=true ;;
     --json) json=true ;;
     -h|--help) usage; exit 0 ;;
     --) shift; backend_args+=("$@"); break ;;
@@ -57,8 +60,17 @@ while (($#)); do
   shift
 done
 
+if [[ $command_name == check && $start_only == true ]]; then
+  echo 'update: --check and --start cannot be combined' >&2
+  exit 2
+fi
+
 if [[ $command_name == system-only ]]; then
-  args=(run)
+  if [[ $start_only == true ]]; then
+    args=(start --json --system-unit)
+  else
+    args=(run)
+  fi
   [[ $with_flatpak == true ]] || args+=(--no-flatpak)
   exec "$backend" "${args[@]}" "${backend_args[@]}"
 fi
@@ -182,7 +194,11 @@ fi
 
 candidate=
 if [[ $available == true ]]; then
-  printf 'Downloading Fedora Config %s...\n' "$release_version"
+  if [[ $start_only == true ]]; then
+    printf 'Downloading Fedora Config %s...\n' "$release_version" >&2
+  else
+    printf 'Downloading Fedora Config %s...\n' "$release_version"
+  fi
   curl --fail --silent --show-error --location --retry 3 \
     "$asset_url" -o "$archive"
   actual_digest=sha256:$(sha256sum "$archive" | awk '{print $1}')
@@ -233,9 +249,17 @@ if [[ -n $candidate ]]; then
   [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
   update_args+=(-- -e "@$config_file")
 elif [[ $with_packages == true ]]; then
-  update_args=(run)
+  if [[ $start_only == true ]]; then
+    update_args=(start --json --system-unit)
+  else
+    update_args=(run)
+  fi
   [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
 else
+  if [[ $start_only == true ]]; then
+    echo 'update: no project or package work was requested' >&2
+    exit 4
+  fi
   echo 'Fedora Config is already current.'
   exit 0
 fi
@@ -263,6 +287,10 @@ run_id=$(jq -er 'select(.existing == false) | .id' <<<"$backend_output") || {
   echo 'update: backend did not return a new durable transaction' >&2
   exit 1
 }
+if [[ $start_only == true ]]; then
+  printf '%s\n' "$backend_output"
+  exit 0
+fi
 printf 'Started durable release update %s. Ctrl+C detaches without cancelling it.\n' "$run_id"
 set +e
 "$backend" attach "$run_id"

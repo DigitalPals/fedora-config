@@ -19,7 +19,7 @@ import "UpdatesHelpers.js" as UpdatesHelpers
 // dnf-makecache.timer already keeps warm is both the honest and the cheap
 // answer, and it is what the panel's footnote says it is doing.
 //
-// The privileged run belongs to a transient user service and publishes an
+// The privileged run belongs to a transient service and publishes an
 // atomic status record plus append-only logs. This singleton is a client: it
 // can be destroyed by a config hot reload and attach to the same run again.
 Singleton {
@@ -318,8 +318,8 @@ Singleton {
     property string recoveryPointId: ""
     property double backendFinishedAt: 0
     // Status requests are deliberately subordinate to a local start. A retry
-    // from a terminal run must not accept the old run's final status after the
-    // backend has already returned the new durable run.
+    // must not accept the old run's final status after the start client has
+    // already returned the new durable run.
     property int statusGeneration: 0
     property bool startPending: false
     property string startPreviousStamp: ""
@@ -334,6 +334,16 @@ Singleton {
         id: feedModel
     }
     readonly property ListModel feed: feedModel
+
+    function settleStartRequest() {
+        if (!startPending)
+            return;
+        // Invalidate any status read launched while the old current record
+        // was still visible. Its response must not replace the new run (or a
+        // precise start failure) after this boundary has settled.
+        statusGeneration++;
+        startPending = false;
+    }
 
     function resetRun(runId, startedAt, includedFlatpak) {
         feedModel.clear();
@@ -379,12 +389,12 @@ Singleton {
     }
 
     function run() {
-        if (runActive)
+        if (runActive || runStartProc.running)
             return;
-        // Authentication belongs in a terminal. The durable backend status
-        // poll below attaches this UI after the terminal starts the worker.
-        const command = ["kitty", "--class", "fedora-config-update",
-            "bash", updateClient, "run"];
+        // This process only stages and starts the durable worker. systemd
+        // requests authorization from the desktop Polkit agent when needed,
+        // so the update and its progress stay on this Quickshell surface.
+        const command = ["bash", updateClient, "start"];
         if (!flatpakEnabled)
             command.push("--no-flatpak");
         statusGeneration++;
@@ -392,7 +402,8 @@ Singleton {
         startPollCount = 0;
         startPending = true;
         resetRun("", Date.now(), flatpakEnabled);
-        Quickshell.execDetached(command);
+        runStartProc.command = command;
+        runStartProc.running = true;
     }
 
     function dnfLine(line) {
@@ -690,6 +701,56 @@ Singleton {
         }
     }
 
+    // The updater owns the privileged transaction in a transient service.
+    // This tracked process is only its short-lived start client: a shell hot
+    // reload cannot discard the worker, its lock, or its logs once launched.
+    Process {
+        id: runStartProc
+        property string body: ""
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        stdout: StdioCollector {
+            onStreamFinished: runStartProc.body = text
+        }
+        stderr: StdioCollector {
+            onStreamFinished: runStartProc.errText = text.trim()
+        }
+        onExited: (exitCode, exitStatus) => {
+            runStartProc.exitSeen = true;
+            runStartProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            if (!exitSeen && body === "" && errText === ""
+                    && !root.startPending)
+                return;
+            root.settleStartRequest();
+            try {
+                const started = JSON.parse(body);
+                if (typeof started.id !== "string" || started.id === "")
+                    throw new Error("missing durable run id");
+                root.applyBackendStatus(started);
+            } catch (error) {
+                root.runDnfDone = true;
+                root.runFpDone = true;
+                root.runDnfRc = exitSeen && lastExit !== 0
+                    ? lastExit : ProcHelpers.NOT_STARTED;
+                root.backendMessage = errText !== "" ? errText
+                    : "The update service could not be started";
+                root.backendTerminalState = "failed";
+                root.maybeFinishBackendRun();
+            }
+        }
+    }
+
     Process {
         id: runStatusProc
         property int requestGeneration: 0
@@ -725,7 +786,7 @@ Singleton {
                             && pending.id !== root.startPreviousStamp
                             && pending.state !== "idle"
                             && pending.state !== "dismissed") {
-                        root.startPending = false;
+                        root.settleStartRequest();
                         root.applyBackendStatus(pending);
                         return;
                     }
@@ -836,11 +897,11 @@ Singleton {
         triggeredOnStart: true
         onTriggered: {
             if (root.startPending && ++root.startPollCount > 300) {
-                root.startPending = false;
+                root.settleStartRequest();
                 root.runDnfDone = true;
                 root.runFpDone = true;
                 root.runDnfRc = ProcHelpers.NOT_STARTED;
-                root.backendMessage = "The update terminal did not publish a new run";
+                root.backendMessage = "The update request did not publish a new run";
                 root.backendTerminalState = "failed";
                 root.maybeFinishBackendRun();
                 return;
