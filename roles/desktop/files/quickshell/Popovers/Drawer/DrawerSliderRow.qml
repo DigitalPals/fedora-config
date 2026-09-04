@@ -48,9 +48,9 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: 4
         anchors.verticalCenter: parent.verticalCenter
-        width: 26
+        width: Math.max(Theme.scaled(36), implicitWidth)
         horizontalAlignment: Text.AlignRight
-        text: Math.round(root.value * 100)
+        text: Math.round(root.value * 100) + "%"
         font.family: Theme.fontNumeric
         font.pixelSize: Theme.fontCaption
         font.weight: Theme.weightSemibold

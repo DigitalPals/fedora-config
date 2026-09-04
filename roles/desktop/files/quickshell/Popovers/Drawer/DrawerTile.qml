@@ -15,10 +15,10 @@ Rectangle {
 
     height: 60
     radius: 10
-    color: on ? Theme.accentAlpha(0.14) : Theme.chip
+    color: on ? Theme.accentAlpha(0.22) : Theme.chip
     activeFocusOnTab: true
     border.width: on || activeFocus ? 1 : 0
-    border.color: activeFocus ? Theme.accent : Theme.accentAlpha(0.35)
+    border.color: activeFocus ? Theme.accent : Theme.accentAlpha(0.52)
     Accessible.role: Accessible.CheckBox
     Accessible.checked: on
     Accessible.name: label

@@ -14,6 +14,10 @@ const power = fs.readFileSync(
     path.join(shellDir, "Popovers", "Drawer", "DrawerPower.qml"), "utf8");
 const drawerSettings = fs.readFileSync(
     path.join(shellDir, "Settings", "DrawerPage.qml"), "utf8");
+const sliderRow = fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerSliderRow.qml"), "utf8");
+const drawerTile = fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerTile.qml"), "utf8");
 
 test("Overview starts with one fixed system hero and owns its watcher", () => {
     const systemHero = overview.indexOf("DrawerSystemHero {");
@@ -32,7 +36,7 @@ test("Overview starts with one fixed system hero and owns its watcher", () => {
 
 test("the hero presents Fedora identity, machine details, and three wide meters", () => {
     assert.match(hero,
-        /readonly property int logoSize:\s*Theme\.scaled\(64\)/);
+        /readonly property int logoSize:\s*Theme\.scaled\(56\)/);
     assert.match(hero, /BrandIcon\s*\{[\s\S]{0,120}?name:\s*"fedora"/);
     assert.match(hero, /name:\s*"computer"/,
         "unreadable OS metadata needs a generic-computer fallback");
@@ -55,10 +59,18 @@ test("the hero presents Fedora identity, machine details, and three wide meters"
     for (const label of ["CPU", "MEMORY", "DISK /"])
         assert.ok(hero.includes(`label: "${label}"`), `${label} meter is missing`);
     assert.match(hero, /BlockMeter\s*\{/);
-    assert.match(hero, /SysInfo\.swapTotalBytes === 0 \? "No swap"/);
+    assert.match(hero,
+        /SysInfo\.swapTotalBytes === 0\)[\s\S]{0,80}?" · No swap"/);
     assert.match(hero, /SysInfo\.memUsage >= 95[\s\S]*SysInfo\.memUsage >= 85/);
     assert.match(hero, /SysInfo\.rootFsUsage >= 90[\s\S]*SysInfo\.rootFsUsage >= 80/);
     assert.match(hero, /SysInfo\.cpuTemp >= 80[\s\S]*SysInfo\.cpuTemp >= 65/);
+    assert.match(hero,
+        /color:\s*severity >= 2 \? Theme\.redBgSoft[\s\S]{0,120}?"transparent"/,
+        "healthy metric rows must stay flat and warning-only rows may tint");
+    assert.match(hero, /status:\s*SysInfo\.cpuTempKnown/,
+        "temperature belongs beside CPU utilization");
+    assert.match(hero, /detail:\s*root\.memoryDetail/);
+    assert.match(hero, /detail:\s*root\.diskDetail/);
 });
 
 test("unknown readings stay explicit and each metric has one accessible summary", () => {
@@ -66,12 +78,21 @@ test("unknown readings stay explicit and each metric has one accessible summary"
         "swapKnown", "rootFsKnown"])
         assert.match(hero, new RegExp(`SysInfo\\.${known}\\b`));
     assert.match(hero, /"Unavailable"/);
-    assert.match(hero, /Temperature unavailable/);
+    assert.match(hero, /temperature unavailable/i);
     assert.match(hero, /Memory unavailable/);
     assert.match(hero, /Storage unavailable/);
     assert.match(hero, /Accessible\.role:\s*Accessible\.StaticText/);
     assert.match(hero, /Accessible\.name:\s*metric\.accessibleName/);
     assert.match(hero, /accessibleDescription:\s*SysInfo\.rootFsError/);
+});
+
+test("Overview sliders expose values and active toggles use a stronger fill", () => {
+    assert.equal((overview.match(/showValue:\s*true/g) || []).length, 2,
+        "brightness and volume should both show their current percentage");
+    assert.match(sliderRow,
+        /text:\s*Math\.round\(root\.value \* 100\) \+ "%"/);
+    assert.match(drawerTile,
+        /color:\s*on \? Theme\.accentAlpha\(0\.22\) : Theme\.chip/);
 });
 
 test("drawer caps and scrolls only its body while keeping tabs pinned", () => {

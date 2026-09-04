@@ -178,6 +178,7 @@ Column {
             glyph: "sunny"
             visible: SysInfo.brightness >= 0
             value: Math.max(0, SysInfo.brightness) / 100
+            showValue: true
             accessibleName: "Screen brightness"
             onMoved: v => SysInfo.setBrightness(v * 100)
         }
@@ -187,6 +188,7 @@ Column {
                 : Audio.volume < 50 ? "volume_down" : "volume_up"
             value: Audio.level
             ready: Audio.ready
+            showValue: true
             accessibleName: "Output volume"
             onMoved: v => Audio.setVolume(v)
         }
