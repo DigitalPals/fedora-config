@@ -92,6 +92,33 @@ test("only an empty title with a configured provider auto-generates", () => {
     assert.equal(H.shouldAutoGenerateTitle("", "off"), false);
 });
 
+test("relative note times cover every compact boundary and tolerate clock skew", () => {
+    const minute = 60_000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    const now = 3 * 365 * day;
+    const label = age => H.relativeTimeLabel(now - age, now);
+
+    assert.equal(label(0), "now");
+    assert.equal(label(minute - 1), "now");
+    assert.equal(label(minute), "1m");
+    assert.equal(label(hour - 1), "59m");
+    assert.equal(label(hour), "1h");
+    assert.equal(label(day - 1), "23h");
+    assert.equal(label(day), "1d");
+    assert.equal(label(30 * day - 1), "29d");
+    assert.equal(label(30 * day), "1mo");
+    assert.equal(label(365 * day - 1), "12mo");
+    assert.equal(label(365 * day), "1y");
+    assert.equal(H.relativeTimeLabel(now + hour, now), "now",
+        "a future modified time is treated as clock skew");
+
+    for (const invalid of [null, undefined, "123", -1, 1.5, Number.NaN,
+        Number.POSITIVE_INFINITY])
+        assert.equal(H.relativeTimeLabel(invalid, now), "", String(invalid));
+    assert.equal(H.relativeTimeLabel(now, Number.NaN), "");
+});
+
 test("serialization has fixed keys and deterministic timestamp ordering", () => {
     const older = note("z", "older", 1, 4);
     const tiedSecond = note("b", "second tie", 2, 8);

@@ -9,6 +9,9 @@ var UNTITLED_TITLE = "Untitled note";
 var ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 var RECORD_KEYS = ["id", "title", "body", "createdAt", "updatedAt"];
 var LEGACY_RECORD_KEYS = ["id", "body", "createdAt", "updatedAt"];
+var MINUTE_MS = 60000;
+var HOUR_MS = 60 * MINUTE_MS;
+var DAY_MS = 24 * HOUR_MS;
 var TITLE_EFFORTS = {
     codex: ["none", "low", "medium", "high", "xhigh", "max"],
     claude: ["low", "medium", "high", "xhigh", "max"]
@@ -108,6 +111,26 @@ function validId(id) {
 function validTimestamp(value) {
     return typeof value === "number" && isFinite(value) && value >= 0
         && Math.floor(value) === value && value <= 9007199254740991;
+}
+
+// Compact enough for the trailing edge of an overview row. Future values are
+// treated as clock skew rather than exposing a negative age; malformed inputs
+// stay empty so a damaged value can never render "NaNy" in the shell.
+function relativeTimeLabel(updatedAt, nowMs) {
+    if (!validTimestamp(updatedAt) || !validTimestamp(nowMs))
+        return "";
+    var age = Math.max(0, nowMs - updatedAt);
+    if (age < MINUTE_MS)
+        return "now";
+    if (age < HOUR_MS)
+        return Math.floor(age / MINUTE_MS) + "m";
+    if (age < DAY_MS)
+        return Math.floor(age / HOUR_MS) + "h";
+    if (age < 30 * DAY_MS)
+        return Math.floor(age / DAY_MS) + "d";
+    if (age < 365 * DAY_MS)
+        return Math.floor(age / (30 * DAY_MS)) + "mo";
+    return Math.floor(age / (365 * DAY_MS)) + "y";
 }
 
 function validRecord(record) {
@@ -537,6 +560,7 @@ var exported = {
     validTitle: validTitle,
     validId: validId,
     validTimestamp: validTimestamp,
+    relativeTimeLabel: relativeTimeLabel,
     validRecord: validRecord,
     compareRecords: compareRecords,
     sortRecords: sortRecords,
