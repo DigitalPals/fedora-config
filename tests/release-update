@@ -17,9 +17,13 @@ printf '%s\n' '---' >"$fixture/release/fedora-config-1.2.3/site.yml"
 printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/install"
 printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/verify"
 printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/tests/run"
+cp -a "$repo_root/agent-skills" "$fixture/release/fedora-config-1.2.3/"
+cp "$repo_root/scripts/manage-agent-skills" \
+  "$fixture/release/fedora-config-1.2.3/scripts/manage-agent-skills"
 chmod 0755 "$fixture/release/fedora-config-1.2.3/install" \
   "$fixture/release/fedora-config-1.2.3/verify" \
-  "$fixture/release/fedora-config-1.2.3/tests/run"
+  "$fixture/release/fedora-config-1.2.3/tests/run" \
+  "$fixture/release/fedora-config-1.2.3/scripts/manage-agent-skills"
 cp "$repo_root/scripts/migrate-config" \
   "$fixture/release/fedora-config-1.2.3/scripts/migrate-config"
 cp "$repo_root/scripts/semver" \

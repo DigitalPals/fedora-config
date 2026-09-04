@@ -1,4 +1,17 @@
 ---
+- name: Restore agent skill discovery slots preserved before adoption
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ config_repo }}/scripts/manage-agent-skills"
+      - uninstall
+      - --home
+      - "{{ primary_home }}"
+  register: uninstall_agent_skills
+  changed_when: >-
+    (uninstall_agent_skills.stdout | default('')) is match('^CHANGED:')
+
 - name: Stop Fedora Config user services
   ansible.builtin.command:
     argv:

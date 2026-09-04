@@ -159,6 +159,32 @@
   when: >-
     not (config_repo | regex_search('/[.]local/share/fedora-config/releases/'))
 
+- name: Inspect the canonical skill in the active Fedora Config release
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.local/share/fedora-config/current/agent-skills/fedora-config"
+    follow: true
+  register: dotfiles_active_agent_skill
+
+- name: Provision Fedora Config agent skill discovery links
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ config_repo }}/scripts/manage-agent-skills"
+      - provision
+      - --home
+      - "{{ primary_home }}"
+      - --canonical
+      - "{{ primary_home }}/.local/share/fedora-config/current/agent-skills/fedora-config"
+  register: dotfiles_agent_skill_provision
+  changed_when: >-
+    (dotfiles_agent_skill_provision.stdout | default('')) is match('^CHANGED:')
+  when:
+    - not ansible_check_mode
+    - dotfiles_active_agent_skill.stat.isdir | default(false)
+
 - name: Install Fedora-specific user helpers
   become: true
   become_user: "{{ primary_user }}"

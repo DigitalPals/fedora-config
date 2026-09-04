@@ -116,6 +116,14 @@ unit_enabled() { systemctl is-enabled --quiet "$1"; }
 unit_active() { systemctl is-active --quiet "$1"; }
 user_unit_active() { systemctl --user is-active --quiet "$1"; }
 
+agent_skill_link_valid() {
+  local path=$1 canonical=$2 resolved canonical_resolved
+  [[ -L $path && $(readlink -- "$path") == "$canonical" ]] || return 1
+  resolved=$(readlink -f -- "$path") || return 1
+  canonical_resolved=$(readlink -f -- "$canonical") || return 1
+  [[ $resolved == "$canonical_resolved" && -r $resolved/SKILL.md ]]
+}
+
 root_evidence_available=true
 root_command=()
 if ((EUID != 0)); then
@@ -524,6 +532,15 @@ check 'no Hyprland git packages are installed' bash -c "! rpm -qa | grep -Eq '^(
 check 'portal preference exists' test -r "$HOME/.config/xdg-desktop-portal/hyprland-portals.conf"
 check 'Hyprland Lua entry point is a regular file' bash -c '[[ -f $HOME/.config/hypr/hyprland.lua && ! -L $HOME/.config/hypr/hyprland.lua ]]'
 check_diagnostic 'deployed Quickshell tree exactly matches tracked source files' check_managed_quickshell_tree
+
+agent_skill_canonical="$primary_home/.local/share/fedora-config/current/agent-skills/fedora-config"
+check 'active-release Fedora Config agent skill exists' \
+  test -r "$agent_skill_canonical/SKILL.md"
+for agent_root in .agents .claude .codex; do
+  check "$agent_root discovers the active Fedora Config skill" \
+    agent_skill_link_valid \
+    "$primary_home/$agent_root/skills/fedora-config" "$agent_skill_canonical"
+done
 
 required_commands=(Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
   voxtype localsend git gh python3 oh-my-posh kitty nvim fish zoxide fzf eza jq rg fd \

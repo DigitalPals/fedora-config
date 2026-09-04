@@ -59,6 +59,32 @@ and precise XPS-role detection. A partial tag run is therefore not a way to
 bypass the Fedora 44 and architecture support contract. Do not add
 `--skip-tags always`; it removes the checks that make a targeted run safe.
 
+## Agent skill lifecycle
+
+Fedora Config ships one canonical skill in the active release at
+`~/.local/share/fedora-config/current/agent-skills/fedora-config`. Provisioning
+always creates these discovery links, independently of whether each agent is
+installed:
+
+- `~/.agents/skills/fedora-config`
+- `~/.claude/skills/fedora-config`
+- `~/.codex/skills/fedora-config`
+
+The internal `scripts/manage-agent-skills` helper adopts only those three
+named slots. Before first replacement it records each existing file,
+directory, symlink, or absence separately under
+`~/.local/state/fedora-config/backups/agent-skills/`. If any backup or
+replacement fails, the invocation restores every affected slot. Later runs
+treat an adopted slot as project-owned and converge it without rewriting the
+first-adoption record; unrelated skills and parent directories are untouched.
+
+Release activation swaps `current` and then reconciles all three links through
+the new canonical skill. A reconciliation failure rolls back the links, the
+active-release symlink, and the migrated installer configuration. Uninstall
+uses the same helper before removing project state and unconditionally
+restores each recorded original. `--keep-user-data` retains those records only
+after restoration; it does not leave the Fedora Config links installed.
+
 ## Release updater lifecycle
 
 `fedora-config update` follows the channel saved in
@@ -70,12 +96,13 @@ architecture, configuration schema, and updater version.
 
 The verified archive is extracted into a new versioned directory. A dedicated
 durable system worker owns configuration migration, candidate application,
-rollback, and the atomic `current` symlink change. Detaching the terminal cannot
-split those steps, and an unrelated active update is never accepted as the
-candidate transaction. Failure restores the pre-migration configuration. The
-active release plus two recent release directories are retained as recovery
-material; filesystem rollback remains the supported way to reverse system
-package changes.
+agent-skill reconciliation, rollback, and the atomic `current` symlink change.
+Detaching the terminal cannot split those steps, and an unrelated active
+update is never accepted as the candidate transaction. Apply failure restores
+the pre-migration configuration; activation failure also restores the prior
+`current` target and every agent-skill slot. The active release plus two recent
+release directories are retained as recovery material; filesystem rollback
+remains the supported way to reverse system package changes.
 
 Useful release commands are:
 
@@ -209,12 +236,13 @@ from the executable itself:
 ./tests/run --list
 ```
 
-The current fifteen stages cover whole-source/Ansible syntax, ShellCheck,
+The current sixteen stages cover whole-source/Ansible syntax, ShellCheck,
 ansible-lint, yamllint, Ruff, Node unit tests, Hyprland workspace fixtures, QML
 static analysis, offscreen helper contracts, real-Quickshell component
 lifecycle coverage in CI, Quickshell deployment integration, callback and
-Python fixtures, XPS hardware integration, Plymouth layout, the durable
-updater, screenshot/brightness workflows, and Btrfs snapshot retention.
+Python fixtures, transactional agent-skill lifecycle coverage, XPS hardware
+integration, Plymouth layout, the durable updater, screenshot/brightness
+workflows, and Btrfs snapshot retention.
 
 The GitHub workflow runs the same `./tests/run` command in a Fedora 44
 container. The lower-level worker stops before Ansible if this gate fails.

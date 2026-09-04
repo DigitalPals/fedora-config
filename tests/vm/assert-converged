@@ -62,6 +62,25 @@ assert_content /usr/local/bin/wayfreeze 'original wayfreeze command'
 assert_content /usr/local/bin/hyprland-noctalia 'original Noctalia launcher'
 assert_content /usr/share/wayland-sessions/hyprland-noctalia.desktop 'original Noctalia session'
 
+agent_skill=/home/fedora/.local/share/fedora-config/current/agent-skills/fedora-config
+[[ -r $agent_skill/SKILL.md ]] || fail 'canonical Fedora Config skill is missing'
+for root in .agents .claude .codex; do
+  discovery=/home/fedora/$root/skills/fedora-config
+  [[ -L $discovery ]] || fail "$discovery is not a symlink"
+  [[ $(readlink -- "$discovery") == "$agent_skill" ]] ||
+    fail "$discovery does not name the active-release skill"
+  [[ $(readlink -f -- "$discovery") == $(readlink -f -- "$agent_skill") ]] ||
+    fail "$discovery does not resolve to the active-release skill"
+  [[ -f /home/fedora/.local/state/fedora-config/backups/agent-skills/${root#.}/complete ]] ||
+    fail "$root skill adoption record is missing"
+done
+assert_content /home/fedora/.agents/skills/unrelated/SKILL.md \
+  'unrelated agents skill'
+assert_content /home/fedora/.claude/skills/unrelated/SKILL.md \
+  'unrelated claude skill'
+assert_content /home/fedora/.codex/skills/unrelated/SKILL.md \
+  'unrelated codex skill'
+
 [[ $(firewall-cmd --get-default-zone) == fedora-config ]] ||
   fail 'Fedora Config is not the active default firewall zone'
 while IFS=: read -r uuid type; do

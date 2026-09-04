@@ -196,7 +196,10 @@ if [[ $available == true ]]; then
   stage=$(mktemp -d "$releases_root/.stage.$release_version.XXXXXX")
   trap 'rm -f -- "$release_json" "$archive"; [[ -z ${stage:-} ]] || rm -rf -- "$stage"' EXIT
   tar --extract --zstd --file "$archive" --directory "$stage" --strip-components=1
-  [[ -x $stage/install && -x $stage/verify && -r $stage/release-manifest.json ]] || {
+  [[ -x $stage/install && -x $stage/verify \
+      && -x $stage/scripts/manage-agent-skills \
+      && -r $stage/agent-skills/fedora-config/SKILL.md \
+      && -r $stage/release-manifest.json ]] || {
     echo 'update: release archive is incomplete' >&2
     exit 1
   }

@@ -344,9 +344,10 @@ failed_check=$($backend status --json "$failed_check_id")
 [[ $(jq -r .state <<<"$failed_check") == done ]]
 [[ $(jq -r .rebootRecommendation <<<"$failed_check") == unavailable ]]
 
-# Release migration, apply, activation, and pruning belong to the durable
-# worker. A failed apply restores the prior configuration and active release.
-release_data="$fixture/releases-data"
+# Release migration, apply, activation, agent-skill adoption, and pruning
+# belong to the durable worker. Failed apply or activation restores the prior
+# configuration and active release.
+release_data="$HOME/.local/share/fedora-config"
 release_config="$fixture/fedora-config.yml"
 mkdir -p "$release_data/releases/1.0.0" "$release_data/releases/1.1.0" \
   "$release_data/releases/1.2.0"
@@ -354,17 +355,52 @@ ln -s releases/1.2.0 "$release_data/current"
 printf 'schema: old\n' >"$release_config"
 export MOCK_RELEASE_CONFIG="$release_config"
 
+agent_skill_canonical="$release_data/current/agent-skills/fedora-config"
+agent_backup_root="$HOME/.local/state/fedora-config/backups/agent-skills"
+mkdir -p "$HOME/.agents/skills" \
+  "$HOME/.claude/skills/fedora-config/nested" \
+  "$HOME/.codex/skills" "$HOME/original-codex-skill"
+for root in .agents .claude .codex; do
+  mkdir -p "$HOME/$root/skills/unrelated"
+  printf 'unrelated %s\n' "$root" >"$HOME/$root/skills/unrelated/SKILL.md"
+done
+printf 'original agents skill\n' >"$HOME/.agents/skills/fedora-config"
+printf 'original claude skill\n' \
+  >"$HOME/.claude/skills/fedora-config/nested/value"
+printf 'original codex target\n' >"$HOME/original-codex-skill/SKILL.md"
+ln -s "$HOME/original-codex-skill" "$HOME/.codex/skills/fedora-config"
+
+assert_agent_skill_links() {
+  local root path
+  for root in .agents .claude .codex; do
+    path=$HOME/$root/skills/fedora-config
+    [[ -L $path ]]
+    [[ $(readlink -- "$path") == "$agent_skill_canonical" ]]
+    [[ $(readlink -f -- "$path") == $(readlink -f -- "$agent_skill_canonical") ]]
+  done
+}
+
+assert_unrelated_skills() {
+  local root
+  for root in .agents .claude .codex; do
+    [[ $(<"$HOME/$root/skills/unrelated/SKILL.md") == "unrelated $root" ]]
+  done
+}
+
 make_candidate() {
   local version=$1 candidate="$release_data/releases/$1"
   mkdir -p "$candidate/scripts" "$candidate/tests"
+  cp -a "$repo_root/agent-skills" "$candidate/"
   printf '%s\n' '---' >"$candidate/site.yml"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$candidate/tests/run"
   printf '%s\n' '#!/usr/bin/env bash' \
     'printf "%s\n" "${MOCK_MIGRATED_CONFIG:?}"' >"$candidate/scripts/migrate-config"
   printf '%s\n' "$version" >"$candidate/VERSION"
+  cp "$repo_root/scripts/manage-agent-skills" \
+    "$candidate/scripts/manage-agent-skills"
   cp "$repo_root/scripts/semver" "$candidate/scripts/semver"
   chmod 0755 "$candidate/tests/run" "$candidate/scripts/migrate-config" \
-    "$candidate/scripts/semver"
+    "$candidate/scripts/manage-agent-skills" "$candidate/scripts/semver"
 }
 
 make_candidate 2.0.0
@@ -384,20 +420,83 @@ $backend _worker "$release_id" --full --skip-tests --no-packages \
 [[ $(<"$MOCK_ANSIBLE_CONFIG_LOG") == 'schema: committed' ]]
 [[ $(readlink "$release_data/current") == releases/2.0.0 ]]
 [[ ! -d $release_data/releases/1.0.0 ]]
+assert_agent_skill_links
+assert_unrelated_skills
+for root in .agents .claude .codex; do
+  [[ $(stat -c %u "$HOME/$root/skills/fedora-config") == "$(id -u)" ]]
+done
+[[ $(stat -c %u "$agent_backup_root") == "$(id -u)" ]]
+[[ $(<"$agent_backup_root/agents/original") == 'original agents skill' ]]
+[[ $(<"$agent_backup_root/claude/original/nested/value") \
+    == 'original claude skill' ]]
+[[ -L $agent_backup_root/codex/original ]]
+[[ $(readlink -- "$agent_backup_root/codex/original") \
+    == "$HOME/original-codex-skill" ]]
 release_status=$($backend status --json "$release_id")
 [[ $(jq -r .state <<<"$release_status") == done ]]
 [[ $(jq -r .releaseVersion <<<"$release_status") == 2.0.0 ]]
 
+# A failure while reconciling adopted skill slots rolls every slot back to its
+# exact pre-call object, restores current, and triggers configuration rollback.
+rm -f -- "$HOME/.agents/skills/fedora-config" \
+  "$HOME/.codex/skills/fedora-config"
+rm -rf -- "$HOME/.claude/skills/fedora-config"
+printf 'owned agents before failed activation\n' \
+  >"$HOME/.agents/skills/fedora-config"
+mkdir -p "$HOME/.claude/skills/fedora-config"
+printf 'owned claude before failed activation\n' \
+  >"$HOME/.claude/skills/fedora-config/value"
+ln -s missing-before-failed-activation \
+  "$HOME/.codex/skills/fedora-config"
 make_candidate 2.1.0
-export MOCK_MIGRATED_CONFIG='schema: must-rollback'
+export MOCK_MIGRATED_CONFIG='schema: activation-must-rollback'
+export FEDORA_CONFIG_AGENT_SKILLS_TESTING=1
+export FEDORA_CONFIG_AGENT_SKILLS_TEST_FAIL=after:agents
+activation_failure_start=$($backend start --json --full --skip-tests --no-packages \
+  --repo "$release_data/releases/2.1.0" --release-version 2.1.0 \
+  --release-data-root "$release_data" --release-config "$release_config")
+activation_failure_id=$(jq -er .id <<<"$activation_failure_start")
+set +e
+$backend _worker "$activation_failure_id" --full --skip-tests --no-packages \
+  --repo "$release_data/releases/2.1.0" --release-version 2.1.0 \
+  --release-data-root "$release_data" --release-config "$release_config"
+activation_failure_rc=$?
+set -e
+unset FEDORA_CONFIG_AGENT_SKILLS_TESTING \
+  FEDORA_CONFIG_AGENT_SKILLS_TEST_FAIL
+[[ $activation_failure_rc -eq 1 ]]
+[[ $(<"$release_config") == 'schema: committed' ]]
+[[ $(readlink "$release_data/current") == releases/2.0.0 ]]
+[[ -f $HOME/.agents/skills/fedora-config \
+    && ! -L $HOME/.agents/skills/fedora-config ]]
+[[ $(<"$HOME/.agents/skills/fedora-config") \
+    == 'owned agents before failed activation' ]]
+[[ $(<"$HOME/.claude/skills/fedora-config/value") \
+    == 'owned claude before failed activation' ]]
+[[ -L $HOME/.codex/skills/fedora-config ]]
+[[ $(readlink -- "$HOME/.codex/skills/fedora-config") \
+    == missing-before-failed-activation ]]
+assert_unrelated_skills
+activation_failure=$($backend status --json "$activation_failure_id")
+[[ $(jq -r .state <<<"$activation_failure") == failed ]]
+[[ $(jq -r .phase <<<"$activation_failure") == activation ]]
+grep -F '[release] agent skill provisioning failed; restoring prior activation' \
+  "$XDG_STATE_HOME/fedora-config/update/logs/$activation_failure_id/run.log" \
+  >/dev/null
+grep -F '[release] restored the pre-update installer configuration' \
+  "$XDG_STATE_HOME/fedora-config/update/logs/$activation_failure_id/run.log" \
+  >/dev/null
+
+make_candidate 2.2.0
+export MOCK_MIGRATED_CONFIG='schema: ansible-must-rollback'
 export MOCK_ANSIBLE_RC=42
 failed_release_start=$($backend start --json --full --skip-tests --no-packages \
-  --repo "$release_data/releases/2.1.0" --release-version 2.1.0 \
+  --repo "$release_data/releases/2.2.0" --release-version 2.2.0 \
   --release-data-root "$release_data" --release-config "$release_config")
 failed_release_id=$(jq -er .id <<<"$failed_release_start")
 set +e
 $backend _worker "$failed_release_id" --full --skip-tests --no-packages \
-  --repo "$release_data/releases/2.1.0" --release-version 2.1.0 \
+  --repo "$release_data/releases/2.2.0" --release-version 2.2.0 \
   --release-data-root "$release_data" --release-config "$release_config"
 failed_release_rc=$?
 set -e
@@ -409,8 +508,20 @@ failed_release=$($backend status --json "$failed_release_id")
 [[ $(jq -r .state <<<"$failed_release") == failed ]]
 [[ $(jq -r .phase <<<"$failed_release") == ansible ]]
 grep -F '[release] restored the pre-update installer configuration' \
-  "$release_data/../state/fedora-config/update/logs/$failed_release_id/run.log" >/dev/null
+  "$XDG_STATE_HOME/fedora-config/update/logs/$failed_release_id/run.log" >/dev/null
+
+# Uninstall remains authoritative even after adopted slots drifted between
+# releases: restore the immutable first-adoption objects, not later collisions.
+"$release_data/releases/2.0.0/scripts/manage-agent-skills" uninstall \
+  --home "$HOME" >/dev/null
+[[ $(<"$HOME/.agents/skills/fedora-config") == 'original agents skill' ]]
+[[ $(<"$HOME/.claude/skills/fedora-config/nested/value") \
+    == 'original claude skill' ]]
+[[ -L $HOME/.codex/skills/fedora-config ]]
+[[ $(readlink -- "$HOME/.codex/skills/fedora-config") \
+    == "$HOME/original-codex-skill" ]]
+assert_unrelated_skills
 
 ! grep -q 'set +e;.*set -e' "$backend"
 
-printf 'Durable updater serializes starts, owns release finalization and rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'
+printf 'Durable updater serializes starts, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'

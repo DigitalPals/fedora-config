@@ -320,6 +320,8 @@ parse_options() {
     release_parent=$(readlink -f -- "$(dirname -- "$repo")") || return 2
     release_name=${repo##*/}
     if [[ ! -d $release_data_root/releases || ! -f $release_config \
+          || ! -r $repo/agent-skills/fedora-config/SKILL.md \
+          || ! -x $repo/scripts/manage-agent-skills \
           || ! -x $repo/scripts/migrate-config || ! -x $repo/scripts/semver \
           || ! -r $repo/VERSION ]] \
       || ! "$repo/scripts/semver" validate "$release_version" \
@@ -496,14 +498,66 @@ prepare_release_configuration() {
     >>"$run_dir/run.log"
 }
 
+run_as_update_owner() {
+  local owner_uid=${FEDORA_CONFIG_UPDATE_OWNER_UID:-$EUID}
+  local owner_gid=${FEDORA_CONFIG_UPDATE_OWNER_GID:-$(id -g)}
+  [[ $owner_uid =~ ^[0-9]+$ && $owner_gid =~ ^[0-9]+$ ]] || {
+    printf 'fedora-config-update-run: invalid update-owner identity\n' >&2
+    return 1
+  }
+  if [[ $owner_uid == "$EUID" && $owner_gid == "$(id -g)" ]]; then
+    "$@"
+    return
+  fi
+  if ((EUID != 0)) || [[ ! -x /usr/bin/sudo ]]; then
+    printf 'fedora-config-update-run: cannot become update owner %s:%s\n' \
+      "$owner_uid" "$owner_gid" >&2
+    return 1
+  fi
+  /usr/bin/sudo -n -u "#$owner_uid" -g "#$owner_gid" -- "$@"
+}
+
 activate_release() {
   [[ $release_transaction == true ]] || return 0
   local releases_root="$release_data_root/releases" expected old_release old_path
+  local current_link="$release_data_root/current" previous_target=""
+  local next_link="$release_data_root/.current.$run_id.new"
+  local restore_link="$release_data_root/.current.$run_id.restore"
+  local previous_present=false
   local -a installed_releases=()
   expected=$(readlink -f -- "$releases_root/$release_version") || return 1
   [[ $expected == "$repo" ]] || return 1
-  ln -sfn "releases/$release_version" "$release_data_root/current.new" || return 1
-  mv -Tf -- "$release_data_root/current.new" "$release_data_root/current" || return 1
+
+  if [[ -e $current_link || -L $current_link ]]; then
+    [[ -L $current_link ]] || return 1
+    previous_target=$(readlink -- "$current_link") || return 1
+    previous_present=true
+  fi
+
+  rm -f -- "$next_link" "$restore_link" || return 1
+  ln -s -- "releases/$release_version" "$next_link" || return 1
+  mv -Tf -- "$next_link" "$current_link" || return 1
+
+  # The first release containing the skill cannot provision it during Ansible:
+  # current still names the prior release at that point. Adopt the discovery
+  # slots immediately after the atomic swap. The helper restores every slot to
+  # its pre-call state on failure; restore current here before failing the
+  # release transaction as well.
+  if ! run_as_update_owner \
+      "$repo/scripts/manage-agent-skills" provision --home "$HOME" \
+      --canonical "$current_link/agent-skills/fedora-config" \
+      >>"$run_dir/run.log" 2>&1; then
+    printf '[release] agent skill provisioning failed; restoring prior activation\n' \
+      >>"$run_dir/run.log"
+    if [[ $previous_present == true ]]; then
+      ln -s -- "$previous_target" "$restore_link" || return 1
+      mv -Tf -- "$restore_link" "$current_link" || return 1
+    else
+      rm -f -- "$current_link" || return 1
+    fi
+    return 1
+  fi
+
   release_activated=true
   printf '[release] activated Fedora Config %s\n' "$release_version" \
     >>"$run_dir/run.log"

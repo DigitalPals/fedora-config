@@ -20,6 +20,8 @@ for the kernel, drivers, SELinux, and base operating system.
   backlight, firmware, and power support
 - a persistent installer configuration, verifier, uninstaller, and verified
   GitHub release updater
+- one release-scoped Fedora Config skill discoverable by compatible coding
+  agents for safe installed-system diagnosis and customization
 
 There is no desktop-preset selection: every installation gets the same core
 Hyprland/Quickshell desktop. The installer asks only about the target machine,
@@ -50,6 +52,13 @@ compatibility alias for `./install`. The first successful install snapshots
 the runtime source under `~/.local/share/fedora-config/releases/`, so the
 cloned checkout can then be moved or removed.
 
+That active release also owns the canonical `fedora-config` agent skill.
+Installation always links it at `~/.agents/skills/fedora-config`,
+`~/.claude/skills/fedora-config`, and `~/.codex/skills/fedora-config`, whether
+or not a corresponding agent is currently installed. Invoke it explicitly as
+`$fedora-config` in Codex or `/fedora-config` in Claude Code; its focused
+description also supports automatic selection.
+
 Before any role adopts configuration, the installer creates a one-time backup
 under `~/.local/state/fedora-config/backups/initial/`. Existing Hyprland and
 Quickshell trees are always preserved; personal application files are added
@@ -58,6 +67,11 @@ pre-existing files. Managed Fish, Kitty, Git, and SSH settings use
 fragments/includes where those applications support them. No wallpapers or
 avatar are imposed; choose a wallpaper folder in Shell Settings after
 installation.
+
+Each pre-existing `fedora-config` skill slot is backed up independently before
+first adoption. Updates retarget all three paths through the atomic active
+release link, and uninstall restores the exact original file, directory, or
+symlink without changing neighboring skills.
 
 ## Update
 

@@ -88,6 +88,8 @@ jobs:
             --directory dist/verify --strip-components=1
           test "$(tr -d '[:space:]' <dist/verify/VERSION)" = "$version"
           test -x dist/verify/install
+          test -x dist/verify/scripts/manage-agent-skills
+          test -r dist/verify/agent-skills/fedora-config/SKILL.md
           ansible-playbook dist/verify/site.yml --syntax-check
       - name: Attest the exact release archive
         # actions/attest v4.2.2

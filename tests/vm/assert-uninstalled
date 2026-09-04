@@ -29,6 +29,27 @@ assert_content /usr/local/bin/awww-daemon 'original awww daemon'
 assert_content /usr/local/bin/wayfreeze 'original wayfreeze command'
 assert_content /usr/local/bin/hyprland-noctalia 'original Noctalia launcher'
 assert_content /usr/share/wayland-sessions/hyprland-noctalia.desktop 'original Noctalia session'
+[[ -f /home/fedora/.agents/skills/fedora-config \
+    && ! -L /home/fedora/.agents/skills/fedora-config ]] ||
+  fail 'original agents skill file was not restored'
+assert_content /home/fedora/.agents/skills/fedora-config \
+  'original agents skill'
+[[ -d /home/fedora/.claude/skills/fedora-config \
+    && ! -L /home/fedora/.claude/skills/fedora-config ]] ||
+  fail 'original Claude skill directory was not restored'
+assert_content /home/fedora/.claude/skills/fedora-config/nested/value \
+  'original claude skill'
+[[ -L /home/fedora/.codex/skills/fedora-config ]] ||
+  fail 'original Codex skill symlink was not restored'
+[[ $(readlink -- /home/fedora/.codex/skills/fedora-config) \
+    == /home/fedora/original-codex-skill ]] ||
+  fail 'original Codex skill symlink text changed'
+assert_content /home/fedora/.agents/skills/unrelated/SKILL.md \
+  'unrelated agents skill'
+assert_content /home/fedora/.claude/skills/unrelated/SKILL.md \
+  'unrelated claude skill'
+assert_content /home/fedora/.codex/skills/unrelated/SKILL.md \
+  'unrelated codex skill'
 [[ ! -e /var/lib/AccountsService/users/fedora ]] ||
   fail 'an AccountsService record created by Fedora Config remains after uninstall'
 
