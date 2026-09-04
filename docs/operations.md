@@ -14,6 +14,8 @@ table in the README links here instead of duplicating these details.
 | `./verify` | Runs complete source and non-destructive installed-system checks. Use `--source`, `--system`, or `--quick` for a narrower scope and `--json` for automation. |
 | `./update` | Resolves and verifies the selected GitHub release channel, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. |
 | `./update --system-only` | Skips the project release check and updates Fedora packages and system Flatpaks only. |
+| `fedora-config agent` | Launches the selected AI coding agent in the current directory; an unset interactive session opens the picker. |
+| `fedora-config agent --pick` | Selects, persists, and launches an installed OpenCode, Claude Code, or Codex CLI. |
 | `./uninstall` | Removes Fedora Config-owned services and configuration, restores first-adoption backups, and retains installed applications. Pass `--keep-user-data` to retain backup/updater state after restoration. |
 
 For repository development, run Ansible directly after the source gate. The
@@ -37,6 +39,15 @@ mutually exclusive, unknown arguments fail before any check runs, and
 The installed `fedora-config verify` and `doctor` commands default to
 `--system`; pass `--source` explicitly when the developer lint toolchain is
 installed.
+
+The default-agent dispatcher stores only an allowlisted command name under
+`$XDG_CONFIG_HOME/fedora-config/defaults/agent`, or
+`~/.config/fedora-config/defaults/agent` when `XDG_CONFIG_HOME` is unset. It
+changes that file atomically only after confirming the selected command
+exists. Agent login tokens, API keys, models, permissions, and configuration
+are deliberately not copied into Fedora Config. A desktop launch begins in
+`~/Code`; an invocation from an existing terminal keeps its working directory.
+Use `fedora-config agent unset` to clear the preference.
 
 ## Supported Ansible tags
 

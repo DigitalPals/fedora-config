@@ -800,12 +800,13 @@ stage_agent_skills() {
   t0=$(now_ms)
   out=$({
     python3 tests/agent-skill.py
+    python3 tests/default-agent.py
     bash tests/agent-skills
   } 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
   if ((rc == 0)); then
-    pass 'agent skills' "package and transactional lifecycle $(took "$elapsed")"
+    pass 'agent skills' "package, default launcher, and transactional lifecycle $(took "$elapsed")"
   else
     fail 'agent skills' 'package or lifecycle fixture failed'
     excerpt "${out:-unknown failure}"

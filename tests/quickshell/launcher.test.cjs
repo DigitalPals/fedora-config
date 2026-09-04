@@ -203,6 +203,13 @@ test("clipboard, emoji, and action providers have installed data sources", () =>
     assert.match(packages, /^\s+- cliphist$/m);
     assert.match(packages, /^\s+- unicode-emoji$/m);
     assert.ok(Array.isArray(actions));
+    assert.deepEqual(actions.map(action => action.id), [
+        "ai-agent-launch", "ai-agent-choose"
+    ]);
+    assert.deepEqual(actions[0].command,
+        ["fedora-config", "agent", "--window"]);
+    assert.deepEqual(actions[1].command,
+        ["fedora-config", "agent", "--window", "--pick"]);
 });
 
 test("Super+Space uses Hyprland's in-process global shortcut", () => {
@@ -216,6 +223,16 @@ test("Super+Space uses Hyprland's in-process global shortcut", () => {
     assert.match(bindings,
         /mainMod \.\. " \+ SPACE", hl\.dsp\.global\("quickshell:launcherToggle"\)/);
     assert.doesNotMatch(bindings, /qs ipc call launcher toggle/);
+});
+
+test("the default AI agent is discoverable from the launcher and shortcut sheet", () => {
+    const session = read("Common/Session.qml");
+    const bindings = fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8");
+
+    assert.match(bindings,
+        /mainMod \.\. " \+ CTRL \+ SHIFT \+ A"[\s\S]*fedora-config agent --window/);
+    assert.match(session,
+        /label:\s*"AI agent",\s*keys:\s*\["Super", "Ctrl", "Shift", "A"\]/);
 });
 
 test("launcher-only motion stays brief and cannot gate input", () => {

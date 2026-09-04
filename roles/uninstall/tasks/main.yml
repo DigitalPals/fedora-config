@@ -105,6 +105,7 @@
     - "{{ primary_home }}/.config/systemd/user/xps-speaker-tuning.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
     - "{{ primary_home }}/.local/bin/fedora-config"
+    - "{{ primary_home }}/.local/bin/fedora-config-agent"
     - "{{ primary_home }}/.local/bin/fedora-config-update-run"
     - "{{ primary_home }}/.local/bin/brightness-control"
     - "{{ primary_home }}/.local/bin/portal-launcher"
@@ -456,6 +457,7 @@
       .local/bin/localsend
       .local/bin/localsend-share
       .local/bin/fedora-config
+      .local/bin/fedora-config-agent
       .local/bin/fedora-config-update-run
       .local/bin/brightness-control
       .local/bin/portal-launcher

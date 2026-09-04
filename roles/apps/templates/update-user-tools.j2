@@ -5,6 +5,7 @@ set -uo pipefail
 
 claude_pin={{ claude_code_version | quote }}
 opencode_pin={{ opencode_version | quote }}
+codex_pin={{ codex_cli_version | quote }}
 changed=0
 failed=0
 cleanup_paths=()
@@ -14,11 +15,11 @@ export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 cleanup() {
   local path
   for path in "${cleanup_paths[@]}"; do
-    case $path in
-      "${TMPDIR:-/tmp}"/fedora-config-user-tools.*|"$HOME/.local/share/fedora-config-user-tools/opencode"/.stage.*)
-        [[ ! -e $path ]] || rm -rf -- "$path"
-        ;;
-    esac
+    if [[ $path == "${TMPDIR:-/tmp}"/fedora-config-user-tools.* \
+        || $path == "$HOME/.local/share/fedora-config-user-tools/opencode"/.stage.* \
+        || $path == "$HOME/.local/share/fedora-config-user-tools/codex"/.stage.* ]]; then
+      [[ ! -e $path ]] || rm -rf -- "$path"
+    fi
   done
 }
 trap cleanup EXIT
@@ -133,6 +134,60 @@ install_opencode() {
     -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
 }
 
+codex_version() {
+  local binary=$1 value
+  [[ -x $binary ]] || return 1
+  value=$("$binary" --version 2>/dev/null) || return 1
+  value=${value#codex-cli }
+  semver "$value"
+}
+
+install_codex() {
+  local root versions stage key target temporary after path retained
+  root="$HOME/.local/share/fedora-config-user-tools/codex"
+  versions="$root/versions"
+  mkdir -p "$versions"
+  stage=$(mktemp -d "$root/.stage.XXXXXX") || return 1
+  cleanup_paths+=("$stage")
+  if ! npm --prefix "$stage" install --no-audit --no-fund --save-exact \
+      "@openai/codex@$codex_pin" >/dev/null; then
+    rm -rf -- "$stage"
+    return 1
+  fi
+  after=$(codex_version "$stage/node_modules/.bin/codex" || true)
+  if [[ $after != "$codex_pin" ]]; then
+    echo "Downloaded Codex reports ${after:-no valid version}, expected $codex_pin" >&2
+    rm -rf -- "$stage"
+    return 1
+  fi
+
+  key="$codex_pin-$(date +%Y%m%d%H%M%S)-$$"
+  target="$versions/$key"
+  mv -- "$stage" "$target" || { rm -rf -- "$stage"; return 1; }
+  temporary="$root/.current.$$"
+  ln -s -- "versions/$key" "$temporary" \
+    && mv -Tf -- "$temporary" "$root/current" \
+    || return 1
+  temporary="$HOME/.local/bin/.codex.$$"
+  ln -s -- "$root/current/node_modules/.bin/codex" "$temporary" \
+    && mv -Tf -- "$temporary" "$HOME/.local/bin/codex" \
+    || return 1
+
+  retained=0
+  while IFS= read -r path; do
+    if (( retained < 3 )); then
+      ((retained += 1))
+      continue
+    fi
+    [[ $path == "$versions/"* && $path != "$target" ]] || return 1
+    if ! rm -rf -- "$path"; then
+      echo "Could not prune retained Codex version $path" >&2
+      break
+    fi
+  done < <(find "$versions" -mindepth 1 -maxdepth 1 -type d \
+    -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+}
+
 before=$(opencode_version "$HOME/.local/bin/opencode" || true)
 if [[ -z $before ]]; then
   before=$(npm --prefix "$HOME/.npm-global" list -g --depth=0 opencode-ai --json \
@@ -148,18 +203,32 @@ if [[ $before != "$opencode_pin" ]]; then
   fi
 fi
 
+before=$(codex_version "$HOME/.local/bin/codex" || true)
+initial_codex=$before
+if [[ $before != "$codex_pin" ]]; then
+  if install_codex; then
+    changed=1
+  else
+    echo "Codex $codex_pin install failed; existing ${before:-installation} retained" >&2
+    failed=1
+  fi
+fi
+
 after_claude=$(claude_version || true)
 after_opencode=$(opencode_version "$HOME/.local/bin/opencode" || true)
 if [[ -z $after_opencode ]]; then
   after_opencode=$(npm --prefix "$HOME/.npm-global" list -g --depth=0 opencode-ai --json \
     2>/dev/null | jq -r '.dependencies["opencode-ai"].version // empty')
 fi
+after_codex=$(codex_version "$HOME/.local/bin/codex" || true)
 missing=()
 first_install_failure=0
 [[ $after_claude == "$claude_pin" ]] || missing+=("claude=$claude_pin")
 [[ $after_opencode == "$opencode_pin" ]] || missing+=("opencode-ai=$opencode_pin")
+[[ $after_codex == "$codex_pin" ]] || missing+=("@openai/codex=$codex_pin")
 [[ $after_claude == "$claude_pin" || -n $initial_claude ]] || first_install_failure=1
 [[ $after_opencode == "$opencode_pin" || -n $initial_opencode ]] || first_install_failure=1
+[[ $after_codex == "$codex_pin" || -n $initial_codex ]] || first_install_failure=1
 if [[ -n ${missing[0]:-} ]]; then
   printf 'Required user-managed CLI pins are not installed: %s\n' "${missing[*]}" >&2
   (( first_install_failure == 0 && failed == 1 )) && exit 75

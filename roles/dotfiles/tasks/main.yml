@@ -70,7 +70,7 @@
     - not dotfiles_initial_backup_marker.stat.exists
     - not ansible_check_mode
 
-- name: Install screenshot, recording, OCR, clipboard, and LocalSend helpers
+- name: Install desktop and Fedora Config user helpers
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
@@ -87,6 +87,7 @@
     - clipboard-history-store
     - localsend
     - localsend-share
+    - fedora-config-agent
 
 - name: Install the Fedora Config command
   become: true

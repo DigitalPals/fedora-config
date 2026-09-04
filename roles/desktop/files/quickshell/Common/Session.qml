@@ -123,6 +123,7 @@ Singleton {
                 { label: "Notifications", keys: ["Super", "N"] },
                 { label: "Control Panel", keys: ["Super", "A"] },
                 { label: "Shell settings", keys: ["Super", ","] },
+                { label: "AI agent", keys: ["Super", "Ctrl", "Shift", "A"] },
                 { label: "T3 Code", keys: ["Super", "T"] },
                 { label: "Lock", keys: ["Super", "L"] },
                 { label: "This overlay", keys: ["Super", "K"] }

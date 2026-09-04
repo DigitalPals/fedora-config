@@ -75,6 +75,8 @@ local first_generation = _G.__fedora_hypr_binds
 for _, keys in ipairs(optional) do
   assert(active[keys], "enabled optional feature omitted " .. keys)
 end
+assert(active["SUPER + CTRL + SHIFT + A"].dispatcher:match("fedora%-config agent %-%-window$"),
+  "default AI agent binding did not use the managed launcher")
 assert(active["SUPER + B"].dispatcher:match("^brave%-browser%-stable"),
   "proprietary browser selection did not use Brave")
 assert(active["XF86AudioRaiseVolume"].dispatcher:match("xps%-speaker%-tuning"),
@@ -98,6 +100,8 @@ for _, binding in ipairs(first_generation) do
   assert(binding.removed, "config reload did not retire a previous binding")
 end
 assert(active["SUPER + Return"], "feature gating removed an unrelated binding")
+assert(active["SUPER + CTRL + SHIFT + A"],
+  "feature gating removed the default AI agent binding")
 assert(active["SUPER + B"].dispatcher == "firefox",
   "generic browser selection did not use installed Firefox")
 assert(not active["XF86AudioRaiseVolume"].dispatcher:match("xps%-speaker%-tuning"),

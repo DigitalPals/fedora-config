@@ -22,6 +22,8 @@ for the kernel, drivers, SELinux, and base operating system.
   GitHub release updater
 - one release-scoped Fedora Config skill discoverable by compatible coding
   agents for safe installed-system diagnosis and customization
+- a user-selectable default AI coding agent with terminal, launcher, and
+  keyboard entry points
 
 There is no desktop-preset selection: every installation gets the same core
 Hyprland/Quickshell desktop. The installer asks only about the target machine,
@@ -73,6 +75,30 @@ first adoption. Updates retarget all three paths through the atomic active
 release link, and uninstall restores the exact original file, directory, or
 symlink without changing neighboring skills.
 
+## Default AI agent
+
+Developer tooling installs pinned Claude Code, OpenCode, and Codex CLI
+versions. Fedora Config does not silently prefer one provider: the first
+interactive invocation asks which installed agent to use and stores that
+per-user choice at `~/.config/fedora-config/defaults/agent`.
+
+```bash
+fedora-config agent                 # launch the default in this directory
+fedora-config agent --pick          # choose, remember, and launch another
+fedora-config agent set opencode    # change the default without launching
+fedora-config agent list            # show supported and installed agents
+fedora-config agent prompt "review this change"
+```
+
+`Super+Ctrl+Shift+A` opens the default agent in a Kitty window rooted at
+`~/Code`. The Quickshell Actions tab can launch or choose it as well. Managed
+Fish configuration provides the short alias `a`.
+
+The dispatcher passes no automatic-approval or permission-bypass flags and
+never stores credentials. Authentication, model selection, permissions, and
+provider-specific settings remain owned by each agent. The preference survives
+updates and uninstall because it is user data rather than Ansible policy.
+
 ## Update
 
 After the first install, use:
@@ -102,6 +128,7 @@ Useful commands:
 | --- | --- |
 | `fedora-config update --check` | Check the configured GitHub channel |
 | `fedora-config update --system-only` | Update Fedora and Flatpak only |
+| `fedora-config agent` | Launch or choose the per-user default AI coding agent |
 | `fedora-config verify` | Check the installed system (`--source` opts into developer checks) |
 | `fedora-config doctor` | Alias for `verify` |
 | `fedora-config configure` | Re-run the installer questions |

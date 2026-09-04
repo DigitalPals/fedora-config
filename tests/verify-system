@@ -65,6 +65,7 @@ if ! jq -e '
   (.rust_toolchain | type == "string") and
   (.claude_code_version | type == "string") and
   (.opencode_version | type == "string") and
+  (.codex_cli_version | type == "string") and
   (.distrobox_images | type == "array") and
   (.firewall_zone | type == "string") and
   (.firewall_ports | type == "array") and
@@ -86,6 +87,7 @@ primary_home=$(jq -r .primary_home <<<"$inventory_json")
 rust_toolchain=$(jq -r .rust_toolchain <<<"$inventory_json")
 claude_code_version=$(jq -r .claude_code_version <<<"$inventory_json")
 opencode_version=$(jq -r .opencode_version <<<"$inventory_json")
+codex_cli_version=$(jq -r .codex_cli_version <<<"$inventory_json")
 distrobox_images_json=$(jq -c .distrobox_images <<<"$inventory_json")
 firewall_zone=$(jq -r .firewall_zone <<<"$inventory_json")
 manage_system_identity=$(jq -r .manage_system_identity <<<"$inventory_json")
@@ -542,11 +544,26 @@ for agent_root in .agents .claude .codex; do
     "$primary_home/$agent_root/skills/fedora-config" "$agent_skill_canonical"
 done
 
+agent_config_home=${XDG_CONFIG_HOME:-$primary_home/.config}
+default_agent_file="$agent_config_home/fedora-config/defaults/agent"
+if [[ -e $default_agent_file ]]; then
+  selected_agent=$(env HOME="$primary_home" XDG_CONFIG_HOME="$agent_config_home" \
+    "$primary_home/.local/bin/fedora-config-agent" get 2>/dev/null || true)
+  if [[ $selected_agent =~ ^(opencode|claude|codex)$ ]] \
+      && command_exists "$selected_agent"; then
+    pass "default AI agent: $selected_agent"
+  else
+    fail "invalid or unavailable default AI agent: ${selected_agent:-unknown}"
+  fi
+else
+  skip 'default AI agent selection (not chosen yet)'
+fi
+
 required_commands=(Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
-  voxtype localsend git gh python3 oh-my-posh kitty nvim fish zoxide fzf eza jq rg fd \
+  voxtype localsend fedora-config-agent git gh python3 oh-my-posh kitty nvim fish zoxide fzf eza jq rg fd \
   dust bat btop fastfetch ffmpeg mpv yt-dlp imv)
 feature_enabled developer_tools && required_commands+=(lazygit lazydocker mdview bun balena \
-  gcc g++ cmake rustup mold sccache node npm claude opencode)
+  gcc g++ cmake rustup mold sccache node npm claude opencode codex)
 feature_enabled connected_widgets && required_commands+=(t3code-update)
 feature_enabled proprietary_apps && required_commands+=(brave-browser chatgpt)
 feature_enabled docker && required_commands+=(docker)
@@ -577,6 +594,9 @@ if feature_enabled developer_tools; then
   check 'inventory-pinned OpenCode' bash -c \
     'actual=$(opencode --version 2>/dev/null); [[ ${actual%% *} == "$1" ]]' \
     _ "$opencode_version"
+  check 'inventory-pinned Codex CLI' bash -c \
+    'actual=$(codex --version 2>/dev/null); [[ ${actual##* } == "$1" ]]' \
+    _ "$codex_cli_version"
   check 'Android sdkmanager' test -x "$HOME/Android/Sdk/cmdline-tools/latest/bin/sdkmanager"
   check 'Android platform-tools' test -x "$HOME/Android/Sdk/platform-tools/adb"
 else

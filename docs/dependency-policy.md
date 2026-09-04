@@ -31,11 +31,12 @@ playbook convergence.
   channel. The role installs `rustfmt` and `rust-analyzer`, retains an installed
   toolchain on a transient download failure, and fails an incomplete first
   install.
-- Claude Code and OpenCode versions are explicit inventory values. Claude's
-  native installer accepts the exact target and keeps versioned binaries.
-  OpenCode is installed into a staged, versioned user directory and exposed
-  only after its binary reports the requested version. Neither policy changes
-  the Codex or Claude shell aliases.
+- Claude Code, OpenCode, and Codex CLI versions are explicit inventory values.
+  Claude's native installer accepts the exact target and keeps versioned
+  binaries. OpenCode and Codex are installed from exact npm package versions
+  into separate staged, versioned user directories and exposed only after each
+  binary reports the requested version. Neither package policy changes agent
+  permissions or adds unattended-launch flags.
 - Vendor repository keys, standalone font files/archives, source inputs, and
   XPS camera inputs carry the checksums or commits next to their configuration.
   See the relevant inventory and role defaults for their update points.

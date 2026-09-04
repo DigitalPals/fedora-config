@@ -26,9 +26,13 @@ def executable(path: Path, body: str) -> None:
 def render_user_updater(values: dict) -> str:
     updater = (ROOT / "roles/apps/templates/update-user-tools.j2").read_text()
     assert "{#" not in updater, "Bash syntax opened an unterminated Jinja comment"
-    rendered = updater.replace(
-        "{{ claude_code_version | quote }}", repr(values["claude_code_version"])
-    ).replace("{{ opencode_version | quote }}", repr(values["opencode_version"]))
+    rendered = (
+        updater.replace(
+            "{{ claude_code_version | quote }}", repr(values["claude_code_version"])
+        )
+        .replace("{{ opencode_version | quote }}", repr(values["opencode_version"]))
+        .replace("{{ codex_cli_version | quote }}", repr(values["codex_cli_version"]))
+    )
     assert "{{" not in rendered and "{%" not in rendered
     subprocess.run(["bash", "-n"], input=rendered, text=True, check=True)
     return rendered
@@ -63,6 +67,7 @@ def verify_dependency_policy(values: dict) -> None:
     assert re.fullmatch(r"nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}", values["rust_toolchain"])
     assert SEMVER.fullmatch(values["claude_code_version"])
     assert SEMVER.fullmatch(values["opencode_version"])
+    assert SEMVER.fullmatch(values["codex_cli_version"])
     assert not any(key.startswith("hermes_agent_") for key in values)
     assert "hermes_remote_url" not in values
 
@@ -111,8 +116,11 @@ def verify_dependency_policy(values: dict) -> None:
     updater = (ROOT / "roles/apps/templates/update-user-tools.j2").read_text()
     assert "claude update" not in updater
     assert "opencode-ai@latest" not in updater
+    assert "@openai/codex@latest" not in updater
     assert 'claude install "$claude_pin"' in updater
     assert '"opencode-ai@$opencode_pin"' in updater
+    assert '"@openai/codex@$codex_pin"' in updater
+    assert 'codex_version "$stage/node_modules/.bin/codex"' in updater
     assert 'mktemp -d "$root/.stage.' in updater
     render_user_updater(values)
 
@@ -148,6 +156,22 @@ def verify_dependency_policy(values: dict) -> None:
 
     command_wrapper = (ROOT / "roles/dotfiles/templates/fedora-config.j2").read_text()
     assert '$verify_scope || set -- --system "$@"' in command_wrapper
+    assert 'exec "$agent_command" "$@"' in command_wrapper
+    assert "    - fedora-config-agent" in dotfiles
+    assert uninstall.count(".local/bin/fedora-config-agent") == 2
+    assert ".config/fedora-config/defaults/agent" not in uninstall
+
+    agent_launcher = (ROOT / "assets/scripts/fedora-config-agent").read_text()
+    for dangerous_flag in (
+        "--auto",
+        "--approve-for-me",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--dangerously-skip-permissions",
+    ):
+        assert dangerous_flag not in agent_launcher
+    assert 'command=(opencode)' in agent_launcher
+    assert 'command=(claude)' in agent_launcher
+    assert 'command=(codex)' in agent_launcher
 
     release_workflow = (ROOT / ".github/workflows/release.yml").read_text()
     assert 'scripts/semver validate "$version"' in release_workflow
@@ -206,12 +230,14 @@ def verify_dependency_policy(values: dict) -> None:
     assert "--dangerously-bypass-approvals-and-sandbox" not in fish
     assert "--dangerously-skip-permissions" not in fish
     assert "alias update='fedora-config update'" in fish
+    assert "alias a='fedora-config agent'" in fish
 
 
 def verify_user_updater_runtime(values: dict) -> None:
     rendered = render_user_updater(values)
     claude_pin = values["claude_code_version"]
     opencode_pin = values["opencode_version"]
+    codex_pin = values["codex_cli_version"]
 
     def run(home: Path) -> subprocess.CompletedProcess[str]:
         environment = os.environ.copy()
@@ -225,6 +251,7 @@ def verify_user_updater_runtime(values: dict) -> None:
         home = Path(temporary)
         executable(home / ".local/bin/claude", f'echo "{claude_pin} (Claude Code)"\n')
         executable(home / ".local/bin/opencode", f'echo "{opencode_pin}"\n')
+        executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
         executable(home / ".local/bin/npm", 'echo "unexpected npm call" >&2; exit 99\n')
         executable(home / ".local/bin/curl", 'echo "unexpected curl call" >&2; exit 99\n')
         result = run(home)
@@ -243,6 +270,7 @@ def verify_user_updater_runtime(values: dict) -> None:
         (home / ".local/bin").mkdir(parents=True)
         (home / ".local/bin/claude").symlink_to(old)
         executable(home / ".local/bin/opencode", f'echo "{opencode_pin}"\n')
+        executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
         result = run(home)
         assert result.returncode == 75, (result.stdout, result.stderr)
         assert (home / ".local/bin/claude").resolve() == old
@@ -253,6 +281,7 @@ def verify_user_updater_runtime(values: dict) -> None:
     with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
         home = Path(temporary)
         executable(home / ".local/bin/opencode", f'echo "{opencode_pin}"\n')
+        executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
         executable(home / ".local/bin/curl", 'exit 1\n')
         result = run(home)
         assert result.returncode == 1, (result.stdout, result.stderr)
@@ -263,6 +292,7 @@ def verify_user_updater_runtime(values: dict) -> None:
     with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
         home = Path(temporary)
         executable(home / ".local/bin/claude", f'echo "{claude_pin} (Claude Code)"\n')
+        executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
         npm = home / ".local/bin/npm"
         executable(
             npm,
@@ -284,6 +314,7 @@ def verify_user_updater_runtime(values: dict) -> None:
     with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
         home = Path(temporary)
         executable(home / ".local/bin/claude", f'echo "{claude_pin} (Claude Code)"\n')
+        executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
         executable(
             home / ".local/bin/npm",
             'if [[ " $* " == *" list "* ]]; then '
@@ -312,6 +343,35 @@ def verify_user_updater_runtime(values: dict) -> None:
             text=True,
         ).stdout.strip()
         assert installed == opencode_pin
+
+    # Codex uses the same off-to-the-side activation boundary and validates
+    # its distinct `codex-cli VERSION` output before replacing a working link.
+    with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+        home = Path(temporary)
+        executable(home / ".local/bin/claude", f'echo "{claude_pin} (Claude Code)"\n')
+        executable(home / ".local/bin/opencode", f'echo "{opencode_pin}"\n')
+        executable(
+            home / ".local/bin/npm",
+            'prefix=""; previous=""\n'
+            'for argument in "$@"; do\n'
+            '  if [[ $previous == --prefix ]]; then prefix=$argument; fi\n'
+            '  previous=$argument\n'
+            'done\n'
+            'mkdir -p "$prefix/node_modules/.bin"\n'
+            f'printf \'#!/usr/bin/env bash\\necho "codex-cli {codex_pin}"\\n\' '
+            '> "$prefix/node_modules/.bin/codex"\n'
+            'chmod 0755 "$prefix/node_modules/.bin/codex"\n',
+        )
+        result = run(home)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert result.stdout.strip() == "CHANGED: user-managed CLI update"
+        installed = subprocess.run(
+            [str(home / ".local/bin/codex"), "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert installed == f"codex-cli {codex_pin}"
 
 
 def verify_asset_provenance() -> None:

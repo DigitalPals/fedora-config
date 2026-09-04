@@ -46,6 +46,7 @@ done
 [[ -x /usr/local/libexec/fedora-config-system-snapshot ]] || fail 'snapshot helper is not executable'
 [[ -x /usr/local/libexec/fedora-config-session-action ]] || fail 'session action helper is not executable'
 [[ -r /usr/local/libexec/fedora-config-common.sh ]] || fail 'shared installer helper is missing'
+[[ -x /home/fedora/.local/bin/fedora-config-agent ]] || fail 'default AI agent helper is missing'
 [[ -f /home/fedora/.config/quickshell/shell.qml ]] || fail 'shell.qml is missing'
 [[ -f /home/fedora/.config/systemd/user/fedora-config-session-lock.service ]] || fail 'lock unit is missing'
 [[ -f /usr/share/wayland-sessions/hyprland-quickshell.desktop ]] || fail 'GDM session is missing'
