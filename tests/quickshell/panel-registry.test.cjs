@@ -333,11 +333,13 @@ test("menu hover switching is latched behind an open popout", () => {
     const chip = read("Bar/BarChip.qml");
     const cluster = read("Bar/Cluster.qml");
 
-    // Merely crossing the bar must remain inert. Once a click has opened any
-    // popout, entering another owner morphs the existing surface immediately.
+    // Merely crossing the bar must remain inert under the default hover
+    // mode. Once a click has opened any popout, entering another owner
+    // morphs the existing surface immediately; the Drawer settings page can
+    // turn hover off entirely or let it open the session by itself.
     assert.match(host,
-        /function hoverPopout\([^)]*\) \{\s*if \(!Popouts\.open \|\| rearranging\)\s*return false;/,
-        "closed-bar hover must not start a menu session");
+        /function hoverPopout\([^)]*\) \{\s*if \(rearranging \|\| Settings\.drawerHover === "off"\)\s*return false;\s*if \(!Popouts\.open && Settings\.drawerHover !== "always"\)\s*return false;/,
+        "closed-bar hover must not start a menu session unless hover is Always");
     assert.match(host,
         /if \(!popoutOpen\(name\)\)\s*openPopout\(name, isle, item\)/,
         "an open menu session must switch to the hovered panel");

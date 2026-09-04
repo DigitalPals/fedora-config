@@ -6,7 +6,14 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 16);
+    assert.equal(H.VERSION, 17);
+    assert.deepEqual(d.drawerTabs.map(t => t.id),
+        ["overview", "sound", "network", "power", "notifications", "usage"]);
+    assert.ok(d.drawerTabs.every(t => t.on === true));
+    assert.deepEqual(d.drawerOverview,
+        { media: true, sliders: true, tiles: true, updates: true, usage: true });
+    assert.equal(d.drawerHover, "open");
+    assert.equal(d.drawerWidth, 400);
     assert.equal(d.themeMode, "dark");
     assert.equal(d.glassEnabled, false);
     assert.equal(d.highContrast, false);

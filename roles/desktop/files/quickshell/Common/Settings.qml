@@ -84,6 +84,10 @@ Singleton {
     property bool notifIcons: defaults.notifIcons
     property bool notifProgress: defaults.notifProgress
     property int notifBodyLines: defaults.notifBodyLines
+    property var drawerTabs: defaults.drawerTabs
+    property var drawerOverview: defaults.drawerOverview
+    property string drawerHover: defaults.drawerHover
+    property int drawerWidth: defaults.drawerWidth
     property var mods: defaults.mods
     property var modOpts: defaults.modOpts
 
@@ -101,6 +105,11 @@ Singleton {
     property var resetSnapshot: null
     property string resetLabel: ""
     property string announcement: ""
+    // The settings row the nav search jumped to. Rows watch it, flash, and
+    // the view clears it after the highlight has had its moment.
+    property string highlightKey: ""
+    // Change counter for dirty-state bindings; see scheduleSave().
+    property int revision: 0
     property bool migrationPending: false
     property bool writeInFlight: false
     property string writeSnapshot: ""
@@ -123,7 +132,7 @@ Singleton {
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
-    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "notifications", "system"]
+    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "drawer", "notifications", "system"]
 
     // One dirty/reset key list per settings page (grouped-rail design 1c).
     readonly property var sectionKeys: ({
@@ -134,6 +143,7 @@ Singleton {
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive"],
         modules: ["mods", "modOpts"],
+        drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
             "notifProgress", "notifBodyLines"],
@@ -225,6 +235,31 @@ Singleton {
         mods = SettingsHelpers.normalizeMods({ left: left, center: center, right: right });
     }
 
+    function setDrawerTabEnabled(id, on) {
+        clearUndo();
+        migrationPending = false;
+        drawerTabs = SettingsHelpers.normalizeDrawerTabs(drawerTabs.map(tab =>
+            tab.id === id ? ({ id: tab.id, on: on }) : tab));
+    }
+
+    function setDrawerTabOrder(ids) {
+        clearUndo();
+        migrationPending = false;
+        const held = {};
+        for (const tab of drawerTabs)
+            held[tab.id] = tab.on;
+        drawerTabs = SettingsHelpers.normalizeDrawerTabs(ids.map(id =>
+            ({ id: id, on: held[id] !== false })));
+    }
+
+    function setDrawerOverviewKey(key, on) {
+        clearUndo();
+        migrationPending = false;
+        const next = SettingsHelpers.clone(drawerOverview);
+        next[key] = on;
+        drawerOverview = SettingsHelpers.normalizeDrawerOverview(next);
+    }
+
     function applyModulePreset(name) {
         const enabled = name === "everything"
             ? SettingsHelpers.MODULE_IDS
@@ -268,7 +303,8 @@ Singleton {
     function resetSection(section) {
         const labels = {
             wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar",
-            modules: "Widgets", notifications: "Notifications", system: "System"
+            modules: "Widgets", drawer: "Drawer",
+            notifications: "Notifications", system: "System"
         };
         resetKeys(sectionKeys[section] || [], labels[section] || "Settings");
     }
@@ -487,6 +523,9 @@ Singleton {
     }
 
     function scheduleSave() {
+        // Bumped on every value change, saved or not: bindings that call the
+        // sectionDirty() *function* re-evaluate by referencing this counter.
+        revision++;
         if (!ready || migrationPending || corruptBackupPending || loadError)
             return;
         savePending = true;
@@ -543,6 +582,10 @@ Singleton {
     onNotifIconsChanged: scheduleSave()
     onNotifProgressChanged: scheduleSave()
     onNotifBodyLinesChanged: scheduleSave()
+    onDrawerTabsChanged: scheduleSave()
+    onDrawerOverviewChanged: scheduleSave()
+    onDrawerHoverChanged: scheduleSave()
+    onDrawerWidthChanged: scheduleSave()
     onModsChanged: scheduleSave()
     onModOptsChanged: scheduleSave()
 

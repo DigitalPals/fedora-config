@@ -1,15 +1,20 @@
 import QtQuick
 import "../Common"
 
-// The skeleton every settings row shares: the fixed label column on the left,
-// the reserved undo column on the right, and the reflow between them when the
-// panel is narrow. A concrete row — SwitchRow, PickerRow, SliderRow,
-// SettingsTextRow — declares only its control, laid out between `labelWidth`
-// and `contentRight`.
+// The skeleton every settings row shares: the modified-mark gutter on the
+// left, the fixed label column beside it, and the reset column on the right
+// that reveals itself on hover. A concrete row — SwitchRow, PickerRow,
+// SliderRow, SettingsTextRow — declares only its control, laid out between
+// `labelWidth` and `contentRight`.
+//
+// A changed row wears a 6px accent mark in its gutter and brightens its
+// label (turn-3 settings design); the reset chip appears while the pointer
+// is over the row or the chip itself holds keyboard focus, so the always-on
+// undo column of the previous design is gone without losing keyboard access.
 //
 // `settingKey` names a key in Settings, and a row that sets one needs nothing
 // else: `stored` reads the value, `dirty` compares it against the default,
-// `commit()` writes it, and the undo chip resets it and announces itself as
+// `commit()` writes it, and the reset chip restores it and announces itself as
 // `resetLabel` — the row's own label unless the announcement has to be more
 // specific than the label ("Duration" reads as nothing on its own; "Toast
 // duration" reads as something).
@@ -26,7 +31,7 @@ Item {
     property string resetLabel: label
     property bool dirty: settingKey !== ""
         && Settings[settingKey] !== Settings.defaults[settingKey]
-    // What the undo chip restores — the argument to Settings.resetKeys().
+    // What the reset chip restores — the argument to Settings.resetKeys().
     // Usually just this row's key, but a mode picker whose companion values
     // only make sense under one mode restores them together.
     property var resetKeys: settingKey === "" ? [] : [settingKey]
@@ -45,14 +50,19 @@ Item {
     signal resetRequested()
 
     readonly property bool narrow: width < Theme.settingsNarrowWidth
-    readonly property int labelWidth: Theme.settingsLabelWidth >= root.minimumLabelWidth
-        ? Theme.settingsLabelWidth : root.minimumLabelWidth
+    readonly property int markInset: Theme.settingsMarkInset
+    // Where a row's control starts: the mark gutter plus the label column.
+    readonly property int labelWidth: markInset
+        + (Theme.settingsLabelWidth >= root.minimumLabelWidth
+            ? Theme.settingsLabelWidth : root.minimumLabelWidth)
     readonly property int undoWidth: Theme.chipHeight
-    // The undo column is always reserved, so the chip appearing never shifts
-    // the row (design v2). Controls stop here rather than at the row's edge.
+    // The reset column is always reserved, so the chip appearing never shifts
+    // the row's control. Controls stop here rather than at the row's edge.
     readonly property real contentRight: width - undoWidth
     readonly property real labelTextWidth: labelText.width
     readonly property var stored: settingKey === "" ? undefined : Settings[settingKey]
+    readonly property bool highlighted: settingKey !== ""
+        && Settings.highlightKey === settingKey
 
     height: narrow ? narrowHeight : Theme.panelRowHeight
 
@@ -67,15 +77,43 @@ Item {
         root.resetRequested();
     }
 
+    // Search landed here: a short accent wash over the whole row, so the eye
+    // finds it before the highlight clears.
+    Rectangle {
+        anchors.fill: parent
+        anchors.leftMargin: -6
+        anchors.rightMargin: -6
+        radius: Theme.rowRadius
+        color: Theme.accentAlpha(0.12)
+        opacity: root.highlighted ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.chipFadeDuration } }
+    }
+
+    HoverHandler {
+        id: rowHover
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        y: root.narrow ? root.narrowLabelY + 5 : (parent.height - height) / 2
+        width: 6
+        height: 6
+        radius: 3
+        color: Theme.accent
+        visible: root.dirty
+    }
+
     Text {
         id: labelText
         anchors.left: parent.left
+        anchors.leftMargin: root.markInset
         y: root.narrow ? root.narrowLabelY : (parent.height - height) / 2
-        width: root.narrow ? parent.width - root.narrowLabelInset : root.labelWidth
+        width: (root.narrow ? parent.width - root.narrowLabelInset
+            : root.labelWidth) - root.markInset
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.fontCaption
-        color: root.labelColor
+        color: root.dirty ? Theme.textHi : root.labelColor
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter
     }
@@ -87,7 +125,12 @@ Item {
         height: root.undoWidth
 
         UndoChip {
+            id: undoChip
             visible: root.dirty
+            // Revealed by the pointer or by keyboard focus; kept in the tab
+            // order the whole time it is visible so it stays reachable.
+            opacity: rowHover.hovered || activeFocus ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.chipFadeDuration } }
             onClicked: root.requestReset()
         }
     }

@@ -200,7 +200,7 @@ test("a drag suppresses the hover transitions that would fight it", () => {
         /function hoverPanelAt[\s\S]{0,220}rearranging/,
         "crossing a widget mid-drag is the drag, not a menu transition");
     assert.match(read("Bar/Bar.qml"),
-        /function hoverPopout[\s\S]{0,140}!Popouts\.open \|\| rearranging/,
+        /function hoverPopout[\s\S]{0,200}rearranging \|\| Settings\.drawerHover === "off"/,
         "a widget's own hover must not reopen its panel over the drop gap");
     assert.doesNotMatch(read("Bar/Cluster.qml"), /groupMouse|ownsPointer/,
         "the cluster must not add a second hover route around its widgets");

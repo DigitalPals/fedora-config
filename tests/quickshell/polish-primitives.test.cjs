@@ -218,7 +218,7 @@ test("scroll chrome discloses overflow without becoming an input surface", () =>
     for (const rel of [
         "Popovers/GitHubPopover.qml", "Popovers/T3InboxPage.qml",
         "Popovers/T3Picker.qml", "Popovers/T3ThreadPage.qml",
-        "Settings/FolderDialog.qml", "Settings/ModulesPage.qml",
+        "Settings/FolderDialog.qml",
         "Settings/SettingsPage.qml"
     ])
         assert.match(read(rel), /ScrollChrome\s*\{/,

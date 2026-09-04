@@ -14,14 +14,27 @@ Rectangle {
 
     property string current: "overview"
 
-    readonly property var tabs: [
-        { tab: "overview", glyph: "dashboard", label: "Overview" },
-        { tab: "sound", glyph: "volume_down", label: "Sound" },
-        { tab: "network", glyph: "wifi", label: "Network" },
-        { tab: "power", glyph: "battery_5_bar", label: "Power", rotate: true },
-        { tab: "notifications", glyph: "notifications", label: "Notifications" },
-        { tab: "usage", glyph: "insights", label: "Usage" }
-    ]
+    readonly property var tabMeta: ({
+        overview: { glyph: "dashboard", label: "Overview" },
+        sound: { glyph: "volume_down", label: "Sound" },
+        network: { glyph: "wifi", label: "Network" },
+        power: { glyph: "battery_5_bar", label: "Power", rotate: true },
+        notifications: { glyph: "notifications", label: "Notifications" },
+        usage: { glyph: "insights", label: "Usage" }
+    })
+
+    // Order and visibility come from the Drawer settings page. A tab the user
+    // switched off stays reachable through its bar glyph and IPC name; while
+    // it is presented it joins the strip so the current tab is never unnamed.
+    readonly property var tabs: Settings.drawerTabs
+        .filter(entry => (entry.on || entry.id === current)
+            && tabMeta[entry.id] !== undefined)
+        .map(entry => ({
+            tab: entry.id,
+            glyph: tabMeta[entry.id].glyph,
+            label: tabMeta[entry.id].label,
+            rotate: tabMeta[entry.id].rotate === true
+        }))
 
     height: 42
     radius: 10

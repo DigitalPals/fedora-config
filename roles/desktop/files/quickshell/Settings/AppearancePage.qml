@@ -70,95 +70,6 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Preview & preset"
-
-            PreviewStrip {
-                width: parent.width
-                height: 88
-                badgeText: Settings.paletteMode + " · "
-                    + (Settings.glassEnabled ? "glass" : "solid") + " · "
-                    + Settings.barStyle
-
-                Item {
-                    width: parent.width / 0.72
-                    height: parent.height / 0.72
-                    scale: 0.72
-                    transformOrigin: Item.TopLeft
-
-                    Rectangle {
-                        readonly property real previewGap:
-                            Settings.barStyle === "floating" ? 14 : 0
-                        x: previewGap
-                        y: Settings.position === "top" ? previewGap
-                            : parent.height - height - previewGap
-                        width: parent.width - previewGap * 2
-                        height: Settings.barHeight
-                        radius: Settings.barStyle === "floating" ? Settings.barRadius : 0
-                        color: Theme.barSurface
-
-                        HugCorner {
-                            visible: Settings.barStyle === "hug"
-                            x: 0
-                            y: Settings.position === "top" ? parent.height : -height
-                            bottomCorner: Settings.position === "bottom"
-                        }
-                        HugCorner {
-                            visible: Settings.barStyle === "hug"
-                            x: parent.width - width
-                            y: Settings.position === "top" ? parent.height : -height
-                            rightCorner: true
-                            bottomCorner: Settings.position === "bottom"
-                        }
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
-                            Rectangle { width: 12; height: 5; radius: 2.5; color: Theme.barWsCurrent }
-                            Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barWsOccupied }
-                            Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barWsEmpty }
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            width: Math.max(0, parent.width - 140)
-                            horizontalAlignment: Text.AlignHCenter
-                            text: Qt.formatDateTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
-                                + "  " + Qt.formatDateTime(clock.date, "ddd dd")
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightSemibold
-                            color: Theme.barTextHi
-                            elide: Text.ElideRight
-                            renderType: Text.QtRendering
-                        }
-                        Row {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
-                            Repeater {
-                                model: 3
-                                delegate: Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.barDotDim }
-                            }
-                        }
-                    }
-                }
-            }
-
-            ResponsiveActionRow {
-                width: parent.width
-                actionsFirst: true
-                description: "Keeps widget order and stored floating dimensions"
-                SettingsAction {
-                    text: "Apply Layered Hug"
-                    glyph: "auto_awesome"
-                    onTriggered: Settings.applyLayeredHugPreset()
-                }
-            }
-        }
-
-        SettingsGroup {
-            width: parent.width
             title: "Theme"
             dirty: Settings.themeMode !== Settings.defaults.themeMode
                 || Settings.glassEnabled !== Settings.defaults.glassEnabled
@@ -190,47 +101,6 @@ SettingsPage {
                 label: "High contrast"
                 settingKey: "highContrast"
                 description: "Opaque surfaces, stronger borders, and no compositor blur"
-            }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: "Accessibility"
-            dirty: Settings.reducedMotion !== Settings.defaults.reducedMotion
-                || Settings.textScale !== Settings.defaults.textScale
-                || Settings.interfaceDensity !== Settings.defaults.interfaceDensity
-            onResetRequested: Settings.resetKeys(["reducedMotion", "textScale",
-                "interfaceDensity"], "Accessibility")
-
-            SwitchRow {
-                width: parent.width
-                label: "Reduce motion"
-                settingKey: "reducedMotion"
-                description: "Remove panel, reveal, hover, and activity animations"
-            }
-            PickerRow {
-                width: parent.width
-                label: "Text size"
-                settingKey: "textScale"
-                caption: "applies across the shell"
-                captionMono: false
-                model: [
-                    { value: "default", label: "Default" },
-                    { value: "large", label: "Large" },
-                    { value: "larger", label: "Larger" }
-                ]
-            }
-            PickerRow {
-                width: parent.width
-                label: "Control spacing"
-                settingKey: "interfaceDensity"
-                caption: "touch targets and row height"
-                captionMono: false
-                model: [
-                    { value: "compact", label: "Compact" },
-                    { value: "default", label: "Default" },
-                    { value: "comfortable", label: "Comfortable" }
-                ]
             }
         }
 
@@ -684,6 +554,63 @@ SettingsPage {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: "Accessibility"
+            dirty: Settings.reducedMotion !== Settings.defaults.reducedMotion
+                || Settings.textScale !== Settings.defaults.textScale
+                || Settings.interfaceDensity !== Settings.defaults.interfaceDensity
+            onResetRequested: Settings.resetKeys(["reducedMotion", "textScale",
+                "interfaceDensity"], "Accessibility")
+
+            SwitchRow {
+                width: parent.width
+                label: "Reduce motion"
+                settingKey: "reducedMotion"
+                description: "Remove panel, reveal, hover, and activity animations"
+            }
+            PickerRow {
+                width: parent.width
+                label: "Text size"
+                settingKey: "textScale"
+                caption: "applies across the shell"
+                captionMono: false
+                model: [
+                    { value: "default", label: "Default" },
+                    { value: "large", label: "Large" },
+                    { value: "larger", label: "Larger" }
+                ]
+            }
+            PickerRow {
+                width: parent.width
+                label: "Control spacing"
+                settingKey: "interfaceDensity"
+                caption: "touch targets and row height"
+                captionMono: false
+                model: [
+                    { value: "compact", label: "Compact" },
+                    { value: "default", label: "Default" },
+                    { value: "comfortable", label: "Comfortable" }
+                ]
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: "Preset"
+
+            ResponsiveActionRow {
+                width: parent.width
+                actionsFirst: true
+                description: "Keeps widget order and stored floating dimensions"
+                SettingsAction {
+                    text: "Apply Layered Hug"
+                    glyph: "auto_awesome"
+                    onTriggered: Settings.applyLayeredHugPreset()
                 }
             }
         }

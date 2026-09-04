@@ -1,10 +1,23 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 16;
+var VERSION = 17;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
+
+// The edge drawer's tabs, in default strip order. Overview is the drawer's
+// front door — the Fedora button and the session footer live there — so it
+// can be reordered but never disabled.
+var DRAWER_TAB_IDS = ["overview", "sound", "network", "power",
+    "notifications", "usage"];
+
+// How hovering a status glyph treats the drawer. "open" is the desktop-menu
+// default: a click latches the session, then crossing switches tabs in place.
+var DRAWER_HOVER_MODES = ["off", "open", "always"];
+
+// The Overview tab's optional sections; the session footer is fixed.
+var DRAWER_OVERVIEW_KEYS = ["media", "sliders", "tiles", "updates", "usage"];
 
 // Reads in default layout order: left, then center, then right. The order
 // only decides where an id the settings file has never seen is appended, but
@@ -139,6 +152,53 @@ function defaultModOpts() {
     };
 }
 
+function defaultDrawerTabs() {
+    return DRAWER_TAB_IDS.map(function(id) {
+        return { id: id, on: true };
+    });
+}
+
+function defaultDrawerOverview() {
+    var out = {};
+    DRAWER_OVERVIEW_KEYS.forEach(function(key) { out[key] = true; });
+    return out;
+}
+
+// Sanitize the persisted drawer tab strip: known ids only, first occurrence
+// wins, ids the file has never seen are appended in default order, and
+// Overview can never be switched off.
+function normalizeDrawerTabs(raw) {
+    var list = Array.isArray(raw) ? raw : [];
+    var seen = {};
+    var next = [];
+    list.forEach(function(entry) {
+        var id = entry ? entry.id : undefined;
+        if (DRAWER_TAB_IDS.indexOf(id) === -1 || seen[id])
+            return;
+        seen[id] = true;
+        next.push({
+            id: id,
+            on: id === "overview" ? true
+                : typeof entry.on === "boolean" ? entry.on : true
+        });
+    });
+    DRAWER_TAB_IDS.forEach(function(id) {
+        if (!seen[id])
+            next.push({ id: id, on: true });
+    });
+    return next;
+}
+
+function normalizeDrawerOverview(raw) {
+    var next = defaultDrawerOverview();
+    if (!raw || typeof raw !== "object")
+        return next;
+    DRAWER_OVERVIEW_KEYS.forEach(function(key) {
+        next[key] = boolIn(raw[key], next[key]);
+    });
+    return next;
+}
+
 function defaults() {
     return {
         wall: "",
@@ -184,6 +244,10 @@ function defaults() {
         notifIcons: true,
         notifProgress: true,
         notifBodyLines: 2,
+        drawerTabs: defaultDrawerTabs(),
+        drawerOverview: defaultDrawerOverview(),
+        drawerHover: "open",
+        drawerWidth: 400,
         mods: defaultMods(),
         modOpts: defaultModOpts()
     };
@@ -908,6 +972,10 @@ function merge(raw) {
         notifIcons: boolIn(parsed.notifIcons, d.notifIcons),
         notifProgress: boolIn(parsed.notifProgress, d.notifProgress),
         notifBodyLines: intIn(parsed.notifBodyLines, 0, 3, 1, d.notifBodyLines),
+        drawerTabs: normalizeDrawerTabs(parsed.drawerTabs),
+        drawerOverview: normalizeDrawerOverview(parsed.drawerOverview),
+        drawerHover: enumIn(parsed.drawerHover, DRAWER_HOVER_MODES, d.drawerHover),
+        drawerWidth: intIn(parsed.drawerWidth, 320, 480, 10, d.drawerWidth),
         mods: migrateMods(parsed.mods, parsed.v),
         modOpts: normalizeModOpts(parsed.modOpts)
     };
@@ -1020,9 +1088,16 @@ var exported = {
     BAR_COLOR_CHOICES: BAR_COLOR_CHOICES,
     BAR_COLOR_IDS: BAR_COLOR_IDS,
     BAR_COLOR_PRESETS: BAR_COLOR_PRESETS,
+    DRAWER_TAB_IDS: DRAWER_TAB_IDS,
+    DRAWER_HOVER_MODES: DRAWER_HOVER_MODES,
+    DRAWER_OVERVIEW_KEYS: DRAWER_OVERVIEW_KEYS,
     defaults: defaults,
     defaultMods: defaultMods,
     defaultModOpts: defaultModOpts,
+    defaultDrawerTabs: defaultDrawerTabs,
+    defaultDrawerOverview: defaultDrawerOverview,
+    normalizeDrawerTabs: normalizeDrawerTabs,
+    normalizeDrawerOverview: normalizeDrawerOverview,
     normalizeMods: normalizeMods,
     normalizeModOpts: normalizeModOpts,
     migrateMods: migrateMods,

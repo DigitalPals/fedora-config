@@ -629,12 +629,15 @@ PanelWindow {
         Popouts.openPanel(name, isle, anchorOf(item), outputName);
     }
 
-    // Desktop-menu semantics: a click latches the menu session open, then
-    // crossing another menu-bearing item switches the existing surface in
-    // place. Hovering a closed bar remains inert; the focus grab closes the
-    // session on the next click outside it.
+    // Desktop-menu semantics, tunable from the Drawer settings page. The
+    // default ("open") latches the menu session with a click, then crossing
+    // another menu-bearing item switches the existing surface in place.
+    // "always" lets a hover open the session by itself; "off" keeps hover
+    // inert entirely, so only clicks navigate.
     function hoverPopout(name, isle, item) {
-        if (!Popouts.open || rearranging)
+        if (rearranging || Settings.drawerHover === "off")
+            return false;
+        if (!Popouts.open && Settings.drawerHover !== "always")
             return false;
         if (!popoutOpen(name))
             openPopout(name, isle, item);
@@ -655,7 +658,9 @@ PanelWindow {
     // same registered anchors as a reliable second path.
     function hoverPanelAt(position) {
         // Crossing a widget mid-drag is the drag, not a menu transition.
-        if (!Popouts.open || rearranging)
+        if (rearranging || Settings.drawerHover === "off")
+            return;
+        if (!Popouts.open && Settings.drawerHover !== "always")
             return;
 
         // Usage owns one panel anchor but several provider targets. Resolve

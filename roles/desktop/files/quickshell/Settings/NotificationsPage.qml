@@ -9,7 +9,7 @@ SettingsPage {
     readonly property var quietRange: SettingsHelpers.quietRange(Settings.notifQuiet,
         Settings.notifQuietStart, Settings.notifQuietEnd)
     readonly property int footnotePad: width < Theme.settingsNarrowWidth ? 0
-        : Theme.settingsLabelWidth + 10
+        : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
     property real previewProgress: 1
 
     function sendTest() {
@@ -23,163 +23,6 @@ SettingsPage {
         anchors.right: parent.right
         anchors.top: parent.top
         spacing: 12
-
-        SettingsGroup {
-            width: parent.width
-            title: "Preview"
-
-            PreviewStrip {
-                width: parent.width
-                height: 126
-                badgeText: Settings.notifPosition.replace("-", " ") + " · "
-                    + Settings.notifDuration + " s · " + Settings.notifDensity
-
-                Item {
-                    width: parent.width / 0.72
-                    height: parent.height / 0.72
-                    scale: 0.72
-                    transformOrigin: Item.TopLeft
-
-                    Rectangle {
-                        id: miniBar
-                        x: 14
-                        y: Settings.position === "top" ? 8 : parent.height - height - 8
-                        width: parent.width - 28
-                        height: 18
-                        radius: 5
-                        color: Theme.barSurface
-                        border.width: 1
-                        border.color: Theme.barStroke
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 3
-                            Rectangle { width: 9; height: 4; radius: 2; color: Theme.barWsCurrent }
-                            Rectangle { width: 4; height: 4; radius: 2; color: Theme.barWsOccupied }
-                        }
-                        Row {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 3
-                            Repeater {
-                                model: 3
-                                delegate: Rectangle { width: 4; height: 4; radius: 2; color: Theme.barWsEmpty }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        id: miniToast
-                        readonly property bool onTop: Settings.notifPosition.indexOf("top") === 0
-                        readonly property bool onLeft: Settings.notifPosition.indexOf("left") !== -1
-                        readonly property int pad: Settings.notifDensity === "compact" ? 7
-                            : Settings.notifDensity === "roomy" ? 13 : 9
-                        width: Math.min(276, parent.width - 28)
-                        height: miniContent.implicitHeight + pad * 2
-                        x: onLeft ? 14 : parent.width - width - 14
-                        y: onTop
-                            ? (Settings.position === "top" ? miniBar.y + miniBar.height + 7 : 7)
-                            : (Settings.position === "bottom" ? miniBar.y - height - 7
-                                : parent.height - height - 7)
-                        radius: Theme.cardRadius
-                        color: Theme.panelSurface
-                        border.width: 1
-                        border.color: Theme.popBorder
-
-                        Row {
-                            id: miniContent
-                            x: miniToast.pad + 2
-                            y: miniToast.pad
-                            width: parent.width - (miniToast.pad + 2) * 2
-                            spacing: 7
-                            Rectangle {
-                                id: miniIcon
-                                visible: Settings.notifIcons
-                                width: 28; height: 28
-                                radius: 9
-                                color: Theme.chip
-                                border.width: 1
-                                border.color: Theme.hairlineSoft
-
-                                BrandIcon {
-                                    anchors.centerIn: parent
-                                    width: 19; height: 19
-                                    name: "whatsapp"
-                                }
-                            }
-                            Column {
-                                width: miniContent.width - (miniIcon.visible
-                                    ? miniIcon.width + miniContent.spacing : 0)
-                                spacing: 2
-                                Item {
-                                    width: parent.width
-                                    height: Math.max(miniApp.implicitHeight, miniTime.implicitHeight)
-                                    Text {
-                                        id: miniApp
-                                        anchors.left: parent.left
-                                        width: Math.max(0, parent.width - miniTime.width - 6)
-                                        text: "WhatsApp"
-                                        font.family: Theme.fontMenu
-                                        font.pixelSize: Theme.fontTiny
-                                        font.weight: Theme.weightMedium
-                                        color: Theme.textMid
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        id: miniTime
-                                        anchors.right: parent.right
-                                        text: "now"
-                                        font.family: Theme.fontMono
-                                        font.pixelSize: Theme.fontCaption
-                                        color: Theme.textDim
-                                    }
-                                }
-                                Text {
-                                    width: parent.width
-                                    text: "Sarah Jansen"
-                                    font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontCaption
-                                    font.weight: Theme.weightSemibold
-                                    color: Theme.textHi
-                                    elide: Text.ElideRight
-                                }
-                                Text {
-                                    visible: Settings.notifBodyLines > 0
-                                    width: parent.width
-                                    text: "Sure — see you at 12:30 tomorrow then!"
-                                    font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontCaption
-                                    color: Theme.icon
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: Settings.notifBodyLines
-                                    elide: Text.ElideRight
-                                }
-                            }
-                        }
-                        Rectangle {
-                            visible: Settings.notifProgress
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            anchors.leftMargin: miniToast.pad
-                            anchors.rightMargin: miniToast.pad
-                            anchors.bottomMargin: miniToast.pad / 2
-                            height: 2
-                            radius: 1
-                            color: Theme.activeFill
-                            Rectangle {
-                                height: parent.height
-                                width: parent.width * page.previewProgress
-                                radius: 1
-                                color: Theme.accent
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         SettingsGroup {
             width: parent.width
@@ -283,50 +126,200 @@ SettingsPage {
             onResetRequested: Settings.resetKeys(["notifDensity", "notifIcons",
                 "notifProgress", "notifBodyLines"], "Notification style")
 
-            PickerRow {
+            // The one preview that stays (turn-3 design): a toast is not
+            // otherwise on screen, so the style rows keep a live sample card
+            // beside them. Below the side-by-side breakpoint it drops under
+            // the rows instead.
+            Item {
                 width: parent.width
-                label: "Density"
-                settingKey: "notifDensity"
-                resetLabel: "Toast density"
-                model: [
-                    { value: "compact", label: "Compact" },
-                    { value: "default", label: "Default" },
-                    { value: "roomy", label: "Roomy" }
-                ]
-            }
-            SwitchRow {
-                width: parent.width
-                label: "App icons"
-                settingKey: "notifIcons"
-                description: "Show the sender's icon on each card"
-            }
-            SwitchRow {
-                width: parent.width
-                label: "Timeout progress"
-                settingKey: "notifProgress"
-                description: "Thin bar counting down a toast's remaining time"
-            }
-            SliderRow {
-                width: parent.width
-                label: "Body preview"
-                settingKey: "notifBodyLines"
-                min: 0; max: 3; step: 1
-                valueLabel: Settings.notifBodyLines === 0 ? "hidden"
-                    : Settings.notifBodyLines === 1 ? "1 line"
-                    : Settings.notifBodyLines + " lines"
-                valueWidth: 52
-            }
+                readonly property bool sideBySide: width >= 640
+                height: sideBySide
+                    ? Math.max(styleRows.implicitHeight, previewColumn.implicitHeight)
+                    : styleRows.implicitHeight + 10 + previewColumn.implicitHeight
 
-            ResponsiveActionRow {
-                width: parent.width
-                actionsFirst: true
-                description: Notifs.toastsSuppressed
-                    ? "Toasts are silenced now; the sample will land in the center"
-                    : "Fires a sample toast with these settings"
-                SettingsAction {
-                    text: "Send test notification"
-                    glyph: "notifications"
-                    onTriggered: page.sendTest()
+                Column {
+                    id: styleRows
+                    x: 0
+                    y: 0
+                    width: parent.sideBySide ? parent.width - 284 : parent.width
+                    spacing: Theme.panelRowSpacing
+
+                    PickerRow {
+                        width: parent.width
+                        label: "Density"
+                        settingKey: "notifDensity"
+                        resetLabel: "Toast density"
+                        model: [
+                            { value: "compact", label: "Compact" },
+                            { value: "default", label: "Default" },
+                            { value: "roomy", label: "Roomy" }
+                        ]
+                    }
+                    SwitchRow {
+                        width: parent.width
+                        label: "App icons"
+                        settingKey: "notifIcons"
+                        description: "Show the sender's icon on each card"
+                    }
+                    SwitchRow {
+                        width: parent.width
+                        label: "Timeout progress"
+                        settingKey: "notifProgress"
+                        description: "Thin bar counting down a toast's remaining time"
+                    }
+                    SliderRow {
+                        width: parent.width
+                        label: "Body preview"
+                        settingKey: "notifBodyLines"
+                        min: 0; max: 3; step: 1
+                        valueLabel: Settings.notifBodyLines === 0 ? "hidden"
+                            : Settings.notifBodyLines === 1 ? "1 line"
+                            : Settings.notifBodyLines + " lines"
+                        valueWidth: 52
+                    }
+                }
+
+                Column {
+                    id: previewColumn
+                    x: parent.sideBySide ? parent.width - width : 0
+                    y: parent.sideBySide ? 0 : styleRows.implicitHeight + 10
+                    width: parent.sideBySide ? 264 : Math.min(300, parent.width)
+                    spacing: 8
+
+                    Rectangle {
+                        id: sampleToast
+                        readonly property int pad: Settings.notifDensity === "compact" ? 8
+                            : Settings.notifDensity === "roomy" ? 14 : 11
+                        width: parent.width
+                        height: sampleContent.implicitHeight + pad * 2 + 6
+                        radius: 12
+                        color: Theme.cardFill
+                        border.width: 1
+                        border.color: Theme.hairlineSoft
+
+                        Row {
+                            id: sampleContent
+                            x: sampleToast.pad
+                            y: sampleToast.pad
+                            width: parent.width - sampleToast.pad * 2
+                            spacing: 9
+
+                            Rectangle {
+                                id: sampleIcon
+                                visible: Settings.notifIcons
+                                width: 30; height: 30
+                                radius: 9
+                                color: Theme.chip
+
+                                BrandIcon {
+                                    anchors.centerIn: parent
+                                    width: 17; height: 17
+                                    name: "whatsapp"
+                                }
+                            }
+
+                            Column {
+                                width: sampleContent.width - (sampleIcon.visible
+                                    ? sampleIcon.width + sampleContent.spacing : 0)
+                                spacing: 2
+
+                                Item {
+                                    width: parent.width
+                                    height: Math.max(sampleApp.implicitHeight,
+                                        sampleTime.implicitHeight)
+                                    Text {
+                                        id: sampleApp
+                                        anchors.left: parent.left
+                                        width: Math.max(0, parent.width - sampleTime.width - 6)
+                                        text: "WhatsApp"
+                                        font.family: Theme.fontMenu
+                                        font.pixelSize: Theme.fontMicro
+                                        font.weight: Theme.weightMedium
+                                        color: Theme.textDim
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        id: sampleTime
+                                        anchors.right: parent.right
+                                        text: "now"
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontMicro
+                                        color: Theme.textFaint
+                                    }
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: "Sarah Jansen"
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontSecondary
+                                    font.weight: Theme.weightSemibold
+                                    color: Theme.textHi
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    visible: Settings.notifBodyLines > 0
+                                    width: parent.width
+                                    text: "Sure, see you at 12:30 tomorrow then! I'll bring the plans."
+                                    font.family: Theme.fontMenu
+                                    font.pixelSize: Theme.fontCaption
+                                    color: Theme.textMid
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: Settings.notifBodyLines
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            visible: Settings.notifProgress
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: sampleToast.pad
+                            anchors.rightMargin: sampleToast.pad
+                            anchors.bottomMargin: 5
+                            height: 2
+                            radius: 1
+                            color: Theme.activeFill
+
+                            Rectangle {
+                                height: parent.height
+                                width: parent.width * page.previewProgress
+                                radius: 1
+                                color: Theme.accent
+                            }
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: Theme.chipHeight
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.right: sendTest.left
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Settings.notifPosition.replace("-", " ") + " · "
+                                + Settings.notifDuration + " s · " + Settings.notifDensity
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontMicro
+                            color: Theme.textFaint
+                            elide: Text.ElideRight
+                        }
+
+                        SettingsAction {
+                            id: sendTest
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Send test"
+                            glyph: "notifications"
+                            Accessible.name: Notifs.toastsSuppressed
+                                ? "Send test notification; toasts are silenced, it lands in the tab"
+                                : "Send test notification"
+                            onTriggered: page.sendTest()
+                        }
+                    }
                 }
             }
         }

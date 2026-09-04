@@ -32,7 +32,7 @@ Column {
 
     // ---- now playing ---------------------------------------------------
     Rectangle {
-        visible: Media.hasTrack
+        visible: Media.hasTrack && Settings.drawerOverview.media === true
         width: parent.width
         height: 64
         radius: 10
@@ -169,6 +169,7 @@ Column {
 
     // ---- sliders --------------------------------------------------------
     Column {
+        visible: Settings.drawerOverview.sliders === true
         width: parent.width
         spacing: 8
 
@@ -192,6 +193,7 @@ Column {
 
     // ---- quick toggles ---------------------------------------------------
     Grid {
+        visible: Settings.drawerOverview.tiles === true
         width: parent.width
         columns: 4
         columnSpacing: 6
@@ -235,6 +237,7 @@ Column {
 
     // ---- updates ---------------------------------------------------------
     Column {
+        visible: Settings.drawerOverview.updates === true
         width: parent.width
         spacing: 6
 
@@ -338,7 +341,8 @@ Column {
 
     // ---- model usage -----------------------------------------------------
     Column {
-        visible: Usage.pollEnabled || Usage.anyOk
+        visible: Settings.drawerOverview.usage === true
+            && (Usage.pollEnabled || Usage.anyOk)
         width: parent.width
         spacing: 6
 

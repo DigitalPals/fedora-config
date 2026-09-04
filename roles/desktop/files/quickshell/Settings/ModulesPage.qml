@@ -1,137 +1,98 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Effects
 import QtQuick.Controls as Controls
 import "../Common"
 import "../Common/LayoutHelpers.js" as LayoutHelpers
+import "../Common/SettingsHelpers.js" as SettingsHelpers
 import "../Common/WidgetCatalog.js" as WidgetCatalog
 
-// Widgets page (design v2): live mini-bar preview and three drag-and-drop
-// columns. Rows never shift during a drag — an overlay caret marks the
-// insertion gap, a floating proxy follows the pointer, and the commit uses
-// the prototype's exact splice semantics.
+// Widgets page (turn-3 settings design): the three lanes drawn as one bar
+// replica you drag chips along — the same edit the bar itself accepts — and
+// a two-column catalog of every widget whose settings expand inline under
+// their row instead of swapping the whole page.
 //
-// The same edit can now be made on the bar itself by dragging a widget along
-// it. Both paths commit through LayoutHelpers.moveWidget, so a drop means the
-// same thing whichever surface it was made on.
-Item {
+// Both drop paths commit through LayoutHelpers.moveWidget with the same
+// column/index math the bar's own drag uses (barDropColumn/barDropIndex), so
+// a drop means the same thing whichever surface it was made on.
+SettingsPage {
     id: page
 
     readonly property var widgetMeta: WidgetCatalog.WIDGETS
+    readonly property var catalogIds: SettingsHelpers.MODULE_IDS
+    readonly property int enabledCount: {
+        void Settings.revision;
+        let count = 0;
+        for (const col of ["left", "center", "right"])
+            count += Settings.mods[col].filter(entry => entry.on).length;
+        return count;
+    }
 
     // ---- drag state -------------------------------------------------------
     property var dragMod: null     // { id, name, fromCol }
-    property var dropAt: null      // { col, idx }, idx ∈ [0, len]
+    property var dropAt: null      // { col, idx }, idx in the full list
     property point dragPos: Qt.point(0, 0)
     property string announcement: ""
     readonly property bool dragActive: dragMod !== null
 
-    // ---- per-widget settings sub-page -------------------------------------
+    // ---- inline widget settings -------------------------------------------
+    // Kept under the historical sub-page names so SettingsView's Escape
+    // routing keeps working unchanged.
     property string subPage: ""
     readonly property bool subPageActive: subPage !== ""
 
     function openSubPage(id) {
         if (dragActive)
             return;
-        subPage = id;
-        announcement = widgetMeta[id].name + " settings.";
+        subPage = subPage === id ? "" : id;
+        if (subPage !== "")
+            announcement = widgetMeta[id].name + " settings expanded.";
     }
 
     function closeSubPage() {
         const id = subPage;
         subPage = "";
-        announcement = "Widget list.";
-        Qt.callLater(() => focusModule(id));
+        announcement = "Widget settings collapsed.";
+        if (id !== "")
+            Qt.callLater(() => focusCatalog(id));
     }
 
-    readonly property int pitch: 31          // 28px row + 3px gap
-    readonly property int rowsStartY: 20     // column header + gap
-    // Three useful columns need enough room for full widget names, switches,
-    // and settings buttons. Below this threshold retain the stacked workflow.
-    readonly property bool stacked: width < 640
-    readonly property var columnOrder: ["left", "center", "right"]
+    function focusCatalog(id) {
+        const index = catalogIds.indexOf(id);
+        if (index === -1)
+            return;
+        const pair = catalogRepeater.itemAt(Math.floor(index / 2)) as CatalogPair;
+        if (pair)
+            pair.focusCell(index % 2);
+    }
 
     function cancelDrag() {
-        const focusId = dragMod ? dragMod.id : "";
         dragMod = null;
         dropAt = null;
-        edgeScroll.stop();
-        if (focusId !== "")
-            Qt.callLater(() => focusModule(focusId));
     }
 
-    function columnIdAt(x, y) {
-        if (stacked) {
-            if (y < colC.y)
-                return "left";
-            if (y < colR.y)
-                return "center";
-            return "right";
-        }
-        if (x < colC.x - 4)
-            return "left";
-        if (x < colR.x - 4)
-            return "center";
-        return "right";
+    function laneEntries(col) {
+        return Settings.mods[col].filter(entry => entry.on);
     }
 
+    // Pointer position in replica coordinates -> { col, idx } in the full
+    // configured list, exactly as the bar's own drag resolves it.
     function updateDrop(pos) {
-        if (pos.x < 0 || pos.x > columnsRow.width
-                || pos.y < rowsStartY - pitch || pos.y > columnsRow.height) {
+        if (pos.x < -20 || pos.x > laneStrip.width + 20
+                || pos.y < -34 || pos.y > laneStrip.height + 34) {
             dropAt = null;
             return;
         }
-        let next;
-        if (stacked) {
-            next = LayoutHelpers.stackedDropIndex([
-                { id: "left", y: colL.y, height: colL.height, rowsStart: rowsStartY,
-                    pitch: pitch, length: Settings.mods.left.length },
-                { id: "center", y: colC.y, height: colC.height, rowsStart: rowsStartY,
-                    pitch: pitch, length: Settings.mods.center.length },
-                { id: "right", y: colR.y, height: colR.height, rowsStart: rowsStartY,
-                    pitch: pitch, length: Settings.mods.right.length }
-            ], pos.y);
-        } else {
-            const col = columnIdAt(pos.x, pos.y);
-            const list = Settings.mods[col];
-            const local = pos.y - rowsStartY;
-            next = { col: col, idx: Math.max(0, Math.min(list.length,
-                Math.floor((local + pitch / 2) / pitch))) };
-        }
-        if (!dropAt || dropAt.col !== next.col || dropAt.idx !== next.idx)
-            dropAt = next;
-    }
-
-    function keyboardToggle(row) {
-        if (!dragActive) {
-            dragMod = { id: row.modelData.id, name: row.meta.name, fromCol: row.colId };
-            dropAt = { col: row.colId, idx: row.index };
-            announcement = row.meta.name + " picked up. Use arrow keys to move.";
-        } else {
-            commitDrag();
-        }
-    }
-
-    function keyboardMove(key) {
-        if (!dragActive || !dropAt)
-            return false;
-        let colIndex = columnOrder.indexOf(dropAt.col);
-        if (key === Qt.Key_Left)
-            colIndex = Math.max(0, colIndex - 1);
-        else if (key === Qt.Key_Right)
-            colIndex = Math.min(columnOrder.length - 1, colIndex + 1);
-        else if (key !== Qt.Key_Up && key !== Qt.Key_Down)
-            return false;
-        const col = columnOrder[colIndex];
-        let idx = dropAt.idx;
-        if (key === Qt.Key_Up)
-            idx--;
-        else if (key === Qt.Key_Down)
-            idx++;
-        idx = Math.max(0, Math.min(Settings.mods[col].length, idx));
-        dropAt = { col: col, idx: idx };
-        revealDrop();
-        return true;
+        const col = LayoutHelpers.barDropColumn(pos.x, {
+            leftEnd: laneLeftBox.x + laneLeftBox.width,
+            centerStart: laneCenterBox.x,
+            centerEnd: laneCenterBox.x + laneCenterBox.width,
+            rightStart: laneRightBox.x
+        });
+        const lane = col === "left" ? laneLeft : col === "center" ? laneCenter : laneRight;
+        const idx = LayoutHelpers.barDropIndex(Settings.mods[col],
+            lane.chipCenters(), pos.x);
+        if (!dropAt || dropAt.col !== col || dropAt.idx !== idx)
+            dropAt = { col: col, idx: idx };
     }
 
     function commitDrag() {
@@ -139,8 +100,6 @@ Item {
             cancelDrag();
             return;
         }
-        // Shared with the bar's own drag, so a drop lands in the same place
-        // whichever surface it was made on.
         const result = LayoutHelpers.moveWidget(Settings.mods, dragMod.fromCol,
             dragMod.id, dropAt.col, dropAt.idx);
         if (!result) {
@@ -154,140 +113,123 @@ Item {
             result.mods.right);
         dragMod = null;
         dropAt = null;
-        edgeScroll.stop();
-        Qt.callLater(() => focusModule(focusId));
+        Qt.callLater(() => focusChip(focusId));
     }
 
-    function focusModule(id) {
-        const columns = [colL, colC, colR];
-        for (const column of columns) {
-            const row = column.rowForId(id);
-            if (row) {
-                row.forceActiveFocus();
-                revealRow(row);
+    function focusChip(id) {
+        for (const lane of [laneLeft, laneCenter, laneRight]) {
+            const chip = lane.chipForId(id);
+            if (chip) {
+                chip.forceActiveFocus();
                 return;
             }
         }
     }
 
-    function focusAdjacent(row, key) {
-        let colIndex = columnOrder.indexOf(row.colId);
-        let rowIndex = row.index;
-        if (key === Qt.Key_Up)
-            rowIndex--;
-        else if (key === Qt.Key_Down)
-            rowIndex++;
-        else if (key === Qt.Key_Left)
-            colIndex--;
+    function keyboardToggle(chip) {
+        if (!dragActive) {
+            dragMod = { id: chip.entryId, name: widgetMeta[chip.entryId].name,
+                fromCol: chip.colId };
+            dropAt = { col: chip.colId, idx: chip.fullIndex };
+            announcement = widgetMeta[chip.entryId].name
+                + " picked up. Arrow keys move, Space drops, Escape cancels.";
+        } else {
+            commitDrag();
+        }
+    }
+
+    function keyboardMove(key) {
+        if (!dragActive || !dropAt)
+            return false;
+        const order = ["left", "center", "right"];
+        let colIndex = order.indexOf(dropAt.col);
+        let idx = dropAt.idx;
+        if (key === Qt.Key_Left)
+            idx--;
         else if (key === Qt.Key_Right)
-            colIndex++;
+            idx++;
+        else if (key === Qt.Key_Up)
+            colIndex = Math.max(0, colIndex - 1);
+        else if (key === Qt.Key_Down)
+            colIndex = Math.min(order.length - 1, colIndex + 1);
         else
             return false;
-        colIndex = Math.max(0, Math.min(columnOrder.length - 1, colIndex));
-        const column = colIndex === 0 ? colL : colIndex === 1 ? colC : colR;
-        rowIndex = Math.max(0, Math.min(column.list.length - 1, rowIndex));
-        const target = column.rowAt(rowIndex);
-        if (target) {
-            target.forceActiveFocus();
-            revealRow(target);
-        }
+        const col = order[colIndex];
+        idx = Math.max(0, Math.min(Settings.mods[col].length, idx));
+        dropAt = { col: col, idx: idx };
         return true;
     }
 
-    function revealRow(row) {
-        const point = row.mapToItem(columnsRow, 0, 0);
-        if (point.y < columnsViewport.contentY)
-            columnsViewport.contentY = Math.max(0, point.y - 4);
-        else if (point.y + row.height > columnsViewport.contentY + columnsViewport.height)
-            columnsViewport.contentY = Math.min(columnsViewport.contentHeight - columnsViewport.height,
-                point.y + row.height - columnsViewport.height + 4);
-    }
-
-    function revealDrop() {
-        if (!dropAt)
-            return;
-        const column = dropAt.col === "left" ? colL : dropAt.col === "center" ? colC : colR;
-        const y = column.y + rowsStartY + dropAt.idx * pitch;
-        if (y < columnsViewport.contentY + 12)
-            columnsViewport.contentY = Math.max(0, y - 12);
-        else if (y > columnsViewport.contentY + columnsViewport.height - 12)
-            columnsViewport.contentY = Math.min(columnsViewport.contentHeight - columnsViewport.height,
-                y - columnsViewport.height + 12);
-    }
-
-    // ---- components -------------------------------------------------------
-    component MiniChip: Rectangle {
-        required property var modelData
-
-        readonly property bool on: modelData.on
-
-        height: 18
-        width: Math.min(104, chipText.implicitWidth + 12)
-        radius: 4
-        color: on ? Theme.chip : "transparent"
-        border.width: on ? 0 : 1
-        border.color: Theme.stroke
-
-        Text {
-            id: chipText
-            anchors.centerIn: parent
-            width: parent.width - 10
-            horizontalAlignment: Text.AlignHCenter
-            text: page.widgetMeta[parent.modelData.id].short
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            font.weight: Theme.weightMedium
-            color: parent.on ? Theme.textMid : Theme.textFaint
-            elide: Text.ElideRight
-        }
-    }
-
-    component ModuleRow: Rectangle {
-        id: row
+    // ---- lane chip --------------------------------------------------------
+    component LaneChip: Rectangle {
+        id: chip
 
         required property var modelData
         required property int index
         required property string colId
 
-        readonly property var meta: page.widgetMeta[modelData.id]
-        readonly property bool dragged: page.dragMod !== null && page.dragMod.id === modelData.id
-
-        width: parent.width
-        height: 28
-        radius: 7
-        color: modelData.on ? Theme.cardFill : "transparent"
-        border.width: activeFocus ? 1 : 0
-        border.color: activeFocus ? Theme.accent : Theme.hairline
-        opacity: row.dragged ? 0.35 : modelData.on ? 1 : 0.55
-        activeFocusOnTab: index === 0 && (colId === "left"
-            || (Settings.mods.left.length === 0 && colId === "center")
-            || (Settings.mods.left.length === 0 && Settings.mods.center.length === 0
-                && colId === "right"))
-        Accessible.role: Accessible.ListItem
-        Accessible.name: row.meta.name
-        Accessible.description: page.dragActive ? "Drag in progress" : "Press Space to pick up"
-        Accessible.selected: row.dragged
-        Accessible.onPressAction: page.keyboardToggle(row)
-        onActiveFocusChanged: {
-            if (activeFocus)
-                page.revealRow(row);
+        readonly property string entryId: modelData.id
+        readonly property int fullIndex: {
+            void Settings.revision;
+            return Settings.mods[colId].findIndex(entry => entry.id === entryId);
         }
+        readonly property bool dragged: page.dragMod !== null
+            && page.dragMod.id === entryId
+
+        height: 26
+        width: chipRow.implicitWidth + 14
+        radius: 7
+        color: Theme.chip
+        opacity: chip.dragged ? 0.35 : 1
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+        activeFocusOnTab: colId === "left" && index === 0
+        Accessible.role: Accessible.ListItem
+        Accessible.name: page.widgetMeta[chip.entryId].name
+        Accessible.description: page.dragActive
+            ? "Drag in progress" : "Press Space to pick up"
+        Accessible.selected: chip.dragged
+        Accessible.onPressAction: page.keyboardToggle(chip)
+        Controls.ToolTip.visible: chipDrag.containsMouse && !page.dragActive
+        Controls.ToolTip.text: page.widgetMeta[chip.entryId].name
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Space) {
-                page.keyboardToggle(row); event.accepted = true;
+                page.keyboardToggle(chip); event.accepted = true;
             } else if (event.key === Qt.Key_Escape && page.dragActive) {
                 page.cancelDrag(); event.accepted = true;
             } else if (page.keyboardMove(event.key)) {
                 event.accepted = true;
-            } else if (!page.dragActive && page.focusAdjacent(row, event.key)) {
-                event.accepted = true;
+            }
+        }
+
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 5
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "⠿"
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontMicro
+                color: Theme.textDim
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: page.widgetMeta[chip.entryId].short
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontMicro
+                font.weight: Theme.weightSemibold
+                color: Theme.textMid
             }
         }
 
         MouseArea {
-            id: dragArea
+            id: chipDrag
             anchors.fill: parent
+            hoverEnabled: true
             cursorShape: page.dragActive ? Qt.ClosedHandCursor : Qt.OpenHandCursor
             preventStealing: true
 
@@ -296,112 +238,173 @@ Item {
             onPressed: mouse => pressPos = Qt.point(mouse.x, mouse.y)
             onPositionChanged: mouse => {
                 if (!page.dragActive) {
-                    if (Math.abs(mouse.x - pressPos.x) + Math.abs(mouse.y - pressPos.y) < 4)
+                    if (Math.abs(mouse.x - pressPos.x)
+                            + Math.abs(mouse.y - pressPos.y) < 4)
                         return;
-                    page.dragMod = { id: row.modelData.id, name: row.meta.name, fromCol: row.colId };
-                    page.announcement = row.meta.name + " picked up.";
-                    edgeScroll.start();
+                    page.dragMod = { id: chip.entryId,
+                        name: page.widgetMeta[chip.entryId].name,
+                        fromCol: chip.colId };
+                    page.announcement = page.widgetMeta[chip.entryId].name
+                        + " picked up.";
                 }
-                page.dragPos = dragArea.mapToItem(columnsViewport, mouse.x, mouse.y);
-                page.updateDrop(Qt.point(page.dragPos.x,
-                    page.dragPos.y + columnsViewport.contentY));
+                page.dragPos = chipDrag.mapToItem(laneStrip, mouse.x, mouse.y);
+                page.updateDrop(page.dragPos);
             }
             onReleased: {
                 if (page.dragActive)
                     page.commitDrag();
             }
             onCanceled: page.cancelDrag()
-            onClicked: row.forceActiveFocus()
+            onClicked: chip.forceActiveFocus()
+        }
+    }
+
+    component Lane: Row {
+        id: lane
+
+        required property string colId
+
+        spacing: 4
+
+        function chipForId(id) {
+            for (let i = 0; i < laneRepeater.count; i++) {
+                const item = laneRepeater.itemAt(i) as LaneChip;
+                if (item && item.entryId === id)
+                    return item;
+            }
+            return null;
         }
 
-        Item {
+        // id -> chip centre x in replica coordinates, for barDropIndex.
+        function chipCenters() {
+            const centers = {};
+            for (let i = 0; i < laneRepeater.count; i++) {
+                const item = laneRepeater.itemAt(i) as LaneChip;
+                if (item)
+                    centers[item.entryId] = item.mapToItem(laneStrip, 0, 0).x
+                        + item.width / 2;
+            }
+            return centers;
+        }
+
+        // Where the insertion caret sits for a drop at `idx` (full-list),
+        // in replica coordinates.
+        function caretX(idx) {
+            for (let i = 0; i < laneRepeater.count; i++) {
+                const item = laneRepeater.itemAt(i) as LaneChip;
+                if (item && item.fullIndex >= idx)
+                    return item.mapToItem(laneStrip, 0, 0).x - 3;
+            }
+            const last = laneRepeater.itemAt(laneRepeater.count - 1);
+            if (last)
+                return last.mapToItem(laneStrip, 0, 0).x + last.width + 1;
+            return lane.mapToItem(laneStrip, 0, 0).x;
+        }
+
+        Repeater {
+            id: laneRepeater
+            model: page.laneEntries(lane.colId)
+            delegate: LaneChip { colId: lane.colId }
+        }
+    }
+
+    // ---- catalog cell -----------------------------------------------------
+    component CatalogCell: Rectangle {
+        id: cell
+
+        property string entryId: ""
+
+        readonly property var meta: page.widgetMeta[entryId] ?? ({ name: entryId })
+        readonly property var entry: {
+            void Settings.revision;
+            for (const col of ["left", "center", "right"]) {
+                const hit = Settings.mods[col].find(m => m.id === cell.entryId);
+                if (hit)
+                    return hit;
+            }
+            return { on: false, detail: "auto" };
+        }
+        readonly property bool hasOptions: cell.meta.detail === true
+            || Settings.defaults.modOpts[entryId] !== undefined
+        readonly property bool optsDirty: {
+            void Settings.revision;
+            return cell.entry.detail !== "auto"
+                || (Settings.defaults.modOpts[cell.entryId] !== undefined
+                    && JSON.stringify(Settings.modOpts[cell.entryId])
+                        !== JSON.stringify(Settings.defaults.modOpts[cell.entryId]));
+        }
+        readonly property bool expanded: page.subPage === entryId
+
+        visible: entryId !== ""
+        height: 32
+        radius: Theme.rowRadius
+        color: expanded ? Theme.chip
+            : cellHover.hovered ? Theme.hoverFill : "transparent"
+
+        HoverHandler {
+            id: cellHover
+        }
+
+        Text {
+            id: cellName
             anchors.left: parent.left
-            anchors.leftMargin: 8
-            anchors.right: cogButton.visible ? cogButton.left : rowSwitch.left
-            anchors.rightMargin: 6
+            anchors.leftMargin: 10
+            anchors.right: cellTag.left
+            anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            height: parent.height
+            text: cell.meta.name
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontSecondary
+            font.weight: Theme.weightMedium
+            color: cell.entry.on ? Theme.textHi : Theme.textLow
+            elide: Text.ElideRight
+        }
 
-            Text {
-                id: rowHandle
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                text: "⠿"
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.fontCaption
-                color: Theme.textDim
-            }
-
-            Text {
-                id: rowName
-                anchors.left: rowHandle.right
-                anchors.leftMargin: 6
-                anchors.right: rowTag.visible ? rowTag.left : parent.right
-                anchors.rightMargin: rowTag.visible ? 6 : 0
-                anchors.verticalCenter: parent.verticalCenter
-                text: row.meta.name
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                color: row.modelData.on ? Theme.textMid : Theme.textLow
-                elide: Text.ElideRight
-            }
-
-            Text {
-                id: rowTag
-                // Optional tags yield to the complete module name. Never make
-                // the name elide merely to preserve secondary metadata.
-                visible: row.meta.tag !== undefined
-                    && rowName.implicitWidth + implicitWidth + rowHandle.width + 18 <= parent.width
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: row.meta.tag ?? ""
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                color: Theme.textFaint
-            }
+        Text {
+            id: cellTag
+            anchors.right: cellCog.visible ? cellCog.left : cellSwitch.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, 110)
+            text: cell.meta.tag ?? ""
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontMicro
+            color: Theme.textFaint
+            elide: Text.ElideRight
         }
 
         Rectangle {
-            id: cogButton
-            visible: row.meta.detail === true
-                || Settings.defaults.modOpts[row.modelData.id] !== undefined
-            anchors.right: rowSwitch.left
-            anchors.rightMargin: 1
+            id: cellCog
+            visible: cell.hasOptions
+            anchors.right: cellSwitch.left
+            anchors.rightMargin: 3
             anchors.verticalCenter: parent.verticalCenter
-            width: 22
-            height: 22
-            radius: 5
+            width: 24
+            height: 24
+            radius: 6
             color: cogMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accent
             activeFocusOnTab: visible
-            onActiveFocusChanged: {
-                if (activeFocus)
-                    page.revealRow(row);
-            }
             Accessible.role: Accessible.Button
-            Accessible.name: row.meta.name + " settings"
-            Accessible.onPressAction: page.openSubPage(row.modelData.id)
+            Accessible.name: cell.meta.name + " settings"
+            Accessible.onPressAction: page.openSubPage(cell.entryId)
             Controls.ToolTip.visible: cogMouse.containsMouse
-            Controls.ToolTip.text: "Widget settings"
-
-            // Dirty when the detail policy or any widget option left default.
-            readonly property bool optsDirty: row.modelData.detail !== "auto"
-                || (Settings.defaults.modOpts[row.modelData.id] !== undefined
-                    && JSON.stringify(Settings.modOpts[row.modelData.id])
-                        !== JSON.stringify(Settings.defaults.modOpts[row.modelData.id]))
+            Controls.ToolTip.text: cell.expanded
+                ? "Collapse widget settings" : "Widget settings"
 
             Sym {
                 anchors.centerIn: parent
-                name: "\u{F0493}"
+                name: "tune"
                 size: Theme.iconSmall
-                color: cogButton.optsDirty ? Theme.accent : Theme.textDim
+                color: cell.optsDirty ? Theme.accent
+                    : cell.expanded ? Theme.textHi : Theme.textDim
             }
 
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                         || event.key === Qt.Key_Space) {
-                    page.openSubPage(row.modelData.id);
+                    page.openSubPage(cell.entryId);
                     event.accepted = true;
                 }
             }
@@ -412,339 +415,403 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    cogButton.forceActiveFocus();
-                    page.openSubPage(row.modelData.id);
+                    cellCog.forceActiveFocus();
+                    page.openSubPage(cell.entryId);
                 }
             }
         }
 
         Toggle {
-            id: rowSwitch
+            id: cellSwitch
             anchors.right: parent.right
-            anchors.rightMargin: 8
+            anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             metrics: Theme.switchCompact
-            checked: row.modelData.on
-            accessibleName: "Show " + row.meta.name
-            onActiveFocusChanged: {
-                if (activeFocus)
-                    page.revealRow(row);
-            }
-            onToggled: value => Settings.setModuleEnabled(row.modelData.id, value)
+            checked: cell.entry.on
+            accessibleName: "Show " + cell.meta.name
+            onToggled: value => Settings.setModuleEnabled(cell.entryId, value)
         }
     }
 
-    component ModuleColumn: Item {
-        id: column
+    // One catalog grid row: two cells side by side, plus the inline
+    // widget-settings panel when one of its cells is expanded.
+    component CatalogPair: Column {
+                    id: catalogPair
 
-        required property string colId
-        required property string title
+                    required property int index
 
-        readonly property var list: Settings.mods[colId]
-        readonly property int naturalHeight: page.rowsStartY
-            + list.length * page.pitch
+                    readonly property string leftId: page.catalogIds[index * 2] ?? ""
+                    readonly property string rightId: page.catalogIds[index * 2 + 1] ?? ""
+                    readonly property bool holdsExpansion: page.subPageActive
+                        && (page.subPage === leftId || page.subPage === rightId)
 
-        function rowForId(id) {
-            const index = list.findIndex(candidate => candidate.id === id);
-            return index >= 0 ? rowRepeater.itemAt(index) : null;
-        }
+                    function focusCell(side) {
+                        const cell = side === 0 ? leftCell : rightCell;
+                        cell.forceActiveFocus();
+                    }
 
+                    width: parent.width
+                    spacing: 4
 
-        function rowAt(index) {
-            return rowRepeater.itemAt(index);
-        }
+                    Row {
+                        width: parent.width
+                        spacing: 12
 
-        Text {
-            text: column.title
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
-            font.weight: Theme.weightSemibold
-            font.letterSpacing: 0.8
-            color: Theme.textDim
-        }
+                        CatalogCell {
+                            id: leftCell
+                            width: (parent.width - 12) / 2
+                            entryId: catalogPair.leftId
+                        }
 
-        Column {
-            y: page.rowsStartY
-            width: parent.width
-            spacing: 3
+                        CatalogCell {
+                            id: rightCell
+                            width: (parent.width - 12) / 2
+                            entryId: catalogPair.rightId
+                        }
+                    }
 
-            Repeater {
-                id: rowRepeater
-                model: column.list
-                delegate: ModuleRow { colId: column.colId }
-            }
-        }
+                    // The inline widget-settings panel, expanded under the
+                    // grid row that owns it and spanning both columns.
+                    Loader {
+                        active: catalogPair.holdsExpansion
+                        visible: active
+                        width: parent.width
 
-        // Insertion caret in the row gap — an overlay, so rows never move.
-        Rectangle {
-            id: caret
-            visible: page.dragActive && page.dropAt !== null && page.dropAt.col === column.colId
-            x: 2
-            width: parent.width - 4
-            height: 2
-            radius: 1
-            y: page.rowsStartY + (page.dropAt ? page.dropAt.idx : 0) * page.pitch - 2.5
-            color: Theme.accent
-            z: 10
-        }
+                        sourceComponent: Rectangle {
+                            width: parent ? parent.width : 0
+                            implicitHeight: panelColumn.implicitHeight + 20
+                            radius: 10
+                            color: Theme.cardFill
+                            border.width: 1
+                            border.color: Theme.hairlineSoft
 
-        RectangularShadow {
-            visible: caret.visible
-            anchors.fill: caret
-            radius: 1
-            blur: 8
-            color: Theme.accentAlpha(0.8)
-            z: 9
-        }
-    }
+                            Column {
+                                id: panelColumn
+                                x: 12
+                                y: 10
+                                width: parent.width - 24
+                                spacing: 4
+
+                                Item {
+                                    width: parent.width
+                                    height: 22
+
+                                    Text {
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: (page.widgetMeta[page.subPage] ?? ({ name: page.subPage })).name.toUpperCase()
+                                            + " · WIDGET SETTINGS"
+                                        font.family: Theme.fontMenu
+                                        font.pixelSize: Theme.fontMicro
+                                        font.weight: Theme.weightSemibold
+                                        font.letterSpacing: 1
+                                        color: Theme.textFaint
+                                    }
+
+                                    SettingsAction {
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Collapse"
+                                        glyph: "collapse_all"
+                                        onTriggered: page.closeSubPage()
+                                    }
+                                }
+
+                                ModuleDetailView {
+                                    width: parent.width
+                                    height: contentHeight
+                                    interactive: false
+                                    inlineMode: true
+                                    moduleId: page.subPage
+                                    moduleName: (page.widgetMeta[page.subPage]
+                                        ?? ({ name: "" })).name
+                                    hasDetail: (page.widgetMeta[page.subPage]
+                                        ?? ({})).detail === true
+                                    onBackRequested: page.closeSubPage()
+                                }
+                            }
+                        }
+                    }
+                }
 
     // ---- layout -----------------------------------------------------------
-    SectionHeader {
-        id: previewHeader
-        visible: !detailLoader.item
-        label: "LIVE PREVIEW"
-        dirty: Settings.modsModified
-        onResetRequested: Settings.resetKeys(["mods"], "Widgets")
-    }
+    Column {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        spacing: 12
 
-    Rectangle {
-        id: miniBar
-        visible: !detailLoader.item
-        anchors.top: presetRow.bottom
-        anchors.topMargin: 10
-        width: parent.width
-        height: 30
-        radius: 9
-        color: Theme.cardFill
-        clip: true
-
-        // Chips laid out at token size in a 0.72-scaled space, matching the
-        // design's miniature scale without a sub-floor pixel size.
-        Item {
-            width: parent.width / 0.72
-            height: parent.height / 0.72
-            scale: 0.72
-            transformOrigin: Item.TopLeft
+        SettingsGroup {
+            width: parent.width
+            title: "Lanes · drag here or on the bar"
+            dirty: Settings.modsModified
+            onResetRequested: Settings.resetKeys(["mods"], "Widgets")
 
             Item {
-                id: previewLeftLane
-                x: 8
-                y: 0
-                width: Math.max(0, parent.width / 3 - 12)
-                height: parent.height
-                clip: true
-                Row {
+                width: parent.width
+                height: 26
+
+                Text {
                     anchors.left: parent.left
+                    anchors.leftMargin: Theme.settingsMarkInset
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
-                    Repeater { model: Settings.mods.left; delegate: MiniChip {} }
+                    text: "Profile"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontMicro
+                    color: Theme.textFaint
                 }
-            }
 
-            Item {
-                id: previewCenterLane
-                x: parent.width / 3 + 4
-                y: 0
-                width: Math.max(0, parent.width / 3 - 8)
-                height: parent.height
-                clip: true
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
-                    Repeater { model: Settings.mods.center; delegate: MiniChip {} }
-                }
-            }
-
-            Item {
-                id: previewRightLane
-                x: parent.width * 2 / 3 + 4
-                y: 0
-                width: Math.max(0, parent.width / 3 - 12)
-                height: parent.height
-                clip: true
                 Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 3
-                    Repeater { model: Settings.mods.right; delegate: MiniChip {} }
+                    spacing: 2
+
+                    SettingsAction { text: "Focused"; onTriggered: Settings.applyModulePreset("focused") }
+                    SettingsAction { text: "Connected"; onTriggered: Settings.applyModulePreset("connected") }
+                    SettingsAction { text: "Everything"; onTriggered: Settings.applyModulePreset("everything") }
+                }
+            }
+
+            Rectangle {
+                id: laneStrip
+                width: parent.width
+                height: 40
+                radius: 10
+                color: Theme.cardFill
+
+                readonly property real laneUnit: (width - 16 - 12) / 3
+
+                // Each lane clips to its own third of the replica, so an
+                // overfull lane truncates instead of colliding with the next.
+                Item {
+                    id: laneLeftBox
+                    x: 8
+                    width: laneStrip.laneUnit
+                    height: parent.height
+                    clip: true
+
+                    Lane {
+                        id: laneLeft
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        colId: "left"
+                    }
+                }
+
+                Item {
+                    id: laneCenterBox
+                    x: 8 + laneStrip.laneUnit + 6
+                    width: laneStrip.laneUnit
+                    height: parent.height
+                    clip: true
+
+                    Lane {
+                        id: laneCenter
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.verticalCenter: parent.verticalCenter
+                        colId: "center"
+                    }
+                }
+
+                Item {
+                    id: laneRightBox
+                    x: 8 + (laneStrip.laneUnit + 6) * 2
+                    width: laneStrip.laneUnit
+                    height: parent.height
+                    clip: true
+
+                    Lane {
+                        id: laneRight
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        colId: "right"
+                    }
+                }
+
+                // Insertion caret: a lit vertical mark in the drop gap, the
+                // way the bar's own drag shows its target.
+                Rectangle {
+                    visible: page.dragActive && page.dropAt !== null
+                    x: {
+                        if (!page.dropAt)
+                            return 0;
+                        const lane = page.dropAt.col === "left" ? laneLeft
+                            : page.dropAt.col === "center" ? laneCenter : laneRight;
+                        // Recompute when the order changes under the caret.
+                        void Settings.revision;
+                        return Math.max(2, Math.min(laneStrip.width - 4,
+                            lane.caretX(page.dropAt.idx)));
+                    }
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 2
+                    height: 26
+                    radius: 1
+                    color: Theme.accent
+                    z: 10
+                }
+
+                // Floating proxy chip that follows the pointer.
+                Rectangle {
+                    visible: page.dragActive
+                    x: page.dragPos.x + 10
+                    y: page.dragPos.y - 34
+                    width: proxyRow.implicitWidth + 16
+                    height: 26
+                    radius: 7
+                    color: Theme.popBg
+                    border.width: 1
+                    border.color: Theme.popBorder
+                    opacity: 0.92
+                    z: 30
+
+                    Row {
+                        id: proxyRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "⠿"
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontMicro
+                            color: Theme.textDim
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: page.dragMod ? page.dragMod.name : ""
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Theme.weightSemibold
+                            color: Theme.textHi
+                        }
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 16
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 6
+                    text: "LEFT"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontMicro
+                    font.letterSpacing: 0.8
+                    color: Theme.textFaint
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "CENTER"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontMicro
+                    font.letterSpacing: 0.8
+                    color: Theme.textFaint
+                }
+                Text {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    text: page.dragActive && page.dropAt !== null
+                        ? "RIGHT · drop to place" : "RIGHT"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontMicro
+                    font.letterSpacing: 0.8
+                    color: page.dragActive ? Theme.textMid : Theme.textFaint
                 }
             }
         }
-    }
 
-    ResponsiveActionRow {
-        id: presetRow
-        visible: !detailLoader.item
-        anchors.top: previewHeader.bottom
-        anchors.topMargin: 6
-        width: parent.width
-        actionsFirst: true
-        description: "Visibility profiles preserve widget order and options"
-
-        SettingsAction { text: "Focused"; onTriggered: Settings.applyModulePreset("focused") }
-        SettingsAction { text: "Connected"; onTriggered: Settings.applyModulePreset("connected") }
-        SettingsAction { text: "Everything"; onTriggered: Settings.applyModulePreset("everything") }
-    }
-
-    Flickable {
-        id: columnsViewport
-        visible: !detailLoader.item
-        anchors.top: miniBar.bottom
-        anchors.topMargin: 10
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: footnote.top
-        anchors.bottomMargin: 8
-        contentWidth: width
-        contentHeight: columnsRow.height
-        boundsBehavior: Flickable.StopAtBounds
-        clip: true
-
-        Item {
-        id: columnsRow
-        width: columnsViewport.width
-        height: page.stacked
-            ? colL.naturalHeight + colC.naturalHeight + colR.naturalHeight + 16
-            : Math.max(columnsViewport.height,
-                Math.max(colL.naturalHeight, colC.naturalHeight, colR.naturalHeight))
-
-        readonly property real unit: (width - 16) / 3
-
-        ModuleColumn {
-            id: colL
-            x: 0
-            y: 0
-            width: page.stacked ? parent.width : columnsRow.unit
-            height: page.stacked ? naturalHeight : parent.height
-            colId: "left"
-            title: "LEFT"
-        }
-
-        ModuleColumn {
-            id: colC
-            x: page.stacked ? 0 : columnsRow.unit + 8
-            y: page.stacked ? colL.y + colL.height + 8 : 0
-            width: page.stacked ? parent.width : columnsRow.unit
-            height: page.stacked ? naturalHeight : parent.height
-            colId: "center"
-            title: "CENTER"
-        }
-
-        ModuleColumn {
-            id: colR
-            x: page.stacked ? 0 : (columnsRow.unit + 8) * 2
-            y: page.stacked ? colC.y + colC.height + 8 : 0
-            width: page.stacked ? parent.width : columnsRow.unit
-            height: page.stacked ? naturalHeight : parent.height
-            colId: "right"
-            title: "RIGHT"
-        }
-        }
-    }
-
-    ScrollChrome {
-        visible: columnsViewport.visible && overflow
-        anchors.fill: columnsViewport
-        target: columnsViewport
-    }
-
-    Timer {
-        id: edgeScroll
-        interval: 16
-        repeat: true
-        onTriggered: {
-            if (!page.dragActive)
-                return;
-            const edge = 28;
-            let delta = 0;
-            if (page.dragPos.y < edge)
-                delta = -Math.max(2, (edge - page.dragPos.y) / 4);
-            else if (page.dragPos.y > columnsViewport.height - edge)
-                delta = Math.max(2, (page.dragPos.y - columnsViewport.height + edge) / 4);
-            const next = Math.max(0, Math.min(columnsViewport.contentHeight - columnsViewport.height,
-                columnsViewport.contentY + delta));
-            if (next !== columnsViewport.contentY) {
-                columnsViewport.contentY = next;
-                page.updateDrop(Qt.point(page.dragPos.x, page.dragPos.y + next));
-            }
-        }
-    }
-
-    Text {
-        id: footnote
-        visible: !detailLoader.item
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        text: "Drag here or on the bar itself; or Space to pick up, arrows move, Space drops, Escape cancels. The cog opens a widget's settings."
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
-        color: Theme.textFaint
-        wrapMode: Text.Wrap
-        maximumLineCount: 2
-    }
-
-    // Floating proxy row that follows the pointer during a drag.
-    Rectangle {
-        visible: page.dragActive
-        x: columnsViewport.x + page.dragPos.x + 8
-        y: columnsViewport.y + page.dragPos.y - 14
-        width: proxyRow.implicitWidth + 16
-        height: 28
-        radius: 7
-        color: Theme.popBg
-        border.width: 1
-        border.color: Theme.popBorder
-        opacity: 0.92
-        z: 30
-
-        Row {
-            id: proxyRow
-            anchors.centerIn: parent
-            spacing: 6
+        SettingsGroup {
+            width: parent.width
+            title: "All widgets"
 
             Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "⠿"
-                font.family: Theme.fontMono
+                width: parent.width
+                leftPadding: Theme.settingsMarkInset
+                bottomPadding: 4
+                text: page.enabledCount + " of " + page.catalogIds.length
+                    + " shown · switch off to remove from its lane"
+                font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
                 color: Theme.textDim
             }
 
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: page.dragMod ? page.dragMod.name : ""
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
-                color: Theme.textHi
+            Repeater {
+                id: catalogRepeater
+                model: Math.ceil(page.catalogIds.length / 2)
+
+                delegate: CatalogPair {}
             }
         }
     }
 
-    // Per-widget settings sub-page: replaces the list content while open;
-    // the list keeps its instance (and scroll position) underneath. Built
-    // asynchronously so the cog click is not spent constructing it, which is
-    // why the list hides on `detailLoader.item` rather than on subPageActive
-    // — the sub-page is transparent, so swapping a frame early would show
-    // both, and a frame late would show neither.
-    Loader {
-        id: detailLoader
-        anchors.fill: parent
-        active: page.subPageActive
-        asynchronous: true
-        // Incubation finishes after openSubPage has returned, so the sub-page
-        // claims focus here; a callLater would still find item null.
-        onLoaded: {
-            const detail = item as ModuleDetailView;
-            if (page.subPageActive && detail)
-                detail.focusFirst();
-        }
-        sourceComponent: ModuleDetailView {
-            moduleId: page.subPage
-            moduleName: (page.widgetMeta[page.subPage] ?? ({ name: "" })).name
-            hasDetail: (page.widgetMeta[page.subPage] ?? ({})).detail === true
-            onBackRequested: page.closeSubPage()
+    // Post-preset undo: a floating chip over the page, not a reserved row
+    // (turn-3 design). Settings' eight-second undo window owns its lifetime.
+    Rectangle {
+        parent: page
+        visible: Settings.undoAvailable && Settings.resetLabel === "Widget profile"
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 10
+        width: undoRow.implicitWidth + 20
+        height: 32
+        radius: 9
+        color: Theme.popBg
+        border.width: 1
+        border.color: Theme.popBorder
+        z: 40
+
+        Row {
+            id: undoRow
+            anchors.centerIn: parent
+            spacing: 10
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Widget profile applied"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: Theme.textMid
+            }
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: undoLabel.implicitWidth + 16
+                height: 24
+                radius: 6
+                color: undoMouse.containsMouse ? Theme.chipHover : Theme.chip
+                activeFocusOnTab: parent.parent.visible
+                Accessible.role: Accessible.Button
+                Accessible.name: "Undo widget profile"
+                Accessible.onPressAction: Settings.undoReset()
+
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                            || event.key === Qt.Key_Space) {
+                        Settings.undoReset(); event.accepted = true;
+                    }
+                }
+
+                Text {
+                    id: undoLabel
+                    anchors.centerIn: parent
+                    text: "Undo"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemibold
+                    color: Theme.accent
+                }
+
+                MouseArea {
+                    id: undoMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Settings.undoReset()
+                }
+            }
         }
     }
 

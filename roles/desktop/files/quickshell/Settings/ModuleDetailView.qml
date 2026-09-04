@@ -11,6 +11,10 @@ SettingsPage {
     required property string moduleId
     required property string moduleName
     property bool hasDetail: false
+    // Embedded under a catalog row (turn-3 design): the inline panel draws
+    // its own header, so the back action and title stay hidden and the view
+    // reports its natural height for the panel to size against.
+    property bool inlineMode: false
     signal backRequested()
 
     readonly property var opts: Settings.modOpts[moduleId] ?? ({})
@@ -26,7 +30,8 @@ SettingsPage {
     }
 
     function focusFirst() {
-        backAction.forceActiveFocus();
+        if (!view.inlineMode)
+            backAction.forceActiveFocus();
     }
 
     function optDirty(key) {
@@ -53,6 +58,8 @@ SettingsPage {
         spacing: 8
 
         Row {
+            visible: !view.inlineMode
+            height: visible ? implicitHeight : 0
             spacing: 8
 
             SettingsAction {
@@ -74,6 +81,7 @@ SettingsPage {
         }
 
         SectionHeader {
+            visible: !view.inlineMode
             label: "OPTIONS"
         }
 
@@ -299,7 +307,7 @@ SettingsPage {
 
             Text {
                 width: parent.width
-                leftPadding: Theme.settingsLabelWidth
+                leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
                 text: "12/24-hour time is set on the System page. Google sign-in is handled by GNOME Online Accounts; credentials never enter Quickshell."
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption

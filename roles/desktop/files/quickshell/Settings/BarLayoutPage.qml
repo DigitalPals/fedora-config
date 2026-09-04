@@ -2,7 +2,9 @@ import QtQuick
 import "../Common"
 
 // The persisted page id remains `bar`; only the visible name and grouping
-// change. Floating-only geometry stays stored while its controls are hidden.
+// change. There is no preview strip: the live bar directly above the sheet
+// is the preview (turn-3 design). Floating-only geometry stays stored while
+// its controls are dimmed.
 SettingsPage {
     id: page
 
@@ -11,75 +13,6 @@ SettingsPage {
         anchors.right: parent.right
         anchors.top: parent.top
         spacing: 12
-
-        SettingsGroup {
-            width: parent.width
-            title: "Preview"
-
-            PreviewStrip {
-                width: parent.width
-                height: 108
-                badgeText: Settings.position + " · " + Settings.barStyle
-                    + (Settings.autoHide ? " · auto-hide" : "")
-
-                Rectangle {
-                    readonly property real previewGap: Settings.barStyle === "floating"
-                        ? Math.max(4, Math.min(20, Settings.gap)) : 0
-                    x: previewGap
-                    y: Settings.position === "top"
-                        ? previewGap : parent.height - height - previewGap
-                    width: parent.width - previewGap * 2
-                    height: Math.max(17, Math.round(Settings.barHeight * 0.42))
-                    radius: Settings.barStyle === "floating"
-                        ? Math.max(2, Math.round(Settings.barRadius * 0.5)) : 0
-                    color: Theme.barSurface
-                    opacity: Settings.autoHide ? 0.4 : 1
-
-                    Behavior on x { NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic } }
-                    Behavior on y { NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic } }
-                    Behavior on width { NumberAnimation { duration: Theme.popoutContentFadeDuration; easing.type: Easing.OutCubic } }
-                    Behavior on opacity { NumberAnimation { duration: Theme.popoutContentFadeDuration } }
-
-                    HugCorner {
-                        visible: Settings.barStyle === "hug"
-                        x: 0
-                        y: Settings.position === "top" ? parent.height : -height
-                        bottomCorner: Settings.position === "bottom"
-                        cornerSize: 7
-                        fillColor: Theme.barSurface
-                    }
-                    HugCorner {
-                        visible: Settings.barStyle === "hug"
-                        x: parent.width - width
-                        y: Settings.position === "top" ? parent.height : -height
-                        rightCorner: true
-                        bottomCorner: Settings.position === "bottom"
-                        cornerSize: 7
-                        fillColor: Theme.barSurface
-                    }
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 7
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 9; height: 5; radius: 2.5
-                        color: Theme.barWsCurrent
-                    }
-                    Row {
-                        anchors.right: parent.right
-                        anchors.rightMargin: 7
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3
-                        Repeater {
-                            model: 3
-                            delegate: Rectangle {
-                                width: 5; height: 5; radius: 2.5
-                                color: Theme.barDotDim
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         SettingsGroup {
             width: parent.width
@@ -138,27 +71,25 @@ SettingsPage {
                 ]
             }
 
-            Revealer {
-                id: floatingReveal
+            // Floating-only geometry stays visible but dimmed when another
+            // style is active (turn-3 design), so the rows never jump.
+            SliderRow {
                 width: parent.width
-                reveal: Settings.barStyle === "floating"
-
-                Column {
-                    width: floatingReveal.width
-                    spacing: 4
-                    SliderRow {
-                        width: parent.width
-                        label: "Edge gap"
-                        settingKey: "gap"
-                        min: 4; max: 20; step: 1; unit: "px"
-                    }
-                    SliderRow {
-                        width: parent.width
-                        label: "Corner radius"
-                        settingKey: "barRadius"
-                        min: 0; max: 30; step: 1; unit: "px"
-                    }
-                }
+                label: "Edge gap"
+                settingKey: "gap"
+                min: 4; max: 20; step: 1; unit: "px"
+                dimmed: Settings.barStyle !== "floating"
+                enabled: Settings.barStyle === "floating"
+                opacity: Settings.barStyle === "floating" ? 1 : 0.45
+            }
+            SliderRow {
+                width: parent.width
+                label: "Corner radius"
+                settingKey: "barRadius"
+                min: 0; max: 30; step: 1; unit: "px"
+                dimmed: Settings.barStyle !== "floating"
+                enabled: Settings.barStyle === "floating"
+                opacity: Settings.barStyle === "floating" ? 1 : 0.45
             }
         }
 

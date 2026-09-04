@@ -67,13 +67,16 @@ var PANELS = [
     { name: "overflow", island: "right", moduleId: "", source: "Popovers/OverflowPopover.qml" },
 
     // Opened from the settings window and from IPC. The only panel carrying
-    // fillsBody; the flags exist so no consumer has to name it.
+    // fillsBody; the flags exist so no consumer has to name it. Attached per
+    // the turn-3 settings redesign: the sheet hangs from the bar centre like
+    // the Day sheet, and the live bar above it is the preview.
     {
         name: "settings",
         island: "center",
         moduleId: "",
         source: "Settings/SettingsView.qml",
         centerAnchored: true,
+        attached: true,
         fillsBody: true
     }
 ];

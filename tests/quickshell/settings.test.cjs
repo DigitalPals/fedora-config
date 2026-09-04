@@ -412,9 +412,16 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema sixteen keeps safe defaults and exposes accessibility preferences", () => {
+test("schema seventeen keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 16/);
+    assert.match(helpers, /var VERSION = 17/);
+    // Schema 17: the drawer becomes configurable (turn-3 settings design).
+    assert.match(helpers, /drawerHover: "open"/);
+    assert.match(helpers, /drawerWidth: 400/);
+    assert.match(helpers, /function normalizeDrawerTabs\(raw\)/);
+    assert.match(helpers, /function normalizeDrawerOverview\(raw\)/);
+    assert.match(helpers, /id === "overview" \? true/,
+        "the Overview tab can be reordered but never disabled");
     assert.match(helpers, /highContrast: false/);
     assert.match(helpers, /reducedMotion: false/);
     assert.match(helpers, /textScale: "default"/);
@@ -484,8 +491,10 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
 
     assert.match(bar, /LayoutHelpers\.fitBar/);
     assert.doesNotMatch(bar, /width\s*>=\s*Theme\.breakpoint/);
-    assert.match(modules, /LayoutHelpers\.stackedDropIndex/);
-    assert.match(modules, /id:\s*edgeScroll/);
+    assert.match(modules, /LayoutHelpers\.barDropColumn/,
+        "the lane replica resolves drops with the bar's own column math");
+    assert.match(modules, /LayoutHelpers\.barDropIndex/,
+        "drop indices are measured against the full configured list");
     assert.match(wallpaper, /GridView\s*\{/);
     assert.match(folder, /popupType:\s*Controls\.Popup\.Item/);
     assert.match(settings, /interval:\s*8000/);
@@ -508,7 +517,8 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const system = read("Settings/SystemPage.qml");
 
     assert.match(view, /preferredWidth:\s*900/);
-    assert.match(view, /preferredHeight:\s*680/);
+    assert.match(view, /preferredHeight:\s*664/,
+        "the sheet is 44 header + 620 body, hanging from the bar");
     // The gutter is unconditional: making it depend on scrollbarVisible
     // loops (narrower content re-wraps taller and flips the scrollbar).
     assert.match(page, /scrollGutter:\s*8/);
@@ -518,7 +528,9 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     assert.match(theme,
         /readonly property int settingsLabelWidth:\s*scaled\(132, Math\.min\(contentScale, 1\.15\)\)/);
     assert.match(theme, /readonly property int settingsNarrowWidth:\s*520/);
-    assert.match(base, /readonly property int labelWidth:\s*Theme\.settingsLabelWidth/);
+    assert.match(base, /readonly property int labelWidth:\s*markInset/,
+        "the modified-mark gutter is part of every row's label column");
+    assert.match(base, /Theme\.settingsLabelWidth >= root\.minimumLabelWidth/);
     assert.match(picker, /narrowHeight:[\s\S]{0,100}?pills\.implicitHeight/,
         "wrapped narrow picker pills must grow their row");
     assert.match(switchRow, /narrowHeight:[\s\S]{0,100}?descriptionText\.implicitHeight/,
@@ -546,21 +558,45 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
     assert.doesNotMatch(input, /scroll_factor\s*=\s*0\.4/);
 });
 
-test("the grouped rail keeps labeled sections and the rail save state without a page filter", () => {
+test("the grouped rail keeps labeled sections, the save state, and the nav search", () => {
     const view = read("Settings/SettingsView.qml");
     const settings = read("Common/Settings.qml");
+    const searchData = read("Common/SettingsSearchData.js");
 
     assert.match(view, /group:\s*"SHELL"/);
     assert.match(view, /group:\s*"SYSTEM"/);
-    assert.doesNotMatch(view, /property string navQuery/);
-    assert.doesNotMatch(view, /Search settings/);
-    assert.doesNotMatch(view, /clearSearch|matchesQuery/);
     assert.match(view, /id:\s*railFooter/);
     assert.match(view, /Saved · applies live/);
     assert.doesNotMatch(view, /shell-settings\.json/,
         "the config path chip lives on the System page, not a bottom footer");
     assert.match(view, /case "notifications": return notificationsPage;/);
+    assert.match(view, /case "drawer": return drawerPage;/);
     assert.match(settings, /"notifications", "system"\]/);
+
+    // Turn-3 search: "/" focuses the nav field, results jump to and
+    // highlight the row through Settings.highlightKey.
+    assert.match(view, /Qt\.Key_Slash/);
+    assert.match(view, /function jumpToResult\(row\)/);
+    assert.match(view, /SearchData\.search\(searchQuery\)/);
+    assert.match(view, /function handleEscape[\s\S]{0,220}?clearSearch\(\)/,
+        "Escape backs out of a search before anything else");
+    assert.match(settings, /property string highlightKey/);
+
+    // The index is hand-maintained; hold it against the schema so a renamed
+    // key or page cannot leave a search row jumping nowhere.
+    const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
+    const validPages = ["appearance", "wallpaper", "bar", "modules", "drawer",
+        "notifications", "system"];
+    const rows = load("SettingsSearchData.js").ROWS;
+    assert.ok(rows.length >= 30, "the search index must cover the workspace");
+    for (const row of rows) {
+        assert.ok(validPages.includes(row.page),
+            `search row "${row.label}" names unknown page "${row.page}"`);
+        if (row.key !== "")
+            assert.ok(schemaKeys.includes(row.key),
+                `search row "${row.label}" names unknown key "${row.key}"`);
+    }
+    void searchData;
 });
 
 test("settings workspace uses shared responsive groups and bounded header lanes", () => {
@@ -570,14 +606,14 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
     const qmldir = read("Settings/qmldir");
 
     assert.match(view, /preferredWidth:\s*900/);
-    assert.match(view, /preferredHeight:\s*680/);
+    assert.match(view, /preferredHeight:\s*664/);
     assert.match(view, /compactNav:\s*availableWidth < 860/);
     assert.match(view, /height:\s*Theme\.panelRowHeight \+ 2/,
         "navigation rows follow the shared panel rhythm, not a local literal");
     assert.match(view, /headerHeight:\s*44/,
         "the header is one line; the two-line form made it the tallest thing here");
     assert.match(view, /anchors\.right:\s*headerActions\.left/);
-    assert.match(view, /id:\s*headerCopy[\s\S]{0,1400}?elide:\s*Text\.ElideRight/,
+    assert.match(view, /id:\s*headerCopy[\s\S]{0,2000}?elide:\s*Text\.ElideRight/,
         "header copy must be bounded before the action lane");
 
     assert.match(group, /default property alias content:/);
@@ -591,7 +627,7 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
     for (const page of ["AppearancePage", "BarLayoutPage", "NotificationsPage", "SystemPage"])
         assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
             `${page} must use grouped settings sections`);
-    for (const page of ["AppearancePage", "WallpaperPage", "NotificationsPage", "SystemPage"])
+    for (const page of ["AppearancePage", "WallpaperPage", "SystemPage"])
         assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must use bounded responsive action copy`);
 });
@@ -665,14 +701,20 @@ test("progressive disclosure hides inactive controls without discarding latent v
     assert.match(barColors,
         /id:\s*customColorReveal[\s\S]*?reveal:\s*Settings\.barColorMode === "custom"/);
 
-    const floatingAt = bar.indexOf("id: floatingReveal");
+    // Turn-3: floating-only geometry rows stay visible but dimmed and
+    // disabled under other styles, so the page never reflows on a style
+    // change and the latent values stay on screen.
+    const gapAt = bar.indexOf('settingKey: "gap"');
     const behaviorAt = bar.indexOf('title: "Behavior"');
-    assert.ok(floatingAt > 0 && behaviorAt > floatingAt);
-    const floating = bar.slice(floatingAt, behaviorAt);
-    assert.match(floating, /reveal:\s*Settings\.barStyle === "floating"/);
+    assert.ok(gapAt > 0 && behaviorAt > gapAt);
+    const floating = bar.slice(bar.indexOf('title: "Shape"'), behaviorAt);
     assert.match(floating, /settingKey:\s*"gap"/);
     assert.match(floating, /settingKey:\s*"barRadius"/);
-    assert.doesNotMatch(bar.slice(0, floatingAt), /settingKey:\s*"(?:gap|barRadius)"/,
+    const dimmedRows = floating.match(/dimmed:\s*Settings\.barStyle !== "floating"/g) ?? [];
+    assert.equal(dimmedRows.length, 2, "both floating-only rows dim when inactive");
+    const disabledRows = floating.match(/enabled:\s*Settings\.barStyle === "floating"/g) ?? [];
+    assert.equal(disabledRows.length, 2, "dimmed rows must not accept input");
+    assert.equal((bar.match(/settingKey:\s*"(?:gap|barRadius)"/g) ?? []).length, 2,
         "floating-only controls must not have a second focusable copy");
 
     assert.match(reveal, /enabled:\s*root\.reveal/);
@@ -704,14 +746,11 @@ test("wallpaper and module layouts switch before content can collide", () => {
 
     assert.match(wallpaper, /columnCount:\s*width < 520 \? 1 : 2/);
     assert.match(wallpaper, /cellWidth:\s*Math\.floor\(width \/ columnCount\)/);
-    assert.match(modules, /stacked:\s*width < 640/);
-    for (const lane of ["previewLeftLane", "previewCenterLane", "previewRightLane"])
-        assert.match(modules, new RegExp(`id:\\s*${lane}[\\s\\S]{0,180}?clip:\\s*true`),
-            `${lane} must clip its own preview chips`);
-    assert.match(modules, /rowName\.implicitWidth \+ implicitWidth/,
-        "optional module tags must fit alongside the full module name");
+    for (const lane of ["laneLeftBox", "laneCenterBox", "laneRightBox"])
+        assert.match(modules, new RegExp(`id:\\s*${lane}[\\s\\S]{0,220}?clip:\\s*true`),
+            `${lane} must clip its own lane chips`);
     assert.match(modules, /elide:\s*Text\.ElideRight/,
-        "module captions and preview chips must be bounded");
+        "catalog names and tags must be bounded");
 });
 
 test("notification settings drive the toasts and the notification center", () => {
@@ -768,7 +807,10 @@ test("the module cog opens a per-module sub-page inside the Modules page", () =>
     assert.match(modules, /if \(dragActive\)\s*\n\s*return;/,
         "a drag in progress must not be interrupted by opening a sub-page");
     assert.match(modules, /ModuleDetailView \{/);
-    assert.match(modules, /id:\s*cogButton/);
+    assert.match(modules, /id:\s*cellCog/);
+    assert.match(modules, /inlineMode:\s*true/,
+        "widget settings expand inline under the catalog row (turn-3 design)");
+    assert.match(modules, /text:\s*"Collapse"/);
     assert.match(view, /moduleSubPageActive[\s\S]{0,120}?closeModuleSubPage\(\)/,
         "Escape must close an open module sub-page before clearing search");
     assert.match(detail, /Settings\.setModuleDetail\(view\.moduleId/,
@@ -818,7 +860,7 @@ test("an unreadable settings file is preserved before anything saves over it", (
     assert.match(settings,
         /function saveNow\(\) \{\s*\n\s*if \(!ready \|\| migrationPending \|\| corruptBackupPending \|\| loadError/);
     assert.match(settings,
-        /function scheduleSave\(\) \{\s*\n\s*if \(!ready \|\| migrationPending \|\| corruptBackupPending \|\| loadError\)/);
+        /function scheduleSave\(\) \{[\s\S]{0,300}?if \(!ready \|\| migrationPending \|\| corruptBackupPending \|\| loadError\)/);
     const onExited = settings.slice(settings.indexOf("id: corruptBackupProc"));
     const clears = onExited.slice(0, onExited.indexOf("console.warn"))
         .match(/corruptBackupPending = false/g) ?? [];

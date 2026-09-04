@@ -462,7 +462,7 @@ Singleton {
     // The edge drawer and the Day sheet: attached surfaces from the 2026-09
     // redesign. The drawer holds one width across all its tabs so switching
     // never slides the surface; the sheet hangs under the clock.
-    readonly property int drawerWidth: scaled(400, Math.min(contentScale, 1.15))
+    readonly property int drawerWidth: scaled(Settings.drawerWidth, Math.min(contentScale, 1.15))
     readonly property int daySheetWidth: scaled(680, Math.min(contentScale, 1.15))
     readonly property int t3MinWidth: 360
     readonly property int t3MaxWidth: 520
@@ -514,6 +514,9 @@ Singleton {
     // The settings workspace uses one stable label lane in every font. Rows
     // stack below their labels only when the page itself becomes narrow.
     readonly property int settingsLabelWidth: scaled(132, Math.min(contentScale, 1.15))
+    // The modified-mark gutter in front of every settings row: a 6px dot and
+    // its gap, reserved so a row changing state never shifts its label.
+    readonly property int settingsMarkInset: 18
     readonly property int settingsNarrowWidth: 520
 
     // Switch geometry per surface, for Common/Toggle.qml: `box` is the hit

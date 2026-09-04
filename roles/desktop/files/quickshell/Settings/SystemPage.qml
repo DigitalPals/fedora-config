@@ -100,7 +100,7 @@ SettingsPage {
             Text {
                 width: parent.width
                 leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? 0 : Theme.settingsLabelWidth + 10
+                    ? 0 : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
                 text: "Tint applies while Night light is on in Control Panel — "
                     + (SysInfo.nightLight ? "currently on" : "currently off")
                 font.family: Theme.fontMenu
@@ -141,7 +141,7 @@ SettingsPage {
             Text {
                 width: parent.width
                 leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? 0 : Theme.settingsLabelWidth + 10
+                    ? 0 : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
                 text: SysInfo.idleInhibited
                     ? "Active · " + SysInfo.idleInhibitStatus
                     : "Temporary choices reset automatically and are not saved across login."
@@ -265,7 +265,7 @@ SettingsPage {
                 visible: ShellHealth.issueCount > 0
                 width: parent.width
                 leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? 0 : Theme.settingsLabelWidth + 10
+                    ? 0 : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
                 text: (ShellHealth.integrationIssues.concat(ShellHealth.recentWarnings))[0] || ""
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption

@@ -24,7 +24,7 @@ test("notification history is an always-eligible reorderable widget", () => {
     assert.match(read("Bar/Bar.qml"),
         /notifications:\s*"Modules\/Notifications\.qml"/);
     assert.match(read("Settings/ModulesPage.qml"),
-        /visible:\s*row\.meta\.detail === true/,
+        /hasOptions:\s*cell\.meta\.detail === true/,
         "a detail-only widget must still expose its compaction policy");
 });
 

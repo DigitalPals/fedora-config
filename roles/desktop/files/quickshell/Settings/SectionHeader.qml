@@ -1,10 +1,11 @@
 import QtQuick
+import QtQuick.Controls as Controls
 import "../Common"
 
-// The one section mark in the shell's dialogs: an uppercase label, its
-// conditional undo chip, and a hairline running from there to the edge —
-// the same shape the menubar uses to separate one run of modules from the
-// next, and the same one T3's inbox groups already draw.
+// The one section mark in the shell's dialogs: an uppercase label, indented
+// to the settings rows' own label column, a hairline running to the edge,
+// and — when any covered setting left its default — a right-aligned accent
+// "Reset group" action (turn-3 settings design).
 Item {
     id: root
 
@@ -18,6 +19,7 @@ Item {
     Text {
         id: labelText
         anchors.left: parent.left
+        anchors.leftMargin: Theme.settingsMarkInset
         anchors.verticalCenter: parent.verticalCenter
         text: root.label
         font.family: Theme.fontMenu
@@ -27,21 +29,57 @@ Item {
         color: Theme.textFaint
     }
 
-    UndoChip {
-        id: undo
-        anchors.left: labelText.right
-        anchors.leftMargin: 6
-        anchors.verticalCenter: parent.verticalCenter
-        visible: root.dirty
-        onClicked: root.resetRequested()
-    }
-
     Rectangle {
-        anchors.left: root.dirty ? undo.right : labelText.right
+        anchors.left: labelText.right
         anchors.leftMargin: 10
-        anchors.right: parent.right
+        anchors.right: resetAction.visible ? resetAction.left : parent.right
+        anchors.rightMargin: resetAction.visible ? 10 : 0
         anchors.verticalCenter: parent.verticalCenter
         height: 1
         color: Theme.hairlineSoft
+    }
+
+    Rectangle {
+        id: resetAction
+        visible: root.dirty
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        width: resetLabel.implicitWidth + 14
+        height: Theme.chipHeight - 6
+        radius: Theme.chipRadius
+        color: resetMouse.containsMouse ? Theme.hoverFill : "transparent"
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accent
+        activeFocusOnTab: visible
+        Accessible.role: Accessible.Button
+        Accessible.name: "Reset " + root.label.toLowerCase() + " group"
+        Accessible.onPressAction: root.resetRequested()
+        Controls.ToolTip.visible: resetMouse.containsMouse
+        Controls.ToolTip.text: "Reset this group to defaults"
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                root.resetRequested(); event.accepted = true;
+            }
+        }
+
+        Text {
+            id: resetLabel
+            anchors.centerIn: parent
+            text: "Reset group"
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.fontMicro
+            font.weight: Theme.weightSemibold
+            color: Theme.accent
+        }
+
+        MouseArea {
+            id: resetMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { resetAction.forceActiveFocus(); root.resetRequested(); }
+        }
     }
 }
