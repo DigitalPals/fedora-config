@@ -26,6 +26,46 @@ Surface {
     spacing: Theme.scaled(14)
     implicitWidth: Theme.drawerWidth
 
+    readonly property real bodyHeightLimit: availableHeight > 0
+        ? Math.max(1, availableHeight - padding * 2
+            - drawerTabs.height - spacing)
+        : Math.max(1, bodyLoader.implicitHeight)
+
+    onTabChanged: {
+        bodyFlick.cancelFlick();
+        bodyFlick.contentY = 0;
+    }
+
+    function bodyContains(item) {
+        let cursor = item;
+        while (cursor) {
+            if (cursor === bodyFlick.contentItem)
+                return true;
+            cursor = cursor.parent;
+        }
+        return false;
+    }
+
+    function revealFocus(item) {
+        if (!item || !bodyFlick.interactive || !bodyContains(item))
+            return;
+        Qt.callLater(() => {
+            if (!item || !item.visible || !root.bodyContains(item))
+                return;
+            const point = item.mapToItem(bodyFlick.contentItem, 0, 0);
+            const margin = Theme.scaled(8);
+            const itemHeight = Math.max(item.height, item.implicitHeight || 0);
+            let next = bodyFlick.contentY;
+            if (point.y < bodyFlick.contentY + margin)
+                next = point.y - margin;
+            else if (point.y + itemHeight
+                    > bodyFlick.contentY + bodyFlick.height - margin)
+                next = point.y + itemHeight - bodyFlick.height + margin;
+            bodyFlick.contentY = Math.max(0, Math.min(next,
+                bodyFlick.contentHeight - bodyFlick.height));
+        });
+    }
+
     Component.onCompleted: {
         const name = Popouts.currentName;
         tab = PanelRegistry.drawerTab(name) || "overview";
@@ -51,18 +91,60 @@ Surface {
     }
 
     DrawerTabs {
+        id: drawerTabs
         width: parent.width
         current: root.tab
     }
 
-    Loader {
+    Item {
+        id: bodyViewport
+
         width: parent.width
-        sourceComponent: root.tab === "sound" ? soundTab
-            : root.tab === "network" ? networkTab
-            : root.tab === "power" ? powerTab
-            : root.tab === "notifications" ? notificationsTab
-            : root.tab === "usage" ? usageTab
-            : overviewTab
+        height: implicitHeight
+        implicitHeight: Math.min(bodyLoader.implicitHeight,
+            root.bodyHeightLimit)
+        clip: true
+
+        Flickable {
+            id: bodyFlick
+
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: bodyLoader.implicitHeight
+            interactive: contentHeight > height + 1
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            flickDeceleration: 3000
+            clip: true
+
+            Loader {
+                id: bodyLoader
+
+                width: bodyFlick.width
+                sourceComponent: root.tab === "sound" ? soundTab
+                    : root.tab === "network" ? networkTab
+                    : root.tab === "power" ? powerTab
+                    : root.tab === "notifications" ? notificationsTab
+                    : root.tab === "usage" ? usageTab
+                    : overviewTab
+            }
+        }
+
+        ScrollChrome {
+            anchors.fill: parent
+            target: bodyFlick
+        }
+    }
+
+    Connections {
+        target: root.Window.window
+        enabled: target !== null
+        function onActiveFocusItemChanged() {
+            const item = root.Window.window
+                ? root.Window.window.activeFocusItem : null;
+            if (item)
+                root.revealFocus(item);
+        }
     }
 
     Component {

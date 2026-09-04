@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 22;
+var VERSION = 23;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -16,8 +16,9 @@ var DRAWER_TAB_IDS = ["overview", "sound", "network", "power",
 // default: a click latches the session, then crossing switches tabs in place.
 var DRAWER_HOVER_MODES = ["off", "open", "always"];
 
-// The Overview tab's optional sections; the session footer is fixed.
-var DRAWER_OVERVIEW_KEYS = ["media", "sliders", "tiles", "updates", "usage"];
+// The Overview tab's optional sections; machine stats and the session footer
+// are fixed.
+var DRAWER_OVERVIEW_KEYS = ["media", "sliders", "tiles", "updates"];
 
 // Reads in default layout order: left, then center, then right. The order
 // only decides where an id the settings file has never seen is appended, but

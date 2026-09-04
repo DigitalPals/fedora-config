@@ -7,7 +7,7 @@ import "../../Common"
 import "../../Common/BatteryViewHelpers.js" as BatteryView
 
 // The drawer's Power tab: the charge reading and its meter, the power
-// profile, battery preservation and stay-awake, and the machine stats.
+// profile, battery preservation and stay-awake.
 Column {
     id: root
 
@@ -42,13 +42,9 @@ Column {
         active: root.visible
         onClaimed: {
             BatteryHealth.acquire();
-            SysInfo.acquire();
             cycleCountProcess.running = true;
         }
-        onReleased: {
-            BatteryHealth.release();
-            SysInfo.release();
-        }
+        onReleased: BatteryHealth.release()
     }
 
     // cycle_count is not exposed by UPower; read the packs directly, the way
@@ -347,102 +343,6 @@ Column {
                 checked: SysInfo.idleInhibited
                 accessibleName: "Stay awake"
                 onToggled: SysInfo.toggleIdleInhibited()
-            }
-        }
-    }
-
-    // ---- machine stats ---------------------------------------------------
-    Grid {
-        id: statsGrid
-        width: parent.width
-        columns: 3
-        columnSpacing: 6
-        rowSpacing: 6
-
-        readonly property real cellWidth: (width - columnSpacing * 2) / 3
-
-        Repeater {
-            model: [
-                {
-                    label: "CPU",
-                    display: Math.round(SysInfo.cpuUsage) + "%",
-                    fraction: SysInfo.cpuUsage / 100,
-                    tone: Theme.textHi, barTone: Theme.accent
-                },
-                {
-                    label: "RAM",
-                    display: Math.round(SysInfo.memUsage) + "%",
-                    fraction: SysInfo.memUsage / 100,
-                    tone: Theme.textHi, barTone: Theme.accent
-                },
-                {
-                    label: "TEMP",
-                    display: SysInfo.cpuTemp + "°",
-                    fraction: SysInfo.cpuTemp / 100,
-                    tone: SysInfo.cpuTemp >= 80 ? Theme.redText
-                        : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.textHi,
-                    barTone: SysInfo.cpuTemp >= 80 ? Theme.red
-                        : SysInfo.cpuTemp >= 65 ? Theme.amber : Theme.accent
-                }
-            ]
-
-            delegate: Rectangle {
-                id: statCell
-
-                required property var modelData
-
-                width: statsGrid.cellWidth
-                height: 56
-                radius: 10
-                color: Theme.chip
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.leftMargin: 10
-                    anchors.topMargin: 9
-                    text: statCell.modelData.label
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
-                    font.weight: Theme.weightSemibold
-                    font.letterSpacing: 0.6
-                    color: Theme.textFaint
-                }
-
-                Text {
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.rightMargin: 10
-                    anchors.topMargin: 7
-                    text: statCell.modelData.display
-                    font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontSecondary
-                    font.weight: Theme.weightSemibold
-                    font.features: Theme.tabularNumberFeatures
-                    color: statCell.modelData.tone
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    anchors.bottomMargin: 10
-                    height: 3
-                    radius: 2
-                    color: Qt.rgba(1, 1, 1, 0.10)
-
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
-                        width: parent.width * Math.max(0,
-                            Math.min(1, statCell.modelData.fraction))
-                        radius: 2
-                        color: statCell.modelData.barTone
-                    }
-                }
             }
         }
     }

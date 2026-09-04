@@ -26,9 +26,7 @@ SettingsPage {
         { key: "tiles", label: "Quick toggles",
             description: "The Dark, Focus, Night and Awake tiles" },
         { key: "updates", label: "Updates",
-            description: "Pending system updates with the install action" },
-        { key: "usage", label: "Model usage",
-            description: "One-line per-provider summary; the Usage tab has detail" }
+            description: "Pending system updates with the install action" }
     ]
 
     // ---- tab reorder state ------------------------------------------------

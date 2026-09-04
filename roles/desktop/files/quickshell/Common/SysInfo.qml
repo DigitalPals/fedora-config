@@ -2,16 +2,47 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "ProcHelpers.js" as ProcHelpers
+import "SysInfoHelpers.js" as SysInfoHelpers
 
 Singleton {
     id: root
 
     property int cpuTemp: 0
+    property bool cpuTempKnown: false
     property real cpuUsage: 0 // percent
+    property bool cpuUsageKnown: false
     property real memUsage: 0 // percent
+    property bool memKnown: false
+    property double memTotalBytes: 0
+    property double memUsedBytes: 0
+    property bool swapKnown: false
+    property double swapTotalBytes: 0
+    property double swapUsedBytes: 0
+    property real swapUsage: 0 // percent
+
+    property string osId: ""
+    property string osName: ""
+    property string osVersion: ""
+    property string osVariant: ""
+    property string deviceVendor: ""
+    property string deviceModel: ""
+    property string kernelRelease: ""
+    property string cpuModel: ""
+    property int uptimeSecs: -1
+    readonly property bool uptimeKnown: uptimeSecs >= 0
+
+    property bool rootFsKnown: false
+    property string rootFsType: ""
+    property double rootFsTotalBytes: 0
+    property double rootFsUsedBytes: 0
+    property double rootFsAvailableBytes: 0
+    property real rootFsUsage: 0 // percent
+    property string rootFsError: ""
+
     property int brightness: -1 // percent, -1 while unknown
     readonly property string user: Quickshell.env("USER") || "user"
-    property string host: "linux"
+    property string host: ""
 
     // Shared idle-inhibit state (bar module + control center toggle). The mode
     // and absolute deadline are persisted so a service reload resumes the
@@ -380,12 +411,68 @@ Singleton {
 
     Component.onCompleted: applyStartupPolicies()
 
-    Process {
-        command: ["cat", "/etc/hostname"]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: root.host = text.trim()
+    // ---- system identity and live metrics ----------------------------
+    // Identity files are tiny and immutable for the lifetime of the shell,
+    // so FileView loads each once. Live /proc and sysfs views are reloaded by
+    // the watcher-scoped timers below.
+    FileView {
+        id: osReleaseView
+        path: "/etc/os-release"
+        printErrors: false
+        blockLoading: true
+        onLoaded: {
+            const info = SysInfoHelpers.parseOsRelease(text());
+            root.osId = info.id;
+            root.osName = info.name;
+            root.osVersion = info.version;
+            root.osVariant = info.variant;
         }
+        onLoadFailed: {
+            root.osId = "";
+            root.osName = "";
+            root.osVersion = "";
+            root.osVariant = "";
+        }
+    }
+
+    FileView {
+        path: "/etc/hostname"
+        printErrors: false
+        blockLoading: true
+        onLoaded: root.host = text().trim()
+        onLoadFailed: root.host = ""
+    }
+
+    FileView {
+        path: "/sys/devices/virtual/dmi/id/sys_vendor"
+        printErrors: false
+        blockLoading: true
+        onLoaded: root.deviceVendor = text().trim()
+        onLoadFailed: root.deviceVendor = ""
+    }
+
+    FileView {
+        path: "/sys/devices/virtual/dmi/id/product_name"
+        printErrors: false
+        blockLoading: true
+        onLoaded: root.deviceModel = text().trim()
+        onLoadFailed: root.deviceModel = ""
+    }
+
+    FileView {
+        path: "/proc/sys/kernel/osrelease"
+        printErrors: false
+        blockLoading: true
+        onLoaded: root.kernelRelease = text().trim()
+        onLoadFailed: root.kernelRelease = ""
+    }
+
+    FileView {
+        path: "/proc/cpuinfo"
+        printErrors: false
+        blockLoading: true
+        onLoaded: root.cpuModel = SysInfoHelpers.parseCpuModel(text())
+        onLoadFailed: root.cpuModel = ""
     }
 
     // Discover the CPU sensor once, then use cheap FileView reloads.
@@ -403,48 +490,170 @@ Singleton {
         path: root.tempPath
         printErrors: false
         onLoaded: root.readTemperature()
+        onLoadFailed: root.cpuTempKnown = false
     }
 
     FileView {
         id: statView
         path: "/proc/stat"
+        printErrors: false
         onLoaded: root.readCpu()
+        onLoadFailed: {
+            root.cpuPrev = null;
+            root.cpuUsageKnown = false;
+        }
     }
 
     FileView {
         id: memView
         path: "/proc/meminfo"
+        printErrors: false
         onLoaded: root.readMem()
+        onLoadFailed: root.clearMemory()
+    }
+
+    FileView {
+        id: uptimeView
+        path: "/proc/uptime"
+        printErrors: false
+        onLoaded: root.readUptime()
+        onLoadFailed: root.uptimeSecs = -1
     }
 
     function readTemperature() {
-        if (tempPath === "")
+        if (tempPath === "") {
+            cpuTempKnown = false;
             return;
+        }
         const value = parseInt(tempView.text().trim());
-        if (!isNaN(value))
+        if (!isNaN(value) && value >= 0) {
             cpuTemp = Math.round(value / 1000);
+            cpuTempKnown = true;
+        } else {
+            cpuTempKnown = false;
+        }
     }
 
     function readCpu() {
-        const fields = statView.text().split("\n")[0].trim().split(/\s+/).slice(1).map(Number);
-        if (fields.length < 5 || fields.some(isNaN))
+        const current = SysInfoHelpers.parseCpuStat(statView.text());
+        if (current === null) {
+            cpuPrev = null;
+            cpuUsageKnown = false;
             return;
-        const total = fields.reduce((a, b) => a + b, 0);
-        const idle = fields[3] + (fields[4] || 0);
-        if (cpuPrev !== null) {
-            const dTotal = total - cpuPrev.total;
-            if (dTotal > 0)
-                cpuUsage = Math.max(0, Math.min(100, (dTotal - (idle - cpuPrev.idle)) / dTotal * 100));
         }
-        cpuPrev = { total: total, idle: idle };
+        const usage = SysInfoHelpers.cpuUsage(cpuPrev, current);
+        cpuPrev = current;
+        if (usage === null) {
+            cpuUsageKnown = false;
+            return;
+        }
+        cpuUsage = usage;
+        cpuUsageKnown = true;
+    }
+
+    function clearMemory() {
+        memKnown = false;
+        memTotalBytes = 0;
+        memUsedBytes = 0;
+        memUsage = 0;
+        swapKnown = false;
+        swapTotalBytes = 0;
+        swapUsedBytes = 0;
+        swapUsage = 0;
     }
 
     function readMem() {
-        const text = memView.text();
-        const total = parseInt((text.match(/MemTotal:\s+(\d+)/) || [])[1]);
-        const avail = parseInt((text.match(/MemAvailable:\s+(\d+)/) || [])[1]);
-        if (total > 0 && !isNaN(avail))
-            memUsage = Math.max(0, Math.min(100, (total - avail) / total * 100));
+        const memory = SysInfoHelpers.parseMemInfo(memView.text());
+        memKnown = memory.memKnown;
+        memTotalBytes = memory.memTotalBytes;
+        memUsedBytes = memory.memUsedBytes;
+        memUsage = memory.memUsage;
+        swapKnown = memory.swapKnown;
+        swapTotalBytes = memory.swapTotalBytes;
+        swapUsedBytes = memory.swapUsedBytes;
+        swapUsage = memory.swapUsage;
+    }
+
+    function readUptime() {
+        const value = SysInfoHelpers.parseUptime(uptimeView.text());
+        uptimeSecs = value === null ? -1 : value;
+    }
+
+    function setRootFsUnavailable(reason) {
+        const changed = rootFsKnown || rootFsError !== reason;
+        rootFsKnown = false;
+        rootFsType = "";
+        rootFsTotalBytes = 0;
+        rootFsUsedBytes = 0;
+        rootFsAvailableBytes = 0;
+        rootFsUsage = 0;
+        rootFsError = reason;
+        if (changed)
+            console.warn("root filesystem probe:", reason);
+    }
+
+    function finishRootFsProbe(exitCode, stdoutText, stderrText) {
+        if (exitCode !== 0) {
+            setRootFsUnavailable(ProcHelpers.commandError(
+                "df", exitCode, stderrText));
+            return;
+        }
+        const disk = SysInfoHelpers.parseDf(stdoutText);
+        if (disk === null) {
+            setRootFsUnavailable("df returned unreadable root filesystem data");
+            return;
+        }
+        rootFsType = disk.type;
+        rootFsTotalBytes = disk.totalBytes;
+        rootFsUsedBytes = disk.usedBytes;
+        rootFsAvailableBytes = disk.availableBytes;
+        rootFsUsage = disk.usage;
+        rootFsError = "";
+        rootFsKnown = true;
+    }
+
+    function refreshRootFs() {
+        if (!rootFsProc.running)
+            rootFsProc.running = true;
+    }
+
+    Process {
+        id: rootFsProc
+
+        property bool exitSeen: false
+        property int lastExit: ProcHelpers.NOT_STARTED
+        property string body: ""
+        property string errText: ""
+
+        command: ["df", "--block-size=1",
+            "--output=fstype,size,used,avail,pcent,target", "/"]
+        // QML object literals convert to QVariantHash at runtime; the shipped
+        // Quickshell type description reports them as QVariantMap to qmllint.
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
+        stdout: StdioCollector {
+            onStreamFinished: rootFsProc.body = text
+        }
+        stderr: StdioCollector {
+            onStreamFinished: rootFsProc.errText = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            rootFsProc.exitSeen = true;
+            rootFsProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (rootFsProc.running) {
+                rootFsProc.exitSeen = false;
+                rootFsProc.lastExit = ProcHelpers.NOT_STARTED;
+                rootFsProc.body = "";
+                rootFsProc.errText = "";
+                return;
+            }
+            root.finishRootFsProbe(rootFsProc.exitSeen
+                ? rootFsProc.lastExit : ProcHelpers.NOT_STARTED,
+                rootFsProc.body, rootFsProc.errText);
+        }
     }
 
     // ---- brightness --------------------------------------------------
@@ -528,8 +737,8 @@ Singleton {
     onTempPathChanged: {
         if (tempPath !== "") {
             tempView.reload();
-            readTemperature();
-        }
+        } else
+            cpuTempKnown = false;
     }
 
     // ---- watchers ---------------------------------------------------
@@ -540,42 +749,76 @@ Singleton {
     property int watchers: 0
 
     function acquire() {
+        const firstWatcher = watchers === 0;
         watchers++;
+        if (!firstWatcher)
+            return;
+
+        // Utilization needs two counter snapshots. Discard a stale baseline
+        // when the first visible consumer arrives, prime it immediately, and
+        // let the two-second poll produce the first live delta. Everything
+        // else can return a reading from this first refresh.
+        cpuPrev = null;
+        cpuUsageKnown = false;
+        statView.reload();
+        cpuPrimeTimer.restart();
+        memView.reload();
+        uptimeView.reload();
+        if (tempPath !== "")
+            tempView.reload();
+        refreshRootFs();
+        refreshBrightness();
     }
 
     function release() {
         watchers = Math.max(0, watchers - 1);
+        if (watchers === 0)
+            cpuPrimeTimer.stop();
     }
 
-    // CPU / RAM sampling for the Control Panel stat cards. Idle wakeups
-    // are not free on battery, and nothing else displays these values.
-    // triggeredOnStart refreshes the cards the moment a watcher arrives.
+    // The aggregate percentage needs a second snapshot. Take it promptly on
+    // open so the hero does not wait for the first regular two-second tick.
     Timer {
-        interval: 5000
-        running: root.watchers > 0
-        repeat: true
-        triggeredOnStart: true
+        id: cpuPrimeTimer
+        interval: 250
         onTriggered: {
-            statView.reload();
-            root.readCpu();
-            memView.reload();
-            root.readMem();
+            if (root.watchers > 0)
+                statView.reload();
         }
     }
 
-    // Temperature has exactly one reader, the same stat card as CPU and
-    // RAM, but used to poll for the whole session. Same watcher basis;
-    // triggeredOnStart still fills the card on open.
+    // CPU and memory move quickly enough to be useful at a two-second cadence
+    // while the Overview is visible. acquire() performs the initial refresh.
+    Timer {
+        interval: 2000
+        running: root.watchers > 0
+        repeat: true
+        onTriggered: {
+            statView.reload();
+            memView.reload();
+        }
+    }
+
+    // Temperature changes more slowly and its sensor is optional.
     Timer {
         interval: 10000
         running: root.watchers > 0
         repeat: true
-        triggeredOnStart: true
         onTriggered: {
-            if (root.tempPath !== "") {
+            if (root.tempPath !== "")
                 tempView.reload();
-                root.readTemperature();
-            }
+        }
+    }
+
+    // Uptime and filesystem capacity are slow-moving. One minute avoids
+    // process churn while still keeping a long-open Overview honest.
+    Timer {
+        interval: 60000
+        running: root.watchers > 0
+        repeat: true
+        onTriggered: {
+            uptimeView.reload();
+            root.refreshRootFs();
         }
     }
 
@@ -588,7 +831,6 @@ Singleton {
         interval: 30000
         running: root.watchers > 0
         repeat: true
-        triggeredOnStart: true
         onTriggered: root.refreshBrightness()
     }
 

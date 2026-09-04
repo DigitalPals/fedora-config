@@ -18,8 +18,6 @@ const drawerAccount = fs.readFileSync(
     path.join(shellDir, "Popovers", "Drawer", "DrawerUsageAccount.qml"), "utf8");
 const drawerDetails = fs.readFileSync(
     path.join(shellDir, "Popovers", "Drawer", "DrawerUsageDetails.qml"), "utf8");
-const drawerRows = fs.readFileSync(
-    path.join(shellDir, "Popovers", "Drawer", "DrawerUsageRows.qml"), "utf8");
 
 test("model usage no longer collects or renders usage history", () => {
     assert.doesNotMatch(popover, /histMode|histBars|USAGE HISTORY/);
@@ -106,9 +104,6 @@ test("drawer exposes every CLIProxy subscription behind a provider group", () =>
         /onToggled:\s*root\.toggleAccount\(modelData\.id\)/);
     assert.match(drawerUsage,
         /`\$\{availableCount\}\/\$\{accountCount\} \$\{noun\} available`/);
-    assert.match(drawerRows, /availableAccountCount/);
-    assert.match(drawerRows, /text:\s*"best"/,
-        "the Overview percentage must be qualified as a pool best");
 });
 
 test("subscription accordion is accessible and keeps account failures visible", () => {

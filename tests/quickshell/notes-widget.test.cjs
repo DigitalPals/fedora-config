@@ -12,8 +12,8 @@ function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
 }
 
-test("schema 22 enables Notes immediately after Weather with opt-in title settings", () => {
-    assert.equal(Settings.VERSION, 22);
+test("schema 23 enables Notes immediately after Weather with opt-in title settings", () => {
+    assert.equal(Settings.VERSION, 23);
     const center = Settings.defaultMods().center;
     const weather = center.findIndex(entry => entry.id === "weather");
     assert.equal(center[weather + 1].id, "notes");

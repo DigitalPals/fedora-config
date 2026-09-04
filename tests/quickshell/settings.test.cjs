@@ -360,7 +360,6 @@ test("model usage follows the source inventory and only shows real menubar value
     const popover = read("Popovers/UsagePopover.qml");
     const usage = read("Common/Usage.qml");
     const drawer = read("Popovers/Drawer/DrawerUsage.qml");
-    const overview = read("Popovers/Drawer/DrawerUsageRows.qml");
 
     assert.match(usage,
         /providerKeys:\s*Helpers\.providerKeys\([\s\S]{0,100}?Settings\.modOpts\.usage\.source, data\)/,
@@ -374,9 +373,6 @@ test("model usage follows the source inventory and only shows real menubar value
         "source-provided entries without a bar value remain reachable in the popover");
     assert.match(drawer, /model:\s*Usage\.providerKeys/,
         "the Usage tab must use the same source-provided inventory");
-    assert.match(overview,
-        /keys:\s*Usage\.providerKeys\.filter/,
-        "Control Center must not restore providers absent from CLIProxyAPI");
     assert.match(chips,
         /providerKey:\s*Usage\.providerKeys\.length > 0[\s\S]{0,100}?\? Usage\.providerKeys\[0\] : ""/,
         "an empty proxy inventory must not retain the last provider brand");
@@ -438,9 +434,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema twenty-two keeps safe defaults and exposes accessibility preferences", () => {
+test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 22/);
+    assert.match(helpers, /var VERSION = 23/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);

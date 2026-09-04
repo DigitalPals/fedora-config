@@ -6,8 +6,8 @@ import "../../Common"
 import "../../Common/UpdatesHelpers.js" as UpdatesHelpers
 import ".."
 
-// The drawer's Overview tab: now playing, the two sliders, the quick-toggle
-// tiles, the updates row, the model-usage summary, and the session footer.
+// The drawer's Overview tab: system identity and health, now playing, the two
+// sliders, quick-toggle tiles, updates, and the session footer.
 // Everything here is a summary — each row's own tab or panel carries the
 // detail.
 Column {
@@ -18,16 +18,17 @@ Column {
     width: parent ? parent.width : 0
     spacing: Theme.scaled(14)
 
-    // The stats sampler feeds nothing on this tab, but brightness does, and
-    // both ride the same acquire. Keyed on visibility, not construction: the
-    // drawer's `control` instance stays latched by the popout host.
+    // The hero's live metrics and brightness share one watcher claim. Keyed
+    // on visibility, not construction: the drawer's `control` instance stays
+    // latched by the popout host.
     Claim {
         active: root.visible
-        onClaimed: {
-            SysInfo.acquire();
-            SysInfo.refreshBrightness();
-        }
+        onClaimed: SysInfo.acquire()
         onReleased: SysInfo.release()
+    }
+
+    DrawerSystemHero {
+        width: parent.width
     }
 
     // ---- now playing ---------------------------------------------------
@@ -336,25 +337,6 @@ Column {
                 accessibleName: "Check for updates"
                 onClicked: Updates.check()
             }
-        }
-    }
-
-    // ---- model usage -----------------------------------------------------
-    Column {
-        visible: Settings.drawerOverview.usage === true
-            && (Usage.pollEnabled || Usage.anyOk)
-        width: parent.width
-        spacing: 6
-
-        SectionLabel {
-            width: parent.width
-            text: "MODEL USAGE"
-            detail: Usage.fetchError !== "" ? "unavailable"
-                : "next poll " + Usage.formatCountdown(Usage.nextPollSecs)
-        }
-
-        DrawerUsageRows {
-            width: parent.width
         }
     }
 

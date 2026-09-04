@@ -6,12 +6,12 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 22);
+    assert.equal(H.VERSION, 23);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "power", "notifications", "usage"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
     assert.deepEqual(d.drawerOverview,
-        { media: true, sliders: true, tiles: true, updates: true, usage: true });
+        { media: true, sliders: true, tiles: true, updates: true });
     assert.equal(d.drawerHover, "open");
     assert.equal(d.drawerWidth, 400);
     assert.equal(d.themeMode, "dark");
@@ -1007,7 +1007,7 @@ test("schema-22 migrates and validates restart-safe timed toggle state", () => {
         "an existing persistent opt-in must survive the safer fresh-install policy");
 
     const timed = H.merge({
-        v: 22,
+        v: 23,
         idleInhibitMode: "30m",
         idleInhibitUntilMs: 2000000000000,
         notifDnd: true,
@@ -1018,7 +1018,7 @@ test("schema-22 migrates and validates restart-safe timed toggle state", () => {
     assert.equal(timed.notifDndUntilMs, 2000000000123);
 
     const invalid = H.merge({
-        v: 22,
+        v: 23,
         idleInhibitMode: "2h",
         idleInhibitUntilMs: -1,
         notifDnd: false,

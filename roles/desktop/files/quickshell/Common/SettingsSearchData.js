@@ -42,7 +42,7 @@ var ROWS = [
 
     // Drawer
     { page: "drawer", pageLabel: "Drawer", group: "Tabs", label: "Tab order", key: "", terms: "reorder overview sound network power notifications usage" },
-    { page: "drawer", pageLabel: "Drawer", group: "Overview", label: "Overview contents", key: "", terms: "now playing sliders tiles updates usage summary" },
+    { page: "drawer", pageLabel: "Drawer", group: "Overview", label: "Overview contents", key: "", terms: "now playing sliders tiles updates cpu ram temperature system stats" },
     { page: "drawer", pageLabel: "Drawer", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "hover switch glyph menu" },
     { page: "drawer", pageLabel: "Drawer", group: "Behavior", label: "Width", key: "drawerWidth", terms: "size wide" },
 
