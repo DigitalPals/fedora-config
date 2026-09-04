@@ -28,7 +28,9 @@ Item {
     readonly property real projectPickerLayoutHeight: projectPickerNeededHeight > 0
         ? Math.max(form.spacing, projectPickerNeededHeight) : 0
 
-    implicitHeight: maxHeight
+    readonly property real naturalHeight:
+        header.height + 6 + form.implicitHeight
+    implicitHeight: Math.min(maxHeight, Math.max(1, naturalHeight))
 
     function closeOpenLayer(): bool {
         if (projectPicker.expanded) {
@@ -206,8 +208,8 @@ Item {
                 }
 
                 // Popup reserve stays inside this scrolling viewport. The
-                // drawer remains full-height while the form scrolls far enough
-                // to expose the Project menu without a detached window tail.
+                // bounded page grows when room is available, then scrolls far
+                // enough to expose the Project menu without a detached tail.
                 Item {
                     id: projectPickerSpace
                     visible: root.projectPickerLayoutHeight > 0

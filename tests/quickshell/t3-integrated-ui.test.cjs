@@ -14,7 +14,7 @@ const files = [
     "T3NewThreadPage.qml"
 ];
 
-test("T3 adapts the shell palette inside the shared-width full-height drawer", () => {
+test("T3 adapts the shell palette inside a wider content-sized panel", () => {
     const theme = read("Common/T3Theme.qml");
     const popover = read("Popovers/T3CodePopover.qml");
     const panel = read("Popovers/PopoutPanel.qml");
@@ -30,8 +30,13 @@ test("T3 adapts the shell palette inside the shared-width full-height drawer", (
         "T3 must not retain a competing hard-coded blue accent");
     assert.match(popover, /surfaceColor:\s*T3Theme\.canvas/);
     assert.match(popover,
-        /implicitWidth:\s*availableWidth > 0[\s\S]{0,100}?Math\.min\(Theme\.drawerWidth, availableWidth\)/);
-    assert.match(popover, /implicitHeight:\s*availableHeight > 0 \? availableHeight/);
+        /implicitWidth:\s*availableWidth > 0[\s\S]{0,100}?Math\.min\(Theme\.t3MaxWidth, availableWidth\)/);
+    assert.match(popover,
+        /implicitHeight:\s*Math\.min\(maxPanelHeight, panelChromeHeight \+ pageBodyHeight\)/);
+    assert.match(popover,
+        /readonly property Item loadedPage:\s*pageLoader\.item as Item/);
+    assert.match(popover,
+        /pageNaturalHeight:\s*loadedPage[\s\S]{0,100}?loadedPage\.implicitHeight/);
     assert.doesNotMatch(popover,
         /workspaceExpanded|pageMaxWidth|threadMaxHeight|\b460\b|\b520\b|\b760\b/,
         "the dedicated drawer has no compact/expanded presentation modes");
@@ -42,15 +47,25 @@ test("T3 adapts the shell palette inside the shared-width full-height drawer", (
     assert.match(host, /host\.activePanel\.surfaceColor/);
 });
 
-test("T3 pages keep navigation and actions fixed around remaining-height scrollers", () => {
+test("T3 pages size to content and keep chrome fixed around capped scrollers", () => {
     const popover = read("Popovers/T3CodePopover.qml");
     const inbox = read("Popovers/T3InboxPage.qml");
     const thread = read("Popovers/T3ThreadPage.qml");
     const newPage = read("Popovers/T3NewThreadPage.qml");
 
     assert.match(popover,
-        /readonly property int pageBodyHeight:[\s\S]*?root\.implicitHeight[\s\S]*?headerHeight[\s\S]*?footerHeight/);
+        /readonly property real maxPageBodyHeight:[\s\S]*?maxPanelHeight - panelChromeHeight/);
+    assert.match(popover,
+        /readonly property real pageBodyHeight:[\s\S]*?Math\.min\(maxPageBodyHeight,[\s\S]*?pageNaturalHeight/);
     assert.match(popover, /id:\s*pageLoader[\s\S]*?height:\s*root\.pageBodyHeight/);
+
+    for (const page of [inbox, thread, newPage]) {
+        assert.match(page, /readonly property real naturalHeight:/,
+            "each T3 page must publish its content-driven height");
+        assert.match(page,
+            /implicitHeight:\s*Math\.min\(maxHeight, Math\.max\(1, naturalHeight\)\)/,
+            "each T3 page must stop growing at the output cap");
+    }
 
     const searchAt = inbox.indexOf("id: searchBox");
     const viewportAt = inbox.indexOf("id: viewport");

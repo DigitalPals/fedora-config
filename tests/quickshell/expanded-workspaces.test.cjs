@@ -26,12 +26,13 @@ test("GitHub and Hermes retain bounded, keyboard-collapsible workspaces", () => 
     }
 });
 
-test("T3 uses its dedicated drawer instead of an expandable workspace", () => {
+test("T3 uses a dedicated content-sized panel instead of an expandable workspace", () => {
     const qml = source("T3CodePopover.qml");
     assert.doesNotMatch(qml, /workspaceExpanded|open_in_full|close_fullscreen/);
     assert.match(qml,
-        /implicitWidth:\s*availableWidth > 0[\s\S]{0,100}?Math\.min\(Theme\.drawerWidth, availableWidth\)/);
-    assert.match(qml, /implicitHeight:\s*availableHeight > 0 \? availableHeight/);
+        /implicitWidth:\s*availableWidth > 0[\s\S]{0,100}?Math\.min\(Theme\.t3MaxWidth, availableWidth\)/);
+    assert.match(qml,
+        /implicitHeight:\s*Math\.min\(maxPanelHeight, panelChromeHeight \+ pageBodyHeight\)/);
 });
 
 test("Hermes exposes the same workspace action on conversations and setup", () => {

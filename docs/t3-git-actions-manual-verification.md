@@ -3,26 +3,25 @@
 Use a connected T3 Code server whose token has `orchestration:operate`, plus
 threads whose project checkouts can be put into each git state below.
 
-## Dedicated drawer layout and navigation
+## Dedicated panel layout and navigation
 
-- [ ] Set Drawer width to 320, 400, and 480px in turn. At every width, T3 opens
-  as its own right-pinned attached drawer, separate from the six status tabs,
-  and fills the usable height below the bar while retaining the bottom shadow
-  margin.
-- [ ] At 320px, thread rows are two-line tiles with title above project/status
-  metadata. At 400 and 480px they use the single-line layout. Test both short
-  and long inboxes: search remains fixed whenever threads exist, the grouped
-  list alone scrolls, and the connection/status footer stays at the bottom.
+- [ ] Confirm T3 opens as its own 520px attached panel under the T3 widget,
+  separate from the six status tabs and bounded by the output on a narrow
+  screen.
+- [ ] Test both short and long inboxes: a short inbox hugs its visible rows and
+  footer, while a long inbox stops at the usable-height cap. Search remains
+  fixed whenever threads exist, the grouped list alone scrolls, and the
+  connection/status footer stays at the bottom.
 - [ ] Open short and long conversations. The contextual header stays fixed,
   the transcript takes the remaining height, and approvals, ready plans, task
   progress, and the composer remain docked at the bottom.
-- [ ] Exercise New Thread, Project, model, access, and Run settings at all three
-  widths. Menus stay within the drawer; right-side menus open inward; New
+- [ ] Exercise New Thread, Project, model, access, and Run settings. Menus stay
+  within the panel; right-side menus open inward; New
   Thread scrolls to reserved popup room without growing a detached tail. At
   320px reasoning lives in Run settings, model text elides before access text,
   and the tune and send/stop actions remain reachable.
 - [ ] Check ready plans, approvals, task progress, signed-out, disconnected,
-  and read-only states at the narrow and wide settings. Drafts, lifecycle
+  and read-only states at normal and output-constrained widths. Drafts, lifecycle
   actions, authentication, and Git behavior must remain unchanged.
 - [ ] Verify pointer and keyboard focus, then press Escape repeatedly: close
   the active connection/picker/menu layer first, return from Thread or New

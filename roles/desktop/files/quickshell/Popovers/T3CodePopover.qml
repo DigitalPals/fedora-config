@@ -2,10 +2,10 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
-// T3 Code's dedicated edge drawer. It shares the configurable drawer width
-// with the status drawer, but keeps its own source, navigation, and IPC name.
-// The host attaches it to the bar, pins it right, and supplies the output
-// envelope after reserving the bottom shadow margin.
+// T3 Code's dedicated attached panel. It keeps its own wider measure, source,
+// navigation, and IPC name. The host hangs it from the T3 widget and supplies
+// the output envelope; short pages hug their content while long ones stop at
+// that envelope and scroll internally.
 Surface {
     id: root
 
@@ -15,8 +15,8 @@ Surface {
     surfaceBorderColor: T3Theme.borderStrong
 
     implicitWidth: availableWidth > 0
-        ? Math.min(Theme.drawerWidth, availableWidth) : Theme.drawerWidth
-    implicitHeight: availableHeight > 0 ? availableHeight : 720
+        ? Math.min(Theme.t3MaxWidth, availableWidth) : Theme.t3MaxWidth
+    implicitHeight: Math.min(maxPanelHeight, panelChromeHeight + pageBodyHeight)
 
     readonly property int headerHeight: inboxHeader.visible ? inboxHeader.height : 0
     readonly property int footerHeight: footer.visible ? footer.height : 0
@@ -25,9 +25,17 @@ Surface {
         + (inboxHeader.visible ? 1 : 0)
         + (noReadBanner.visible ? 1 : 0)
         + (footer.visible ? 1 : 0)
-    readonly property int pageBodyHeight: Math.max(0, root.implicitHeight
-        - root.padding * 2 - headerHeight - bannerHeight - footerHeight
-        - Math.max(0, visibleSectionCount - 1) * root.spacing)
+    readonly property real maxPanelHeight: availableHeight > 0 ? availableHeight : 720
+    readonly property real panelChromeHeight: root.padding * 2 + headerHeight
+        + bannerHeight + footerHeight
+        + Math.max(0, visibleSectionCount - 1) * root.spacing
+    readonly property real maxPageBodyHeight:
+        Math.max(1, maxPanelHeight - panelChromeHeight)
+    readonly property Item loadedPage: pageLoader.item as Item
+    readonly property real pageNaturalHeight: loadedPage
+        ? loadedPage.implicitHeight : Math.min(360, maxPageBodyHeight)
+    readonly property real pageBodyHeight:
+        Math.min(maxPageBodyHeight, Math.max(1, pageNaturalHeight))
     readonly property T3ThreadPage loadedThreadPage: root.page === "thread"
         ? pageLoader.item as T3ThreadPage : null
     readonly property T3NewThreadPage loadedNewThreadPage: root.page === "new"
@@ -121,7 +129,7 @@ Surface {
         T3InboxPage {
             width: root.width - root.padding * 2
             height: root.pageBodyHeight
-            maxHeight: root.pageBodyHeight
+            maxHeight: root.maxPageBodyHeight
             snoozedExpanded: root.inboxSnoozedExpanded
             settledExpanded: root.inboxSettledExpanded
             onSnoozedExpandedChanged: root.inboxSnoozedExpanded = snoozedExpanded
@@ -136,7 +144,7 @@ Surface {
         T3ThreadPage {
             width: root.width - root.padding * 2
             height: root.pageBodyHeight
-            maxHeight: root.pageBodyHeight
+            maxHeight: root.maxPageBodyHeight
             threadId: root.selectedThreadId
             onBackRequested: root.showInbox()
             onNewPlanRequested: plan => root.showPlanInNewThread(plan)
@@ -149,7 +157,7 @@ Surface {
         T3NewThreadPage {
             width: root.width - root.padding * 2
             height: root.pageBodyHeight
-            maxHeight: root.pageBodyHeight
+            maxHeight: root.maxPageBodyHeight
             contextThreadId: root.selectedThreadId
             onBackRequested: root.showInbox()
         }

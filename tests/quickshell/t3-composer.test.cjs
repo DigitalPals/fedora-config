@@ -47,8 +47,8 @@ test("the composer bar names the run in place and each part is its own menu", ()
         "the bar shows live controls, not a read-only summary of them");
 });
 
-// New Thread is now full-height: opening below the composer reserves room in
-// its scrolling form, while existing threads overlay their transcript.
+// New Thread grows to its content cap: opening below the composer reserves
+// room in its scrolling form, while existing threads overlay their transcript.
 test("new-thread bar menus reserve scroll room while thread menus open upward", () => {
     const bar = composer.match(/Item\s*\{\s*id:\s*actionRow\b([\s\S]*?)\n\s{12}\}/);
     const newPage = fs.readFileSync(
@@ -66,7 +66,7 @@ test("new-thread bar menus reserve scroll room while thread menus open upward", 
         "the floating menu must contribute its height to the composer's Column");
     assert.match(newPage,
         /onBarPickerReserveChanged:[\s\S]*?flick\.contentHeight - flick\.height/,
-        "the fixed-height page must scroll the newly reserved menu into view");
+        "the bounded page must scroll the newly reserved menu into view");
     assert.match(newPage,
         /id:\s*viewport[\s\S]*?anchors\.bottom:\s*parent\.bottom/,
         "the form viewport must consume the drawer below its fixed header");

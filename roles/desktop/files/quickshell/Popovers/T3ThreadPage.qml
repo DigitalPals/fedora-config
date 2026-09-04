@@ -83,7 +83,10 @@ Item {
     readonly property string copyBranch: thread !== null && thread.branch ? thread.branch : ""
 
     property int spacing: 5
-    implicitHeight: maxHeight
+    readonly property real naturalHeight: header.height
+        + (gitFeedback.visible ? spacing + gitFeedback.height : 0)
+        + spacing * 2 + timeline.implicitHeight + bottomDock.implicitHeight
+    implicitHeight: Math.min(maxHeight, Math.max(1, naturalHeight))
 
     function scrollToEnd() {
         if (!followTail)

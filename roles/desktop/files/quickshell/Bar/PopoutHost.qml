@@ -388,6 +388,11 @@ Item {
                     || Popouts.currentName !== nameFor(slot)
                     || frontSlot !== slot)
                 return;
+            // A nested positioner can finish its last polish after the first
+            // geometry read but before the front-slot Connections attach.
+            // Re-read once with the slot established so that final size is
+            // never missed and clipped by the earlier card envelope.
+            retargetFront();
             animateToTargets();
             revealTimer.slot = slot;
             revealTimer.restart();

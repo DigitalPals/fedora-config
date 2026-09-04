@@ -364,11 +364,13 @@ surfaces:
   canonical name for the wanted tab (`PanelRegistryData.nameForTab`), so the
   bar's held states, hover-crossing and the module-ownership sweep all keep
   working unchanged.
-- **T3 Code is a separate edge drawer**, not a seventh status tab. Its existing
-  `t3code` panel name, bar ownership, source, and IPC route are unchanged; the
-  registry only marks that source `attached` and `edge: "right"`. It shares
-  `Settings.drawerWidth` with the status drawer and fills the host's usable
-  height below the bar (including the host's existing bottom shadow margin).
+- **T3 Code is a separate attached panel**, not a seventh status tab. Its
+  existing `t3code` panel name, bar ownership, source, and IPC route are
+  unchanged; unlike the status drawer, it is not pinned to a screen edge, so
+  it follows the T3 widget when that widget is reordered or moved between bar
+  sections. It uses the wider `Theme.t3MaxWidth` measure and hugs the active
+  page's content until it reaches the host's usable-height cap, at which point
+  only the page's content viewport scrolls.
   Inbox search and connection chrome stay fixed around a scrolling grouped
   list; thread headers and response/composer controls stay fixed around the
   transcript; New Thread scrolls its form below a fixed header. Below 360px of

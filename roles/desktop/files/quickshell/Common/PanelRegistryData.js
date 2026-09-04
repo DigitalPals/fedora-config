@@ -63,7 +63,7 @@ var PANELS = [
 
     { name: "reminders", island: "center", moduleId: "indicators", source: "Popovers/ReminderPopover.qml" },
     { name: "media", island: "left", moduleId: "media", source: "Popovers/MediaPopover.qml" },
-    { name: "t3code", island: "right", moduleId: "t3", source: "Popovers/T3CodePopover.qml", attached: true, edge: "right" },
+    { name: "t3code", island: "right", moduleId: "t3", source: "Popovers/T3CodePopover.qml", attached: true },
     { name: "hermes", island: "right", moduleId: "hermes", source: "Popovers/HermesPopover.qml" },
     { name: "github", island: "right", moduleId: "gh", source: "Popovers/GitHubPopover.qml" },
     { name: "overflow", island: "right", moduleId: "", source: "Popovers/OverflowPopover.qml" },

@@ -31,7 +31,10 @@ Item {
     // title instead of squeezing all three lanes onto one line.
     readonly property bool narrowRows: width < 360
 
-    implicitHeight: maxHeight
+    readonly property real naturalHeight:
+        (searchBox.visible ? searchBox.height + spacing : 0) + body.implicitHeight
+
+    implicitHeight: Math.min(maxHeight, Math.max(1, naturalHeight))
 
     function filtered(threads) {
         const query = searchText.trim().toLowerCase();

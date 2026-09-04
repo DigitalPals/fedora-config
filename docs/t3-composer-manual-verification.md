@@ -23,9 +23,9 @@ select trait and a boolean trait.
   accessible description.
 - [ ] On New Thread, confirm Project appears as a compact shoulder directly
   above the composer rather than as a separate full-page form section.
-- [ ] At 320, 400, and 480px drawer widths, confirm expanded controls use the
-  available columns and stack without horizontal clipping when needed. On a
-  short screen, confirm the full-height drawer stays bounded and its form,
+- [ ] Confirm expanded controls use the wider T3 panel's available columns and
+  stack without horizontal clipping on an output-constrained width. On a short
+  screen, confirm the content-sized panel stops at the output cap and its form,
   transcript, attachment, and picker scroll areas remain usable.
 
 ## Input and state

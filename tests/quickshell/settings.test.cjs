@@ -229,6 +229,14 @@ test("popout height cannot feed back into its own required envelope", () => {
         "the input region must not follow the animating rendered geometry");
 });
 
+test("a newly fronted popout remeasures after nested content settles", () => {
+    const host = read("Bar/PopoutHost.qml");
+
+    assert.match(host,
+        /frontSlot = slot;[\s\S]*?Qt\.callLater\(\(\) => \{[\s\S]*?retargetFront\(\);\s*animateToTargets\(\);/,
+        "the final implicit-size change must not fall between presentation and resize listeners");
+});
+
 test("declared overflow paints and receives input outside the panel card", () => {
     const contract = read("Popovers/PopoutPanel.qml");
     const host = read("Bar/PopoutHost.qml");
