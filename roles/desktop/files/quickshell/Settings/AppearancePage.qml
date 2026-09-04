@@ -11,7 +11,11 @@ import "../Common/SettingsHelpers.js" as SettingsHelpers
 SettingsPage {
     id: page
 
-    readonly property var accentChoices: ["#9ecbeb", "#a992e0", "#79b88b", "#d3b47e", "#e8837a"]
+    // Keep the shell's shipped accent in the preset model. The default is
+    // intentionally referenced rather than repeated here so a future palette
+    // refresh cannot leave the active color without a selected swatch.
+    readonly property var accentChoices: [Settings.defaults.accent,
+        "#9ecbeb", "#a992e0", "#79b88b", "#d3b47e", "#e8837a"]
     readonly property string tempPreview: Settings.unit === "f" ? "70°" : "21°"
     readonly property int accentHue: SettingsHelpers.hexHue(Settings.accent, 204)
     readonly property bool fixedPalette: Settings.paletteMode === "fixed"

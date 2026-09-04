@@ -45,6 +45,12 @@ test("Appearance exposes live glass, wallpaper accents, and independent bar colo
     assert.match(appearance, /title:\s*"Colors"/);
     assert.match(appearance,
         /label:\s*"Accent source"[\s\S]{0,100}?settingKey:\s*"paletteMode"/);
+    assert.match(appearance,
+        /accentChoices:\s*\[Settings\.defaults\.accent,/,
+        "the shipped accent must always have a selectable preset");
+    assert.match(appearance,
+        /readonly property bool selected:\s*Settings\.accent === modelData/,
+        "the accent preset must visibly track the stored accent");
     assert.match(appearance, /Common\.Palette\.busy/);
     assert.match(appearance, /Common\.Palette\.error/);
     assert.match(appearance, /SectionHeader \{ label:\s*"BAR BACKGROUND" \}/);
