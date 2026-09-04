@@ -5,7 +5,7 @@
 
 QS_LIVE_SERVICE=${QS_LIVE_SERVICE:-quickshell.service}
 QS_LIVE_TIMEOUT=${QS_LIVE_TIMEOUT:-20}
-QS_LIVE_ERROR_PATTERN='Failed to load|Syntax error|Cannot open|(Type|Reference|Range)Error|Binding loop|invalid (width|height|size)|larger than the maximum texture size|requested buffer size is too big|oversized'
+QS_LIVE_ERROR_PATTERN='Failed to load|Syntax error|Cannot open|(Type|Reference|Range)Error|Type .* unavailable|Invalid property assignment|Binding loop|invalid (width|height|size)|larger than the maximum texture size|requested buffer size is too big|oversized'
 
 qs_live_error() {
   printf 'quickshell live check: %s\n' "$*" >&2

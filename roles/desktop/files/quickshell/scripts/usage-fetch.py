@@ -56,7 +56,7 @@ XAI_REQUEST_HEADERS = {
 CLAUDE_MIN_INTERVAL = 5 * 60
 MAX_BACKOFF = 15 * 60
 MAX_STALE_AGE = 2 * 24 * 3600
-STATE_VERSION = 1
+STATE_VERSION = 2
 
 
 def home(*parts):
@@ -246,6 +246,25 @@ def cached_provider(entry, now, failure=None, retry_at=None):
         # Once every known period resets, do not present that number as current.
         if previous_windows and not cached["windows"] and not cached.get("credits"):
             return None
+
+    accounts = cached.get("accounts")
+    if isinstance(accounts, list):
+        for account in accounts:
+            if not isinstance(account, dict) or account.get("status") != "ok":
+                continue
+            account_windows = account.get("windows")
+            if isinstance(account_windows, list):
+                account["windows"] = [window for window in account_windows
+                                      if not isinstance(window, dict)
+                                      or not isinstance(window.get("resetsAt"),
+                                                        (int, float))
+                                      or window["resetsAt"] > now]
+            account["observedAt"] = int(
+                account.get("observedAt", observed_at))
+            account["stale"] = failure is not None
+            if failure is not None:
+                account["staleKind"] = failure.get("kind", "network")
+                account["staleMessage"] = failure.get("message", "")
 
     cached["observedAt"] = int(observed_at)
     cached["stale"] = failure is not None
@@ -1003,6 +1022,94 @@ def cliproxy_claude_plan(entry):
     return CLAUDE_PLANS.get(raw_plan.lower(), raw_plan)
 
 
+def mask_email(value):
+    """Return a recognisable account label without caching a full address."""
+    if not isinstance(value, str):
+        return None
+    email = value.strip()
+    local, separator, domain = email.rpartition("@")
+    if not separator or not local or not domain:
+        return None
+    return f"{local[0]}•••@{domain}"
+
+
+def mask_emails_in_label(value):
+    if not isinstance(value, str):
+        return None
+
+    def replace(match):
+        return mask_email(match.group(0)) or "Account"
+
+    compact = re.sub(r"\s+", " ", value.strip())
+    return re.sub(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", replace,
+                  compact, flags=re.IGNORECASE)[:80]
+
+
+def cliproxy_account_label(entry, position):
+    """Choose a user-facing auth label, masking credential identities."""
+    email = first_text(entry, "email")
+    label = first_text(entry, "label")
+
+    # CLIProxyAPI commonly mirrors the email into label/account/name/id. A
+    # genuinely custom label is useful; a mirrored credential identity is not
+    # safe to persist in a screenshot-prone status widget.
+    if label and (not email or (label != email and email not in label)):
+        return mask_emails_in_label(label)
+    masked = mask_email(email)
+    if masked:
+        return masked
+
+    for key in ("account", "name", "id"):
+        candidate = first_text(entry, key)
+        if not candidate:
+            continue
+        embedded = re.search(
+            r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", candidate,
+            flags=re.IGNORECASE)
+        if embedded:
+            safe_email = mask_email(embedded.group(0))
+            if safe_email:
+                return safe_email
+        # File names and opaque runtime identifiers are implementation detail,
+        # not a useful substitute for an account name.
+        if key == "account" and len(candidate) <= 80:
+            return mask_emails_in_label(candidate)
+    return f"Account {position + 1}"
+
+
+def cliproxy_account_id(provider, entry):
+    """Create a stable UI key without exposing CLIProxyAPI's auth index."""
+    auth_index = first_text(entry, "auth_index", "authIndex") or "missing"
+    digest = hashlib.sha256(
+        f"{provider}\0{auth_index}".encode("utf-8")).hexdigest()[:16]
+    return f"account-{digest}"
+
+
+def decorate_cliproxy_reading(provider, entry, reading, position):
+    value = copy.deepcopy(reading) if isinstance(reading, dict) else err(
+        "parse", "CLIProxyAPI returned an invalid account reading.")
+    # Provider parsers may discover the full email in an upstream response.
+    # The masked auth-list label is the only identity allowed past this point.
+    value.pop("account", None)
+    value["id"] = cliproxy_account_id(provider, entry)
+    value["label"] = cliproxy_account_label(entry, position)
+    return value
+
+
+def disambiguate_cliproxy_labels(readings):
+    totals = {}
+    for reading in readings:
+        label = reading.get("label")
+        totals[label] = totals.get(label, 0) + 1
+    seen = {}
+    for reading in readings:
+        label = reading.get("label")
+        if totals.get(label, 0) < 2:
+            continue
+        seen[label] = seen.get(label, 0) + 1
+        reading["label"] = f"{label} · {seen[label]}"
+
+
 def fetch_cliproxy_account(provider, entry, client):
     auth_index = first_text(entry, "auth_index", "authIndex")
     if not auth_index:
@@ -1073,25 +1180,41 @@ def fetch_cliproxy_provider(provider, entries, client):
                 and entry.get("disabled") is not True]
     if not matching:
         return err("nocreds", f"No enabled {provider} credentials in CLIProxyAPI.")
-    readings = [fetch_cliproxy_account(provider, entry, client) for entry in matching]
+    readings = [decorate_cliproxy_reading(
+                    provider, entry,
+                    fetch_cliproxy_account(provider, entry, client), position)
+                for position, entry in enumerate(matching)]
+    disambiguate_cliproxy_labels(readings)
     successful = [value for value in readings
                   if isinstance(value, dict) and value.get("status") == "ok"]
     if not successful:
         priority = {"config": 0, "expired": 1, "rate": 2, "network": 3,
                     "http": 4, "parse": 5}
-        return min(readings, key=lambda value: priority.get(value.get("kind"), 99))
+        failure = copy.deepcopy(min(
+            readings, key=lambda value: priority.get(value.get("kind"), 99)))
+        failure.pop("id", None)
+        failure.pop("label", None)
+        failure.update({
+            "source": "cliproxy",
+            "accountCount": len(matching),
+            "availableCount": 0,
+            "accounts": readings,
+        })
+        return failure
 
     # CLIProxyAPI may rotate across several subscriptions. The most usable
     # account is the meaningful pool-level reading; summing percentages would
     # be dimensionally wrong and showing the fullest account would create
     # false alarms while another account still has capacity.
     best = copy.deepcopy(max(successful, key=provider_remaining_score))
+    best_account_id = best.pop("id")
+    best.pop("label", None)
     best.pop("account", None)
     best["source"] = "cliproxy"
     best["accountCount"] = len(matching)
-    if len(matching) > 1:
-        suffix = f"best of {len(successful)}/{len(matching)} accounts"
-        best["plan"] = f"{best.get('plan')} · {suffix}" if best.get("plan") else suffix.title()
+    best["availableCount"] = len(successful)
+    best["bestAccountId"] = best_account_id
+    best["accounts"] = readings
     return best
 
 

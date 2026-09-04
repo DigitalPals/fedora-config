@@ -13,4 +13,6 @@ DrawerSound DrawerSound.qml
 DrawerTabs DrawerTabs.qml
 DrawerTile DrawerTile.qml
 DrawerUsage DrawerUsage.qml
+DrawerUsageAccount DrawerUsageAccount.qml
+DrawerUsageDetails DrawerUsageDetails.qml
 DrawerUsageRows DrawerUsageRows.qml

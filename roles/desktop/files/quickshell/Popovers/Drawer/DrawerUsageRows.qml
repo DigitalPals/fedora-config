@@ -23,6 +23,12 @@ Column {
             required property string modelData
             readonly property int remaining: Usage.minRemaining(modelData)
             readonly property string status: Usage.chipStatus(modelData)
+            readonly property int accountCount: Usage.accountCount(modelData)
+            readonly property int availableCount:
+                Usage.availableAccountCount(modelData)
+            readonly property bool pooled: accountCount > 1
+            readonly property bool partial: pooled
+                && availableCount < accountCount
             readonly property color tone: status === "crit" || status === "error"
                 ? Theme.redText : status === "warn" ? Theme.amber : Theme.textHi
             readonly property color barTone: status === "crit" || status === "error"
@@ -55,20 +61,45 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 height: 24
 
-                Text {
+                Row {
                     anchors.left: parent.left
                     anchors.top: parent.top
-                    text: Usage.meta[row.modelData].title
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    font.weight: Theme.weightMedium
-                    color: Theme.textHi
+                    spacing: 7
+
+                    Text {
+                        text: Usage.meta[row.modelData].title
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontSecondary
+                        font.weight: Theme.weightMedium
+                        color: Theme.textHi
+                    }
+
+                    Text {
+                        visible: row.pooled
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 1
+                        text: `${row.availableCount}/${row.accountCount} available`
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Theme.weightMedium
+                        color: row.partial ? Theme.amber : Theme.textFaint
+                    }
                 }
 
                 Row {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     spacing: 3
+
+                    Text {
+                        visible: row.pooled && row.remaining >= 0
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 1
+                        text: "best"
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.fontMicro
+                        color: Theme.textFaint
+                    }
 
                     Text {
                         text: row.remaining >= 0 ? row.remaining : "--"
@@ -82,7 +113,7 @@ Column {
                     Text {
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: 1
-                        text: "left"
+                        text: row.remaining >= 0 ? "% left" : ""
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.fontMicro
                         color: Theme.textFaint
@@ -124,6 +155,10 @@ Column {
 
             Accessible.role: Accessible.Button
             Accessible.name: Usage.meta[row.modelData].title + " usage"
+                + (row.pooled ? `, ${row.availableCount} of ${row.accountCount} accounts available`
+                    : "")
+                + (row.remaining >= 0 ? `, ${row.pooled ? "best " : ""}${row.remaining} percent left`
+                    : "")
         }
     }
 }

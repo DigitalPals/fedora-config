@@ -26,8 +26,12 @@ Surface {
     spacing: Theme.panelSectionSpacing
 
     readonly property string sel: Usage.selected
-    readonly property var p: Usage.provider(sel)
-    readonly property var info: Usage.meta[sel]
+    readonly property bool hasProvider:
+        Usage.providerKeys.indexOf(sel) !== -1
+    readonly property var p: hasProvider ? Usage.provider(sel) : null
+    readonly property var info: hasProvider ? Usage.meta[sel] : ({
+        name: "Models", title: "Model usage", icon: "", cmd: ""
+    })
     readonly property double readingAt: p && p.observedAt
         ? p.observedAt * 1000 : Usage.updatedAt
 
@@ -139,11 +143,23 @@ Surface {
         // block of saturated colour standing in for a 16px logo.
         BrandIcon {
             id: brandSquare
+            visible: root.hasProvider
             x: 2
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.iconMedium
             height: Theme.iconMedium
             name: root.info.icon
+        }
+
+        Sym {
+            visible: !root.hasProvider
+            x: 2
+            anchors.verticalCenter: parent.verticalCenter
+            width: Theme.iconMedium
+            height: Theme.iconMedium
+            name: "data_usage"
+            size: Theme.iconMedium
+            color: Theme.textMid
         }
 
         Rectangle {
@@ -248,6 +264,48 @@ Surface {
                 font.pixelSize: Theme.fontMicro
                 color: Theme.textFaint
                 elide: Text.ElideRight
+            }
+        }
+    }
+
+    // CLIProxyAPI may legitimately manage none of the providers this widget
+    // understands. Keep that source-level state neutral rather than reviving
+    // whichever provider happened to be selected before the inventory changed.
+    Rectangle {
+        visible: !root.hasProvider
+        width: parent.width
+        height: noProviderColumn.implicitHeight + 24
+        radius: Theme.chipRadius
+        color: Theme.tile
+        border.width: 1
+        border.color: Theme.hairlineSoft
+
+        Column {
+            id: noProviderColumn
+            x: 12
+            y: 12
+            width: parent.width - 24
+            spacing: 3
+
+            Text {
+                width: parent.width
+                text: Usage.loading ? "Loading provider inventory…"
+                    : "No managed usage providers"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontBody
+                font.weight: Theme.weightMedium
+                color: Theme.textHi
+            }
+
+            Text {
+                width: parent.width
+                text: Usage.loading ? "Waiting for CLIProxyAPI."
+                    : "CLIProxyAPI did not return a supported enabled provider."
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontSecondary
+                color: Theme.textLow
+                wrapMode: Text.Wrap
+                lineHeight: Theme.proseLineHeight
             }
         }
     }
@@ -630,6 +688,8 @@ Surface {
             textFormat: Usage.fetchError !== "" ? Text.PlainText : Text.RichText
             text: Usage.fetchError !== ""
                 ? Usage.fetchError
+                : !root.hasProvider
+                    ? Usage.loading ? "Loading…" : "No managed providers"
                 : root.readingAt > 0
                     ? `${root.p && root.p.stale === true ? "last live" : "updated"} <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(root.readingAt), "HH:mm:ss")}</font>`
                     : "Loading…"

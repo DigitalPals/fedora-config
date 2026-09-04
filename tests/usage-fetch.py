@@ -283,11 +283,14 @@ class CliProxyTests(unittest.TestCase):
         self.assertEqual(payload["auth_index"], "auth-17")
         self.assertEqual(payload["header"]["Authorization"], "Bearer $TOKEN$")
 
-    def test_account_pool_uses_most_available_successful_subscription(self):
+    def test_account_pool_keeps_every_subscription_and_best_summary(self):
         entries = [
-            {"provider": "codex", "auth_index": "full"},
-            {"provider": "codex", "auth_index": "open"},
-            {"provider": "codex", "auth_index": "broken"},
+            {"provider": "codex", "auth_index": "full",
+             "email": "first@example.test", "label": "first@example.test"},
+            {"provider": "codex", "auth_index": "open",
+             "email": "second@example.test", "label": "second@example.test"},
+            {"provider": "codex", "auth_index": "broken",
+             "email": "third@example.test", "label": "third@example.test"},
         ]
 
         def account(provider, entry, client):
@@ -303,9 +306,70 @@ class CliProxyTests(unittest.TestCase):
             result = MODULE.fetch_cliproxy_provider("codex", entries, object())
 
         self.assertEqual(result["windows"][0]["used"], 20)
+        self.assertEqual(result["source"], "cliproxy")
         self.assertEqual(result["accountCount"], 3)
-        self.assertIn("best of 2/3 accounts", result["plan"])
+        self.assertEqual(result["availableCount"], 2)
+        self.assertEqual(result["plan"], "ChatGPT Plus")
+        self.assertEqual(len(result["accounts"]), 3)
+        self.assertEqual([account["status"] for account in result["accounts"]],
+                         ["ok", "ok", "error"])
+        self.assertEqual([account["label"] for account in result["accounts"]],
+                         ["f•••@example.test", "s•••@example.test",
+                          "t•••@example.test"])
+        self.assertEqual(result["bestAccountId"], result["accounts"][1]["id"])
         self.assertNotIn("account", result)
+        serialized = json.dumps(result)
+        for private in ("private@example.test", "first@example.test",
+                        "second@example.test", "third@example.test",
+                        "full", "open", "broken"):
+            self.assertNotIn(private, serialized)
+
+    def test_account_pool_preserves_each_failure_when_all_accounts_fail(self):
+        entries = [
+            {"provider": "claude", "auth_index": "one",
+             "email": "one@example.test"},
+            {"provider": "claude", "auth_index": "two",
+             "email": "two@example.test"},
+        ]
+
+        def account(provider, entry, client):
+            kind = "expired" if entry["auth_index"] == "one" else "rate"
+            return MODULE.err(kind, kind + " account")
+
+        with mock.patch.object(MODULE, "fetch_cliproxy_account", side_effect=account):
+            result = MODULE.fetch_cliproxy_provider("claude", entries, object())
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["kind"], "expired")
+        self.assertEqual(result["source"], "cliproxy")
+        self.assertEqual(result["accountCount"], 2)
+        self.assertEqual(result["availableCount"], 0)
+        self.assertEqual([account["kind"] for account in result["accounts"]],
+                         ["expired", "rate"])
+
+    def test_absent_provider_is_not_marked_as_managed_by_cliproxy(self):
+        result = MODULE.fetch_cliproxy_provider("kimi", [{
+            "provider": "codex", "auth_index": "codex-only",
+        }], object())
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["kind"], "nocreds")
+        self.assertNotIn("source", result)
+
+    def test_custom_account_label_is_kept_but_email_labels_are_masked(self):
+        self.assertEqual(MODULE.cliproxy_account_label({
+            "email": "private@example.test", "label": "Work subscription",
+        }, 0), "Work subscription")
+        self.assertEqual(MODULE.cliproxy_account_label({
+            "label": "private@example.test",
+        }, 0), "p•••@example.test")
+        self.assertEqual(MODULE.cliproxy_account_label({}, 1), "Account 2")
+
+        readings = [{"label": "Shared"}, {"label": "Shared"},
+                    {"label": "Personal"}]
+        MODULE.disambiguate_cliproxy_labels(readings)
+        self.assertEqual([reading["label"] for reading in readings],
+                         ["Shared · 1", "Shared · 2", "Personal"])
 
     def test_xai_account_uses_only_the_two_read_only_billing_endpoints(self):
         calls = []
@@ -438,6 +502,36 @@ class ResilientFetchTests(unittest.TestCase):
 
         entry["lastOk"]["windows"][1]["resetsAt"] = 1_150
         self.assertIsNone(MODULE.cached_provider(entry, 1_200, failure, 1_500))
+
+    def test_cached_pool_marks_accounts_stale_and_prunes_their_windows(self):
+        entry = {
+            "observedAt": 1_000,
+            "lastOk": {
+                "status": "ok",
+                "windows": [{"label": "summary", "used": 20,
+                             "resetsAt": 2_000}],
+                "credits": None,
+                "accounts": [{
+                    "id": "account-safe", "label": "p•••@example.test",
+                    "status": "ok", "windows": [
+                        {"label": "old", "used": 90, "resetsAt": 1_100},
+                        {"label": "current", "used": 25,
+                         "resetsAt": 2_000},
+                    ],
+                    "credits": None,
+                }],
+            },
+        }
+        failure = MODULE.err("network", "offline")
+
+        cached = MODULE.cached_provider(entry, 1_200, failure, 1_500)
+
+        account = cached["accounts"][0]
+        self.assertEqual([window["label"] for window in account["windows"]],
+                         ["current"])
+        self.assertTrue(account["stale"])
+        self.assertEqual(account["staleKind"], "network")
+        self.assertEqual(account["observedAt"], 1_000)
 
     def test_retry_after_supports_seconds_and_http_dates(self):
         self.assertEqual(MODULE.retry_after_seconds({"Retry-After": "12"}, 1_000), 12)

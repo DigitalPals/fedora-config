@@ -50,10 +50,10 @@ Item {
     property int displayMode: 2
 
     readonly property var availableKeys: Usage.providerKeys.filter(k => {
-        // Provider toggles only control the bar; every provider keeps its
-        // popover tab for sign-in and error details. A menubar chip is useful
-        // only when the provider returned a real usage figure, so do not
-        // render unavailable providers as a misleading "--%" icon.
+        // Provider toggles only control the bar; every provider exposed by the
+        // selected source keeps its popover tab for error details. A menubar
+        // chip is useful only when the provider returned a real usage figure,
+        // so do not render unavailable providers as a misleading "--%" icon.
         if (Settings.modOpts.usage[k] !== true)
             return false;
         return Usage.minRemaining(k) >= 0;
@@ -102,7 +102,10 @@ Item {
         Rectangle {
             id: emptyChip
 
-            property string providerKey: "claude"
+            // With a dynamic proxy inventory the first provider may not be
+            // Claude. Keep the offline chip and the view it opens aligned.
+            property string providerKey: Usage.providerKeys.length > 0
+                ? Usage.providerKeys[0] : ""
             visible: root.empty
             height: Theme.chipInnerHeight
             width: emptyRow.implicitWidth + 14
@@ -131,12 +134,25 @@ Item {
                 spacing: 4
 
                 BarBrandIcon {
+                    visible: emptyChip.providerKey !== ""
                     anchors.verticalCenter: parent.verticalCenter
                     width: 12
                     height: 12
-                    name: "claude"
+                    name: emptyChip.providerKey !== ""
+                        ? Usage.meta[emptyChip.providerKey].icon : ""
                     opacity: highlighted ? 1 : 0.52
                     highlighted: root.held || emptyHover.over
+                }
+
+                Sym {
+                    visible: emptyChip.providerKey === ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 12
+                    height: 12
+                    name: "data_usage"
+                    size: 12
+                    color: root.held || emptyHover.over
+                        ? Theme.barTextHi : Theme.barTextFaint
                 }
 
                 Text {
@@ -160,9 +176,9 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onEntered: root.chipEntered("claude")
-                onPositionChanged: root.chipEntered("claude")
-                onClicked: root.chipClicked("claude")
+                onEntered: root.chipEntered(emptyChip.providerKey)
+                onPositionChanged: root.chipEntered(emptyChip.providerKey)
+                onClicked: root.chipClicked(emptyChip.providerKey)
             }
         }
 

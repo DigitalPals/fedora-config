@@ -43,3 +43,19 @@ test("live journal guard rejects QML JavaScript evaluation errors", async t => {
         });
     }
 });
+
+test("live journal guard rejects QML component load failures", async t => {
+    for (const [name, diagnostic] of [
+        ["unavailable type", "Type DrawerUsage unavailable"],
+        ["invalid property", "Invalid property assignment: implicitHeight is read-only"],
+    ]) {
+        await t.test(name, () => {
+            const result = checkJournal(
+                `WARN scene: @DrawerUsage.qml[1:1]: ${diagnostic}`);
+            assert.equal(result.status, 1,
+                `${name} unexpectedly passed the live journal guard`);
+            assert.match(result.stderr, /contains QML\/runtime errors/);
+            assert.match(result.stderr, new RegExp(diagnostic.split(":")[0]));
+        });
+    }
+});

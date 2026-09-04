@@ -4,23 +4,60 @@ import Quickshell
 import "../../Common"
 import ".."
 
-// The drawer's Usage tab: one provider at a time — its quota windows with
-// remaining percentage, meter and reset times, its credits, and the upcoming
-// resets — behind a provider switcher. The bar's usage pill deep-links here
-// with Usage.selected already set.
+// The drawer's Usage tab keeps providers as its first navigation level. A
+// CLIProxyAPI provider adds a second, always-visible subscription accordion;
+// direct mode and one-account pools retain the compact single-reading view.
 Column {
     id: root
 
     readonly property string selected: Usage.selected
-    readonly property var record: Usage.provider(selected)
-    readonly property bool ok: record !== null && record.status === "ok"
-    readonly property var windows: ok && Array.isArray(record.windows)
-        ? record.windows : []
-    readonly property var credits: ok ? (record.credits ?? null) : null
-    readonly property var resetRows: windows.filter(w => w.resetsAt)
+    readonly property bool hasProvider:
+        Usage.providerKeys.indexOf(selected) !== -1
+    readonly property var info: hasProvider ? Usage.meta[selected] : ({
+        name: "Models", title: "Model usage", icon: "", cmd: ""
+    })
+    readonly property var record: hasProvider ? Usage.provider(selected) : null
+    readonly property var accounts: record && Array.isArray(record.accounts)
+        ? record.accounts : []
+    readonly property bool multipleAccounts: accounts.length > 1
+    readonly property var singleRecord: accounts.length === 1
+        ? accounts[0] : record
+    readonly property bool singleOk: singleRecord !== null
+        && singleRecord.status === "ok"
+    readonly property int accountCount: record
+        && typeof record.accountCount === "number"
+        ? record.accountCount : accounts.length
+    readonly property int availableCount: record
+        && typeof record.availableCount === "number"
+        ? record.availableCount
+        : accounts.filter(account => account.status === "ok").length
+
+    // null means no explicit choice yet, so the best available account opens
+    // initially. An empty string is an explicit "collapse all" choice.
+    property var requestedAccountId: null
+    readonly property string expandedAccountId: {
+        if (!multipleAccounts)
+            return "";
+        if (requestedAccountId === "")
+            return "";
+        if (typeof requestedAccountId === "string"
+                && accounts.some(account => account.id === requestedAccountId))
+            return requestedAccountId;
+        if (record && record.bestAccountId
+                && accounts.some(account => account.id === record.bestAccountId))
+            return record.bestAccountId;
+        const available = accounts.find(account => account.status === "ok");
+        return available ? available.id : accounts[0].id;
+    }
 
     width: parent ? parent.width : 0
     spacing: Theme.scaled(14)
+
+    onSelectedChanged: requestedAccountId = null
+
+    function toggleAccount(accountId) {
+        requestedAccountId = accountId === expandedAccountId ? "" : accountId;
+    }
 
     Claim {
         active: root.visible
@@ -28,13 +65,11 @@ Column {
         onReleased: Usage.releaseCountdown()
     }
 
-    function windowSpan(w) {
-        if (!w.windowSecs)
-            return w.label;
-        const hours = w.windowSecs / 3600;
-        if (hours < 24)
-            return Math.round(hours) + "-hour window";
-        return Math.round(hours / 24) + "-day window";
+    function availabilityText() {
+        if (accountCount <= 0)
+            return "";
+        const noun = accountCount === 1 ? "account" : "accounts";
+        return `${availableCount}/${accountCount} ${noun} available`;
     }
 
     // ---- provider switch -------------------------------------------------
@@ -106,7 +141,7 @@ Column {
     // ---- header ----------------------------------------------------------
     Item {
         width: parent.width
-        height: 36
+        height: 40
 
         Column {
             anchors.left: parent.left
@@ -119,9 +154,10 @@ Column {
             Text {
                 width: parent.width
                 text: {
-                    const title = Usage.meta[root.selected].title;
-                    if (root.ok && root.record.plan)
-                        return title + " · " + root.record.plan;
+                    const title = root.info.title;
+                    if (!root.multipleAccounts && root.singleOk
+                            && root.singleRecord.plan)
+                        return title + " · " + root.singleRecord.plan;
                     return title;
                 }
                 font.family: Theme.fontMenu
@@ -135,6 +171,8 @@ Column {
                 width: parent.width
                 text: {
                     const parts = [];
+                    if (root.accountCount > 1)
+                        parts.push(root.availabilityText());
                     if (Usage.updatedAt > 0)
                         parts.push("updated " + Qt.formatDateTime(
                             new Date(Usage.updatedAt), "HH:mm:ss"));
@@ -147,7 +185,9 @@ Column {
                 }
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
-                color: Theme.textFaint
+                color: root.accountCount > 1
+                    && root.availableCount < root.accountCount
+                    ? Theme.amber : Theme.textFaint
                 elide: Text.ElideRight
             }
         }
@@ -167,9 +207,11 @@ Column {
         }
     }
 
-    // ---- signed-out / error ----------------------------------------------
+    // A provider without per-account information keeps the established
+    // signed-out panel. An all-failed CLIProxy pool instead shows each failed
+    // account below, so one bad credential is never hidden by a generic row.
     Rectangle {
-        visible: !root.ok
+        visible: !root.multipleAccounts && !root.singleOk
         width: parent.width
         height: signedOutColumn.implicitHeight + 24
         radius: 10
@@ -185,8 +227,11 @@ Column {
 
             Text {
                 width: parent.width
-                text: Usage.fetchError !== "" ? "Usage unavailable"
-                    : root.record && root.record.kind === "auth"
+                text: !root.hasProvider
+                    ? (Usage.loading ? "Loading usage" : "No managed providers")
+                    : Usage.fetchError !== "" ? "Usage unavailable"
+                    : root.singleRecord && (root.singleRecord.kind === "auth"
+                        || root.singleRecord.kind === "nocreds")
                     ? "Sign-in required" : "No usage data"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontSecondary
@@ -196,9 +241,12 @@ Column {
 
             Text {
                 width: parent.width
-                text: Usage.fetchError !== "" ? Usage.fetchError
-                    : root.record && root.record.message
-                    ? root.record.message
+                text: !root.hasProvider
+                    ? (Usage.loading ? "Waiting for CLIProxyAPI."
+                        : "CLIProxyAPI did not return a supported enabled provider.")
+                    : Usage.fetchError !== "" ? Usage.fetchError
+                    : root.singleRecord && root.singleRecord.message
+                    ? root.singleRecord.message
                     : Usage.loading ? "Fetching…" : "Nothing reported yet."
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontCaption
@@ -207,10 +255,12 @@ Column {
             }
 
             Text {
-                visible: Usage.meta[root.selected].cmd !== ""
-                    && root.record !== null && root.record.kind === "auth"
+                visible: root.info.cmd !== ""
+                    && root.singleRecord !== null
+                    && (root.singleRecord.kind === "auth"
+                        || root.singleRecord.kind === "nocreds")
                 width: parent.width
-                text: "Run " + Usage.meta[root.selected].cmd + " in a terminal."
+                text: "Run " + root.info.cmd + " in a terminal."
                 font.family: Theme.fontNumeric
                 font.pixelSize: Theme.fontCaption
                 color: Theme.textLow
@@ -219,249 +269,48 @@ Column {
         }
     }
 
-    // ---- quota windows ---------------------------------------------------
     Column {
-        visible: root.ok
+        visible: root.multipleAccounts
         width: parent.width
         spacing: 4
 
-        Repeater {
-            model: root.windows
-
-            delegate: Rectangle {
-                id: windowCard
-
-                required property var modelData
-                readonly property int remaining: Math.max(0,
-                    Math.round(100 - Number(modelData.used)))
-                readonly property bool low:
-                    remaining <= Settings.modOpts.usage.warnAt
-                readonly property bool exhausted:
-                    remaining <= Settings.modOpts.usage.critAt
-
-                width: parent ? parent.width : 0
-                height: cardColumn.implicitHeight + 20
-                radius: 10
-                color: Theme.chip
-
-                Column {
-                    id: cardColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
-
-                    Item {
-                        width: parent.width
-                        height: 30
-
-                        Column {
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 1
-
-                            Text {
-                                text: windowCard.modelData.label
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontSecondary
-                                font.weight: Theme.weightSemibold
-                                color: Theme.textHi
-                            }
-
-                            Text {
-                                text: root.windowSpan(windowCard.modelData)
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontMicro
-                                color: Theme.textFaint
-                            }
-                        }
-
-                        Row {
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            spacing: 3
-
-                            Text {
-                                text: windowCard.remaining
-                                font.family: Theme.fontNumeric
-                                font.pixelSize: Theme.fontProminent
-                                font.weight: Theme.weightSemibold
-                                font.letterSpacing: -0.5
-                                font.features: Theme.tabularNumberFeatures
-                                color: windowCard.exhausted ? Theme.redText
-                                    : windowCard.low ? Theme.amber : Theme.textHi
-                            }
-
-                            Text {
-                                anchors.bottom: parent.bottom
-                                anchors.bottomMargin: 3
-                                text: "% left"
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontMicro
-                                color: Theme.textFaint
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        width: parent.width
-                        height: 6
-                        radius: 3
-                        color: Qt.rgba(1, 1, 1, 0.10)
-
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            width: parent.width * windowCard.remaining / 100
-                            radius: 3
-                            color: windowCard.exhausted ? Theme.red
-                                : windowCard.low ? Theme.amber : Theme.accent
-                        }
-                    }
-
-                    Item {
-                        visible: windowCard.modelData.resetsAt ? true : false
-                        width: parent.width
-                        height: 14
-
-                        Text {
-                            anchors.left: parent.left
-                            text: windowCard.modelData.resetsAt
-                                ? "resets in " + Usage.formatReset(
-                                    windowCard.modelData.resetsAt) : ""
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
-                            color: Theme.textMid
-                        }
-
-                        Text {
-                            anchors.right: parent.right
-                            text: windowCard.modelData.resetsAt
-                                ? Usage.formatResetAbs(
-                                    windowCard.modelData.resetsAt) : ""
-                            font.family: Theme.fontNumeric
-                            font.pixelSize: Theme.fontMicro
-                            font.features: Theme.tabularNumberFeatures
-                            color: Theme.textFaint
-                        }
-                    }
-                }
-            }
+        SectionLabel {
+            width: parent.width
+            text: "SUBSCRIPTIONS"
+            detail: root.availabilityText()
         }
 
-        // Pay-as-you-go / banked credits, when the provider reports them.
-        Item {
-            visible: root.credits !== null
-            width: parent.width
-            height: 44
+        Repeater {
+            model: root.accounts
 
-            Column {
-                anchors.left: parent.left
-                anchors.leftMargin: 12
-                anchors.right: creditsValue.left
-                anchors.rightMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 1
+            delegate: DrawerUsageAccount {
+                required property var modelData
 
-                Text {
-                    width: parent.width
-                    text: root.credits && root.credits.label
-                        ? root.credits.label : "Extra usage"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
-                    font.weight: Theme.weightMedium
-                    color: Theme.textHi
-                    elide: Text.ElideRight
-                }
-
-                Text {
-                    width: parent.width
-                    text: "beyond plan limits"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
-                    color: Theme.textFaint
-                }
-            }
-
-            Text {
-                id: creditsValue
-                anchors.right: parent.right
-                anchors.rightMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                textFormat: Text.StyledText
-                text: {
-                    if (!root.credits)
-                        return "";
-                    const used = root.credits.used !== null
-                        && root.credits.used !== undefined
-                        ? "$" + Number(root.credits.used).toFixed(2) : "--";
-                    const limit = root.credits.limit !== null
-                        && root.credits.limit !== undefined
-                        ? " / $" + Number(root.credits.limit) : "";
-                    return "<b>" + used + "</b>" + limit;
-                }
-                font.family: Theme.fontNumeric
-                font.pixelSize: Theme.fontSecondary
-                font.features: Theme.tabularNumberFeatures
-                color: Theme.textHi
+                width: parent ? parent.width : 0
+                record: modelData
+                expanded: modelData.id === root.expandedAccountId
+                best: root.record && modelData.id === root.record.bestAccountId
+                providerStale: root.record && root.record.stale === true
+                onToggled: root.toggleAccount(modelData.id)
             }
         }
     }
 
-    // ---- upcoming resets -------------------------------------------------
-    Column {
-        visible: root.ok && root.resetRows.length > 0
+    DrawerUsageDetails {
+        visible: !root.multipleAccounts && root.singleOk
         width: parent.width
-        spacing: 2
-
-        SectionLabel {
-            width: parent.width
-            text: "UPCOMING RESETS"
-        }
-
-        Repeater {
-            model: root.resetRows
-
-            delegate: Item {
-                id: resetRow
-
-                required property var modelData
-
-                width: parent ? parent.width : 0
-                height: 28
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: resetRow.modelData.label
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
-                    color: Theme.textMid
-                }
-
-                Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Usage.formatResetAbs(resetRow.modelData.resetsAt)
-                    font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Theme.weightSemibold
-                    font.features: Theme.tabularNumberFeatures
-                    color: Theme.textHi
-                }
-            }
-        }
+        windows: root.singleRecord && root.singleRecord.windows
+            ? root.singleRecord.windows : []
+        credits: root.singleRecord ? (root.singleRecord.credits ?? null) : null
+        stale: root.record && root.record.stale === true
     }
 
     DrawerFooter {
-        info: root.ok && root.record.source
+        info: root.record && root.record.source
             ? "via " + root.record.source
             : "source · " + Settings.modOpts.usage.source
-        actionText: Settings.modOpts.usage.cliproxyUrl !== ""
+        actionText: Settings.modOpts.usage.source === "cliproxy"
+            && Settings.modOpts.usage.cliproxyUrl !== ""
             ? "Open dashboard" : ""
         onActionClicked: {
             Popouts.close();

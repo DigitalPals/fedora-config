@@ -5,11 +5,17 @@ import Quickshell
 import Quickshell.Io
 import "ProcHelpers.js" as ProcHelpers
 import "Format.js" as Format
+import "UsageHelpers.js" as Helpers
 
 Singleton {
     id: root
 
-    readonly property var providerKeys: ["claude", "codex", "kimi", "xai"]
+    readonly property var supportedProviderKeys: Helpers.SUPPORTED_PROVIDER_KEYS
+    // Direct mode keeps sign-in/error tabs for every supported CLI. In proxy
+    // mode the auth-file inventory is authoritative: only managed providers
+    // returned by CLIProxyAPI belong in any usage surface.
+    readonly property var providerKeys: Helpers.providerKeys(
+        Settings.modOpts.usage.source, data)
     readonly property var meta: ({
             claude: { name: "Claude", title: "Claude Code", icon: "claude", cmd: "claude auth login" },
             codex: { name: "Codex", title: "Codex CLI", icon: "openai", cmd: "codex login" },
@@ -85,23 +91,52 @@ Singleton {
     }
     property string selected: "claude"
 
-    // True once any provider ever returned ok data.
+    onProviderKeysChanged: selected = Helpers.selectedProvider(
+        providerKeys, selected)
+
+    // True when any provider exposed by the current source returned ok data.
     readonly property bool anyOk: providerKeys.some(k => data[k] && data[k].status === "ok")
 
     function provider(key) {
         return data[key] ?? null;
     }
 
-    // Minimum remaining percent across a provider's windows, or -1.
-    function minRemaining(key) {
-        const p = provider(key);
-        if (!p || p.status !== "ok" || !p.windows || p.windows.length === 0)
+    // Minimum remaining percent across any reading's windows, or -1. The
+    // top-level provider is the pool summary; account rows reuse this without
+    // changing the menubar's established best-available semantics.
+    function readingRemaining(reading) {
+        if (!reading || reading.status !== "ok" || !reading.windows
+                || reading.windows.length === 0)
             return -1;
-        const numeric = p.windows.filter(w => typeof w.used === "number"
+        const numeric = reading.windows.filter(w => typeof w.used === "number"
             && isFinite(w.used));
         if (numeric.length === 0)
             return -1;
         return Math.round(Math.min(...numeric.map(w => 100 - w.used)));
+    }
+
+    function minRemaining(key) {
+        return readingRemaining(provider(key));
+    }
+
+    function accountCount(key) {
+        const p = provider(key);
+        if (!p)
+            return 0;
+        if (typeof p.accountCount === "number")
+            return p.accountCount;
+        return Array.isArray(p.accounts) ? p.accounts.length : 0;
+    }
+
+    function availableAccountCount(key) {
+        const p = provider(key);
+        if (!p)
+            return 0;
+        if (typeof p.availableCount === "number")
+            return p.availableCount;
+        if (!Array.isArray(p.accounts))
+            return p.status === "ok" ? 1 : 0;
+        return p.accounts.filter(account => account.status === "ok").length;
     }
 
     // "ok" | "warn" | "crit" | "stale" | "error" | "none"

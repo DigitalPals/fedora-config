@@ -12,6 +12,14 @@ const moduleDetail = fs.readFileSync(
     path.join(shellDir, "Settings", "ModuleDetailView.qml"), "utf8");
 const settingsText = fs.readFileSync(
     path.join(shellDir, "Settings", "SettingsTextRow.qml"), "utf8");
+const drawerUsage = fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerUsage.qml"), "utf8");
+const drawerAccount = fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerUsageAccount.qml"), "utf8");
+const drawerDetails = fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerUsageDetails.qml"), "utf8");
+const drawerRows = fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerUsageRows.qml"), "utf8");
 
 test("model usage no longer collects or renders usage history", () => {
     assert.doesNotMatch(popover, /histMode|histBars|USAGE HISTORY/);
@@ -80,8 +88,57 @@ test("CLIProxyAPI source and credentials are configurable without persisting the
     assert.match(settingsText, /echoMode:\s*root\.secret \? TextInput\.Password/);
 });
 
+test("drawer exposes every CLIProxy subscription behind a provider group", () => {
+    assert.match(drawerUsage,
+        /Array\.isArray\(record\.accounts\)[\s\S]{0,120}?record\.accounts/);
+    assert.match(drawerUsage,
+        /text:\s*"SUBSCRIPTIONS"[\s\S]{0,300}?model:\s*root\.accounts[\s\S]{0,200}?DrawerUsageAccount/);
+    assert.match(drawerUsage,
+        /expandedAccountId:[\s\S]{0,650}?record\.bestAccountId/,
+        "the best available subscription should be expanded initially");
+    assert.match(drawerUsage,
+        /requestedAccountId === ""[\s\S]{0,80}?return ""/,
+        "an explicit empty selection should keep every subscription collapsed");
+    assert.match(drawerUsage,
+        /function toggleAccount\(accountId\)[\s\S]{0,160}?accountId === expandedAccountId \? "" : accountId/,
+        "pressing the expanded subscription should collapse it");
+    assert.match(drawerUsage,
+        /onToggled:\s*root\.toggleAccount\(modelData\.id\)/);
+    assert.match(drawerUsage,
+        /`\$\{availableCount\}\/\$\{accountCount\} \$\{noun\} available`/);
+    assert.match(drawerRows, /availableAccountCount/);
+    assert.match(drawerRows, /text:\s*"best"/,
+        "the Overview percentage must be qualified as a pool best");
+});
+
+test("subscription accordion is accessible and keeps account failures visible", () => {
+    assert.match(drawerAccount, /activeFocusOnTab:\s*visible/);
+    assert.match(drawerAccount,
+        /Qt\.Key_Return[\s\S]{0,180}?Qt\.Key_Enter[\s\S]{0,180}?Qt\.Key_Space/);
+    assert.match(drawerAccount, /Accessible\.role:\s*Accessible\.Button/);
+    assert.match(drawerAccount, /root\.expanded && !root\.ok/,
+        "an unavailable account needs its own expandable error body");
+    assert.match(drawerDetails,
+        /hasUsage:\s*typeof modelData\.used === "number"[\s\S]{0,100}?isFinite/);
+    assert.match(drawerDetails,
+        /text:\s*windowCard\.hasUsage \? windowCard\.remaining : "—"/);
+    assert.match(drawerDetails,
+        /height:\s*contentHeight/,
+        "repeated account details must report their height to the accordion");
+    assert.match(drawerAccount,
+        /height:\s*summary\.height[\s\S]{0,180}?usageDetails\.height/,
+        "the accordion delegate must include the expanded details height");
+    assert.match(drawerAccount,
+        /windows:\s*root\.record && root\.record\.windows[\s\S]{0,100}?root\.record\.windows : \[\]/,
+        "nested JSON windows must remain compatible with QML sequence values");
+    assert.doesNotMatch(drawerAccount,
+        /Array\.isArray\(root\.record\.windows\)/,
+        "Array.isArray rejects valid nested sequences inside a Repeater delegate");
+});
+
 test("xAI Grok is configurable and unknown quota percentages stay unknown", () => {
-    assert.match(usage, /providerKeys:\s*\["claude", "codex", "kimi", "xai"\]/);
+    assert.match(usage,
+        /supportedProviderKeys:\s*Helpers\.SUPPORTED_PROVIDER_KEYS/);
     assert.match(usage, /xai:\s*\{[^}]*title:\s*"xAI Grok"[^}]*icon:\s*"grok"/);
     assert.match(moduleDetail,
         /label:\s*"xAI \/ Grok"[\s\S]{0,500}?view\.opts\.xai/);

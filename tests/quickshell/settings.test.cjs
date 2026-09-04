@@ -330,7 +330,7 @@ test("usage chip hover joins the latched menu session", () => {
     // A closed bar remains inert. Once any popout was clicked open, hovering a
     // provider selects it and morphs the current view to Usage in place.
     assert.match(usage,
-        /onChipEntered:\s*key => \{\s*if \(!Popouts\.open\)\s*return;\s*Usage\.selected = key;\s*root\.host\.hoverPopout\("usage", root\.isle, usageChips\.anchorItem\);/,
+        /onChipEntered:\s*key => \{\s*if \(!Popouts\.open\)\s*return;[\s\S]{0,100}?if \(key !== ""\)[\s\S]{0,80}?Usage\.selected = key;\s*root\.host\.hoverPopout\("usage", root\.isle, usageChips\.anchorItem\);/,
         "provider hover must be gated by, and participate in, the open menu session");
     // Mapping the popout surface can cost Qt an enter event; motion over a
     // chip still re-delivers the provider.
@@ -347,17 +347,35 @@ test("usage chip hover joins the latched menu session", () => {
         "all providers should retain the grouped UsageChips anchor");
 });
 
-test("model usage only shows providers with a real menubar value", () => {
+test("model usage follows the source inventory and only shows real menubar values", () => {
     const chips = read("Bar/UsageChips.qml");
     const popover = read("Popovers/UsagePopover.qml");
+    const usage = read("Common/Usage.qml");
+    const drawer = read("Popovers/Drawer/DrawerUsage.qml");
+    const overview = read("Popovers/Drawer/DrawerUsageRows.qml");
 
+    assert.match(usage,
+        /providerKeys:\s*Helpers\.providerKeys\([\s\S]{0,100}?Settings\.modOpts\.usage\.source, data\)/,
+        "one reactive inventory must drive every model-usage surface");
     assert.match(chips,
         /availableKeys:\s*Usage\.providerKeys\.filter[\s\S]*?return Usage\.minRemaining\(k\) >= 0;\s*\}\)/,
         "signed-out, failed, and valueless providers must not render as --% chips");
     assert.doesNotMatch(chips, /p\.status === "ok" \|\| p\.kind !== "nocreds"/,
         "provider errors are details for the popover, not menubar chips");
     assert.match(popover, /model:\s*Usage\.providerKeys/,
-        "hidden menubar providers must remain reachable in the usage popover");
+        "source-provided entries without a bar value remain reachable in the popover");
+    assert.match(drawer, /model:\s*Usage\.providerKeys/,
+        "the Usage tab must use the same source-provided inventory");
+    assert.match(overview,
+        /keys:\s*Usage\.providerKeys\.filter/,
+        "Control Center must not restore providers absent from CLIProxyAPI");
+    assert.match(chips,
+        /providerKey:\s*Usage\.providerKeys\.length > 0[\s\S]{0,100}?\? Usage\.providerKeys\[0\] : ""/,
+        "an empty proxy inventory must not retain the last provider brand");
+    assert.match(popover,
+        /hasProvider:[\s\S]{0,100}?Usage\.providerKeys\.indexOf\(sel\) !== -1/);
+    assert.match(drawer,
+        /hasProvider:[\s\S]{0,120}?Usage\.providerKeys\.indexOf\(selected\) !== -1/);
 });
 
 test("regression fixes keep asynchronous state identity-safe", () => {

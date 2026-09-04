@@ -19,10 +19,12 @@ BarModule {
         anchorItem: root.groupAnchor ?? usageChips
         displayMode: root.compact ? 0 : 2
         onChipClicked: key => {
-            if (root.host.popoutOpen("usage") && Usage.selected === key) {
+            if (root.host.popoutOpen("usage")
+                    && (key === "" || Usage.selected === key)) {
                 Popouts.close();
             } else {
-                Usage.selected = key;
+                if (key !== "")
+                    Usage.selected = key;
                 root.host.openPopout("usage", root.isle, usageChips.anchorItem);
             }
         }
@@ -32,7 +34,8 @@ BarModule {
         onChipEntered: key => {
             if (!Popouts.open)
                 return;
-            Usage.selected = key;
+            if (key !== "")
+                Usage.selected = key;
             root.host.hoverPopout("usage", root.isle, usageChips.anchorItem);
         }
     }
