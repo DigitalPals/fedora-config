@@ -1,4 +1,5 @@
 import QtQuick
+import "Format.js" as Format
 
 // Viewport chrome for an existing Flickable: edge fades disclose clipped
 // content and one quiet thumb becomes legible while the view is moving. It
@@ -18,6 +19,12 @@ Item {
         : target.contentWidth > target.width + 1
     readonly property bool atStart: vertical ? target.atYBeginning : target.atXBeginning
     readonly property bool atEnd: vertical ? target.atYEnd : target.atXEnd
+    readonly property real viewportPosition: vertical
+        ? target.visibleArea.yPosition : target.visibleArea.xPosition
+    readonly property real viewportRatio: vertical
+        ? target.visibleArea.heightRatio : target.visibleArea.widthRatio
+    readonly property real scrollProgress: Format.clamp01(
+        viewportPosition / Math.max(0.0001, 1 - viewportRatio))
 
     z: 99
     visible: overflow
@@ -65,9 +72,9 @@ Item {
         anchors.bottom: root.vertical ? undefined : parent.bottom
         anchors.bottomMargin: root.vertical ? 0 : 2
         x: root.vertical ? 0
-            : root.target.visibleArea.xPosition * (root.width - width)
+            : root.scrollProgress * Math.max(0, root.width - width)
         y: root.vertical
-            ? root.target.visibleArea.yPosition * (root.height - height) : 0
+            ? root.scrollProgress * Math.max(0, root.height - height) : 0
         width: root.vertical
             ? (root.target.moving ? 4 : 3)
             : Math.max(22, root.target.visibleArea.widthRatio * root.width)

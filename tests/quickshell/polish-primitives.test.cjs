@@ -213,6 +213,15 @@ test("scroll chrome discloses overflow without becoming an input surface", () =>
     assert.match(chrome, /target\.atYBeginning/);
     assert.match(chrome, /target\.atYEnd/);
     assert.match(chrome, /visibleArea\.heightRatio/);
+    assert.match(chrome,
+        /Format\.clamp01\(\s*viewportPosition \/ Math\.max\(0\.0001, 1 - viewportRatio\)/,
+        "the thumb position must normalize Qt's shortened visible-area range");
+    assert.match(chrome,
+        /root\.scrollProgress \* Math\.max\(0, root\.height - height\)/,
+        "a vertical thumb must reach the end of its track at full scroll");
+    assert.doesNotMatch(chrome,
+        /visibleArea\.yPosition \* \(root\.height - height\)/,
+        "the viewport ratio must not be applied to the thumb offset twice");
     assert.doesNotMatch(chrome, /MouseArea|TapHandler|WheelHandler|DragHandler/);
 
     for (const rel of [
