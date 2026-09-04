@@ -9,7 +9,7 @@ var PROVIDERS = [
     { id: "web", prefix: "@", label: "WEB", glyph: "public", enter: "search" },
     { id: "windows", prefix: "$", label: "WINDOWS", glyph: "web_asset", enter: "focus" },
     { id: "clipboard", prefix: ";", label: "CLIPBOARD", glyph: "content_paste", enter: "copy" },
-    { id: "emoji", prefix: ":", label: "EMOJI", glyph: "mood", enter: "copy" },
+    { id: "emoji", prefix: ":", label: "EMOJI", glyph: "mood", enter: "paste" },
     { id: "actions", prefix: "!", label: "ACTIONS", glyph: "bolt", enter: "run" },
     { id: "apps", prefix: "", label: "APPS", glyph: "apps", enter: "launch" }
 ];
@@ -208,7 +208,7 @@ function emojiRows(entries, query, limit) {
             providerId: "emoji",
             kind: "emoji",
             title: String(entry.name || ""),
-            subtitle: "Emoji · press Enter to copy",
+            subtitle: "Emoji · press Enter to paste",
             iconText: String(entry.emoji || ""),
             glyph: providerById("emoji").glyph,
             value: String(entry.emoji || ""),

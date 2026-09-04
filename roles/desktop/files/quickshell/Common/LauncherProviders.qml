@@ -41,6 +41,7 @@ Singleton {
     property var emojiEntries: []
     property bool emojiLoading: true
     property string emojiError: ""
+    property bool pastePending: false
     property var userActions: []
     property string actionsError: ""
 
@@ -239,8 +240,7 @@ Singleton {
             Launcher.close();
             break;
         case "emoji":
-            Quickshell.clipboardText = row.value;
-            Launcher.close();
+            root.pasteText(row.value);
             break;
         case "actions":
             root.runAction(row.action);
@@ -296,6 +296,16 @@ Singleton {
     function copyClipboardEntry(raw): void {
         Quickshell.execDetached(["sh", "-c", "printf '%s' "
             + root.shellQuote(raw) + " | cliphist decode | wl-copy"]);
+    }
+
+    function pasteText(value): void {
+        const text = String(value || "");
+        if (text === "")
+            return;
+        Quickshell.clipboardText = text;
+        root.pastePending = true;
+        Launcher.close();
+        pasteTimer.restart();
     }
 
     function refreshClipboard(): void {
@@ -365,6 +375,20 @@ Singleton {
             calcProc.running = false;
             calcProc.command = ["qalc", "-t", root.term];
             calcProc.running = true;
+        }
+    }
+
+    // Let the launcher release its exclusive keyboard focus before asking the
+    // compositor to paste into the window that was active before it opened.
+    Timer {
+        id: pasteTimer
+        interval: Theme.launcherFadeOutDuration + 40
+        onTriggered: {
+            if (root.pastePending && !Launcher.open)
+                Quickshell.execDetached([
+                    "wtype", "-M", "shift", "-k", "Insert", "-m", "shift"
+                ]);
+            root.pastePending = false;
         }
     }
 

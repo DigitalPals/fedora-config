@@ -212,6 +212,20 @@ test("clipboard, emoji, and action providers have installed data sources", () =>
         ["fedora-config", "agent", "--window", "--pick"]);
 });
 
+test("emoji activation pastes into the previously active window", () => {
+    const providers = read("Common/LauncherProviders.qml");
+    const activate = providers.slice(providers.indexOf("function activate(row)"));
+    const emojiActivation = activate.slice(activate.indexOf('case "emoji":'),
+        activate.indexOf('case "actions":'));
+
+    assert.match(emojiActivation, /root\.pasteText\(row\.value\)/);
+    assert.match(providers,
+        /function pasteText\(value\): void \{[\s\S]*Quickshell\.clipboardText = text;[\s\S]*Launcher\.close\(\);[\s\S]*pasteTimer\.restart\(\);/);
+    assert.match(providers,
+        /id:\s*pasteTimer[\s\S]*Theme\.launcherFadeOutDuration[\s\S]*!Launcher\.open[\s\S]*"wtype", "-M", "shift", "-k", "Insert", "-m", "shift"/,
+        "pasting must wait until the launcher has returned keyboard focus");
+});
+
 test("Super+Space uses Hyprland's in-process global shortcut", () => {
     const shell = read("shell.qml");
     const bindings = fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8");

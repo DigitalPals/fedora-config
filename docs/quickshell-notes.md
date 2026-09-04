@@ -256,8 +256,10 @@ not displace the existing keyboard-first routes.
 
 Clipboard history is collected by `cliphist`; `Shift+Delete` or right-click
 removes the selected clipboard entry. Emoji names come from Fedora's
-`unicode-emoji` data. Both providers degrade to a readable empty-state error
-when their package is unavailable.
+`unicode-emoji` data. Activating an emoji copies it and, once the launcher has
+released keyboard focus, pastes it into the previously active window. Both
+providers degrade to a readable empty-state error when their package is
+unavailable.
 
 `launcher-actions.json` at the shell root is watched for changes. Each user
 action must provide a display name and an argv-style command; a string shell

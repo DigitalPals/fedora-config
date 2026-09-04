@@ -17,6 +17,7 @@ test("provider registry preserves every launcher mode and adds palette providers
     assert.equal(P.prefixedProviderFor("firefox"), null);
     assert.equal(P.prefixedProviderFor(":rocket").id, "emoji");
     assert.deepEqual(P.TAB_IDS, ["apps", "emoji", "clipboard", "actions"]);
+    assert.equal(P.providerById("emoji").enter, "paste");
     assert.equal(P.termFor(";  deploy token  "), "deploy token");
     assert.equal(new Set(P.PROVIDERS.map(provider => provider.prefix)).size,
         P.PROVIDERS.length, "prefixes must be unique, including the default");
@@ -74,6 +75,8 @@ test("emoji parser accepts only fully-qualified entries and searches names", () 
     ]);
     assert.deepEqual(P.emojiRows(entries, "rainbow", 8)
         .map(row => row.value), ["🏳️‍🌈"]);
+    assert.match(P.emojiRows(entries, "rainbow", 8)[0].subtitle,
+        /Enter to paste/);
 });
 
 test("user actions require a name and argv command and cannot inject glyphs", () => {
