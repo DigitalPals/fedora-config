@@ -111,6 +111,8 @@ test("the popover exposes editing, formatting, previews, safe links, and Undo", 
         "deleting a focused card must return keyboard focus to Add");
     assert.match(panel, /label:\s*"Undo"[\s\S]*?Notes\.undoDelete\(\)/);
     assert.match(panel, /label:\s*"Retry"[\s\S]*?Notes\.retrySave\(\)/);
+    assert.doesNotMatch(panel, /Saving…|Saved/,
+        "ordinary background saves must not show visual confirmation");
     assert.match(panel, /function handleEscape\(\): bool[\s\S]*?finishEditing\(true\)/);
     assert.match(panel, /onActiveFocusChanged:[\s\S]*?finishEditing\(false\)/,
         "leaving the composer focus scope must finish and flush the edit");

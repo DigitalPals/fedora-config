@@ -24,9 +24,8 @@ Surface {
 
     readonly property string statusText: Notes.error !== "" ? Notes.error
         : !Notes.ready ? "Loading…"
-        : Notes.undoAvailable
-            ? (Notes.saving ? "Saving… · Note deleted" : "Note deleted")
-        : Notes.saving ? "Saving…" : "Saved"
+        : Notes.undoAvailable ? "Note deleted"
+        : ""
 
     onActiveFocusChanged: {
         if (activeFocus && !editing)
@@ -237,7 +236,8 @@ Surface {
 
     Item {
         width: parent.width
-        height: 28
+        visible: root.statusText !== "" || Notes.undoAvailable
+        height: visible ? 28 : 0
 
         Text {
             anchors.left: parent.left
