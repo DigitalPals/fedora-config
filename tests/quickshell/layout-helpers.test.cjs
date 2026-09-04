@@ -10,10 +10,12 @@ test("the clock pill and the status pill group per the edge-drawer design", () =
     const defaultOptions = SettingsHelpers.defaultModOpts();
     const center = H.groupModules(defaults.center,
         id => SettingsHelpers.moduleGroup(id, defaultOptions));
-    // Clock and weather share one filled "time" pill; indicators stay solo.
-    assert.deepEqual(center.map(group => group.kind), ["solo", "time"]);
+    // Clock and weather share one filled "time" pill; indicators and Notes
+    // each retain their own pointer target.
+    assert.deepEqual(center.map(group => group.kind), ["solo", "time", "solo"]);
     assert.deepEqual(center[1].items.map(item => item.entry.id),
         ["clock", "weather"]);
+    assert.deepEqual(center[2].items.map(item => item.entry.id), ["notes"]);
     assert.ok(SettingsHelpers.groupFilled("time"));
 
     const right = H.groupModules(defaults.right,

@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 18;
+var VERSION = 20;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -29,7 +29,7 @@ var DRAWER_OVERVIEW_KEYS = ["media", "sliders", "tiles", "updates", "usage"];
 // a Control Panel toggle, and `control` is fixed bar furniture rather than a
 // configurable widget, so neither historical id returns to the schema.
 var MODULE_IDS = [
-    "ws", "media", "indicators", "clock", "weather", "updates", "gh", "t3", "hermes",
+    "ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh", "t3", "hermes",
     "usage", "tray",
     "notifications", "vol", "wifi", "bt", "batt"
 ];
@@ -87,7 +87,7 @@ var BAR_COLOR_PRESETS = {
 // per the edge-drawer design. Notifications can opt back out in modOpts.
 var MODULE_GROUPS = {
     ws: "solo", media: "solo", indicators: "solo", clock: "time", weather: "time",
-    updates: "solo", gh: "chip", t3: "chip", hermes: "chip", usage: "chip", tray: "solo",
+    notes: "solo", updates: "solo", gh: "chip", t3: "chip", hermes: "chip", usage: "chip", tray: "solo",
     notifications: "status",
     vol: "status", wifi: "status", bt: "status", batt: "status"
 };
@@ -116,7 +116,8 @@ function defaultMods() {
     }
     return {
         left: [mod("ws", true), mod("media", true)],
-        center: [mod("indicators", true), mod("clock", true), mod("weather", false)],
+        center: [mod("indicators", true), mod("clock", true), mod("weather", false),
+            mod("notes", true)],
         right: [
             mod("updates", true), mod("gh", false), mod("t3", false), mod("hermes", false),
             mod("usage", false), mod("tray", true), mod("notifications", true), mod("vol", true),
@@ -763,6 +764,30 @@ function migrateMods(raw, sourceVersion) {
                 continue;
             migrated[t3Col].splice(hermesIndex + 1, 0, {
                 id: "hermes", on: true, detail: "auto"
+            });
+            break;
+        }
+    }
+
+    // Schema 20 adds local Notes immediately after Weather. Follow Weather to
+    // whichever column and position the user chose, preserving every existing
+    // module's order, visibility and detail policy byte-for-byte.
+    var notesPresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) {
+            return entry && entry.id === "notes";
+        });
+    });
+    if ((typeof sourceVersion !== "number" || sourceVersion < 20)
+            && !notesPresent) {
+        for (var l = 0; l < 3; l++) {
+            var weatherCol = ["left", "center", "right"][l];
+            var weatherIndex = migrated[weatherCol].findIndex(function(entry) {
+                return entry && entry.id === "weather";
+            });
+            if (weatherIndex === -1)
+                continue;
+            migrated[weatherCol].splice(weatherIndex + 1, 0, {
+                id: "notes", on: true, detail: "auto"
             });
             break;
         }

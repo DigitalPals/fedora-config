@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 18);
+    assert.equal(H.VERSION, 20);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "power", "notifications", "usage"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -55,7 +55,9 @@ test("defaults carry the design values", () => {
     assert.equal(d.notifProgress, true);
     assert.equal(d.notifBodyLines, 2);
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
-    assert.deepEqual(d.mods.center.map(m => m.id), ["indicators", "clock", "weather"]);
+    assert.deepEqual(d.mods.center.map(m => m.id),
+        ["indicators", "clock", "weather", "notes"]);
+    assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
         ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
          "vol", "wifi", "bt", "batt"]);
@@ -456,7 +458,7 @@ test("schema-6 migration preserves module order and adds clock-side indicators",
     const migrated = H.merge({ v: 5, floating: true, mods: raw });
     assert.deepEqual(migrated.mods.left.map(entry => entry.id), ["media", "ws"]);
     assert.deepEqual(migrated.mods.center.map(entry => entry.id),
-        ["indicators", "clock", "weather"]);
+        ["indicators", "clock", "weather", "notes"]);
     assert.equal(migrated.mods.right[0].id, "batt");
 });
 
@@ -478,7 +480,7 @@ test("normalizeMods drops unknown ids and dedupes across columns", () => {
     assert.deepEqual(next.left.map(m => m.id), ["clock", "ws", "media"],
         "flux dropped, duplicate clock collapsed, absent defaults appended");
     assert.equal(next.left[0].on, true, "first occurrence of a duplicate wins");
-    assert.deepEqual(next.center.map(m => m.id), ["indicators", "weather"]);
+    assert.deepEqual(next.center.map(m => m.id), ["indicators", "weather", "notes"]);
     const all = [...next.left, ...next.center, ...next.right].map(m => m.id).sort();
     assert.deepEqual(all, [...H.MODULE_IDS].sort());
 });
@@ -487,7 +489,8 @@ test("normalizeMods appends ids missing from the file at their default column", 
     const next = H.normalizeMods({ left: [{ id: "vol", on: false }], center: [], right: [] });
     assert.deepEqual(next.left.map(m => m.id), ["vol", "ws", "media"]);
     assert.equal(next.left[0].on, false);
-    assert.deepEqual(next.center.map(m => m.id), ["indicators", "clock", "weather"]);
+    assert.deepEqual(next.center.map(m => m.id),
+        ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
         ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
          "wifi", "bt", "batt"]);

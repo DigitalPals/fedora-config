@@ -264,9 +264,9 @@ Singleton {
         const enabled = name === "everything"
             ? SettingsHelpers.MODULE_IDS
             : name === "connected"
-            ? ["ws", "media", "indicators", "clock", "weather", "updates", "gh",
+            ? ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh",
                 "t3", "hermes", "usage", "tray", "notifications", "vol", "wifi", "bt", "batt"]
-            : ["ws", "media", "indicators", "clock", "weather", "updates", "tray",
+            : ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "tray",
                 "notifications", "vol", "wifi", "batt"];
         clearUndo();
         migrationPending = false;

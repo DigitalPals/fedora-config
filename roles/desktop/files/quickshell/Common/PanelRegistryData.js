@@ -59,6 +59,8 @@ var PANELS = [
     { name: "calendar", island: "center", moduleId: "clock", source: DAY_SHEET_SOURCE, attached: true, centerAnchored: true },
     { name: "weather", island: "center", moduleId: "weather", source: DAY_SHEET_SOURCE, attached: true, centerAnchored: true },
 
+    { name: "notes", island: "center", moduleId: "notes", source: "Popovers/NotesPopover.qml" },
+
     { name: "reminders", island: "center", moduleId: "indicators", source: "Popovers/ReminderPopover.qml" },
     { name: "media", island: "left", moduleId: "media", source: "Popovers/MediaPopover.qml" },
     { name: "t3code", island: "right", moduleId: "t3", source: "Popovers/T3CodePopover.qml" },
@@ -88,6 +90,7 @@ var PANELS = [
 var PANEL_LESS_MODULES = ["ws", "tray"];
 
 var SETTINGS = "settings";
+var NOTES = "notes";
 
 function byName(name) {
     for (var i = 0; i < PANELS.length; i++) {
@@ -181,6 +184,7 @@ var exported = {
     PANELS: PANELS,
     PANEL_LESS_MODULES: PANEL_LESS_MODULES,
     SETTINGS: SETTINGS,
+    NOTES: NOTES,
     byName: byName,
     names: names,
     island: island,

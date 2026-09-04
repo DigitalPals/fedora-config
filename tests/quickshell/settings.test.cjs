@@ -430,9 +430,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema eighteen keeps safe defaults and exposes accessibility preferences", () => {
+test("schema twenty keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 18/);
+    assert.match(helpers, /var VERSION = 20/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);

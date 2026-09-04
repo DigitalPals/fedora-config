@@ -21,6 +21,7 @@ var WIDGETS = {
     indicators: { name: "Indicators", short: "Actions", tag: "clock-side" },
     clock: { name: "Clock", short: "Clock", detail: true },
     weather: { name: "Weather", short: "Weather", detail: true },
+    notes: { name: "Notes", short: "Notes" },
     t3: { name: "T3 Code", short: "T3", detail: true },
     hermes: { name: "Hermes Agent", short: "Hermes", detail: true },
     usage: { name: "Model usage", short: "Usage", detail: true },
