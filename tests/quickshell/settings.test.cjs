@@ -412,9 +412,9 @@ test("regression fixes keep asynchronous state identity-safe", () => {
         "reading the bar off the attached window is what made this unverifiable");
 });
 
-test("schema seventeen keeps safe defaults and exposes accessibility preferences", () => {
+test("schema eighteen keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 17/);
+    assert.match(helpers, /var VERSION = 18/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -433,6 +433,7 @@ test("schema seventeen keeps safe defaults and exposes accessibility preferences
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers, /claudeAutoRefresh:\s*true/);
     assert.match(helpers, /mod\("tray", true\), mod\("notifications", true\), mod\("vol", true\)/);
+    assert.match(helpers, /notifications:\s*\{ group: "status" \}/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
     assert.match(helpers, /themeMode:\s*"dark"/);
@@ -817,6 +818,9 @@ test("the module cog opens a per-module sub-page inside the Modules page", () =>
         "the detail policy control lives on the sub-page, stored in mods");
     assert.match(detail, /Settings\.setModuleOption/);
     assert.match(detail, /case "hermes": return hermesOptions/);
+    assert.match(detail, /case "notifications": return notificationsOptions/);
+    assert.match(detail,
+        /id:\s*notificationsOptions[\s\S]*?label:\s*"Grouping"[\s\S]*?value:\s*"solo", label:\s*"Separate"[\s\S]*?value:\s*"status", label:\s*"Status group"/);
     assert.match(detail,
         /id:\s*hermesOptions[\s\S]*?label:\s*"Status label"[\s\S]*?view\.opts\.showLabel/);
     assert.match(detail,

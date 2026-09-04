@@ -137,10 +137,13 @@ is manual.
       a second Esc closes the window as before.
 - [ ] Detail policy (Auto / Prefer detail / Always compact) is picked on the
       sub-page; Prefer detail compacts only after Auto modules.
+- [ ] Notifications → Grouping switches live between Separate and Status
+      group. It joins only adjacent Volume, Network, Bluetooth, or Battery
+      widgets, and every glyph keeps its own click target inside the pill.
 - [ ] Per-module options apply live: clock seconds/date format, battery and
       volume percentage toggles and thresholds, media title format and width,
       usage provider toggles and warn/critical thresholds, T3 label and pulse,
-      workspaces min slots / hide empty / dots, bell badge dot/count/off.
+      workspaces min slots / hide empty / dots, notification grouping.
 - [ ] Weather place/latitude/longitude edits commit on Enter or focus loss and
       refetch; Esc inside a text field restores the value without closing
       anything; junk input snaps back to the stored value.

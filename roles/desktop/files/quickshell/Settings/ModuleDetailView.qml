@@ -113,6 +113,7 @@ SettingsPage {
                 case "hermes": return hermesOptions;
                 case "usage": return usageOptions;
                 case "gh": return ghOptions;
+                case "notifications": return notificationsOptions;
                 case "vol": return volOptions;
                 case "batt": return battOptions;
                 case "updates": return updatesOptions;
@@ -648,6 +649,38 @@ SettingsPage {
             // options that is not a value row.
             GitHubWatchList {
                 width: parent.width
+            }
+        }
+    }
+
+    Component {
+        id: notificationsOptions
+
+        Column {
+            spacing: 8
+
+            PickerRow {
+                width: parent.width
+                label: "Grouping"
+                model: [
+                    { value: "solo", label: "Separate" },
+                    { value: "status", label: "Status group" }
+                ]
+                current: view.opts.group
+                dirty: view.optDirty("group")
+                onPicked: value => view.setOpt("group", value)
+                onResetRequested: view.resetOpt("group")
+            }
+
+            Text {
+                width: parent.width
+                leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
+                rightPadding: Theme.chipHeight
+                text: "Groups only with adjacent Volume, Network, Bluetooth, or Battery widgets."
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: Theme.textDim
+                wrapMode: Text.Wrap
             }
         }
     }

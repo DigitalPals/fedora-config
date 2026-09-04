@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 17);
+    assert.equal(H.VERSION, 18);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "power", "notifications", "usage"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -78,7 +78,7 @@ test("defaults carry the design values", () => {
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
         ["ws", "media", "indicators", "clock", "weather", "t3", "hermes", "usage", "gh", "updates",
-         "tray", "vol", "batt"]);
+         "tray", "notifications", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
     assert.equal(d.modOpts.media.maxWidth, 180);
@@ -90,6 +90,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.modOpts.clock.pollMins, 15);
     assert.deepEqual(d.modOpts.updates, { pollMins: 30, flatpak: true, notify: true });
     assert.deepEqual(d.modOpts.tray, { expanded: false });
+    assert.deepEqual(d.modOpts.notifications, { group: "status" });
     assert.deepEqual(d.modOpts.weather,
         { place: "", lat: 0, lon: 0, pollMins: 20 });
     assert.deepEqual(d.modOpts.t3, { showLabel: true });
@@ -231,6 +232,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
             badge: "flag", repos: 99, pollMins: 0,
             ciActivity: "sure", toasts: "sure"
         },
+        notifications: { group: "anything" },
         vol: { step: 0, middleClick: "detonate" },
         batt: { warnAt: 33, critAt: 3 },
         updates: { pollMins: 5, flatpak: "sure" },
@@ -241,6 +243,9 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.gh.pollMins, 1);
     assert.equal(next.gh.ciActivity, true, "non-boolean falls back to default");
     assert.equal(next.gh.toasts, true, "non-boolean falls back to default");
+    assert.equal(next.notifications.group, "status");
+    assert.equal(H.normalizeModOpts({ notifications: { group: "solo" } })
+        .notifications.group, "solo");
     assert.equal(H.normalizeModOpts({ gh: { ciActivity: false } }).gh.ciActivity, false,
         "an explicit CI opt-out survives normalization");
     assert.equal(next.ws.minSlots, 10);

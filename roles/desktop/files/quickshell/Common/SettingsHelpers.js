@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 17;
+var VERSION = 18;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -82,14 +82,17 @@ var BAR_COLOR_PRESETS = {
 // How a module draws itself in the bar, which is also how the bar groups a
 // run of them. `chip` modules retain their shared ordering and separator
 // contract; `solo` modules bring their own independent pointer target.
-// `time` (clock + weather) and `status` (the vol/wifi/bt/batt glyph run)
-// group the same way but rest on a filled pill, per the edge-drawer design.
+// `time` (clock + weather) and `status` (notifications plus the
+// vol/wifi/bt/batt glyph run) group the same way but rest on a filled pill,
+// per the edge-drawer design. Notifications can opt back out in modOpts.
 var MODULE_GROUPS = {
     ws: "solo", media: "solo", indicators: "solo", clock: "time", weather: "time",
     updates: "solo", gh: "chip", t3: "chip", hermes: "chip", usage: "chip", tray: "solo",
-    notifications: "solo",
+    notifications: "status",
     vol: "status", wifi: "status", bt: "status", batt: "status"
 };
+
+var NOTIFICATION_GROUPS = ["solo", "status"];
 
 // Group kinds that rest on a visible pill fill rather than transparent
 // furniture. Cluster.qml reads this so the decision lives beside the map.
@@ -99,8 +102,12 @@ function groupFilled(kind) {
     return FILLED_GROUP_KINDS.indexOf(kind) !== -1;
 }
 
-function moduleGroup(id) {
-    return MODULE_GROUPS[id] || "solo";
+function moduleGroup(id, options) {
+    var fallback = MODULE_GROUPS[id] || "solo";
+    if (id !== "notifications")
+        return fallback;
+    var entry = options && options.notifications;
+    return entry ? enumIn(entry.group, NOTIFICATION_GROUPS, fallback) : fallback;
 }
 
 function defaultMods() {
@@ -147,6 +154,7 @@ function defaultModOpts() {
         },
         updates: { pollMins: 30, flatpak: true, notify: true },
         tray: { expanded: false },
+        notifications: { group: "status" },
         vol: { step: 5, showPct: true, middleClick: "mute" },
         batt: { showPct: true, warnAt: 20, critAt: 10 }
     };
@@ -614,6 +622,9 @@ var MOD_OPT_CHECKS = {
         notify: boolIn
     },
     tray: { expanded: boolIn },
+    notifications: {
+        group: function(v, d) { return enumIn(v, NOTIFICATION_GROUPS, d); }
+    },
     vol: {
         step: function(v, d) { return intIn(v, 1, 10, 1, d); },
         showPct: boolIn,
@@ -1078,6 +1089,7 @@ var exported = {
     MODULE_IDS: MODULE_IDS,
     RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
     MODULE_GROUPS: MODULE_GROUPS,
+    NOTIFICATION_GROUPS: NOTIFICATION_GROUPS,
     moduleGroup: moduleGroup,
     FILLED_GROUP_KINDS: FILLED_GROUP_KINDS,
     groupFilled: groupFilled,

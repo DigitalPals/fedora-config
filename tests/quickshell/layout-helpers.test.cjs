@@ -7,8 +7,9 @@ const SettingsHelpers = load("SettingsHelpers.js");
 
 test("the clock pill and the status pill group per the edge-drawer design", () => {
     const defaults = SettingsHelpers.defaultMods();
+    const defaultOptions = SettingsHelpers.defaultModOpts();
     const center = H.groupModules(defaults.center,
-        id => SettingsHelpers.moduleGroup(id));
+        id => SettingsHelpers.moduleGroup(id, defaultOptions));
     // Clock and weather share one filled "time" pill; indicators stay solo.
     assert.deepEqual(center.map(group => group.kind), ["solo", "time"]);
     assert.deepEqual(center[1].items.map(item => item.entry.id),
@@ -16,24 +17,34 @@ test("the clock pill and the status pill group per the edge-drawer design", () =
     assert.ok(SettingsHelpers.groupFilled("time"));
 
     const right = H.groupModules(defaults.right,
-        id => SettingsHelpers.moduleGroup(id));
+        id => SettingsHelpers.moduleGroup(id, defaultOptions));
     const notificationGroup = right.find(group =>
         group.items.some(item => item.entry.id === "notifications"));
-    assert.equal(notificationGroup.kind, "solo");
+    assert.equal(notificationGroup.kind, "status");
     const agentGroup = right.find(group =>
         group.items.some(item => item.entry.id === "hermes"));
     assert.equal(agentGroup.kind, "chip");
     assert.ok(!SettingsHelpers.groupFilled("chip"));
     assert.deepEqual(agentGroup.items.map(item => item.entry.id),
         ["gh", "t3", "hermes", "usage"]);
-    // The four status glyphs share one filled pill; each keeps its own
+    // Notifications and the four status glyphs share one filled pill; each keeps its own
     // pointer target inside it (the pill is furniture, not a hit area).
     const statusGroup = right.find(group =>
         group.items.some(item => item.entry.id === "vol"));
     assert.equal(statusGroup.kind, "status");
     assert.ok(SettingsHelpers.groupFilled("status"));
     assert.deepEqual(statusGroup.items.map(item => item.entry.id),
-        ["vol", "wifi", "bt", "batt"]);
+        ["notifications", "vol", "wifi", "bt", "batt"]);
+
+    const separateOptions = SettingsHelpers.defaultModOpts();
+    separateOptions.notifications.group = "solo";
+    const separated = H.groupModules(defaults.right,
+        id => SettingsHelpers.moduleGroup(id, separateOptions));
+    assert.equal(separated.find(group =>
+        group.items.some(item => item.entry.id === "notifications")).kind, "solo");
+    assert.deepEqual(separated.find(group =>
+        group.items.some(item => item.entry.id === "vol"))
+        .items.map(item => item.entry.id), ["vol", "wifi", "bt", "batt"]);
 });
 
 test("stacked drops subtract each column origin before finding the row", () => {

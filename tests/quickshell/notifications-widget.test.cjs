@@ -19,6 +19,9 @@ test("notification history is an always-eligible reorderable widget", () => {
     assert.equal(rightIds[rightIds.indexOf("tray") + 1], "notifications");
     assert.equal(rightIds[rightIds.indexOf("notifications") + 1], "vol");
     assert.equal(defaults.right.find(entry => entry.id === "notifications").on, true);
+    assert.equal(settings.moduleGroup("notifications", settings.defaultModOpts()), "status");
+    assert.equal(settings.moduleGroup("notifications",
+        { notifications: { group: "solo" } }), "solo");
     assert.equal(catalog.WIDGETS.notifications.name, "Notifications");
     assert.equal(catalog.WIDGETS.notifications.detail, true);
     assert.match(read("Bar/Bar.qml"),

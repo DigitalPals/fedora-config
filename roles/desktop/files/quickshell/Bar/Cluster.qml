@@ -22,7 +22,7 @@ Item {
     property int spacing: Theme.barSpacing
 
     readonly property var groups: LayoutHelpers.groupModules(model,
-        id => SettingsHelpers.moduleGroup(id))
+        id => SettingsHelpers.moduleGroup(id, Settings.modOpts))
 
     implicitWidth: row.implicitWidth
     implicitHeight: Theme.barHeight

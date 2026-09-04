@@ -375,8 +375,10 @@ surfaces:
   panel, chartreuse `#d3d283` accent), Figtree as the default UI face, and
   `Theme.fontNumeric` (Geist Mono) for every instrument reading — the clock,
   percentages, meters, resets. Clock+weather group into one filled `time`
-  pill and the vol/wifi/bt/batt run into a filled `status` pill
-  (`SettingsHelpers.MODULE_GROUPS` / `FILLED_GROUP_KINDS`); the usage chips
+  pill; notifications joins the filled vol/wifi/bt/batt `status` pill by
+  default and can be separated under Widgets → Notifications. Grouping still
+  follows adjacency (`SettingsHelpers.MODULE_GROUPS` / `FILLED_GROUP_KINDS`);
+  the usage chips
   carry a 2px remaining meter; the bell wears an unread dot instead of a
   count.
 - The pre-drawer popovers (`AudioPopover`, `WifiPopover`,

@@ -35,7 +35,7 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Reserve space", key: "exclusive", terms: "exclusive zone tiled windows" },
 
     // Widgets
-    { page: "modules", pageLabel: "Widgets", group: "Lanes", label: "Arrange widgets", key: "", terms: "drag order left center right lane module" },
+    { page: "modules", pageLabel: "Widgets", group: "Lanes", label: "Arrange widgets", key: "", terms: "drag order left center right lane module notification group grouping status pill separate" },
     { page: "modules", pageLabel: "Widgets", group: "Catalog", label: "Show or hide widgets", key: "", terms: "enable disable toggle module clock weather battery tray workspaces media" },
 
     // Drawer
