@@ -297,7 +297,7 @@ SettingsPage {
                 width: parent.width
                 breakpoint: 560
                 descriptionMono: true
-                description: "~/.local/state/quickshell/shell-settings.json"
+                description: "~/.config/fedora-config/shell.json"
 
                 SettingsAction {
                     text: "Open"

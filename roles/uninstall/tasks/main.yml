@@ -80,7 +80,6 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ primary_home }}/.config/quickshell"
     - "{{ primary_home }}/.config/fish/conf.d/50-fedora-config.fish"
     - "{{ primary_home }}/.config/kitty/fedora-config.conf"
     - "{{ primary_home }}/.config/fastfetch/config.jsonc"
@@ -107,6 +106,7 @@
     - "{{ primary_home }}/.local/bin/fedora-config"
     - "{{ primary_home }}/.local/bin/fedora-config-agent"
     - "{{ primary_home }}/.local/bin/fedora-config-update-run"
+    - "{{ primary_home }}/.local/bin/fedora-config-runtime"
     - "{{ primary_home }}/.local/bin/brightness-control"
     - "{{ primary_home }}/.local/bin/portal-launcher"
     - "{{ primary_home }}/.local/bin/t3code-update"
@@ -131,6 +131,7 @@
     - "{{ primary_home }}/.local/bin/dev-arch-shell"
     - "{{ primary_home }}/.local/bin/dev-debian-shell"
     - "{{ primary_home }}/.local/libexec/hermes-menubar-bridge"
+    - "{{ primary_home }}/.local/libexec/fedora-config-migrate-layering"
     - "{{ primary_home }}/.local/share/nautilus-python/extensions/localsend.py"
     - "{{ primary_home }}/.config/distrobox/distrobox.conf"
     - "{{ primary_home }}/.local/share/applications/t3code-nightly.desktop"
@@ -145,22 +146,12 @@
     - "{{ primary_home }}/.local/share/applications/dev-arch.desktop"
     - "{{ primary_home }}/.local/share/applications/dev-debian.desktop"
 
-- name: Remove the managed Hyprland configuration files
+- name: Remove the vendor desktop runtime without touching user customization
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.config/hypr/{{ item }}"
+    path: "{{ fedora_config_runtime_root }}"
     state: absent
-  loop:
-    - features.lua
-    - monitors.lua
-    - input.lua
-    - looknfeel.lua
-    - bindings.lua
-    - autostart.lua
-    - hyprland.lua
-    - hypridle.conf
-    - hyprlock.conf
 
 - name: Remove project-owned system files
   ansible.builtin.file:
@@ -432,8 +423,6 @@
     backup={{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}
     [[ -d $backup ]] || exit 0
     items=(
-      .config/quickshell
-      .config/hypr
       .config/xdg-desktop-portal/hyprland-portals.conf
       .config/environment.d/10-fedora-config.conf
       .config/systemd/user/hyprland-session.target
@@ -525,12 +514,16 @@
     state: absent
   when: not fedora_config_keep_user_data | bool
 
-- name: Remove staged Fedora Config releases when user data is not retained
+- name: Remove staged Fedora Config source artifacts when user data is not retained
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.local/share/fedora-config"
+    path: "{{ item }}"
     state: absent
+  loop:
+    - "{{ fedora_config_data_root }}/current"
+    - "{{ fedora_config_data_root }}/releases"
+    - "{{ fedora_config_data_root }}/channel"
   when: not fedora_config_keep_user_data | bool
 
 - name: Reload systemd after unit removal

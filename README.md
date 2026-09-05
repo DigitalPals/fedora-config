@@ -70,6 +70,14 @@ fragments/includes where those applications support them. No wallpapers or
 avatar are imposed; choose a wallpaper folder in Shell Settings after
 installation.
 
+Desktop runtime and user customization have a strict boundary. Verified
+releases reconcile `~/.local/share/fedora-config/runtime`, while shell
+settings, Hyprland overrides, themes, and plugins live in user-owned roots
+that updates never prune. An upgrade from the legacy layout emits a migration
+report and preserves customized QML/Lua without trying to translate it. See
+[the ownership architecture](docs/architecture/ownership.md) for the complete
+path and migration contract.
+
 Each pre-existing `fedora-config` skill slot is backed up independently before
 first adoption. Updates retarget all three paths through the atomic active
 release link, and uninstall restores the exact original file, directory, or
@@ -132,6 +140,7 @@ Useful commands:
 | `fedora-config update --check` | Check the configured GitHub channel |
 | `fedora-config update --system-only` | Update Fedora and Flatpak only |
 | `fedora-config agent` | Launch or choose the per-user default AI coding agent |
+| `fedora-config dev status` | Show whether the verified or a development runtime is active |
 | `fedora-config verify` | Check the installed system (`--source` opts into developer checks) |
 | `fedora-config doctor` | Alias for `verify` |
 | `fedora-config configure` | Re-run the installer questions |
@@ -153,7 +162,13 @@ their configuration is installed. See
 ```bash
 ./verify --source
 ./tests/fedora-vm-convergence
+fedora-config dev enable "$PWD"
+fedora-config dev disable
 ```
+
+Development mode reads live Quickshell and static Hyprland modules from the
+validated checkout. It never fetches, resets, merges, or writes to that
+checkout, and normal internet updates remain enabled in parallel.
 
 CI runs the complete source contract in Fedora 44 and converges all roles on a
 generic Fedora Cloud VM twice to enforce idempotence. A `vX.Y.Z` tag publishes only
@@ -163,6 +178,7 @@ the first public tag.
 Key documentation:
 
 - [Operations and recovery](docs/operations.md)
+- [Runtime and user ownership](docs/architecture/ownership.md)
 - [Release process](docs/releasing.md)
 - [Dependency and pinning policy](docs/dependency-policy.md)
 - [Fedora major upgrades](docs/fedora-major-upgrade.md)

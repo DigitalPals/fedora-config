@@ -162,10 +162,13 @@ export ANSIBLE_FORCE_COLOR=0
 export PYTHONDONTWRITEBYTECODE=1
 
 # Exercise first-adoption rollback with real collisions, not only an empty
-# cloud-user home. Each file is overwritten during convergence and must be
-# recovered byte-for-byte by the uninstaller.
+# cloud-user home. User-owned desktop roots must survive convergence itself;
+# adopted integration files must be recovered byte-for-byte on uninstall.
 install -d -m 0755 /home/fedora/.config/hypr \
   /home/fedora/.config/quickshell /home/fedora/.config/distrobox \
+  /home/fedora/.config/fedora-config/hypr \
+  /home/fedora/.local/share/fedora-config/themes \
+  /home/fedora/.local/share/fedora-config/plugins \
   /home/fedora/.config/noctalia /home/fedora/.local/state/noctalia \
   /home/fedora/.cache/noctalia /home/fedora/.local/bin \
   /home/fedora/.config/systemd/user \
@@ -176,6 +179,10 @@ install -d -m 0755 /home/fedora/.config/hypr \
   /home/fedora/original-codex-skill
 printf 'original Hyprland bindings\n' >/home/fedora/.config/hypr/bindings.lua
 printf 'original Quickshell root\n' >/home/fedora/.config/quickshell/shell.qml
+printf 'original shell settings\n' >/home/fedora/.config/fedora-config/shell.json
+printf 'original user override\n' >/home/fedora/.config/fedora-config/hypr/user.lua
+printf 'original user theme\n' >/home/fedora/.local/share/fedora-config/themes/personal.theme
+printf 'original user plugin\n' >/home/fedora/.local/share/fedora-config/plugins/personal.qml
 printf 'original Spotify helper\n' >/home/fedora/.local/bin/spotify
 printf 'original user unit\n' >/home/fedora/.config/systemd/user/quickshell.service
 printf 'original sccache helper\n' >/home/fedora/.local/bin/sccache

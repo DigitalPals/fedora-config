@@ -11,10 +11,9 @@ import "ProcHelpers.js" as ProcHelpers
 // for user-tunable shell configuration: merged over defaults on load,
 // debounce-saved, and watched so external edits of the JSON apply live.
 //
-// The path is a fixed literal rather than Quickshell.statePath(): statePath
-// resolves under by-shell/<config-hash>/, so a dev run from a different
-// config directory would silently fork the settings. The settings UI also
-// displays this exact path.
+// The path is a fixed user-owned config file rather than
+// Quickshell.statePath(): statePath resolves under by-shell/<config-hash>/, so
+// a dev run from a different vendor directory would silently fork settings.
 //
 // Dependency rule: Theme binds to Settings, never the reverse. Keeping the
 // direction one-way is what makes the live-apply bindings loop-free.
@@ -22,7 +21,7 @@ Singleton {
     id: root
 
     readonly property string filePath:
-        Quickshell.env("HOME") + "/.local/state/quickshell/shell-settings.json"
+        Quickshell.env("HOME") + "/.config/fedora-config/shell.json"
 
     readonly property bool connectedWidgetsConfigured:
         Quickshell.env("FEDORA_CONFIG_CONNECTED_WIDGETS") === "1"

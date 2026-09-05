@@ -18,8 +18,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$scratch/.config/quickshell" "$scratch/bin" "$scratch/control"
-printf 'known good\n' >"$scratch/.config/quickshell/shell.qml"
+runtime="$scratch/.local/share/fedora-config/runtime/quickshell"
+mkdir -p "$runtime" "$scratch/bin" "$scratch/control"
+printf 'known good\n' >"$runtime/shell.qml"
 sleep 60 &
 service_pid=$!
 printf '%s\n' "$service_pid" >"$scratch/control/pid"
@@ -58,7 +59,7 @@ cat >"$scratch/bin/qs" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 if grep -q '^broken deployment$' \
-    "${QS_DEPLOY_FIXTURE_HOME:?}/.config/quickshell/shell.qml"; then
+    "${QS_DEPLOY_FIXTURE_HOME:?}/.local/share/fedora-config/runtime/quickshell/shell.qml"; then
   exit 1
 fi
 printf 'ok\n'
@@ -93,14 +94,14 @@ assert health["deploymentId"] == "healthy-1"
 PY
 
 "$helper" snapshot "$scratch" broken-2 >/dev/null
-printf 'broken deployment\n' >"$scratch/.config/quickshell/shell.qml"
-printf 'stale deployment file\n' >"$scratch/.config/quickshell/stale.qml"
+printf 'broken deployment\n' >"$runtime/shell.qml"
+printf 'stale deployment file\n' >"$runtime/stale.qml"
 if "$helper" verify-or-rollback "$scratch" broken-2 >/dev/null 2>&1; then
   printf 'broken deployment unexpectedly passed its health check\n' >&2
   exit 1
 fi
-[[ $(<"$scratch/.config/quickshell/shell.qml") == 'known good' ]]
-[[ ! -e $scratch/.config/quickshell/stale.qml ]]
+[[ $(<"$runtime/shell.qml") == 'known good' ]]
+[[ ! -e $runtime/stale.qml ]]
 python3 - "$scratch/.local/state/fedora-config/quickshell-health.json" <<'PY'
 import json
 import sys

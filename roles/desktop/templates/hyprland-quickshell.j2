@@ -12,6 +12,12 @@ export QT_QPA_PLATFORM=wayland
 mkdir -p "$XDG_RUNTIME_DIR" "${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
 printf '%s\n' quickshell > "$XDG_RUNTIME_DIR/desktop-shell"
 session_log="${XDG_STATE_HOME:-$HOME/.local/state}/hyprland/session.log"
+hypr_config={{ (fedora_config_runtime_root + '/hypr/hyprland.lua') | quote }}
+
+if [[ ! -f $hypr_config ]]; then
+  printf 'Fedora Config Hyprland runtime is missing: %s\n' "$hypr_config" >&2
+  exit 1
+fi
 
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
   XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL || true
@@ -19,7 +25,7 @@ dbus-update-activation-environment --systemd XDG_SESSION_TYPE \
   XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL || true
 
 set +e
-start-hyprland -- "$@" >>"$session_log" 2>&1
+start-hyprland -- --config "$hypr_config" "$@" >>"$session_log" 2>&1
 session_status=$?
 systemctl --user stop hyprland-session.target >/dev/null 2>&1 || true
 exit "$session_status"

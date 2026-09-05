@@ -1,7 +1,7 @@
 # Quickshell settings
 
 Use this guide only for values persisted in
-`~/.local/state/quickshell/shell-settings.json`. The file is the supported
+`~/.config/fedora-config/shell.json`. The file is the supported
 user-editable exception to Fedora Config's managed configuration trees.
 
 ## Inspect the active schema

@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+# Resolve the active Fedora Config runtime without making a checkout mutable.
+set -euo pipefail
+umask 077
+
+config_root=${XDG_CONFIG_HOME:-$HOME/.config}/fedora-config
+data_root=${XDG_DATA_HOME:-$HOME/.local/share}/fedora-config
+runtime_root=$data_root/runtime
+dev_source_file=$config_root/dev-source
+
+usage() {
+  cat <<'EOF'
+Usage:
+  fedora-config-runtime path quickshell|hypr-source|hypr-generated|hypr-config
+  fedora-config-runtime exec quickshell|hypridle|hyprlock
+  fedora-config-runtime dev enable CHECKOUT
+  fedora-config-runtime dev disable
+  fedora-config-runtime dev status
+
+The development switch only records a validated checkout. It never fetches,
+resets, merges, or otherwise changes that checkout.
+EOF
+}
+
+validate_checkout() {
+  local requested=${1:-} canonical top mode
+  [[ -n $requested && $requested == /* && -d $requested ]] || return 1
+  canonical=$(readlink -f -- "$requested") || return 1
+  [[ -n $canonical && $canonical == /* && -d $canonical ]] || return 1
+  [[ $canonical != *$'\n'* && $canonical != *$'\r'* ]] || return 1
+  [[ $(stat -c %u -- "$canonical") == "$(id -u)" ]] || return 1
+  mode=$(stat -c %a -- "$canonical") || return 1
+  # A runtime sourced from a world-writable checkout lets another account
+  # replace code immediately before the desktop starts.
+  (( (8#$mode & 0002) == 0 )) || return 1
+  [[ -e $canonical/.git ]] || return 1
+  top=$(git -C "$canonical" rev-parse --show-toplevel 2>/dev/null) || return 1
+  top=$(readlink -f -- "$top") || return 1
+  [[ $top == "$canonical" ]] || return 1
+  [[ -f $canonical/roles/desktop/files/quickshell/shell.qml
+      && -f $canonical/roles/desktop/files/hyprland.lua
+      && -f $canonical/roles/desktop/files/bindings.lua
+      && -f $canonical/roles/desktop/files/autostart.lua ]] || return 1
+  printf '%s\n' "$canonical"
+}
+
+configured_dev_source() {
+  local value
+  local -a values=()
+  [[ -f $dev_source_file && ! -L $dev_source_file ]] || return 1
+  mapfile -t values <"$dev_source_file"
+  [[ ${#values[@]} -eq 1 ]] || return 1
+  value=${values[0]}
+  [[ -n $value ]] || return 1
+  validate_checkout "$value"
+}
+
+active_source() {
+  local source
+  if source=$(configured_dev_source); then
+    printf '%s\n' "$source"
+    return 0
+  fi
+  if [[ -e $dev_source_file || -L $dev_source_file ]]; then
+    printf 'fedora-config-runtime: ignoring invalid development source: %s\n' \
+      "$dev_source_file" >&2
+  fi
+  return 1
+}
+
+runtime_path() {
+  local kind=$1 source
+  case $kind in
+    quickshell)
+      if source=$(active_source); then
+        printf '%s/roles/desktop/files/quickshell\n' "$source"
+      else
+        printf '%s/quickshell\n' "$runtime_root"
+      fi
+      ;;
+    hypr-source)
+      if source=$(active_source); then
+        printf '%s/roles/desktop/files\n' "$source"
+      else
+        printf '%s/hypr\n' "$runtime_root"
+      fi
+      ;;
+    hypr-generated) printf '%s/hypr\n' "$runtime_root" ;;
+    hypr-config) printf '%s/hypr/hyprland.lua\n' "$runtime_root" ;;
+    *) printf 'fedora-config-runtime: unknown runtime path %s\n' "$kind" >&2; return 2 ;;
+  esac
+}
+
+restart_desktop() {
+  [[ ${FEDORA_CONFIG_RUNTIME_TESTING:-0} == 1 ]] && return 0
+  systemctl --user try-restart quickshell.service || {
+    printf 'fedora-config-runtime: Quickshell could not be restarted\n' >&2
+    return 1
+  }
+  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && command -v hyprctl >/dev/null; then
+    hyprctl reload >/dev/null || {
+      printf 'fedora-config-runtime: Hyprland could not reload the selected source\n' >&2
+      return 1
+    }
+  fi
+}
+
+dev_command() {
+  local action=${1:-} source temporary
+  shift || true
+  case $action in
+    enable)
+      [[ $# -eq 1 ]] || { usage >&2; return 2; }
+      source=$(validate_checkout "$1") || {
+        printf 'fedora-config dev: %s is not a safe Fedora Config checkout\n' "$1" >&2
+        return 2
+      }
+      if [[ -e $config_root || -L $config_root ]]; then
+        [[ -d $config_root && ! -L $config_root ]] || {
+          printf 'fedora-config dev: refusing linked or non-directory config root: %s\n' \
+            "$config_root" >&2
+          return 2
+        }
+      else
+        mkdir -p -- "$config_root"
+      fi
+      if [[ -e $dev_source_file || -L $dev_source_file ]]; then
+        [[ -f $dev_source_file && ! -L $dev_source_file ]] || {
+          printf 'fedora-config dev: refusing linked or non-file switch: %s\n' \
+            "$dev_source_file" >&2
+          return 2
+        }
+      fi
+      temporary=$(mktemp "$config_root/.dev-source.XXXXXX")
+      trap 'rm -f -- "${temporary:-}"' RETURN
+      printf '%s\n' "$source" >"$temporary"
+      chmod 0600 "$temporary"
+      mv -f -- "$temporary" "$dev_source_file"
+      temporary=
+      restart_desktop
+      printf 'Development runtime enabled: %s\n' "$source"
+      ;;
+    disable)
+      [[ $# -eq 0 ]] || { usage >&2; return 2; }
+      if [[ -e $dev_source_file || -L $dev_source_file ]]; then
+        rm -f -- "$dev_source_file"
+        restart_desktop
+        printf 'Development runtime disabled.\n'
+      else
+        printf 'Development runtime is already disabled.\n'
+      fi
+      ;;
+    status)
+      [[ $# -eq 0 ]] || { usage >&2; return 2; }
+      if source=$(configured_dev_source); then
+        printf 'enabled\t%s\n' "$source"
+      elif [[ -e $dev_source_file || -L $dev_source_file ]]; then
+        printf 'invalid\t%s\n' "$dev_source_file"
+        return 1
+      else
+        printf 'disabled\t%s\n' "$runtime_root"
+      fi
+      ;;
+    *) usage >&2; return 2 ;;
+  esac
+}
+
+exec_runtime() {
+  local kind=$1 selected user_config
+  case $kind in
+    quickshell)
+      selected=$(runtime_path quickshell)
+      [[ -f $selected/shell.qml ]] || {
+        printf 'fedora-config-runtime: Quickshell runtime is incomplete: %s\n' \
+          "$selected" >&2
+        return 1
+      }
+      export FEDORA_CONFIG_USER_CONFIG_ROOT=$config_root
+      export FEDORA_CONFIG_THEME_ROOT=$data_root/themes
+      export FEDORA_CONFIG_PLUGIN_ROOT=$data_root/plugins
+      exec /usr/bin/qs -p "$selected"
+      ;;
+    hypridle|hyprlock)
+      user_config=$config_root/hypr/$kind.conf
+      selected=$runtime_root/hypr/$kind.conf
+      [[ ! -f $user_config || -L $user_config ]] || selected=$user_config
+      [[ -f $selected ]] || {
+        printf 'fedora-config-runtime: %s configuration is missing: %s\n' \
+          "$kind" "$selected" >&2
+        return 1
+      }
+      if [[ $kind == hypridle ]]; then
+        exec /usr/bin/hypridle --config "$selected"
+      else
+        exec /usr/bin/hyprlock --config "$selected" \
+          --immediate-render --no-fade-in --quiet
+      fi
+      ;;
+    *) printf 'fedora-config-runtime: unknown executable %s\n' "$kind" >&2; return 2 ;;
+  esac
+}
+
+command_name=${1:-}
+[[ $# -eq 0 ]] || shift
+case $command_name in
+  path)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    runtime_path "$1"
+    ;;
+  exec)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    exec_runtime "$1"
+    ;;
+  dev) dev_command "$@" ;;
+  -h|--help|help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

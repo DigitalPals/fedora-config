@@ -5,6 +5,6 @@ After=graphical-session-pre.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/hyprlock --config {{ primary_home }}/.config/hypr/hyprlock.conf --immediate-render --no-fade-in --quiet
+ExecStart={{ primary_home }}/.local/bin/fedora-config-runtime exec hyprlock
 Restart=no
 TimeoutStopSec=5

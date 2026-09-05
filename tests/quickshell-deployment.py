@@ -86,7 +86,7 @@ PLAY = r"""
 
 def scenario(base: Path, name: str, source: Path) -> tuple[Path, list[Path], str]:
     home = base / name / "home"
-    root = home / ".config/quickshell"
+    root = home / ".local/share/fedora-config/runtime/quickshell"
     external = base / name / "external"
     external.mkdir(parents=True)
     sentinels: list[Path] = []

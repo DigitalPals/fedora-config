@@ -70,7 +70,7 @@ test("Podman inventory controls packages, helpers, keybindings, and desktop entr
     assert.ok(featureInstallAt > 0 && featureInstallAt < luaConsumersAt,
         "the rendered feature module must exist before a live reload can evaluate bindings");
     assert.match(desktopTasks.slice(featureInstallAt, luaConsumersAt),
-        /src:\s*"\{\{ item \}\}\.j2"[\s\S]{0,220}?dest:\s*"\{\{ primary_home \}\}\/\.config\/hypr\/\{\{ item \}\}"[\s\S]{0,220}?- features\.lua[\s\S]{0,180}?tags:\s*\[browser\]/,
+        /src:\s*"\{\{ item \}\}\.j2"[\s\S]{0,220}?dest:\s*"\{\{ fedora_config_runtime_root \}\}\/hypr\/\{\{ item \}\}"[\s\S]{0,220}?- features\.lua[\s\S]{0,260}?tags:\s*\[browser\]/,
         "partial browser/config deploys must install the feature dependency first");
     const luaInstallBlock = desktopTasks.slice(luaConsumersAt,
         desktopTasks.indexOf("Install ordered Hyprland session starter", luaConsumersAt));

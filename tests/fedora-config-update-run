@@ -129,6 +129,7 @@ export FEDORA_CONFIG_UPDATE_TESTING=1
 export FEDORA_CONFIG_UPDATE_TEST_LIBEXEC="$mock_libexec"
 export PATH="$mock_bin:$PATH"
 printf 'boot-a\n' >"$FEDORA_CONFIG_UPDATE_BOOT_ID_FILE"
+: >"$MOCK_PACKAGE_LOG"
 
 idle=$($backend status --json)
 [[ $(jq -r .state <<<"$idle") == idle ]]
@@ -146,7 +147,9 @@ polkit_unit=$(jq -er .unit <<<"$polkit_start")
 $backend cancel "$polkit_id" >/dev/null
 [[ $(jq -r .state <<<"$($backend status --json "$polkit_id")") == cancelled ]]
 [[ ! -e $active_dir/$polkit_unit ]]
-[[ $(grep -Fxc -- '-n true' "$MOCK_PACKAGE_LOG") -eq 2 ]]
+expected_auth_probes=2
+((EUID == 0)) && expected_auth_probes=0
+[[ $(grep -Fxc -- '-n true' "$MOCK_PACKAGE_LOG") -eq $expected_auth_probes ]]
 ! grep -Eq 'systemd-run|systemctl' "$MOCK_PACKAGE_LOG"
 : >"$MOCK_PACKAGE_LOG"
 : >"$MOCK_SYSTEMD_LOG"

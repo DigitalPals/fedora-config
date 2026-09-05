@@ -16,6 +16,9 @@ table in the README links here instead of duplicating these details.
 | `./update --system-only` | Skips the project release check and updates Fedora packages and system Flatpaks only. |
 | `fedora-config agent` | Launches the selected AI coding agent in the current directory; an unset interactive session opens the picker. |
 | `fedora-config agent --pick` | Selects, persists, and launches an installed OpenCode, Claude Code, or Codex CLI. |
+| `fedora-config dev enable PATH` | Selects a validated checkout for live desktop source without changing it. |
+| `fedora-config dev status` | Reports the active development or vendor runtime. |
+| `fedora-config dev disable` | Returns desktop components to the verified vendor runtime. |
 | `./uninstall` | Removes Fedora Config-owned services and configuration, restores first-adoption backups, and retains installed applications. Pass `--keep-user-data` to retain backup/updater state after restoration. |
 
 For repository development, run Ansible directly after the source gate. The
@@ -48,6 +51,13 @@ exists. Agent login tokens, API keys, models, permissions, and configuration
 are deliberately not copied into Fedora Config. A desktop launch begins in
 `~/Code`; an invocation from an existing terminal keeps its working directory.
 Use `fedora-config agent unset` to clear the preference.
+
+The development-source switch stores one canonical path at
+`~/.config/fedora-config/dev-source`. The resolver accepts only a user-owned,
+non-world-writable Git worktree with the required desktop sources. Enabling or
+disabling it restarts the managed Quickshell service and reloads Hyprland when
+one is active. Rendered machine-specific Hyprland modules still come from the
+installed vendor runtime. See [the ownership architecture](architecture/ownership.md).
 
 ## Supported Ansible tags
 

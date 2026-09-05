@@ -130,9 +130,11 @@ assert_hypr_tree_loadable() {
   FEDORA_HYPR_BOUNDARY=$boundary \
   HOME="$scenario_root/home" \
   XDG_CONFIG_HOME="$scenario_root/config" \
+  XDG_DATA_HOME="$scenario_root/data" \
     luajit <<'LUA'
 local boundary = assert(os.getenv("FEDORA_HYPR_BOUNDARY"))
 local config_home = assert(os.getenv("XDG_CONFIG_HOME"))
+local data_home = assert(os.getenv("XDG_DATA_HOME"))
 local active = {}
 
 local function dispatcher(value)
@@ -192,9 +194,16 @@ function hl.bind(keys)
   return binding
 end
 
-local entrypoint = config_home .. "/hypr/hyprland.lua"
+local entrypoint = data_home .. "/fedora-config/runtime/hypr/hyprland.lua"
 local ok, failure = pcall(dofile, entrypoint)
 assert(ok, boundary .. " exposed an unloadable Hyprland tree: " .. tostring(failure))
+local user_entry = config_home .. "/fedora-config/hypr/user.lua"
+local user_file = io.open(user_entry, "r")
+if user_file then
+  user_file:close()
+  assert(_G.__fedora_user_override == "loaded",
+    boundary .. " did not load the user layer after vendor modules")
+end
 LUA
 }
 
@@ -240,12 +249,13 @@ install_hypr_module() {
 }
 
 upgrade_root=$deployment_scratch/upgrade
-upgrade_config=$upgrade_root/config/hypr
-install -d "$upgrade_config" "$upgrade_root/home"
+upgrade_config=$upgrade_root/data/fedora-config/runtime/hypr
+legacy_config=$upgrade_root/config/hypr
+install -d "$upgrade_config" "$legacy_config" "$upgrade_root/home"
 for module in monitors.lua input.lua looknfeel.lua autostart.lua; do
-  install_hypr_module "$module" "$upgrade_config/$module"
+  install_hypr_module "$module" "$legacy_config/$module"
 done
-printf '%s\n' 'return true' > "$upgrade_config/bindings.lua"
+printf '%s\n' 'return true' > "$legacy_config/bindings.lua"
 printf '%s\n' \
   'local config_dir = os.getenv("XDG_CONFIG_HOME") .. "/hypr"' \
   'package.path = config_dir .. "/?.lua;" .. package.path' \
@@ -261,12 +271,16 @@ install -m 0644 roles/desktop/files/hyprland.lua "$upgrade_config/hyprland.lua"
 assert_hypr_tree_loadable "$upgrade_root" 'after activating upgraded entrypoint'
 
 fresh_root=$deployment_scratch/fresh
-fresh_config=$fresh_root/config/hypr
+fresh_config=$fresh_root/data/fedora-config/runtime/hypr
 install -d "$fresh_config" "$fresh_root/home"
 install_feature_provider "$fresh_config"
 install_leaf_modules "$fresh_config" "$fresh_root"
 [[ ! -e $fresh_config/hyprland.lua ]]
 install -m 0644 roles/desktop/files/hyprland.lua "$fresh_config/hyprland.lua"
 assert_hypr_tree_loadable "$fresh_root" 'after activating fresh entrypoint'
+install -d "$fresh_root/config/fedora-config/hypr"
+printf '%s\n' '_G.__fedora_user_override = "loaded"' \
+  >"$fresh_root/config/fedora-config/hypr/user.lua"
+assert_hypr_tree_loadable "$fresh_root" 'with final user override'
 
 printf '%s\n' 'Hyprland Lua deployment remains loadable at every activation boundary'

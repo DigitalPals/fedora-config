@@ -853,10 +853,10 @@ test("the module cog opens a per-module sub-page inside the Modules page", () =>
         /id:\s*hermesOptions[\s\S]*?label:\s*"Activity detail"[\s\S]*?value:\s*"full"[\s\S]*?value:\s*"verb"[\s\S]*?value:\s*"generic"/);
 });
 
-test("the settings store keeps its fixed literal state path", () => {
+test("the settings store keeps its fixed user-owned config path", () => {
     const settings = read("Common/Settings.qml");
     assert.match(settings,
-        /Quickshell\.env\("HOME"\) \+ "\/\.local\/state\/quickshell\/shell-settings\.json"/);
+        /Quickshell\.env\("HOME"\) \+ "\/\.config\/fedora-config\/shell\.json"/);
     assert.match(settings, /path:\s*root\.filePath/);
     assert.doesNotMatch(settings, /:\s*Quickshell\.statePath\(/,
         "Settings must not use statePath — it forks per config directory");

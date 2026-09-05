@@ -19,7 +19,7 @@ source, schemas, and tests, but it is release-managed and read-only.
 Before changing anything, distinguish these two paths:
 
 - User shell preferences belong in
-  `~/.local/state/quickshell/shell-settings.json`. Read
+  `~/.config/fedora-config/shell.json`. Read
   [Quickshell settings](references/quickshell-settings.md) before editing it.
 - Hyprland policy, Quickshell code, services, packages, and other persistent
   managed behavior must change in a writable Fedora Config checkout and be
@@ -32,9 +32,10 @@ For supported operator commands and desktop actions, read
 ## Non-negotiable boundaries
 
 - Never edit `~/.local/share/fedora-config/current` or anything below it.
-- Never directly edit Fedora Config-managed files under `~/.config/hypr` or
-  `~/.config/quickshell`. Diagnose them by reading; make persistent changes in
-  a writable checkout.
+- Never directly edit vendor files under
+  `~/.local/share/fedora-config/runtime`. Diagnose them by reading; use
+  `~/.config/fedora-config`, or make source changes in a writable checkout and
+  select it with `fedora-config dev enable`.
 - Preserve unrelated checkout changes. Read every applicable `AGENTS.md`
   before modifying or testing a checkout.
 - Do not clone a checkout unless the user agrees to the documented location.

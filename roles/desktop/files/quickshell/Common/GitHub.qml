@@ -163,7 +163,7 @@ Singleton {
 
     FileView {
         id: stateFile
-        path: Quickshell.env("HOME") + "/.local/state/quickshell-github.json"
+        path: Quickshell.env("HOME") + "/.local/state/fedora-config/shell/github.json"
         printErrors: false
         blockLoading: true
         // qmllint disable unqualified

@@ -47,11 +47,19 @@ done
 [[ -x /usr/local/libexec/fedora-config-session-action ]] || fail 'session action helper is not executable'
 [[ -r /usr/local/libexec/fedora-config-common.sh ]] || fail 'shared installer helper is missing'
 [[ -x /home/fedora/.local/bin/fedora-config-agent ]] || fail 'default AI agent helper is missing'
-[[ -f /home/fedora/.config/quickshell/shell.qml ]] || fail 'shell.qml is missing'
+runtime=/home/fedora/.local/share/fedora-config/runtime
+[[ -f $runtime/quickshell/shell.qml ]] || fail 'vendor shell.qml is missing'
+[[ -f $runtime/hypr/hyprland.lua ]] || fail 'vendor Hyprland entry point is missing'
 [[ -f /home/fedora/.config/systemd/user/fedora-config-session-lock.service ]] || fail 'lock unit is missing'
 [[ -f /usr/share/wayland-sessions/hyprland-quickshell.desktop ]] || fail 'GDM session is missing'
 [[ $(plymouth-set-default-theme) == bgrt ]] || fail 'BGRT is not the selected Plymouth theme'
 
+assert_content /home/fedora/.config/hypr/bindings.lua 'original Hyprland bindings'
+assert_content /home/fedora/.config/quickshell/shell.qml 'original Quickshell root'
+assert_content /home/fedora/.config/fedora-config/shell.json 'original shell settings'
+assert_content /home/fedora/.config/fedora-config/hypr/user.lua 'original user override'
+assert_content /home/fedora/.local/share/fedora-config/themes/personal.theme 'original user theme'
+assert_content /home/fedora/.local/share/fedora-config/plugins/personal.qml 'original user plugin'
 assert_content /home/fedora/.local/bin/sccache 'original sccache helper'
 assert_content /home/fedora/.config/distrobox/distrobox.conf 'original Distrobox configuration'
 assert_content /home/fedora/.config/noctalia/config.json 'original Noctalia configuration'
@@ -92,7 +100,7 @@ while IFS=: read -r uuid type; do
       ;;
   esac
 done < <(nmcli -t -f UUID,TYPE connection show)
-if find /home/fedora/.config/quickshell \
+if find "$runtime/quickshell" \
     \( -type d -name __pycache__ -o -type f -name '*.py[co]' \) -print -quit |
     grep -q .; then
   fail 'generated Python bytecode leaked into the deployed shell'

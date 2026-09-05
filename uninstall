@@ -13,7 +13,8 @@ Usage: fedora-config uninstall [--keep-user-data] [--yes]
 
 Removes Fedora Config-owned services and configuration. Fedora packages and
 applications are retained. Existing files backed up before adoption are
-restored; --keep-user-data also retains the backup and updater state.
+restored; namespaced user settings, themes, plugins, and overrides are never
+deleted. --keep-user-data also retains the backup and updater state.
 EOF
 }
 

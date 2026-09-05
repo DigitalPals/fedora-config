@@ -15,8 +15,6 @@
     marker={{ (primary_home + '/.local/state/fedora-config/backups/initial-core.complete') | quote }}
     mkdir -p "$backup"
     items=(
-      .config/quickshell
-      .config/hypr
       .config/xdg-desktop-portal/hyprland-portals.conf
       .config/environment.d/10-fedora-config.conf
       .config/systemd/user/hyprland-session.target

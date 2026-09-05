@@ -14,6 +14,10 @@ assert_content() {
 
 assert_content /home/fedora/.config/hypr/bindings.lua 'original Hyprland bindings'
 assert_content /home/fedora/.config/quickshell/shell.qml 'original Quickshell root'
+assert_content /home/fedora/.config/fedora-config/shell.json 'original shell settings'
+assert_content /home/fedora/.config/fedora-config/hypr/user.lua 'original user override'
+assert_content /home/fedora/.local/share/fedora-config/themes/personal.theme 'original user theme'
+assert_content /home/fedora/.local/share/fedora-config/plugins/personal.qml 'original user plugin'
 assert_content /home/fedora/.local/bin/spotify 'original Spotify helper'
 assert_content /home/fedora/.config/systemd/user/quickshell.service 'original user unit'
 assert_content /etc/gdm/custom.conf $'[daemon]\n# original GDM configuration'
@@ -60,10 +64,10 @@ for path in \
   /usr/local/libexec/fedora-config-system-snapshot \
   /etc/sysctl.d/60-fedora-config-hardening.conf \
   /home/fedora/.config/hypr/features.lua \
+  /home/fedora/.local/share/fedora-config/runtime \
   /home/fedora/.local/bin/fedora-config \
   /home/fedora/.local/bin/fedora-config-agent \
   /home/fedora/.local/state/fedora-config \
-  /home/fedora/.local/share/fedora-config \
   /var/lib/fedora-config; do
   [[ ! -e $path && ! -L $path ]] || fail "$path remains after uninstall"
 done

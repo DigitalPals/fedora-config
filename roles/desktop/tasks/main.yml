@@ -301,14 +301,116 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    mode: "0755"
+    # Several entries are user-owned layering roots. Omitting mode creates a
+    # missing directory under the user's umask without changing permissions
+    # the user selected on an existing directory.
   loop:
-    - "{{ primary_home }}/.config/hypr"
+    - "{{ fedora_config_user_config_root }}"
+    - "{{ fedora_config_user_config_root }}/hypr"
     - "{{ primary_home }}/.config/xdg-desktop-portal"
     - "{{ primary_home }}/.config/systemd/user"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
     - "{{ primary_home }}/.local/bin"
+    - "{{ primary_home }}/.local/libexec"
+    - "{{ fedora_config_data_root }}"
+    - "{{ fedora_config_data_root }}/themes"
+    - "{{ fedora_config_data_root }}/plugins"
     - "{{ primary_home }}/.local/state/hyprland"
+  tags: [browser]
+
+- name: Create private Fedora Config shell state directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - "{{ fedora_config_state_root }}"
+    - "{{ fedora_config_state_root }}/shell"
+  tags: [browser, quickshell]
+
+- name: Inspect the vendor runtime root without following links
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ fedora_config_runtime_root }}"
+    follow: false
+  register: desktop_runtime_root_stat
+  tags: [browser, quickshell]
+
+- name: Record whether the vendor runtime root must be normalized
+  ansible.builtin.set_fact:
+    desktop_runtime_root_unsafe: >-
+      {{ desktop_runtime_root_stat.stat.exists
+         and (desktop_runtime_root_stat.stat.islnk | default(false)
+              or not (desktop_runtime_root_stat.stat.isdir | default(false))) }}
+  tags: [browser, quickshell]
+
+- name: Remove an unsafe vendor runtime root
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ fedora_config_runtime_root }}"
+    state: absent
+  when: desktop_runtime_root_unsafe | bool
+  tags: [browser, quickshell]
+
+- name: Create the vendor runtime root
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ fedora_config_runtime_root }}"
+    state: directory
+    mode: "0755"
+    follow: false
+  when: not (ansible_check_mode and desktop_runtime_root_unsafe | bool)
+  tags: [browser, quickshell]
+
+- name: Inspect the Hyprland runtime root without following links
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ fedora_config_runtime_root }}/hypr"
+    follow: false
+  register: hypr_runtime_root_stat
+  when: not (ansible_check_mode and desktop_runtime_root_unsafe | bool)
+  tags: [browser]
+
+- name: Record whether the Hyprland runtime root must be normalized
+  ansible.builtin.set_fact:
+    hypr_runtime_root_unsafe: >-
+      {{ hypr_runtime_root_stat.stat.exists | default(false)
+         and (hypr_runtime_root_stat.stat.islnk | default(false)
+              or not (hypr_runtime_root_stat.stat.isdir | default(false))) }}
+    hypr_runtime_path_normalization_pending: >-
+      {{ ansible_check_mode
+         and (desktop_runtime_root_unsafe | bool
+              or (hypr_runtime_root_stat.stat.exists | default(false)
+                  and (hypr_runtime_root_stat.stat.islnk | default(false)
+                       or not (hypr_runtime_root_stat.stat.isdir | default(false))))) }}
+  tags: [browser]
+
+- name: Remove an unsafe Hyprland runtime root
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ fedora_config_runtime_root }}/hypr"
+    state: absent
+  when:
+    - not (ansible_check_mode and desktop_runtime_root_unsafe | bool)
+    - hypr_runtime_root_unsafe | bool
+  tags: [browser]
+
+- name: Create the Hyprland runtime root
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ fedora_config_runtime_root }}/hypr"
+    state: directory
+    mode: "0755"
+    follow: false
+  when: not hypr_runtime_path_normalization_pending | bool
   tags: [browser]
 
 # Hyprland watches every required Lua module and reloads the graph immediately
@@ -320,13 +422,14 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
     src: "{{ item }}.j2"
-    dest: "{{ primary_home }}/.config/hypr/{{ item }}"
+    dest: "{{ fedora_config_runtime_root }}/hypr/{{ item }}"
     mode: "0644"
   loop:
     - features.lua
     - monitors.lua
     - input.lua
     - looknfeel.lua
+  when: not hypr_runtime_path_normalization_pending | bool
   tags: [browser]
 
 - name: Install Hyprland Lua configuration
@@ -334,7 +437,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
     src: "{{ item }}"
-    dest: "{{ primary_home }}/.config/hypr/{{ item }}"
+    dest: "{{ fedora_config_runtime_root }}/hypr/{{ item }}"
     mode: "0644"
   loop:
     - bindings.lua
@@ -342,6 +445,7 @@
     # This entrypoint requires every module above. Keeping it last makes an
     # empty live configuration valid at each observable deployment boundary.
     - hyprland.lua
+  when: not hypr_runtime_path_normalization_pending | bool
   tags: [browser]
 
 - name: Install ordered Hyprland session starter
@@ -391,12 +495,58 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
     src: "{{ item.src }}"
-    dest: "{{ primary_home }}/.config/hypr/{{ item.dest }}"
+    dest: "{{ fedora_config_runtime_root }}/hypr/{{ item.dest }}"
     mode: "0644"
   loop:
     - { src: hypridle.conf.j2, dest: hypridle.conf }
     - { src: hyprlock.conf.j2, dest: hyprlock.conf }
+  when: not hypr_runtime_path_normalization_pending | bool
   tags: [browser]
+
+- name: Inspect the completed Hyprland vendor runtime
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.find:
+    paths: "{{ fedora_config_runtime_root }}/hypr"
+    recurse: false
+    hidden: true
+    file_type: any
+    follow: false
+  register: hypr_runtime_entries
+  when: not hypr_runtime_path_normalization_pending | bool
+  tags: [browser]
+
+- name: Remove stale entries from the Hyprland vendor runtime
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ hypr_runtime_entries.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when:
+    - not hypr_runtime_path_normalization_pending | bool
+    - item.path | basename not in ['features.lua', 'monitors.lua', 'input.lua', 'looknfeel.lua', 'bindings.lua', 'autostart.lua', 'hyprland.lua', 'hypridle.conf', 'hyprlock.conf']
+  tags: [browser]
+
+- name: Install the guarded desktop runtime resolver
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/scripts/fedora-config-runtime"
+    dest: "{{ primary_home }}/.local/bin/fedora-config-runtime"
+    mode: "0755"
+  tags: [browser, quickshell]
+
+- name: Install the one-time ownership-layer migration helper
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/scripts/fedora-config-migrate-layering"
+    dest: "{{ primary_home }}/.local/libexec/fedora-config-migrate-layering"
+    mode: "0755"
+  tags: [browser, quickshell]
 
 # The copy below is unconditional, so broken QML would land on disk and only
 # surface at the next shell reload, far from the change that caused it. Run
@@ -570,7 +720,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
-    path: "{{ primary_home }}/.config/quickshell"
+    path: "{{ fedora_config_runtime_root }}/quickshell"
     follow: false
   register: quickshell_root_stat
   tags: [quickshell]
@@ -587,7 +737,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.config/quickshell"
+    path: "{{ fedora_config_runtime_root }}/quickshell"
     state: absent
   when: quickshell_root_unsafe | bool
   register: quickshell_root_normalized
@@ -597,11 +747,13 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.config/quickshell"
+    path: "{{ fedora_config_runtime_root }}/quickshell"
     state: directory
     mode: "0755"
     follow: false
-  when: not (ansible_check_mode and quickshell_root_unsafe | bool)
+  when: >-
+    not (ansible_check_mode
+         and (desktop_runtime_root_unsafe | bool or quickshell_root_unsafe | bool))
   register: quickshell_root_created
   tags: [quickshell]
 
@@ -609,7 +761,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.find:
-    paths: "{{ primary_home }}/.config/quickshell"
+    paths: "{{ fedora_config_runtime_root }}/quickshell"
     recurse: true
     hidden: true
     file_type: any
@@ -632,7 +784,7 @@
     label: "{{ item.path }}"
   vars:
     quickshell_relative_path: >-
-      {{ item.path | regex_replace('^' + (primary_home + '/.config/quickshell/') | regex_escape, '') }}
+      {{ item.path | regex_replace('^' + (fedora_config_runtime_root + '/quickshell/') | regex_escape, '') }}
   when: >-
     quickshell_relative_path not in quickshell_managed_manifest
     or item.islnk | default(false)
@@ -653,7 +805,7 @@
     label: "{{ item.path }}"
   vars:
     quickshell_relative_directory: >-
-      {{ item.path | regex_replace('^' + (primary_home + '/.config/quickshell/') | regex_escape, '') }}
+      {{ item.path | regex_replace('^' + (fedora_config_runtime_root + '/quickshell/') | regex_escape, '') }}
   when: quickshell_relative_directory not in quickshell_managed_directories
   register: quickshell_removed_directories
   tags: [quickshell]
@@ -662,7 +814,8 @@
   ansible.builtin.set_fact:
     quickshell_path_normalization_pending: >-
       {{ ansible_check_mode
-         and (quickshell_root_unsafe | bool
+         and (desktop_runtime_root_unsafe | bool
+              or quickshell_root_unsafe | bool
               or quickshell_removed_files.changed | default(false)
               or quickshell_removed_directories.changed | default(false)) }}
   tags: [quickshell]
@@ -671,7 +824,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.config/quickshell/{{ item }}"
+    path: "{{ fedora_config_runtime_root }}/quickshell/{{ item }}"
     state: directory
     mode: "0755"
     follow: false
@@ -687,7 +840,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
     src: "quickshell/{{ item }}"
-    dest: "{{ primary_home }}/.config/quickshell/{{ item }}"
+    dest: "{{ fedora_config_runtime_root }}/quickshell/{{ item }}"
     mode: "0644"
     follow: false
     local_follow: false
@@ -702,18 +855,68 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.local/state/fedora-config"
+    path: "{{ fedora_config_state_root }}"
     state: directory
     mode: "0700"
   tags: [quickshell]
+
+- name: Classify and preserve the legacy desktop trees before changing ownership
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ primary_home }}/.local/libexec/fedora-config-migrate-layering"
+      - --home
+      - "{{ primary_home }}"
+      - --previous-source
+      - "{{ fedora_config_data_root }}/current"
+      - --runtime-root
+      - "{{ fedora_config_runtime_root }}"
+  register: desktop_layering_migration
+  changed_when: >-
+    (desktop_layering_migration.stdout | default('')) is match('(?s)^CHANGED:')
+  when: not ansible_check_mode
+  tags: [browser, quickshell]
+
+- name: Report preserved legacy desktop customizations
+  ansible.builtin.debug:
+    msg: "{{ desktop_layering_migration.stdout_lines }}"
+  when:
+    - not ansible_check_mode
+    - desktop_layering_migration.changed | default(false)
+  tags: [browser, quickshell]
 
 - name: Save the deployed Quickshell manifest outside its watched config tree
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    dest: "{{ primary_home }}/.local/state/fedora-config/quickshell-manifest.txt"
+    dest: "{{ fedora_config_state_root }}/quickshell-manifest.txt"
     mode: "0600"
     content: "{{ quickshell_managed_manifest | sort | join('\n') }}\n"
+  tags: [quickshell]
+
+- name: Install the explicitly rooted Quickshell user unit
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: quickshell.service.j2
+    dest: "{{ primary_home }}/.config/systemd/user/quickshell.service"
+    mode: "0644"
+  register: quickshell_unit
+  notify: Reload user systemd
+  tags: [quickshell]
+
+- name: Make the explicitly rooted Quickshell unit immediately available
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  when:
+    - not ansible_check_mode
+    - quickshell_unit is changed
   tags: [quickshell]
 
 - name: Verify the live Quickshell deployment or restore its last-known-good tree
@@ -736,6 +939,7 @@
       or quickshell_root_normalized is changed
       or quickshell_root_created is changed
       or quickshell_directories is changed
+      or quickshell_unit is changed
   tags: [quickshell]
 
 # When a shell was active, the preceding task starts the final tree in a fresh
@@ -754,6 +958,7 @@
     or quickshell_root_normalized is changed
     or quickshell_root_created is changed
     or quickshell_directories is changed
+    or quickshell_unit is changed
   tags: [quickshell]
 
 - name: Configure portal preference without patching Fedora files
@@ -790,7 +995,6 @@
     dest: "{{ primary_home }}/.config/systemd/user/{{ item }}.service"
     mode: "0644"
   loop:
-    - quickshell
     - hypridle
     - hyprpolkitagent
   notify: Reload user systemd

@@ -117,8 +117,8 @@ def main() -> None:
 
         run_bash(render_core_backup(core_backup, home))
         saved = home / ".local/state/fedora-config/backups/initial"
-        assert (saved / ".config/quickshell/shell.qml").read_text() == "original shell\n"
-        assert (saved / ".config/hypr/hyprland.conf").read_text() == "original compositor\n"
+        assert not (saved / ".config/quickshell").exists()
+        assert not (saved / ".config/hypr").exists()
         assert (saved / ".local/bin/spotify").read_text() == "original command\n"
         saved_link = (
             saved
@@ -127,15 +127,15 @@ def main() -> None:
         assert saved_link.is_symlink()
         assert not (saved / ".gitconfig").exists()
 
-        shutil.rmtree(quickshell)
         shutil.rmtree(wants)
         (local_bin / "spotify").unlink()
-        (hyprland / "hyprland.conf").write_text("managed compositor\n")
+        (quickshell / "shell.qml").write_text("user changed shell\n")
+        (hyprland / "hyprland.conf").write_text("user changed compositor\n")
         (hyprland / "user-added.conf").write_text("keep me\n")
         run_bash(render_restore(restore, home))
 
-        assert (quickshell / "shell.qml").read_text() == "original shell\n"
-        assert (hyprland / "hyprland.conf").read_text() == "original compositor\n"
+        assert (quickshell / "shell.qml").read_text() == "user changed shell\n"
+        assert (hyprland / "hyprland.conf").read_text() == "user changed compositor\n"
         assert (hyprland / "user-added.conf").read_text() == "keep me\n"
         assert (local_bin / "spotify").read_text() == "original command\n"
         assert (wants / "existing.service").readlink() == Path("../existing.service")
