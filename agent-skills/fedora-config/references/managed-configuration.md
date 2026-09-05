@@ -1,8 +1,10 @@
 # Managed Hyprland and Quickshell changes
 
 Use this guide for persistent behavior owned by Fedora Config: Hyprland,
-Quickshell source, services, packages, launchers, or Ansible policy. Do not edit
-the deployed copies under `~/.config` or the active release tree.
+Quickshell source, services, packages, launchers, or Ansible policy. Personal
+widgets use [the user widget API](user-widgets.md), and personal Hyprland
+overrides use `~/.config/fedora-config/hypr/user.lua`. Those changes do not need
+a distro fork. Do not edit deployed vendor copies or the active release tree.
 
 ## Find a writable checkout
 

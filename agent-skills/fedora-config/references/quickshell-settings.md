@@ -1,8 +1,8 @@
 # Quickshell settings
 
 Use this guide only for values persisted in
-`~/.config/fedora-config/shell.json`. The file is the supported
-user-editable exception to Fedora Config's managed configuration trees.
+`~/.config/fedora-config/shell.json`. Personal widget packages and their
+separate preferences use [the user widget API](user-widgets.md).
 
 ## Inspect the active schema
 

@@ -38,6 +38,7 @@ singleton Weather Weather.qml
 singleton Calendar Calendar.qml
 singleton Wallpaper Wallpaper.qml
 singleton Settings Settings.qml
+singleton UserPlugins UserPlugins.qml
 singleton Audio Audio.qml
 singleton NetworkStatus NetworkStatus.qml
 singleton NetworkDetails NetworkDetails.qml
@@ -65,6 +66,7 @@ singleton Startup Startup.qml
 # Popovers/ or Settings/ because both directories draw them and both already
 # import "../Common" for Theme, so unifying them cost no new import anywhere.
 Claim Claim.qml
+UserWidgetHost UserWidgetHost.qml
 AnimatedText AnimatedText.qml
 HSlider HSlider.qml
 Sym Sym.qml

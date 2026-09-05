@@ -54,11 +54,12 @@ def main() -> None:
         (SKILL_ROOT / "references/quickshell-settings.md").resolve(),
         (SKILL_ROOT / "references/managed-configuration.md").resolve(),
         (SKILL_ROOT / "references/commands.md").resolve(),
+        (SKILL_ROOT / "references/user-widgets.md").resolve(),
     }
     assert set(local_links(ENTRYPOINT, body)) == expected_references
 
     markdown_files = [ENTRYPOINT, *sorted((SKILL_ROOT / "references").glob("*.md"))]
-    assert len(markdown_files) == 4
+    assert len(markdown_files) == 5
     for path in markdown_files:
         source = path.read_text(encoding="utf-8")
         assert len(source.splitlines()) < 140, f"{path.name} is not concise"

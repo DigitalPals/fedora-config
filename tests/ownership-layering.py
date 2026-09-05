@@ -48,6 +48,7 @@ def migration_contract() -> None:
         user_config = home / ".config/fedora-config"
         themes = home / ".local/share/fedora-config/themes"
         plugins = home / ".local/share/fedora-config/plugins"
+        plugin_data = home / ".local/share/fedora-config/plugin-data/personal"
 
         for directory in (
             previous / "roles/desktop/files/quickshell",
@@ -60,6 +61,7 @@ def migration_contract() -> None:
             user_config,
             themes,
             plugins,
+            plugin_data,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -98,12 +100,17 @@ def migration_contract() -> None:
 
         theme = themes / "personal.theme"
         plugin = plugins / "personal.qml"
+        plugin_settings = user_config / "plugins.json"
+        plugin_state = plugin_data / "data.json"
         shell = user_config / "shell.local.json"
         theme.write_text("theme bytes\n", encoding="utf-8")
         plugin.write_text("plugin bytes\n", encoding="utf-8")
+        plugin_settings.write_text('{"v":1,"plugins":{}}\n', encoding="utf-8")
+        plugin_state.write_text('{"count":42}\n', encoding="utf-8")
         shell.write_text("shell bytes\n", encoding="utf-8")
         user_paths = [legacy_qs / "Changed.qml", legacy_qs / "User.qml",
-                      legacy_hypr / "hyprland.lua", theme, plugin, shell]
+                      legacy_hypr / "hyprland.lua", theme, plugin, shell,
+                      plugin_settings, plugin_state]
         before = snapshot(user_paths)
 
         result = run(

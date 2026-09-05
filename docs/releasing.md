@@ -22,6 +22,9 @@ the archive checksum is otherwise correct.
    The source gate includes an N to N+1 ownership test that advances vendor
    runtime while requiring every user customization sentinel to remain
    byte-identical.
+   The user-widget fixture also loads a fixed API 1 package outside the
+   runtime through simulated replacement and rollback. Retain supported API
+   adapters when changing the shell; see [the widget contract](architecture/user-widgets.md).
 3. Commit the intended source and create a signed semantic-version tag, such
    as `git tag -s v1.0.0 -m 'Fedora Config 1.0.0'`.
 4. Push the commit and tag. A version containing a hyphen, such as

@@ -954,6 +954,12 @@ PanelWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.barSpacing
 
+            UserWidgets {
+                screenName: barWindow.screen ? barWindow.screen.name : ""
+                availableWidth: Math.max(0, barWindow.width * 0.25)
+                onImplicitWidthChanged: barWindow.scheduleFit()
+            }
+
             Cluster {
                 id: rightCluster
                 host: barWindow

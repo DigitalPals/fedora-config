@@ -78,6 +78,14 @@ report and preserves customized QML/Lua without trying to translate it. See
 [the ownership architecture](docs/architecture/ownership.md) for the complete
 path and migration contract.
 
+Personal bar widgets use a versioned API and live outside the distro runtime.
+Codex/Claude can create a package in
+`~/.local/share/fedora-config/plugins/<id>/` and enable it with
+`fedora-config plugin enable <id>`. Its preferences and data survive updates;
+no edits to built-in shell modules are needed. See the
+[widget contract and commands](docs/architecture/user-widgets.md). The
+ownership guide also identifies remaining application-configuration gaps.
+
 Each pre-existing `fedora-config` skill slot is backed up independently before
 first adoption. Updates retarget all three paths through the atomic active
 release link, and uninstall restores the exact original file, directory, or
@@ -141,6 +149,7 @@ Useful commands:
 | `fedora-config update --system-only` | Update Fedora and Flatpak only |
 | `fedora-config agent` | Launch or choose the per-user default AI coding agent |
 | `fedora-config dev status` | Show whether the verified or a development runtime is active |
+| `fedora-config plugin list` | Inspect personal widgets and API compatibility |
 | `fedora-config verify` | Check the installed system (`--source` opts into developer checks) |
 | `fedora-config doctor` | Alias for `verify` |
 | `fedora-config configure` | Re-run the installer questions |

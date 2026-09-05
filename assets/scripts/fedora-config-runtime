@@ -16,6 +16,7 @@ Usage:
   fedora-config-runtime dev enable CHECKOUT
   fedora-config-runtime dev disable
   fedora-config-runtime dev status
+  fedora-config-runtime plugin list|enable|disable|set [arguments]
 
 The development switch only records a validated checkout. It never fetches,
 resets, merges, or otherwise changes that checkout.
@@ -212,6 +213,10 @@ case $command_name in
     exec_runtime "$1"
     ;;
   dev) dev_command "$@" ;;
+  plugin)
+    selected=$(runtime_path quickshell)
+    exec python3 "$selected/scripts/user-plugins.py" "$@"
+    ;;
   -h|--help|help) usage ;;
   *) usage >&2; exit 2 ;;
 esac
