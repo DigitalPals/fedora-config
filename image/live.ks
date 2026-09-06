@@ -53,9 +53,15 @@ NetworkManager-wifi
 NetworkManager-bluetooth
 iwlwifi-mvm-firmware
 linux-firmware
+# GPU firmware is split out of linux-firmware and must be explicit because
+# weak dependencies are disabled above. Cover physical GPUs, not just QEMU.
+amd-gpu-firmware
+intel-gpu-firmware
+nvidia-gpu-firmware
 mesa-dri-drivers
 mesa-vulkan-drivers
 mesa-libEGL
+pciutils
 xorg-x11-server-Xwayland
 at-spi2-core
 adwaita-icon-theme

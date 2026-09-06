@@ -85,6 +85,34 @@ for existing installations.
 
 ## Checks
 
+### Graphics coverage
+
+The image includes Fedora's kernel driver sets, Mesa OpenGL/EGL and Vulkan
+drivers, and explicit AMD, Intel, and NVIDIA GPU firmware packages. These
+firmware packages must be listed separately: the compose disables weak
+dependencies, so `linux-firmware` alone does not install them. Composition
+checks that the required graphics packages are installed before packaging.
+The generic live initramfs explicitly includes kernel modesetting (`drm`);
+hardware detection chooses the driver, and Hyprland requests each display's
+preferred mode. No GPU vendor is forced or blacklisted.
+
+This covers Intel (`i915`/`xe`), AMD (`radeon`/`amdgpu`), NVIDIA through
+Nouveau/Mesa (including NVK on supported GPUs), and Fedora's virtual display
+drivers such as virtio and VMware. Kernel driver availability does not imply
+that every older GPU supports the graphics features Hyprland requires.
+Proprietary NVIDIA drivers are not bundled: they require selecting a branch
+for the GPU, matching kernel modules, and Secure Boot signing/enrollment when
+applicable. Firmware is not a replacement for those drivers on GPUs that need
+them. Physical GPU compatibility still needs testing after the next rebuild.
+
+For an unexpected low resolution, `lspci -nnk` (included in the image) shows
+the GPU and bound kernel driver, `hyprctl monitors all` shows display modes,
+and `sudo journalctl -b -k` exposes firmware, modesetting, and EDID failures.
+Boot the normal menu entry when testing graphics; a basic-graphics entry with
+`nomodeset` intentionally disables normal kernel modesetting.
+
+### Validation
+
 The first private alpha's completed VM tests and exact ISO checksum are
 recorded in [VALIDATION.md](VALIDATION.md).
 

@@ -70,6 +70,14 @@ try:
     shutil.copyfile(source / "dracut-live.conf", Path(creator._instroot) / "etc/dracut.conf.d/99-liveos.conf")
     creator.install()
     creator.configure()
+    # linux-firmware alone does not pull in vendor GPU firmware when weak
+    # dependencies are disabled. Fail before publishing an incomplete image.
+    subprocess.run([
+        "rpm", "--root", creator._instroot, "-q",
+        "kernel-core", "kernel-modules-core", "kernel-modules", "kernel-modules-extra",
+        "linux-firmware", "amd-gpu-firmware", "intel-gpu-firmware", "nvidia-gpu-firmware",
+        "mesa-dri-drivers", "mesa-vulkan-drivers", "mesa-libEGL", "pciutils",
+    ], check=True)
     subprocess.run([
         "chroot", creator._instroot, "/usr/bin/bash", "-euc",
         "for tool in anaconda liveinst efibootmgr grubby grub2-mkconfig cryptsetup btrfs mkfs.vfat mkfs.ext4; "
