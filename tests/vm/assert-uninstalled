@@ -65,6 +65,7 @@ for path in \
   /etc/sysctl.d/60-fedora-config-hardening.conf \
   /home/fedora/.config/hypr/features.lua \
   /home/fedora/.local/share/fedora-config/runtime \
+  /home/fedora/.local/bin/cybex \
   /home/fedora/.local/bin/fedora-config \
   /home/fedora/.local/bin/fedora-config-agent \
   /home/fedora/.local/state/fedora-config \

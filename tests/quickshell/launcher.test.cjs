@@ -207,9 +207,9 @@ test("clipboard, emoji, and action providers have installed data sources", () =>
         "ai-agent-launch", "ai-agent-choose"
     ]);
     assert.deepEqual(actions[0].command,
-        ["fedora-config", "agent", "--window"]);
+        ["cybex", "agent", "--window"]);
     assert.deepEqual(actions[1].command,
-        ["fedora-config", "agent", "--window", "--pick"]);
+        ["cybex", "agent", "--window", "--pick"]);
 });
 
 test("emoji activation pastes into the previously active window", () => {
@@ -244,7 +244,7 @@ test("the default AI agent is discoverable from the launcher and shortcut sheet"
     const bindings = fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8");
 
     assert.match(bindings,
-        /mainMod \.\. " \+ CTRL \+ SHIFT \+ A"[\s\S]*fedora-config agent --window/);
+        /mainMod \.\. " \+ CTRL \+ SHIFT \+ A"[\s\S]*cybex agent --window/);
     assert.match(session,
         /label:\s*"AI agent",\s*keys:\s*\["Super", "Ctrl", "Shift", "A"\]/);
 });

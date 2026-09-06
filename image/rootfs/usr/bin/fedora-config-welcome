@@ -84,8 +84,8 @@ class Welcome(QObject):
 
 def main():
     app = QGuiApplication(sys.argv)
-    app.setApplicationName("fedora-config-welcome")
-    app.setDesktopFileName("fedora-config-welcome")
+    app.setApplicationName("cybex")
+    app.setDesktopFileName("cybex")
     backend = Welcome()
     if "--autostart" in sys.argv and not backend.live and backend.marker.exists():
         return 0

@@ -379,7 +379,7 @@ start_run() {
   if [[ ${FEDORA_CONFIG_UPDATE_ASSUME_USER_UNIT:-0} != 1 \
         && $system_unit != true ]] && ! sudo -n true >/dev/null 2>&1; then
     if [[ $json == true || ! -t 0 ]]; then
-      printf 'fedora-config-update-run: authentication is required; run `fedora-config update` in a terminal\n' >&2
+      printf 'fedora-config-update-run: authentication is required; run `cybex update` in a terminal\n' >&2
       return 77
     fi
     printf 'Authenticate once to start the durable system update worker.\n'

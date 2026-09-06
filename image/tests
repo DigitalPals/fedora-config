@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from application_payload import relativize_seed_links, include_applications
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -21,6 +23,82 @@ def load(name, path):
 
 user_init = load("user_init", ROOT / "rootfs/usr/libexec/fedora-config-user-init")
 live_install = load("live_install", ROOT / "install-live-rootfs")
+applications = load("applications", ROOT / "applications")
+
+
+class OfflineApplications(unittest.TestCase):
+    def test_compose_selects_every_app_including_steam_multilib(self):
+        packages, _ = applications.package_names()
+        source = (ROOT / "live.ks").read_text()
+        result = include_applications(source, packages)
+        package_section = result.split("%packages", 1)[1].split("%end", 1)[0].splitlines()
+        self.assertTrue(set(packages).issubset(package_section))
+        self.assertIn("mesa-dri-drivers.i686", package_section)
+        self.assertIn("vulkan-loader.i686", package_section)
+        self.assertEqual(source.split("%post", 1)[1], result.split("%post", 1)[1])
+
+    def test_native_and_editor_links_relocate_to_each_users_home(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            seed = Path(temporary)
+            original = Path("/home/disposable-seed")
+            (seed / "bin").mkdir()
+            (seed / "tools").mkdir()
+            (seed / "tools/app").write_text("offline")
+            (seed / "bin/app").symlink_to(original / "tools/app")
+            (seed / "bin/system").symlink_to("/usr/bin/python3")
+            relativize_seed_links(seed, original)
+            self.assertEqual(os.readlink(seed / "bin/app"), "../tools/app")
+            self.assertEqual((seed / "bin/app").read_text(), "offline")
+            self.assertEqual(os.readlink(seed / "bin/system"), "/usr/bin/python3")
+
+    def test_package_contract_contains_all_application_groups(self):
+        packages, flatpaks = applications.package_names()
+        for package in ("fastfetch", "pinta", "glow", "duf", "steam", "podman", "moby-engine",
+                        "brave-browser", "1password", "chatgpt", "tailscale", "java-25-openjdk-devel"):
+            self.assertIn(package, packages)
+        self.assertIn("org.localsend.localsend_app", flatpaks)
+        self.assertIn("com.spotify.Client", flatpaks)
+        self.assertIn("net.davidotek.pupgui2", flatpaks)
+
+    def test_offline_seed_is_portable_and_preserves_user_files(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=True):
+            root = Path(temporary)
+            vendor = root / "vendor"
+            (vendor / "bin").mkdir(parents=True)
+            seed = vendor / "user-seed"
+            (seed / ".local/bin").mkdir(parents=True)
+            (seed / "tools").mkdir()
+            binary = seed / "tools/app"
+            binary.write_text("offline executable")
+            binary.chmod(0o755)
+            (seed / ".local/bin/app").symlink_to("../../tools/app")
+            for name in ("alice", "bob"):
+                home = root / name
+                user_init.initialize(home, vendor)
+                self.assertEqual((home / ".local/bin/app").read_text(), "offline executable")
+                self.assertEqual((home / "tools/app").stat().st_mode & 0o777, 0o755)
+                self.assertTrue((home / ".local/bin/cybex").is_symlink())
+            personal = root / "alice/tools/app"
+            personal.write_text("personal version")
+            user_init.initialize(root / "alice", vendor)
+            self.assertEqual(personal.read_text(), "personal version")
+            self.assertEqual((root / "bob/tools/app").read_text(), "offline executable")
+            self.assertEqual(binary.read_text(), "offline executable")
+
+    def test_seed_never_follows_existing_directory_symlinks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            (source / "tools").mkdir(parents=True)
+            (source / "tools/app").write_text("vendor")
+            destination = root / "home"
+            destination.mkdir()
+            external = root / "external"
+            external.mkdir()
+            (external / "app").write_text("personal")
+            (destination / "tools").symlink_to(external)
+            user_init.seed_applications(source, destination)
+            self.assertEqual((external / "app").read_text(), "personal")
 
 
 class LiveFileOwnership(unittest.TestCase):

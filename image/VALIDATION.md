@@ -76,3 +76,44 @@ has not been boot-tested and does not inherit the previous image's validation.
 The optional `mkefiboot` Mac HFS+ image step reported a mount failure; Mac boot
 support is unverified. Temporary build outputs, logs, and the builder VM
 workspace were removed; only the ISO and its checksum were retained.
+
+## Complete offline application image — 2026-09-06
+
+Testing image: `/data/pxe/iso/CybexOS-Live-44-full-apps-20260906.iso`
+(7,181,475,840 bytes, 6.69 GiB), with an adjacent `.sha256` file.
+
+```text
+440618fa5115b5939016e5b33143bcd46bc334c2387e849d3cbadfbc1c1e26d2
+```
+
+This image includes 140 explicit native application package selections,
+1,693 installed RPMs including dependencies, all three configured Flatpaks
+and their runtimes, and the offline user application/toolchain seed.
+The application and CLI are named `cybex`; `fedora-config` remains a
+compatibility command.
+
+| Check | Result |
+| --- | --- |
+| All 16 source-check stages, 11 image tests, and 3 application-default tests | Passed |
+| Upstream signatures, pinned payload checksums, and complete application manifests | Passed |
+| Uninterrupted UEFI live boot with outbound networking blocked | Passed |
+| Fastfetch, AI CLIs, Rust, Android tools, Neovim, T3 Code digest, and dictation model offline | Passed in live and installed accounts |
+| Graphical Anaconda installation onto a blank 100 GiB virtual disk, entirely offline | Passed |
+| Graceful shutdown and UEFI boot from the installed disk without a CD-ROM | Passed |
+| New-account Hyprland session, installed welcome, and live-account cleanup | Passed |
+| Sole service-owned Quickshell process and current journal audit | Passed before and after live/installed checks |
+| SELinux enforcing, no Hyprland configuration errors, Docker and Tailscale active | Passed |
+| Delivered ISO checksum and iVentoy refresh/list/service checks | Passed |
+
+Tests used QEMU/KVM, four virtual CPUs, 16 GiB RAM, virtio graphics and OVMF
+without Secure Boot. The installed root and home use Btrfs. The test harness
+now allows 150 seconds for first-login seed copying and flushes guest writes
+before stopping a held VM. The final installation was shut down normally;
+abruptly stopping an earlier test had lost its final unflushed filesystem
+changes. No image modification was needed for the successful repeat.
+
+Temporary builder/test VMs, disks, logs, screenshots, and duplicate build
+outputs were removed. Only the delivered ISO and checksum remain from this
+build. Existing PXE images were preserved, and iVentoy remained running.
+Physical hardware, Secure Boot and BIOS installation were not tested for
+this image.

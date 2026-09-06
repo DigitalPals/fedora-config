@@ -4,10 +4,16 @@ on:
   pull_request:
     paths:
       - image/**
+      - roles/apps/**
+      - roles/dotfiles/**
+      - inventory/group_vars/all.yml
       - .github/workflows/live-image.yml
   push:
     paths:
       - image/**
+      - roles/apps/**
+      - roles/dotfiles/**
+      - inventory/group_vars/all.yml
       - .github/workflows/live-image.yml
   workflow_dispatch:
 
@@ -33,6 +39,6 @@ jobs:
             ksvalidator --version F44 image/live.ks
             ksvalidator -i --version F44 /usr/share/anaconda/interactive-defaults.ks
             shellcheck image/build-in-guest image/rootfs/usr/bin/hyprland-quickshell \
-              image/rootfs/usr/bin/fedora-config image/live-rootfs/usr/libexec/fedora-config-live-setup
+              image/rootfs/usr/bin/cybex image/rootfs/usr/bin/fedora-config image/live-rootfs/usr/libexec/fedora-config-live-setup
             desktop-file-validate image/rootfs/usr/share/applications/*.desktop
           '

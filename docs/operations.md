@@ -14,11 +14,11 @@ table in the README links here instead of duplicating these details.
 | `./verify` | Runs complete source and non-destructive installed-system checks. Use `--source`, `--system`, or `--quick` for a narrower scope and `--json` for automation. |
 | `./update` | Resolves and verifies the selected GitHub release channel, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. |
 | `./update --system-only` | Skips the project release check and updates Fedora packages and system Flatpaks only. |
-| `fedora-config agent` | Launches the selected AI coding agent in the current directory; an unset interactive session opens the picker. |
-| `fedora-config agent --pick` | Selects, persists, and launches an installed OpenCode, Claude Code, or Codex CLI. |
-| `fedora-config dev enable PATH` | Selects a validated checkout for live desktop source without changing it. |
-| `fedora-config dev status` | Reports the active development or vendor runtime. |
-| `fedora-config dev disable` | Returns desktop components to the verified vendor runtime. |
+| `cybex agent` | Launches the selected AI coding agent in the current directory; an unset interactive session opens the picker. |
+| `cybex agent --pick` | Selects, persists, and launches an installed OpenCode, Claude Code, or Codex CLI. |
+| `cybex dev enable PATH` | Selects a validated checkout for live desktop source without changing it. |
+| `cybex dev status` | Reports the active development or vendor runtime. |
+| `cybex dev disable` | Returns desktop components to the verified vendor runtime. |
 | `./uninstall` | Removes CybexOS-owned services and configuration, restores first-adoption backups, and retains installed applications. Pass `--keep-user-data` to retain backup/updater state after restoration. |
 
 For repository development, run Ansible directly after the source gate. The
@@ -39,7 +39,7 @@ with Ansible, then allow its handler to finish before rebooting.
 `./verify --help` is the authoritative verification interface. Scope flags are
 mutually exclusive, unknown arguments fail before any check runs, and
 `--require-hyprland` is accepted only when system checks are in scope.
-The installed `fedora-config verify` and `doctor` commands default to
+The installed `cybex verify` and `doctor` commands default to
 `--system`; pass `--source` explicitly when the developer lint toolchain is
 installed.
 
@@ -50,7 +50,7 @@ changes that file atomically only after confirming the selected command
 exists. Agent login tokens, API keys, models, permissions, and configuration
 are deliberately not copied into CybexOS. A desktop launch begins in
 `~/Code`; an invocation from an existing terminal keeps its working directory.
-Use `fedora-config agent unset` to clear the preference.
+Use `cybex agent unset` to clear the preference.
 
 The development-source switch stores one canonical path at
 `~/.config/fedora-config/dev-source`. The resolver accepts only a user-owned,
@@ -108,7 +108,7 @@ after restoration; it does not leave the CybexOS links installed.
 
 ## Release updater lifecycle
 
-`fedora-config update` follows the channel saved in
+`cybex update` follows the channel saved in
 `~/.local/share/fedora-config/channel` (`stable` by default, or `beta` after
 `--channel beta`). A project release is accepted only when GitHub marks it
 immutable, its release and asset attestations verify, the downloaded SHA-256
@@ -128,12 +128,12 @@ remains the supported way to reverse system package changes.
 Useful release commands are:
 
 ```bash
-fedora-config update --check
-fedora-config update --check --json
-fedora-config update --channel beta
-fedora-config update --channel stable
-fedora-config update --no-packages
-fedora-config update --system-only
+cybex update --check
+cybex update --check --json
+cybex update --channel beta
+cybex update --channel stable
+cybex update --no-packages
+cybex update --system-only
 ```
 
 ## Durable updater lifecycle

@@ -23,7 +23,7 @@ desktop. A normal first run asks questions and writes the answers to
 Later runs reuse those answers unless --reconfigure is supplied.
 
   --reconfigure      Ask the installation questions again
-  --non-interactive  Generate conservative detected answers without prompting
+  --non-interactive  Use detected machine settings and all applications without prompting
   --check            Show the generated configuration; do not write or install
   -h, --help         Show this help
 EOF
@@ -147,13 +147,13 @@ if [[ $non_interactive == true ]]; then
   regional_locale=$detected_regional
   machine_keyboard_layout=$detected_keyboard_layout
   machine_keyboard_variant=$detected_keyboard_variant
-  developer_tools=false
-  steam=false
-  docker=false
-  podman=false
-  tailscale=false
-  connected_widgets=false
-  proprietary_apps=false
+  developer_tools=true
+  steam=true
+  docker=true
+  podman=true
+  tailscale=true
+  connected_widgets=true
+  proprietary_apps=true
   passwordless_wheel=false
   passwordless_local_polkit=false
   gdm_autologin=false
@@ -172,13 +172,13 @@ else
   ask_text machine_keyboard_layout 'Keyboard layout' "$detected_keyboard_layout" valid_keyboard_layout
   ask_text machine_keyboard_variant 'Keyboard variant (blank for default)' "$detected_keyboard_variant" valid_keyboard_variant
   echo
-  ask_bool developer_tools 'Install developer and Android tooling?' false
-  ask_bool steam 'Install gaming tools and Steam?' false
-  ask_bool docker 'Install and enable Docker?' false
-  ask_bool podman 'Install Podman and Distrobox?' false
-  ask_bool tailscale 'Install and enable Tailscale?' false
-  ask_bool connected_widgets 'Enable optional connected-service widgets?' false
-  ask_bool proprietary_apps 'Install Brave, 1Password, and ChatGPT packages?' false
+  ask_bool developer_tools 'Install developer and Android tooling?' true
+  ask_bool steam 'Install gaming tools and Steam?' true
+  ask_bool docker 'Install and enable Docker?' true
+  ask_bool podman 'Install Podman and Distrobox?' true
+  ask_bool tailscale 'Install and enable Tailscale?' true
+  ask_bool connected_widgets 'Enable connected-service widgets?' true
+  ask_bool proprietary_apps 'Install Brave, 1Password, and ChatGPT packages?' true
   ask_bool local_network_services 'Open feature-selected local-network firewall ports?' false
   echo
   echo 'The following choices relax local authentication. Review each explicitly.'
@@ -238,7 +238,7 @@ features:
   steam: $steam
   private_hooks: false
   apple_display: false
-  source_builds: false
+  source_builds: $podman
   local_network_services: $local_network_services
 EOF
 

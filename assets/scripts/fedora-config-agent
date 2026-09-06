@@ -30,19 +30,19 @@ pause_after_error() {
 fail() {
   local status=$1
   shift
-  printf 'fedora-config agent: %s\n' "$*" >&2
+  printf 'cybex agent: %s\n' "$*" >&2
   pause_after_error
   exit "$status"
 }
 
 usage() {
   cat <<'EOF'
-Usage: fedora-config agent [--window] [--pick]
-       fedora-config agent get
-       fedora-config agent set [opencode|claude|codex]
-       fedora-config agent unset
-       fedora-config agent list
-       fedora-config agent prompt <text>
+Usage: cybex agent [--window] [--pick]
+       cybex agent get
+       cybex agent set [opencode|claude|codex]
+       cybex agent unset
+       cybex agent list
+       cybex agent prompt <text>
 
 With no subcommand, launch the selected agent in the current directory. The
 first interactive launch asks for a default. --pick always asks before launch,
@@ -93,7 +93,7 @@ store_default() {
   supported_agent "$selected" \
     || fail 2 "unsupported agent '$selected' (choose opencode, claude, or codex)"
   agent_available "$selected" \
-    || fail 127 "$(agent_label "$selected") is not installed; enable developer tools and run 'fedora-config configure'"
+    || fail 127 "$(agent_label "$selected") is not installed; run 'cybex configure'"
   mkdir -p -- "$defaults_dir" \
     || fail 1 "could not create $defaults_dir"
   temporary=$(mktemp "$defaults_dir/.agent.XXXXXX") \
@@ -118,11 +118,11 @@ pick_agent() {
     fi
   done
   ((${#choices[@]} > 0)) \
-    || fail 127 "no supported AI agent is installed; enable developer tools and run 'fedora-config configure'"
+    || fail 127 "no supported AI agent is installed; run 'cybex configure'"
   # stdout is intentionally captured by the caller so only the selected ID
   # flows into the adapter; stdin remains the reliable interactive boundary.
   [[ -t 0 ]] \
-    || fail 1 "no default is selected; run 'fedora-config agent set' in a terminal"
+    || fail 1 "no default is selected; run 'cybex agent set' in a terminal"
   agent_available fzf \
     || fail 127 "fzf is required to choose a default AI agent"
 
@@ -158,7 +158,7 @@ launch_agent() {
     status=$?
     if ((status != 0)); then
       if ((status == 2)); then
-        printf 'fedora-config agent: ignoring invalid preference in %s\n' \
+        printf 'cybex agent: ignoring invalid preference in %s\n' \
           "$preference_file" >&2
       fi
       choose_default
@@ -192,8 +192,8 @@ launch_agent() {
 launch_window() {
   local workspace launcher
   agent_available kitty || fail 127 "Kitty is not installed"
-  launcher=$(command -v fedora-config) \
-    || fail 127 "the fedora-config command is not installed"
+  launcher=$(command -v cybex || command -v fedora-config) \
+    || fail 127 "the cybex command is not installed"
   workspace=${FEDORA_CONFIG_AGENT_WORKSPACE:-$HOME/Code}
   [[ -d $workspace ]] || workspace=$HOME
   exec kitty --class fedora-config-agent --directory "$workspace" \

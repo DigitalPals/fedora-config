@@ -559,7 +559,7 @@ else
   skip 'default AI agent selection (not chosen yet)'
 fi
 
-required_commands=(Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
+required_commands=(cybex Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
   voxtype localsend fedora-config-agent git gh python3 oh-my-posh kitty nvim fish zoxide fzf eza jq rg fd \
   dust bat btop fastfetch ffmpeg mpv yt-dlp imv)
 feature_enabled developer_tools && required_commands+=(lazygit lazydocker mdview bun balena \

@@ -1,5 +1,5 @@
 ---
-# Safe product defaults. The interactive installer records machine-specific
+# Opinionated product defaults. The interactive installer records machine-specific
 # answers in /etc/fedora-config/config.yml and passes that file as extra vars.
 # Direct developer runs use the current account and avoid changing identity or
 # relaxing security unless explicitly requested.
@@ -50,21 +50,23 @@ start_optional_hardware_services: true
 # scheduler URL) to keep compilation local instead.
 allow_insecure_sccache_transport: false
 
+# Install every application group by default. Hardware/private integration and
+# network access remain separate machine choices. Explicit opt-outs are honored.
 features:
-  tailscale: false
-  docker: false
-  podman: false
-  steam: false
+  tailscale: true
+  docker: true
+  podman: true
+  steam: true
   private_hooks: false
   apple_display: false
-  source_builds: false
+  source_builds: true
   # Inbound LocalSend, mDNS, Steam, and source-server ports are a deliberate
   # workstation trust decision. Disable this on machines used on untrusted
   # networks; feature-specific ports are additionally gated below.
   local_network_services: false
-  developer_tools: false
-  connected_widgets: false
-  proprietary_apps: false
+  developer_tools: true
+  connected_widgets: true
+  proprietary_apps: true
 
 private_services:
   portal_binary: ""

@@ -33,14 +33,14 @@ translated automatically.
 
 ## Development source switch
 
-`fedora-config dev enable /absolute/path/to/checkout` selects live Quickshell
+`cybex dev enable /absolute/path/to/checkout` selects live Quickshell
 sources and static Hyprland modules from a validated, user-owned Git checkout.
 Rendered machine modules continue to come from the installed runtime. The
 command records only the canonical path and reloads managed desktop components;
 it never fetches, resets, merges, commits, or writes inside the checkout.
 
-Use `fedora-config dev status` to show the active source and
-`fedora-config dev disable` to return to the verified vendor runtime. Internet
+Use `cybex dev status` to show the active source and
+`cybex dev disable` to return to the verified vendor runtime. Internet
 updates continue to stage and activate releases while development mode is on;
 they do not modify the selected checkout or user-owned paths.
 

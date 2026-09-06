@@ -9,7 +9,7 @@ assume_yes=false
 
 usage() {
   cat <<'EOF'
-Usage: fedora-config uninstall [--keep-user-data] [--yes]
+Usage: cybex uninstall [--keep-user-data] [--yes]
 
 Removes CybexOS-owned services and configuration. Fedora packages and
 applications are retained. Existing files backed up before adoption are

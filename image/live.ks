@@ -7,9 +7,9 @@ rootpw --lock
 authselect select sssd with-silent-lastlog --force
 selinux --enforcing
 firewall --enabled
-services --enabled=NetworkManager,gdm,firewalld,bluetooth --disabled=sshd
+services --enabled=NetworkManager,gdm,firewalld,bluetooth,docker,tailscaled --disabled=sshd
 bootloader --timeout=5 --append="quiet rhgb"
-part / --size=14336 --fstype=ext4
+part / --size=61440 --fstype=ext4
 
 # Repository configuration, including signature verification, is supplied
 # through image/compose's verified DNF adapter from image/build.repo.

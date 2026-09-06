@@ -9,9 +9,9 @@ separate, precisely gated role preserves extra support for the 2026 Dell XPS
 The current release target is Fedora 44 on x86_64. Fedora remains responsible
 for the kernel, drivers, SELinux, and base operating system.
 
-The project was previously called Fedora Config. Existing `fedora-config`
-commands, package and service identifiers, configuration and data paths, and
-the agent skill name remain stable for compatibility with installed systems.
+The application command is `cybex`. The old `fedora-config` command remains
+available for compatibility. Package and service identifiers, configuration
+and data paths, and the agent skill name remain stable for existing systems.
 The source repository is currently hosted at `DigitalPals/fedora-config`.
 
 ## What it installs
@@ -20,8 +20,9 @@ The source repository is currently hosted at `DigitalPals/fedora-config`.
   desktop services
 - a portable Fedora package, Flatpak, shell, font, firewall, and recovery
   baseline
-- optional developer/Android tools, Steam, Docker, Podman/Distrobox,
-  Tailscale, connected-service widgets, and proprietary applications
+- developer/Android tools, Steam, Docker, Podman/Distrobox, Tailscale,
+  connected-service widgets, proprietary applications, and source-built tools
+  enabled by default
 - automatically detected XPS 2026 speaker, camera, haptic, fingerprint,
   backlight, firmware, and power support
 - a persistent installer configuration, verifier, uninstaller, and verified
@@ -33,7 +34,7 @@ The source repository is currently hosted at `DigitalPals/fedora-config`.
 
 There is no desktop-preset selection: every installation gets the same core
 Hyprland/Quickshell desktop. The installer asks only about the target machine,
-security decisions, personal dotfiles, and optional components.
+security decisions, personal dotfiles, and application opt-outs.
 
 ## Install
 
@@ -48,14 +49,17 @@ cd fedora-config
 
 No inventory or configuration file needs to be edited first. The installer
 detects the current desktop user, home directory, hostname, timezone, locale,
-and keyboard settings and offers them as defaults. It asks about optional
-software and explicitly asks whether to enable passwordless sudo, passwordless
+and keyboard settings and offers them as defaults. All application groups
+are selected by default, including in non-interactive installs; interactive
+setup allows explicit opt-outs. Fastfetch is a required baseline package.
+The installer explicitly asks whether to enable passwordless sudo, passwordless
 local Polkit authorization, and GDM autologin. The two passwordless choices
 have no implicit answer.
 
 Answers are saved in `/etc/fedora-config/config.yml`, outside versioned release
-trees, and are reused by later installs and updates. Run
-`fedora-config configure` to ask the questions again. `./bootstrap` remains a
+trees, and are reused by later installs and updates. Existing explicit
+application opt-outs are preserved; missing choices receive the full defaults. Run
+`cybex configure` to ask the questions again. `./bootstrap` remains a
 compatibility alias for `./install`. The first successful install snapshots
 the runtime source under `~/.local/share/fedora-config/releases/`, so the
 cloned checkout can then be moved or removed.
@@ -87,7 +91,7 @@ path and migration contract.
 Personal bar widgets use a versioned API and live outside the distro runtime.
 Codex/Claude can create a package in
 `~/.local/share/fedora-config/plugins/<id>/` and enable it with
-`fedora-config plugin enable <id>`. Its preferences and data survive updates;
+`cybex plugin enable <id>`. Its preferences and data survive updates;
 no edits to built-in shell modules are needed. See the
 [widget contract and commands](docs/architecture/user-widgets.md). The
 ownership guide also identifies remaining application-configuration gaps.
@@ -105,11 +109,11 @@ interactive invocation asks which installed agent to use and stores that
 per-user choice at `~/.config/fedora-config/defaults/agent`.
 
 ```bash
-fedora-config agent                 # launch the default in this directory
-fedora-config agent --pick          # choose, remember, and launch another
-fedora-config agent set opencode    # change the default without launching
-fedora-config agent list            # show supported and installed agents
-fedora-config agent prompt "review this change"
+cybex agent                 # launch the default in this directory
+cybex agent --pick          # choose, remember, and launch another
+cybex agent set opencode    # change the default without launching
+cybex agent list            # show supported and installed agents
+cybex agent prompt "review this change"
 ```
 
 `Super+Ctrl+Shift+A` opens the default agent in a Kitty window rooted at
@@ -126,7 +130,7 @@ updates and uninstall because it is user data rather than Ansible policy.
 After the first install, use:
 
 ```bash
-fedora-config update
+cybex update
 ```
 
 The updater follows the saved `stable` channel by default (`--channel beta`
@@ -151,15 +155,15 @@ Useful commands:
 
 | Command | Purpose |
 | --- | --- |
-| `fedora-config update --check` | Check the configured GitHub channel |
-| `fedora-config update --system-only` | Update Fedora and Flatpak only |
-| `fedora-config agent` | Launch or choose the per-user default AI coding agent |
-| `fedora-config dev status` | Show whether the verified or a development runtime is active |
-| `fedora-config plugin list` | Inspect personal widgets and API compatibility |
-| `fedora-config verify` | Check the installed system (`--source` opts into developer checks) |
-| `fedora-config doctor` | Alias for `verify` |
-| `fedora-config configure` | Re-run the installer questions |
-| `fedora-config uninstall` | Remove project-managed configuration; retain applications |
+| `cybex update --check` | Check the configured GitHub channel |
+| `cybex update --system-only` | Update Fedora and Flatpak only |
+| `cybex agent` | Launch or choose the per-user default AI coding agent |
+| `cybex dev status` | Show whether the verified or a development runtime is active |
+| `cybex plugin list` | Inspect personal widgets and API compatibility |
+| `cybex verify` | Check the installed system (`--source` opts into developer checks) |
+| `cybex doctor` | Alias for `verify` |
+| `cybex configure` | Re-run the installer questions |
+| `cybex uninstall` | Remove project-managed configuration; retain applications |
 
 Detailed updater status, logs, cancellation, Btrfs recovery, and advanced
 Ansible tags are documented in [the operations guide](docs/operations.md).
@@ -177,8 +181,8 @@ their configuration is installed. See
 ```bash
 ./verify --source
 ./tests/fedora-vm-convergence
-fedora-config dev enable "$PWD"
-fedora-config dev disable
+cybex dev enable "$PWD"
+cybex dev disable
 ```
 
 Development mode reads live Quickshell and static Hyprland modules from the

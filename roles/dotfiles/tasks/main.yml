@@ -94,8 +94,11 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
     src: fedora-config.j2
-    dest: "{{ primary_home }}/.local/bin/fedora-config"
+    dest: "{{ primary_home }}/.local/bin/{{ item }}"
     mode: "0755"
+  loop:
+    - cybex
+    - fedora-config
 
 - name: Create the CybexOS release store
   become: true

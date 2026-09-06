@@ -108,7 +108,7 @@ def main() -> None:
 
         for name in ("opencode", "claude", "codex", "kitty"):
             fake_capture(binaries / name)
-        executable(binaries / "fedora-config", "#!/usr/bin/env bash\nexit 99\n")
+        executable(binaries / "cybex", "#!/usr/bin/env bash\nexit 99\n")
 
         environment = test_environment(home, binaries, log)
         preference = home / "xdg-config/fedora-config/defaults/agent"
@@ -177,7 +177,7 @@ def main() -> None:
             "--directory",
             str(home / "Code"),
             "-e",
-            str(binaries / "fedora-config"),
+            str(binaries / "cybex"),
             "agent",
             "--window-child",
             "--pick",
@@ -188,7 +188,7 @@ def main() -> None:
         assert not preference.exists()
         result = run_launcher(environment, cwd=working)
         assert result.returncode == 1
-        assert "run 'fedora-config agent set' in a terminal" in result.stderr
+        assert "run 'cybex agent set' in a terminal" in result.stderr
 
         preference.parent.mkdir(parents=True, exist_ok=True)
         preference.write_text("codex\nclaude\n")

@@ -113,12 +113,12 @@ dev_command() {
     enable)
       [[ $# -eq 1 ]] || { usage >&2; return 2; }
       source=$(validate_checkout "$1") || {
-        printf 'fedora-config dev: %s is not a safe CybexOS checkout\n' "$1" >&2
+        printf 'cybex dev: %s is not a safe CybexOS checkout\n' "$1" >&2
         return 2
       }
       if [[ -e $config_root || -L $config_root ]]; then
         [[ -d $config_root && ! -L $config_root ]] || {
-          printf 'fedora-config dev: refusing linked or non-directory config root: %s\n' \
+          printf 'cybex dev: refusing linked or non-directory config root: %s\n' \
             "$config_root" >&2
           return 2
         }
@@ -127,7 +127,7 @@ dev_command() {
       fi
       if [[ -e $dev_source_file || -L $dev_source_file ]]; then
         [[ -f $dev_source_file && ! -L $dev_source_file ]] || {
-          printf 'fedora-config dev: refusing linked or non-file switch: %s\n' \
+          printf 'cybex dev: refusing linked or non-file switch: %s\n' \
             "$dev_source_file" >&2
           return 2
         }

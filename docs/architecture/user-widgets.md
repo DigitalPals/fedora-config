@@ -68,10 +68,10 @@ registry fields survive command writes. Corrupt registries and unsupported
 registry versions are reported and preserved; writes refuse to reset them.
 
 ```bash
-fedora-config plugin list
-fedora-config plugin enable personal.focus --width 120 --order 0
-fedora-config plugin set personal.focus label '"Deep work"'
-fedora-config plugin disable personal.focus
+cybex plugin list
+cybex plugin enable personal.focus --width 120 --order 0
+cybex plugin set personal.focus label '"Deep work"'
+cybex plugin disable personal.focus
 ```
 
 `list` outputs JSON including disabled, missing, and incompatible packages.

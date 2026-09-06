@@ -34,8 +34,10 @@ def digest(path):
 def source_archive(destination):
     # An explicit source allowlist excludes inventories with personal answers,
     # Git metadata, local caches, credentials, and previous build artifacts.
-    roots = ["image", "roles/desktop", "assets/scripts", "inventory/group_vars/all.yml", "VERSION",
-             "roles/dotfiles/templates/brightness-control.j2", "roles/base/files/fedora-config-system-snapshot"]
+    roots = ["image", "roles/desktop", "assets/scripts", "assets/EDM115-newline2.omp.json",
+             "inventory/group_vars/all.yml", "VERSION",
+             "roles/dotfiles", "roles/apps", "roles/base/tasks/main.yml",
+             "roles/base/files/fedora-config-system-snapshot"]
     with tarfile.open(destination, "w:gz") as archive:
         for name in roots:
             path = ROOT / name
@@ -48,7 +50,7 @@ def source_archive(destination):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path.home() / ".local/share/fedora-config/images")
-    parser.add_argument("--memory", type=int, default=12288, help="Builder VM RAM in MiB")
+    parser.add_argument("--memory", type=int, default=24576, help="Builder VM RAM in MiB")
     parser.add_argument("--cpus", type=int, default=8)
     parser.add_argument("--debug-on-failure", action="store_true", help="Keep a failed builder running for inspection until interrupted")
     args = parser.parse_args()
@@ -84,7 +86,7 @@ def main():
         }))
         (work / "meta-data").write_text("instance-id: fedora-config-image-builder\nlocal-hostname: image-builder\n")
         run(["cloud-localds", str(work / "seed.iso"), str(work / "user-data"), str(work / "meta-data")])
-        run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", str(base), str(work / "system.qcow2"), "100G"])
+        run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", str(base), str(work / "system.qcow2"), "220G"])
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]

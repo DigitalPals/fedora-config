@@ -12,16 +12,16 @@ import yaml
 
 CURRENT_SCHEMA = 1
 FEATURE_DEFAULTS = {
-    "developer_tools": False,
-    "connected_widgets": False,
-    "proprietary_apps": False,
-    "tailscale": False,
-    "docker": False,
-    "podman": False,
-    "steam": False,
+    "developer_tools": True,
+    "connected_widgets": True,
+    "proprietary_apps": True,
+    "tailscale": True,
+    "docker": True,
+    "podman": True,
+    "steam": True,
     "private_hooks": False,
     "apple_display": False,
-    "source_builds": False,
+    "source_builds": True,
     "local_network_services": False,
 }
 BOOLEAN_KEYS = {
@@ -61,7 +61,7 @@ def migrate(document: object) -> dict:
         )
 
     # Schema 0 was the pre-public inventory shape. Preserve its explicit
-    # answers while filling every newly public feature with a conservative value.
+    # answers while filling missing features with the current product defaults.
     if schema == 0:
         result["config_schema_version"] = 1
         result.setdefault("cleanup_legacy_xps_artifacts", True)
@@ -72,6 +72,8 @@ def migrate(document: object) -> dict:
     if not isinstance(features, dict):
         raise ValueError("features must be a mapping")
     for key, default in FEATURE_DEFAULTS.items():
+        if key == "source_builds":
+            default = features.get("podman", default)
         features.setdefault(key, default)
     for key, value in features.items():
         if key in FEATURE_DEFAULTS and not isinstance(value, bool):

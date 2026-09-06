@@ -44,7 +44,7 @@ case $command_name in
     ;;
   help|-h|--help)
     cat <<'EOF'
-Usage: fedora-config <command> [options]
+Usage: cybex <command> [options]
 
 Commands:
   install      Install using saved choices, or start first-run setup
@@ -60,7 +60,7 @@ Commands:
 EOF
     ;;
   *)
-    printf 'fedora-config: unknown command %s\n' "$command_name" >&2
+    printf 'cybex: unknown command %s\n' "$command_name" >&2
     exit 2
     ;;
 esac

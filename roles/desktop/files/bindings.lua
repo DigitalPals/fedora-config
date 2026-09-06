@@ -40,7 +40,7 @@ if features.podman then
   bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e " .. home .. "/.local/bin/dev-debian-shell"))
 end
 bind(mainMod .. " + SPACE", hl.dsp.global("quickshell:launcherToggle"))
-bind(mainMod .. " + CTRL + SHIFT + A", hl.dsp.exec_cmd(home .. "/.local/bin/fedora-config agent --window"))
+bind(mainMod .. " + CTRL + SHIFT + A", hl.dsp.exec_cmd(home .. "/.local/bin/cybex agent --window"))
 bind(mainMod .. " + comma", hl.dsp.exec_cmd("qs ipc call settings toggle"))
 -- Shell surfaces the menubar also opens by click. Documented in the shell's
 -- own cheatsheet (Common/Session.qml), which is what Super+K raises.

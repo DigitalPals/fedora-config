@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Assemble offline apps using the same pinned installers as the workstation."""
+import configparser
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+
+import yaml
+from application_payload import relativize_seed_links
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILD = Path("/home/builder/build")
+SEED = Path("/home/cybex-seed")
+
+
+def run(*args, **kwargs):
+    return subprocess.run(args, check=True, **kwargs)
+
+
+def copy_tree(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if source.is_dir() and not source.is_symlink():
+        shutil.copytree(source, target, symlinks=True, dirs_exist_ok=True)
+    elif source.is_symlink():
+        target.symlink_to(os.readlink(source))
+    else:
+        shutil.copy2(source, target)
+
+
+def package_names():
+    """Read package groups from the application and desktop contracts."""
+    defaults = yaml.safe_load((ROOT / "roles/apps/defaults/main.yml").read_text())
+    packages = []
+    for key in ("apps_required_fedora_packages", "apps_developer_fedora_packages",
+                "apps_podman_packages", "apps_steam_packages"):
+        packages.extend(defaults[key])
+    for path, names in (
+        ("roles/apps/tasks/packages.yml", {
+            "Install signed vendor applications", "Install Steam 32-bit graphics userspace",
+        }),
+        ("roles/base/tasks/main.yml", {"Install Docker packages when selected"}),
+        ("roles/desktop/tasks/main.yml", {"Install stable Hyprland and desktop integration packages"}),
+    ):
+        for task in yaml.safe_load((ROOT / path).read_text()):
+            if task.get("name") in names:
+                packages.extend(task["ansible.builtin.dnf"]["name"])
+    packages += ["tailscale", "java-25-openjdk-devel", "rpmfusion-free-release", "rpmfusion-nonfree-release"]
+    return sorted(set(packages)), defaults["apps_flatpaks"] + defaults["apps_steam_flatpaks"]
+
+
+def main():
+    if os.geteuid() != 0 or Path("/etc/hostname").read_text().strip() != "image-builder":
+        raise RuntimeError("Application preparation is only allowed in the disposable image builder")
+    environment = dict(os.environ, ANSIBLE_ROLES_PATH=str(ROOT / "roles"),
+                       ANSIBLE_LOCAL_TEMP=str(BUILD / "ansible-tmp"))
+    run("ansible-playbook", "-i", "localhost,", str(ROOT / "image/applications.yml"),
+        "--extra-vars", json.dumps({"primary_user": "cybex-seed", "primary_group": "cybex-seed",
+                                    "primary_home": str(SEED), "config_repo": str(ROOT)}), env=environment)
+    inventory = yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
+    packages, flatpaks = package_names()
+    # The upstream helper already verified these exact inventory digests.
+    # Recheck the bytes when admitting them into the compose's local repo.
+    repo = BUILD / "repo"
+    repo.mkdir(exist_ok=True)
+    pinned_rpms = {}
+    for app in inventory["github_release_apps"]:
+        if app["kind"] != "rpm":
+            continue
+        matches = list((Path("/var/cache/fedora-config-upstream") / app["name"]).rglob("*.rpm"))
+        expected = app["checksum"].removeprefix("sha256:")
+        matches = [file for file in matches if hashlib.file_digest(file.open("rb"), "sha256").hexdigest() == expected]
+        if len(matches) != 1:
+            raise RuntimeError(f"Missing verified RPM for {app['name']}")
+        file = matches[0]
+        shutil.copy2(file, repo / file.name)
+        pinned_rpms[file.name] = expected
+        packages.append(app["name"])
+    (BUILD / "pinned-rpms.json").write_text(json.dumps(pinned_rpms, indent=2) + "\n")
+
+    payload = BUILD / "applications-root"
+    payload.mkdir(exist_ok=False)
+    # An explicit allowlist prevents builder accounts, keys, caches, logs,
+    # container storage and other disposable state from reaching the image.
+    for relative in ("opt/fedora-config-apps", "opt/fedora-config-builds", "usr/local/bin",
+                     "usr/local/libexec", "usr/local/share/fonts"):
+        source = Path("/") / relative
+        if source.exists():
+            copy_tree(source, payload / relative)
+    for log_dir in (payload / "opt/fedora-config-builds").glob("*/logs"):
+        shutil.rmtree(log_dir)
+    seed = payload / "usr/share/fedora-config/user-seed"
+    for relative in (".local/bin", ".local/share/claude", ".local/share/fedora-config-user-tools",
+                     ".local/share/voxtype", ".local/share/t3code-nightly", ".cargo/bin",
+                     ".cargo/env", ".rustup/toolchains", ".rustup/settings.toml", ".rustup/update-hashes",
+                     "Android/Sdk", ".config/nvim", ".config/voxtype", ".npm-global"):
+        source = SEED / relative
+        if source.exists():
+            copy_tree(source, seed / relative)
+    shutil.rmtree(seed / ".config/nvim/.git")
+    # Native installers use absolute HOME links. Relativize only seed-owned
+    # links, so the same payload works for every account without downloads.
+    relativize_seed_links(seed, SEED)
+    android = payload / "usr/local/libexec/fedora-config-android-sdk-update"
+    android.write_text(android.read_text().replace(f"sdk={SEED}/Android/Sdk", 'sdk="$HOME/Android/Sdk"'))
+    # Existing repo definitions keep native RPM updates working after install.
+    policies = configparser.ConfigParser(interpolation=None)
+    repo_files = [*Path("/etc/yum.repos.d").glob("rpmfusion-*.repo")]
+    # Vendor RPM scriptlets can rewrite their installed repo files. Compose
+    # from the reviewed definitions that reference our checksum-pinned keys.
+    repo_files += [ROOT / "roles/apps/files" / (name + ".repo")
+                   for name in ("brave-browser", "1password", "chatgpt", "tailscale")]
+    policies.read(repo_files)
+    for section in list(policies.sections()):
+        if not policies[section].getboolean("enabled", fallback=True):
+            policies.remove_section(section)
+        elif not policies[section].getboolean("gpgcheck", fallback=False):
+            raise RuntimeError(f"Unsigned application repository: {section}")
+    with (BUILD / "application-repositories.repo").open("w") as output:
+        policies.write(output)
+    installed = run("flatpak", "list", "--system", "--app", "--columns=application",
+                    capture_output=True, text=True).stdout.splitlines()
+    if not set(flatpaks).issubset(installed):
+        raise RuntimeError("Incomplete offline Flatpak application payload")
+    manifest = {"packages": sorted(set(packages)), "flatpaks": flatpaks,
+                "features": inventory["features"], "user_seed": str(SEED)}
+    (BUILD / "applications.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    main()

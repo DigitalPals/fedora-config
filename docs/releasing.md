@@ -31,8 +31,8 @@ the archive checksum is otherwise correct.
    `v1.1.0-beta.1`, is published as a prerelease for the beta channel.
 5. Wait for the workflow to build, attest, upload, publish, and confirm the
    immutable release before announcing it.
-6. On a clean supported machine, run `fedora-config update --check --json`,
-   apply the release, and run `fedora-config verify --system`.
+6. On a clean supported machine, run `cybex update --check --json`,
+   apply the release, and run `cybex verify --system`.
 
 Do not edit an existing release. Immutability makes correction explicit: fix
 forward, increment the version, and publish a new tag. If rollout must stop,

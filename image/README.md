@@ -7,8 +7,12 @@ Anaconda owns disk selection, partitioning, encryption, account creation,
 installation progress, and its final destructive confirmation. The welcome
 application never runs a partitioning command.
 
-The core desktop is carried in the ISO and installs offline. Online services
-and optional third-party applications are not part of this initial image.
+The ISO carries the full default application set: desktop and media apps,
+Fastfetch and shell tools, Steam, Docker, Podman/Distrobox, Tailscale, Brave,
+1Password, ChatGPT, LocalSend, Spotify, developer tools, the Android SDK,
+Rust, Claude Code, OpenCode, Codex CLI, and T3 Code. Installation and initial
+application setup work offline. Signing in and using online services still
+require the relevant accounts and network access.
 
 ## Try the image
 
@@ -34,17 +38,22 @@ tools, privileged containers, loop devices, or Fedora installed.
 ./image/build --output "$HOME/.local/share/fedora-config/images/alpha-01"
 ```
 
-Use a new, empty output directory for each build. Allow approximately 40 GiB
-of free disk space and 12 GiB of RAM. The builder:
+Use a new, empty output directory for each build. Allow approximately 180 GiB
+of free disk space and 24 GiB of RAM for the complete application build. The builder:
 
 1. Downloads and SHA-256-verifies the same Fedora Cloud 44 base used by the
    existing VM convergence test.
-2. Boots an isolated KVM guest with a new 100 GiB sparse overlay and temporary
+2. Boots an isolated KVM guest with a new 220 GiB sparse overlay and temporary
    SSH credentials. Only those virtual disks are attached.
-3. Transfers an explicit allowlist of source files, builds the desktop RPM,
-   and composes the live ISO with the `livecd-tools` image library.
-4. Copies the ISO, RPM, payload manifest, and checksums to the output directory.
-5. Stops its VM and removes the temporary disk and credentials on success,
+3. Transfers an explicit allowlist of source files and runs the existing
+   application role in the disposable guest. It installs pinned upstream
+   tools, complete system Flatpaks, and a clean per-user application seed.
+4. Builds the desktop RPM, adds the shared application lists to the compose
+   kickstart, and creates the live ISO with the `livecd-tools` image library.
+   Applications are selected directly, so later application removals leave
+   the desktop package installed.
+5. Copies the ISO, RPM, application and payload manifests, and checksums to the output directory.
+6. Stops its VM and removes the temporary disk and credentials on success,
    failure, or a normal interruption. Build and console logs are retained.
 
 The builder uses Fedora's moving security-update repositories, so successive
@@ -53,7 +62,10 @@ downloads are checksum-verified. All upstream RPM repositories retain package
 signature checks. Fedora 44 ships an older `livecd-tools` whose transaction
 implementation skips signature checking; `image/compose` supplies a DNF
 adapter that checks every upstream RPM before any installation script runs.
-Only the freshly built private alpha desktop RPM is allowed to be unsigned.
+Only the freshly built private alpha desktop RPM and inventory-checksummed
+upstream application RPMs may use the local repository. The latter are
+SHA-256-verified again at the transaction boundary. Vendor repositories retain
+their package and metadata signature policies.
 
 ## Runtime and accounts
 
@@ -63,9 +75,14 @@ session units under `/usr/lib/systemd/user`, and commands under `/usr/bin` and
 and checksum-pinned fonts. The image packaging step adapts system helper paths
 in its staging directory; the Ansible installation is unchanged.
 
-At login, `fedora-config-user-init` creates only absent runtime/helper links
-and empty customization directories. Existing files and even dangling links
-are preserved. Shell preferences, plugins, themes, and Hyprland overrides
+At login, `fedora-config-user-init` copies absent application defaults from
+the offline seed, using filesystem reflinks when available, and creates
+absent runtime/helper links. Seed-owned symlinks are relative, so every
+account gets working toolchains and independent writable application state.
+The first live login can take around a minute while the toolchains are copied
+into the writable overlay. Installed Btrfs systems can use reflinks instead.
+Existing files and even dangling links are preserved. No first-login download
+or privileged background installer is needed. Shell preferences, plugins, themes, and Hyprland overrides
 remain per-user. The system keyboard choice is read through locale1 at login.
 
 The live account is created at boot in the writable overlay, not baked into
@@ -77,7 +94,7 @@ first login opens the intended desktop. The installed user sees a separate
 first-login welcome.
 Locking and idle lock are disabled in the passwordless live session.
 
-On image installations, `fedora-config update` uses the existing durable DNF
+On image installations, `cybex update` uses the existing durable DNF
 and Flatpak updater. Desktop RPM updates will require a signed RPM repository;
 the Ansible source-release updater is not used to replace RPM-owned files.
 The original checkout-based installer and its update channel remain available
@@ -137,7 +154,11 @@ from that installed disk. A passing package build alone does not prove those.
 
 `image/test-live --hold` keeps its VM available for interacting with Anaconda.
 The generated `vm.json` records its loopback-only VNC port, SSH command, and
-QMP socket. The test boots the ISO through UEFI by default (`--firmware bios`
+QMP socket. The test uses 16 GiB RAM, a blank 100 GiB virtual disk, and blocks outbound
+networking while checking the complete RPM/Flatpak manifest and user toolchains.
+It allows 150 seconds for boot and first-login setup (`--boot-wait` overrides
+this), and flushes guest filesystem writes before stopping a held VM.
+It boots the ISO through UEFI by default (`--firmware bios`
 selects BIOS), opens the live user's terminal through virtual keyboard events,
 and adds an ephemeral SSH key to that live session. The ISO itself is not
 modified. Interrupting the test audits Quickshell, stops its VM, and removes
@@ -153,9 +174,11 @@ Use `image/build --debug-on-failure` to retain a running failed builder for
 inspection. Its `builder.json` contains the SSH command. Interrupt the build
 when finished to stop the VM and remove its temporary disk and credentials.
 
-`packages.txt` lists the installed RPM versions. `package-manifest.json` hashes
-the staged desktop payload before RPM's normal build transformations (such as
-Python shebang changes); it is not an extracted-RPM manifest. `SHA256SUMS`
+`applications.json` records the full requested RPM and Flatpak contract.
+Composition checks every listed application before packaging. `packages.txt`
+lists the installed RPM versions. `package-manifest.json` records file hashes
+and symlink targets from the staged payload. Upstream executable bytes are
+preserved through RPM packaging; the manifest is not an extracted-RPM audit. `SHA256SUMS`
 contains the hashes of the actual ISO and RPM artifacts.
 
 ## Release boundary

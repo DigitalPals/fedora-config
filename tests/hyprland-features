@@ -75,7 +75,7 @@ local first_generation = _G.__fedora_hypr_binds
 for _, keys in ipairs(optional) do
   assert(active[keys], "enabled optional feature omitted " .. keys)
 end
-assert(active["SUPER + CTRL + SHIFT + A"].dispatcher:match("fedora%-config agent %-%-window$"),
+assert(active["SUPER + CTRL + SHIFT + A"].dispatcher:match("cybex agent %-%-window$"),
   "default AI agent binding did not use the managed launcher")
 assert(active["SUPER + B"].dispatcher:match("^brave%-browser%-stable"),
   "proprietary browser selection did not use Brave")

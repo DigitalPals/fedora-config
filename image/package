@@ -6,11 +6,14 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import shlex
+import subprocess
 import tarfile
 import urllib.request
 
 import jinja2
 import yaml
+from application_payload import relativize_seed_links, include_applications
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,10 +25,24 @@ def main():
     build = args.output.resolve()
     payload = build / "payload"
     payload.mkdir(parents=True, exist_ok=False)
+    applications = json.loads((build / "applications.json").read_text())
+    # Resolve the starter's plugin graph in the builder, so opening Neovim
+    # offline does not need to bootstrap Lazy or fetch the default plugins.
+    seed_home = Path(applications["user_seed"])
+    subprocess.run(["runuser", "-u", "cybex-seed", "--", "env",
+                    f"HOME={seed_home}", f"PATH={seed_home}/.cargo/bin:{seed_home}/.local/bin:/usr/local/bin:/usr/bin",
+                    "nvim", "--headless", "+Lazy! install", "+qa"], check=True, timeout=600)
+    seed_root = build / "applications-root/usr/share/fedora-config/user-seed"
+    nvim_payload = seed_root / ".local/share/nvim"
+    if nvim_payload.exists():
+        shutil.rmtree(nvim_payload)
+    shutil.copytree(seed_home / ".local/share/nvim", nvim_payload, symlinks=True)
+    shutil.copy2(seed_home / ".config/nvim/lazy-lock.json", seed_root / ".config/nvim/lazy-lock.json")
+    shutil.copytree(build / "applications-root", payload, dirs_exist_ok=True, symlinks=True)
     inventory = yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
     environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
     environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no,
-                               to_json=json.dumps)
+                               to_json=json.dumps, quote=shlex.quote)
     values = {"features": inventory["features"], "fedora_config_xps_2026": False,
               "machine_keyboard_layout": "us", "machine_keyboard_variant": ""}
 
@@ -62,22 +79,57 @@ def main():
             content = content.replace('kb_layout = "us"', 'kb_layout = os.getenv("FEDORA_CONFIG_KEYBOARD_LAYOUT") or "us"')
             content = content.replace('kb_variant = ""', 'kb_variant = os.getenv("FEDORA_CONFIG_KEYBOARD_VARIANT") or ""')
         if name == "looknfeel.lua":
-            content += '\nhl.window_rule({ match = { class = [[^fedora-config-welcome$]] }, float = true, center = true, size = { 920, 620 } })\n'
+            content += '\nhl.window_rule({ match = { class = [[^cybex$]] }, float = true, center = true, size = { 920, 620 } })\n'
         write(f"{runtime}/hypr/{name}", content)
     helpers = ("screenshot", "screen-record", "screen-ocr", "quickshell-reminder", "clipboard-copy-image",
                "clipboard-image-to-file", "clipboard-history-store", "fedora-config-agent", "fedora-config-runtime",
-               "fedora-config-update-run")
+               "fedora-config-update-run", "localsend", "localsend-share")
     for name in helpers:
         copy(f"assets/scripts/{name}", f"usr/share/fedora-config/bin/{name}", True)
+    copy("roles/dotfiles/files/dev-distrobox-init", "usr/share/fedora-config/bin/dev-distrobox-init", True)
     updater = payload / "usr/share/fedora-config/bin/fedora-config-update-run"
     updater.write_text(updater.read_text().replace("snapshot_helper_root=/usr/local/libexec", "snapshot_helper_root=/usr/libexec"))
     copy("roles/dotfiles/templates/brightness-control.j2", "usr/share/fedora-config/bin/brightness-control", True)
+    for name in ("fastfetch-link-speed", "t3code-update", "t3code-desktop", "spotify"):
+        copy(f"roles/dotfiles/templates/{name}.j2", f"usr/share/fedora-config/bin/{name}", True)
+    seed = "usr/share/fedora-config/user-seed"
+    # Managed updater scripts follow the RPM; application binaries and their
+    # version stores remain writable per-user after offline initialization.
+    copy_target = payload / seed / ".local/bin/update-user-tools"
+    shutil.move(copy_target, payload / "usr/share/fedora-config/bin/update-user-tools")
+    (payload / seed / ".local/bin/t3code-update").unlink()
+    for source, destination in (
+        ("fastfetch.jsonc", ".config/fastfetch/config.jsonc"),
+        ("fish-config.fish", ".config/fish/conf.d/50-cybex.fish"),
+        ("kitty.conf", ".config/kitty/kitty.conf"),
+    ):
+        copy(f"roles/dotfiles/files/{source}", f"{seed}/{destination}")
+    copy("assets/EDM115-newline2.omp.json", f"{seed}/.config/oh-my-posh/EDM115-newline2.omp.json")
+    for name in ("nvim-kitty", "brave-browser", "chatgpt", "1password"):
+        copy(f"roles/dotfiles/files/{name}.desktop", f"{seed}/.local/share/applications/{name}.desktop")
+    t3_desktop = (ROOT / "roles/dotfiles/templates/t3code-nightly.desktop.j2").read_text()
+    write(f"{seed}/.local/share/applications/t3code-nightly.desktop",
+          t3_desktop.replace("{{ primary_home }}/.local/bin/", ""))
+    for box in inventory["distrobox_images"]:
+        launcher = environment.from_string((ROOT / "roles/dotfiles/templates/distrobox-shell.j2").read_text()).render(item=box)
+        write(f"usr/share/fedora-config/bin/dev-{box['name']}-shell", launcher, True)
+        desktop = (ROOT / f"roles/dotfiles/templates/dev-{box['name']}.desktop.j2").read_text()
+        write(f"{seed}/.local/share/applications/dev-{box['name']}.desktop",
+              desktop.replace("{{ primary_home }}/.local/bin/", ""))
+    # Systemd's %h resolves at service start, after account creation.
+    hermes = environment.from_string((ROOT / "roles/desktop/templates/hermes-menubar-bridge.service.j2").read_text()).render(primary_home="%h")
+    write("usr/lib/systemd/user/hermes-menubar-bridge.service", hermes)
+    copy("roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py", f"{seed}/.local/libexec/hermes-menubar-bridge", True)
+    # Voxtype's RPM owns its system user unit. The session target starts that
+    # unit; do not collide with it by packaging our per-user Ansible template.
+    write(f"{seed}/.npmrc", "prefix=${HOME}/.npm-global\n")
+    write("usr/share/fedora-config/applications.json", json.dumps(applications, indent=2) + "\n")
     copy("roles/base/files/fedora-config-system-snapshot", "usr/libexec/fedora-config-system-snapshot", True)
     for name in ("fedora-config-session-action", "hyprland-session-start"):
         output_name = name if name.startswith("fedora-config") else "fedora-config-" + name
         copy(f"roles/desktop/files/{name}", f"usr/libexec/{output_name}", True)
     for source in sorted((ROOT / "image/rootfs").rglob("*")):
-        if source.is_file():
+        if source.is_file() and "__pycache__" not in source.parts and source.suffix != ".pyc":
             relative = source.relative_to(ROOT / "image/rootfs")
             copy(source.relative_to(ROOT), relative, relative.parts[1] in ("bin", "libexec"))
     # The fonts are already checksum-pinned by the project. Preserve upstream
@@ -93,15 +145,28 @@ def main():
             if hashlib.sha256(destination.read_bytes()).hexdigest() != font[checksum_key].split(":", 1)[1]:
                 raise RuntimeError(f"checksum mismatch for {font['name']} {url_key}")
             destination.chmod(0o644)
+    relativize_seed_links(payload / seed, seed_home)
     manifest = {}
     for file in sorted(payload.rglob("*")):
-        if file.is_file():
-            manifest[str(file.relative_to(payload))] = hashlib.sha256(file.read_bytes()).hexdigest()
+        if file.is_symlink():
+            manifest[str(file.relative_to(payload))] = {"link": str(file.readlink())}
+        elif file.is_file():
+            file.chmod(0o755 if file.stat().st_mode & 0o111 else 0o644)
+            with file.open("rb") as stream:
+                manifest[str(file.relative_to(payload))] = hashlib.file_digest(stream, "sha256").hexdigest()
+        elif file.is_dir():
+            file.chmod(0o755)
     (build / "package-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     sources = build / "rpmbuild/SOURCES"
     sources.mkdir(parents=True)
-    with tarfile.open(sources / "desktop.tar.gz", "w:gz") as archive:
+    spec = (ROOT / "image/fedora-config-desktop.spec").read_text()
+    (build / "desktop.spec").write_text(spec)
+    (build / "live.ks").write_text(include_applications(
+        (ROOT / "image/live.ks").read_text(), applications["packages"],
+    ))
+    with tarfile.open(sources / "desktop.tar", "w") as archive:
         archive.add(payload / "usr", arcname="usr")
+        archive.add(payload / "opt", arcname="opt")
 
 
 if __name__ == "__main__":

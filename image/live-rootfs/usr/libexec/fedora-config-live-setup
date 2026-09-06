@@ -4,7 +4,7 @@ set -euo pipefail
 grep -qw rd.live.image /proc/cmdline || exit 0
 touch /run/fedora-config-live
 if ! id liveuser >/dev/null 2>&1; then
-  useradd --create-home --uid 1000 --groups wheel --shell /bin/bash liveuser
+  useradd --create-home --uid 1000 --groups wheel,docker --shell /bin/bash liveuser
   passwd --delete liveuser
 fi
 install -d /var/lib/AccountsService/users

@@ -37,6 +37,7 @@
       .local/bin/clipboard-history-store
       .local/bin/localsend
       .local/bin/localsend-share
+      .local/bin/cybex
       .local/bin/fedora-config
       .local/bin/fedora-config-update-run
       .local/bin/brightness-control

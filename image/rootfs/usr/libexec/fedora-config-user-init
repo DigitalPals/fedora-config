@@ -2,9 +2,50 @@
 """Create absent per-user links; never adopt or replace existing user files."""
 import os
 from pathlib import Path
+import shutil
+import fcntl
+
+
+def seed_applications(source, destination):
+    """Copy absent defaults, with filesystem reflinks when supported.
+
+    Never descend into an existing symlink or replace an existing user file.
+    Interrupted initialization can safely resume on the next login.
+    """
+    if destination.is_symlink() or (destination.exists() and not destination.is_dir()):
+        return
+    destination.mkdir(parents=True, exist_ok=True)
+    for item in source.iterdir():
+        target = destination / item.name
+        if item.is_symlink():
+            try:
+                target.symlink_to(os.readlink(item))
+            except FileExistsError:
+                pass
+        elif item.is_dir():
+            seed_applications(item, target)
+        else:
+            try:
+                with item.open("rb") as original, target.open("xb") as output:
+                    try:
+                        fcntl.ioctl(output.fileno(), 0x40049409, original.fileno())  # FICLONE
+                    except OSError:
+                        shutil.copyfileobj(original, output, length=1024 * 1024)
+                target.chmod(item.stat().st_mode & 0o777)
+            except FileExistsError:
+                pass
+            except BaseException:
+                target.unlink(missing_ok=True)
+                raise
 
 
 def initialize(home, vendor=Path("/usr/share/fedora-config")):
+    seed = vendor / "user-seed"
+    marker = home / ".local/state/fedora-config/offline-apps-seeded"
+    if seed.is_dir() and not marker.exists():
+        seed_applications(seed, home)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
     config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))) / "fedora-config"
     data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "fedora-config"
     for directory in (config / "hypr", data / "themes", data / "plugins", home / ".local/bin"):
@@ -13,6 +54,7 @@ def initialize(home, vendor=Path("/usr/share/fedora-config")):
     for helper in (vendor / "bin").iterdir():
         if helper.is_file():
             links[home / ".local/bin" / helper.name] = helper
+    links[home / ".local/bin/cybex"] = Path("/usr/bin/cybex")
     links[home / ".local/bin/fedora-config"] = Path("/usr/bin/fedora-config")
     for destination, source in links.items():
         try:

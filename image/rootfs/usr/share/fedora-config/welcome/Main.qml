@@ -130,7 +130,7 @@ ApplicationWindow {
                     }
                     Text {
                         visible: welcome.isLive; Layout.fillWidth: true
-                        text: "The core desktop installs without an internet connection."
+                        text: "The desktop and all included applications install without an internet connection."
                         color: "#a9e7cf"; wrapMode: Text.WordWrap; font.pixelSize: 14
                     }
                 }

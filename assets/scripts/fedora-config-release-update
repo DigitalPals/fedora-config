@@ -23,7 +23,7 @@ backend_args=()
 
 usage() {
   cat <<'EOF'
-Usage: fedora-config update [--check] [--channel stable|beta] [--system-only]
+Usage: cybex update [--check] [--channel stable|beta] [--system-only]
                             [--no-packages] [--no-flatpak] [--start] [--json]
 
 By default, check GitHub for a verified CybexOS release, stage and apply

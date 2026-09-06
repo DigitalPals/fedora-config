@@ -4,6 +4,9 @@ apps_required_fedora_packages:
   - gh
   - python3
   - inkscape
+  - pinta
+  - glow
+  - duf
   - libva-utils
   # Desktop and media
   - firefox
@@ -84,16 +87,13 @@ apps_developer_fedora_packages:
   - yamllint
   - tree-sitter-cli
   - android-tools
+  - java-25-openjdk-devel
 
-# These enrich the workstation but are not prerequisites for any managed
-# service, script, or configuration. Their absence is reported without making
-# a fresh Fedora installation unusable.
+# Hardware diagnostics may be unavailable on a Fedora release. Applications
+# belong in the required list so an incomplete install cannot silently succeed.
 apps_optional_fedora_packages:
   - intel-compute-runtime
   - igt-gpu-tools
-  - pinta
-  - glow
-  - duf
 
 apps_podman_packages:
   - distrobox

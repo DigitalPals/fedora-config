@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Welcome to CybexOS
+Name=cybex
 Comment=Install CybexOS or explore your desktop
-Exec=fedora-config-welcome
+Exec=cybex welcome
 Icon=computer
 Terminal=false
 Categories=System;

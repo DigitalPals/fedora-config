@@ -6,9 +6,12 @@ Summary:        CybexOS Hyprland and Quickshell desktop
 # artifacts; this label does not grant redistribution rights.
 License:        LicenseRef-Not-Licensed
 URL:            https://github.com/DigitalPals/fedora-config
-Source0:        desktop.tar.gz
-BuildArch:      noarch
+Source0:        desktop.tar
+BuildArch:      x86_64
 AutoReqProv:    no
+# This RPM is an intermediate container; the live ISO compresses the installed
+# filesystem separately. Avoid spending minutes recompressing user toolchains.
+%global _binary_payload w3.zstdio
 Requires:       bash coreutils util-linux systemd python3
 Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprpolkitagent hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
@@ -20,7 +23,7 @@ Requires:       gnome-keyring polkit dbus-daemon dnf5-plugins flatpak sudo
 Requires:       gnome-online-accounts evolution-data-server gnome-control-center zenity
 Requires:       grim slurp satty wl-clipboard cliphist wf-recorder libnotify
 Requires:       ImageMagick tesseract tesseract-langpack-eng btop matugen
-Requires:       btrfs-progs tar zstd
+Requires:       btrfs-progs tar zstd fastfetch
 Requires:       rsms-inter-fonts google-noto-sans-fonts google-noto-color-emoji-fonts
 Requires:       jetbrains-mono-fonts
 
@@ -35,11 +38,21 @@ Private alpha image integration; not a public distribution release.
 
 %build
 
+# Bundled upstream binaries must retain the bytes their installers verified.
+%global __os_install_post %{nil}
+%global debug_package %{nil}
+
 %install
 mkdir -p %{buildroot}
-cp -a usr %{buildroot}/
+cp -a usr opt %{buildroot}/
 
 %files
+/opt/fedora-config-apps/
+/opt/fedora-config-builds/
+/usr/local/bin/*
+/usr/local/libexec/*
+/usr/local/share/fonts/*
+/usr/bin/cybex
 /usr/bin/fedora-config*
 /usr/bin/hyprland-quickshell
 /usr/libexec/fedora-config-*
@@ -48,7 +61,7 @@ cp -a usr %{buildroot}/
 /usr/lib/systemd/user/hyprpolkitagent.service.d/
 /usr/lib/systemd/user/hyprland-session.target
 /usr/share/fedora-config/
-/usr/share/applications/fedora-config-welcome.desktop
+/usr/share/applications/cybex.desktop
 /usr/share/wayland-sessions/hyprland-quickshell.desktop
 /usr/share/fonts/fedora-config/
 /usr/share/licenses/fedora-config-fonts/
