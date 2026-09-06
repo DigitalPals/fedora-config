@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Behavioral checks for image account isolation and the welcome window."""
+import importlib.machinery
+import importlib.util
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parent
+
+
+def load(name, path):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+user_init = load("user_init", ROOT / "rootfs/usr/libexec/fedora-config-user-init")
+live_install = load("live_install", ROOT / "install-live-rootfs")
+
+
+class LiveFileOwnership(unittest.TestCase):
+    def test_private_checkout_modes_do_not_leak_into_the_os(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source, destination = base / "source", base / "root"
+            (source / "usr/libexec").mkdir(parents=True)
+            (source / "etc/anaconda").mkdir(parents=True)
+            (source / "usr/libexec/live-setup").write_text("#!/bin/sh\n")
+            (source / "etc/anaconda/alpha.conf").write_text("configuration\n")
+            for path in [source, *source.rglob("*")]:
+                path.chmod(0o700 if path.is_dir() else 0o600)
+            destination.mkdir(mode=0o755)
+            before = destination.stat()
+            live_install.install_tree(source, destination)
+            self.assertEqual(destination.stat().st_uid, before.st_uid)
+            self.assertEqual(destination.stat().st_mode, before.st_mode)
+            self.assertEqual((destination / "usr/libexec").stat().st_mode & 0o777, 0o755)
+            self.assertEqual((destination / "usr/libexec/live-setup").stat().st_mode & 0o777, 0o755)
+            self.assertEqual((destination / "etc/anaconda/alpha.conf").stat().st_mode & 0o777, 0o644)
+
+
+class AccountIsolation(unittest.TestCase):
+    def test_new_accounts_get_shared_runtime_and_separate_settings(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=True):
+            base = Path(temporary)
+            vendor = base / "vendor"
+            (vendor / "bin").mkdir(parents=True)
+            (vendor / "bin/tool").write_text("version one")
+            (vendor / "runtime").mkdir()
+            for name in ("alice", "bob"):
+                home = base / name
+                user_init.initialize(home, vendor)
+                self.assertEqual((home / ".local/share/fedora-config/runtime").resolve(), vendor / "runtime")
+                self.assertTrue((home / ".config/fedora-config/hypr").is_dir())
+            settings = base / "alice/.config/fedora-config/shell.json"
+            settings.write_text('{"themeMode":"light","futureSetting":42}')
+            personal_tool = base / "alice/.local/bin/tool"
+            personal_tool.unlink()
+            personal_tool.write_text("personal tool")
+            (vendor / "bin/tool").write_text("version two")
+            user_init.initialize(base / "alice", vendor)
+            self.assertEqual(personal_tool.read_text(), "personal tool")
+            self.assertEqual(settings.read_text(), '{"themeMode":"light","futureSetting":42}')
+            self.assertEqual((base / "bob/.local/bin/tool").read_text(), "version two")
+            self.assertFalse((base / "bob/.config/fedora-config/shell.json").exists())
+
+    def test_existing_runtime_and_dangling_links_are_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=True):
+            base = Path(temporary)
+            vendor = base / "vendor"
+            (vendor / "bin").mkdir(parents=True)
+            (vendor / "bin/tool").write_text("vendor")
+            home = base / "user"
+            runtime = home / ".local/share/fedora-config/runtime"
+            runtime.mkdir(parents=True)
+            (runtime / "sentinel").write_text("keep")
+            (home / ".local/bin").mkdir(parents=True)
+            (home / ".local/bin/tool").symlink_to(base / "missing-personal-target")
+            user_init.initialize(home, vendor)
+            self.assertFalse(runtime.is_symlink())
+            self.assertEqual((runtime / "sentinel").read_text(), "keep")
+            self.assertEqual(os.readlink(home / ".local/bin/tool"), str(base / "missing-personal-target"))
+
+
+class WelcomeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        cls.module = load("welcome_app", ROOT / "rootfs/usr/bin/fedora-config-welcome")
+        cls.app = cls.module.QGuiApplication.instance() or cls.module.QGuiApplication([])
+
+    def test_installed_system_cannot_launch_disk_installer(self):
+        backend = self.module.Welcome()
+        backend.live = False
+        with patch.object(backend.process, "start") as start:
+            backend.install()
+            start.assert_not_called()
+
+    def test_missing_installer_is_visible_and_does_not_run_a_shell(self):
+        backend = self.module.Welcome()
+        backend.live = True
+        with patch.object(Path, "is_file", return_value=False), patch.object(backend.process, "start") as start:
+            backend.install()
+            start.assert_not_called()
+            self.assertIn("installer is missing", backend.status)
+
+    def test_qml_loads_for_live_and_installed_modes(self):
+        for live in (True, False):
+            backend = self.module.Welcome()
+            backend.live = live
+            engine = self.module.QQmlApplicationEngine()
+            engine.rootContext().setContextProperty("welcome", backend)
+            engine.load(self.module.QUrl.fromLocalFile(str(ROOT / "rootfs/usr/share/fedora-config/welcome/Main.qml")))
+            self.assertTrue(engine.rootObjects(), f"welcome failed to load in live={live}")
+            window = engine.rootObjects()[0]
+            window.close()
+            del window
+            del engine
+
+
+if __name__ == "__main__":
+    unittest.main()

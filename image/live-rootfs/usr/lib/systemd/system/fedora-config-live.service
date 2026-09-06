@@ -1,0 +1,13 @@
+[Unit]
+Description=Prepare the temporary Fedora Config live session
+ConditionKernelCommandLine=rd.live.image
+After=systemd-user-sessions.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/fedora-config-live-setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

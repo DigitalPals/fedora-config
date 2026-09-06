@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Unprivileged welcome window. Anaconda owns installation and authorization."""
+import os
+from pathlib import Path
+import sys
+
+from PySide6.QtCore import QObject, Property, QProcess, QUrl, Signal, Slot
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtQml import QQmlApplicationEngine
+
+
+class Welcome(QObject):
+    changed = Signal()
+    activate = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.live = Path("/run/fedora-config-live").exists()
+        self.marker = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "fedora-config/welcome-complete"
+        self.message = ""
+        self.process = QProcess(self)
+        self.process.finished.connect(self.finished)
+        self.process.errorOccurred.connect(self.failed)
+        self.process.stateChanged.connect(lambda _: self.changed.emit())
+        # Keep diagnostics in the user service's journal, never in a root-owned
+        # file in the live account's home directory.
+        self.process.setProcessChannelMode(QProcess.ForwardedChannels)
+
+    @Property(bool, constant=True)
+    def isLive(self):
+        return self.live
+
+    @Property(bool, notify=changed)
+    def busy(self):
+        return self.process.state() != QProcess.NotRunning
+
+    @Property(str, notify=changed)
+    def status(self):
+        return self.message
+
+    @Slot()
+    def install(self):
+        if not self.live or self.busy:
+            return
+        if not Path("/usr/bin/liveinst").is_file():
+            self.message = "The installer is missing. Please use a complete Fedora Config live image."
+            self.changed.emit()
+            return
+        self.message = "Opening the installer…"
+        self.process.start("/usr/bin/liveinst", [])
+
+    def finished(self, code, _status):
+        self.message = ("The installer has closed. If installation finished, restart and remove the USB drive."
+                        if code == 0 else "The installer could not finish. You can try again; details are in the installer logs.")
+        self.changed.emit()
+
+    def failed(self, _error):
+        self.message = "Could not open the installer: " + self.process.errorString()
+        self.changed.emit()
+
+    @Slot(str)
+    def openSettings(self, page):
+        if page not in ("appearance", "shortcuts"):
+            return
+        runtime = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "fedora-config/runtime/quickshell"
+        arguments = ["ipc", "--path", str(runtime), "call"]
+        arguments += (["settings", "open", "appearance"] if page == "appearance"
+                      else ["session", "keys"])
+        success, _ = QProcess.startDetached("/usr/bin/qs", arguments)
+        if not success:
+            self.message = "The desktop settings could not be opened."
+            self.changed.emit()
+
+    @Slot()
+    def finish(self):
+        if self.busy:
+            return
+        if not self.live:
+            self.marker.parent.mkdir(parents=True, exist_ok=True)
+            self.marker.touch()
+        QGuiApplication.quit()
+
+
+def main():
+    app = QGuiApplication(sys.argv)
+    app.setApplicationName("fedora-config-welcome")
+    app.setDesktopFileName("fedora-config-welcome")
+    backend = Welcome()
+    if "--autostart" in sys.argv and not backend.live and backend.marker.exists():
+        return 0
+    socket_name = str(Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "fedora-config-welcome")
+    client = QLocalSocket()
+    client.connectToServer(socket_name)
+    if client.waitForConnected(300):
+        client.write(b"activate")
+        client.waitForBytesWritten(300)
+        return 0
+    QLocalServer.removeServer(socket_name)
+    server = QLocalServer()
+    server.setSocketOptions(QLocalServer.UserAccessOption)
+    if not server.listen(socket_name):
+        raise RuntimeError(server.errorString())
+
+    def activate():
+        connection = server.nextPendingConnection()
+        if connection:
+            connection.close()
+            connection.deleteLater()
+        backend.activate.emit()
+
+    server.newConnection.connect(activate)
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("welcome", backend)
+    engine.load(QUrl.fromLocalFile("/usr/share/fedora-config/welcome/Main.qml"))
+    if not engine.rootObjects():
+        return 1
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

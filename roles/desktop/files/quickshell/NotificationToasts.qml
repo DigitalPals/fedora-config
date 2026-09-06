@@ -248,8 +248,12 @@ PanelWindow {
                 height: contentHeight
                 radius: Theme.cardRadius
                 clip: true
-                color: slot.critical ? Theme.redBgSoft
-                    : hovered ? Theme.surfaceMenu : Theme.panelSurface
+                // The red fill is a translucent tint for an existing surface,
+                // not a standalone background over application windows.
+                readonly property color baseSurface: hovered
+                    ? Theme.surfaceMenu : Theme.panelSurface
+                color: slot.critical ? Qt.tint(baseSurface, Theme.redBgSoft)
+                    : baseSurface
                 border.width: 1
                 border.color: slot.critical ? Theme.redBorder
                     : hovered ? Theme.accentAlpha(0.32) : Theme.popBorder

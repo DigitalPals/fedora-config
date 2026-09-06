@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Build the live ISO in a disposable Fedora VM; never attach host disks."""
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.request
+
+ROOT = Path(__file__).resolve().parents[1]
+IMAGE = "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
+IMAGE_URL = "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/" + IMAGE
+IMAGE_SHA256 = "28680fe5b371a5a82ebf43a31926e086a168e59949d03969c5093e7071f90b7f"
+
+
+def run(args, **kwargs):
+    return subprocess.run(args, check=True, **kwargs)
+
+
+def digest(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def source_archive(destination):
+    # An explicit source allowlist excludes inventories with personal answers,
+    # Git metadata, local caches, credentials, and previous build artifacts.
+    roots = ["image", "roles/desktop", "assets/scripts", "inventory/group_vars/all.yml", "VERSION",
+             "roles/dotfiles/templates/brightness-control.j2", "roles/base/files/fedora-config-system-snapshot"]
+    with tarfile.open(destination, "w:gz") as archive:
+        for name in roots:
+            path = ROOT / name
+            paths = sorted(path.rglob("*")) if path.is_dir() else [path]
+            for item in paths:
+                if item.is_file() and not item.is_symlink() and "__pycache__" not in item.parts and item.suffix != ".pyc":
+                    archive.add(item, arcname=str(item.relative_to(ROOT)), recursive=False)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=Path.home() / ".local/share/fedora-config/images")
+    parser.add_argument("--memory", type=int, default=12288, help="Builder VM RAM in MiB")
+    parser.add_argument("--cpus", type=int, default=8)
+    parser.add_argument("--debug-on-failure", action="store_true", help="Keep a failed builder running for inspection until interrupted")
+    args = parser.parse_args()
+    for command in ("qemu-img", "qemu-system-x86_64", "cloud-localds", "ssh", "ssh-keygen", "scp"):
+        if not shutil.which(command):
+            parser.error(f"missing {command}; on Debian install qemu-system-x86 qemu-utils cloud-image-utils openssh-client")
+    if not os.access("/dev/kvm", os.R_OK | os.W_OK):
+        parser.error("the builder requires access to /dev/kvm")
+    output = args.output.expanduser().resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    if any(output.iterdir()):
+        parser.error("output must be empty; use a new output directory for each build")
+    cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "fedora-config"
+    cache.mkdir(parents=True, exist_ok=True)
+    base = cache / IMAGE
+    if not base.exists() or digest(base) != IMAGE_SHA256:
+        print("Downloading and verifying the Fedora builder image…", flush=True)
+        partial = cache / (IMAGE + ".download")
+        urllib.request.urlretrieve(IMAGE_URL, partial)
+        if digest(partial) != IMAGE_SHA256:
+            partial.unlink()
+            raise RuntimeError("Fedora builder image checksum mismatch")
+        partial.replace(base)
+    with tempfile.TemporaryDirectory(prefix="fedora-config-image-", dir=cache) as temporary:
+        work = Path(temporary)
+        key = work / "id_ed25519"
+        run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)])
+        public = key.with_suffix(".pub").read_text().strip()
+        (work / "user-data").write_text("#cloud-config\n" + json.dumps({
+            "users": [{"name": "builder", "groups": ["wheel"], "shell": "/bin/bash",
+                       "sudo": "ALL=(ALL) NOPASSWD:ALL", "ssh_authorized_keys": [public]}],
+            "ssh_pwauth": False, "disable_root": True,
+        }))
+        (work / "meta-data").write_text("instance-id: fedora-config-image-builder\nlocal-hostname: image-builder\n")
+        run(["cloud-localds", str(work / "seed.iso"), str(work / "user-data"), str(work / "meta-data")])
+        run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", str(base), str(work / "system.qcow2"), "100G"])
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        ssh_options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+                       "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={work / 'known_hosts'}"]
+        ssh = ["ssh", *ssh_options, "-p", str(port), "builder@127.0.0.1"]
+        (output / "builder.json").write_text(json.dumps({"ssh": ssh, "work": str(work)}, indent=2) + "\n")
+        console = (output / "builder-console.log").open("w")
+        vm = subprocess.Popen([
+            "qemu-system-x86_64", "-name", "fedora-config-image-builder", "-machine", "q35,accel=kvm",
+            "-cpu", "host", "-smp", str(args.cpus), "-m", str(args.memory),
+            "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2",
+            "-drive", f"file={work / 'seed.iso'},if=virtio,format=raw,readonly=on",
+            "-netdev", f"user,id=net,hostfwd=tcp:127.0.0.1:{port}-:22",
+            "-device", "virtio-net-pci,netdev=net", "-display", "none", "-serial", "stdio", "-monitor", "none",
+        ], stdout=console, stderr=subprocess.STDOUT)
+        try:
+            for _ in range(120):
+                if vm.poll() is not None:
+                    raise RuntimeError("builder VM exited; see builder-console.log")
+                if subprocess.run([*ssh, "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                    break
+                time.sleep(3)
+            else:
+                raise RuntimeError("builder SSH did not become ready")
+            run([*ssh, "cloud-init status --wait >/dev/null; mkdir -p /home/builder/source"])
+            source_archive(work / "source.tar.gz")
+            with (work / "source.tar.gz").open("rb") as archive:
+                run([*ssh, "tar xzf - -C /home/builder/source"], stdin=archive)
+            print("Building desktop RPMs and the live ISO in Fedora…", flush=True)
+            with (output / "build.log").open("w") as log:
+                build = subprocess.Popen([*ssh, "sudo bash /home/builder/source/image/build-in-guest"],
+                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                for line in build.stdout:
+                    print(line, end="", flush=True)
+                    log.write(line)
+                    log.flush()
+                if build.wait():
+                    if args.debug_on_failure:
+                        print(f"Build failed; builder remains available for inspection via {output / 'builder.json'}. Interrupt to clean up.", flush=True)
+                        while vm.poll() is None:
+                            time.sleep(1)
+                    raise RuntimeError("image build failed; see build.log")
+            run(["scp", *ssh_options, "-P", str(port), "-r", "builder@127.0.0.1:/home/builder/artifacts/.", str(output)])
+            print(f"Build complete: {output}")
+        finally:
+            vm.terminate()
+            try:
+                vm.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                vm.kill()
+                vm.wait()
+            console.close()
+
+
+if __name__ == "__main__":
+    def interrupted(_signal, _frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, interrupted)
+    try:
+        main()
+    except (RuntimeError, subprocess.CalledProcessError, KeyboardInterrupt) as error:
+        print(f"image/build: {error}", file=sys.stderr)
+        sys.exit(1)

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Called only inside the disposable builder created by image/build.
+set -euo pipefail
+[[ $(systemd-detect-virt) == kvm || $(systemd-detect-virt) == qemu ]] || {
+  echo 'Refusing to build outside the disposable QEMU VM.' >&2
+  exit 2
+}
+[[ $(hostname) == image-builder && $EUID == 0 ]] || exit 2
+source_root=/home/builder/source
+build_root=/home/builder/build
+artifacts=/home/builder/artifacts
+mkdir -p "$build_root" "$artifacts"
+dnf install -y livecd-tools rpm-build createrepo_c python3-jinja2 python3-pyyaml \
+  curl cpio policycoreutils pykickstart
+# The builder's SELinux is permissive because it installs and relabels a
+# separate root filesystem. The resulting live and installed OS enforce it.
+setenforce 0
+curl --fail --location --retry 3 --output "$build_root/hyprland.gpg" \
+  https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
+echo "581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  $build_root/hyprland.gpg" | sha256sum --check
+python3 "$source_root/image/package" --output "$build_root"
+rpmbuild -bb --define "_topdir $build_root/rpmbuild" "$source_root/image/fedora-config-desktop.spec"
+mkdir -p "$build_root/repo"
+cp "$build_root"/rpmbuild/RPMS/noarch/*.rpm "$build_root/repo/"
+createrepo_c "$build_root/repo"
+cp "$source_root/image/live.ks" "$build_root/live.ks"
+ksvalidator --version F44 "$build_root/live.ks"
+mkdir -p "$build_root/tmp"
+cd "$artifacts"
+python3 "$source_root/image/compose"
+cp "$build_root/repo/"*.rpm "$artifacts/"
+cp "$build_root/package-manifest.json" "$artifacts/"
+sha256sum ./*.iso ./*.rpm > SHA256SUMS
+chown -R builder:builder "$artifacts"

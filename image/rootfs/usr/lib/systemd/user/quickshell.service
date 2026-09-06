@@ -1,0 +1,12 @@
+[Unit]
+Description=Quickshell desktop shell
+PartOf=hyprland-session.target
+
+[Service]
+ExecStart=/usr/share/fedora-config/bin/fedora-config-runtime exec quickshell
+Environment=FEDORA_CONFIG_CONNECTED_WIDGETS=0
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=hyprland-session.target

@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Compose with livecd-tools' API so DNF repository signing policy is honored."""
+import logging
+import configparser
+from pathlib import Path
+import shutil
+import subprocess
+
+import imgcreate
+import imgcreate.creator
+from imgcreate.dnfinst import DnfLiveCD
+import rpm
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+source = Path(__file__).resolve().parent
+build = Path("/home/builder/build")
+
+
+class VerifiedDnf(DnfLiveCD):
+    """Add signature enforcement missing from Fedora 44's livecd-tools 31.
+
+    The shipped runInstall explicitly skips signature checks. Keep its image
+    construction logic, but verify the downloaded transaction before RPM can
+    execute any package scriptlets. Repository policy comes from build.repo.
+    """
+
+    def addRepository(self, name, url=None, mirrorlist=None):
+        policy = configparser.ConfigParser(interpolation=None)
+        policy.read(source / "build.repo")
+        for repository_id in policy.sections():
+            entry = policy[repository_id]
+            repository = super().addRepository(repository_id, entry.get("baseurl"))
+            if entry.get("metalink"):
+                repository.metalink = entry["metalink"]
+            repository.gpgcheck = entry.getboolean("gpgcheck")
+            if repository.gpgcheck:
+                repository.gpgkey = [entry["gpgkey"]]
+            elif repository_id != "fedora-config-local":
+                raise RuntimeError("Only the locally built RPM may be unsigned")
+        return self.repos[name]
+
+    def do_transaction(self, *args, **kwargs):
+        for package in self.transaction.install_set:
+            if not package.repo.gpgcheck:
+                if package.reponame != "fedora-config-local" or package.name != "fedora-config-desktop":
+                    raise RuntimeError(f"Unexpected unsigned package: {package}")
+                continue
+            result, message = self._sig_check_pkg(package)
+            if result == 1:
+                self._get_key_for_package(package, lambda *_args, **_kwargs: True)
+                result, message = self._sig_check_pkg(package)
+            if result:
+                raise RuntimeError(f"Package signature verification failed: {package}: {message}")
+        logging.info("Verified all upstream package signatures before installation")
+        # RPM 6 must accept the locally built unsigned artifact. Upstream
+        # signatures have already been checked explicitly above.
+        rpm.addMacro("_pkgverify_level", "digest")
+        return super().do_transaction(*args, **kwargs)
+
+
+imgcreate.creator.DnfLiveCD = VerifiedDnf
+kickstart = imgcreate.read_kickstart(str(build / "live.ks"))
+creator = imgcreate.LiveImageCreator(
+    kickstart, "FC-LIVE-44", fslabel="FC-LIVE-44", releasever="44",
+    tmpdir=str(build / "tmp"), title="Fedora Config", product="Fedora Config",
+)
+creator.compress_args = "xz"
+try:
+    creator.mount(cachedir=str(build / "cache"))
+    shutil.copyfile(source / "dracut-live.conf", Path(creator._instroot) / "etc/dracut.conf.d/99-liveos.conf")
+    creator.install()
+    creator.configure()
+    subprocess.run([
+        "chroot", creator._instroot, "/usr/bin/bash", "-euc",
+        "for tool in anaconda liveinst efibootmgr grubby grub2-mkconfig cryptsetup btrfs mkfs.vfat mkfs.ext4; "
+        'do command -v "$tool" >/dev/null || exit 1; done',
+    ], check=True)
+    for relative in ("", "usr", "etc", "usr/libexec/fedora-config-live-setup"):
+        metadata = (Path(creator._instroot) / relative).stat()
+        if metadata.st_uid != 0 or metadata.st_gid != 0 or metadata.st_mode & 0o022:
+            raise RuntimeError(f"Unsafe image ownership or permissions: /{relative}")
+    with Path("/home/builder/artifacts/packages.txt").open("w") as manifest:
+        subprocess.run(["rpm", "--root", creator._instroot, "-qa", "--qf", "%{NEVRA}\n"],
+                       check=True, stdout=manifest)
+    creator.unmount()
+    creator.package()
+finally:
+    creator.cleanup()

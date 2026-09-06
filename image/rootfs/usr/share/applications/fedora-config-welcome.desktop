@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome to Fedora Config
+Comment=Install Fedora Config or explore your desktop
+Exec=fedora-config-welcome
+Icon=computer
+Terminal=false
+Categories=System;
+StartupNotify=true

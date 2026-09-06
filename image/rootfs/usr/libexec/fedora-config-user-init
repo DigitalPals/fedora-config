@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Create absent per-user links; never adopt or replace existing user files."""
+import os
+from pathlib import Path
+
+
+def initialize(home, vendor=Path("/usr/share/fedora-config")):
+    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))) / "fedora-config"
+    data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "fedora-config"
+    for directory in (config / "hypr", data / "themes", data / "plugins", home / ".local/bin"):
+        directory.mkdir(parents=True, exist_ok=True)
+    links = {data / "runtime": vendor / "runtime"}
+    for helper in (vendor / "bin").iterdir():
+        if helper.is_file():
+            links[home / ".local/bin" / helper.name] = helper
+    links[home / ".local/bin/fedora-config"] = Path("/usr/bin/fedora-config")
+    for destination, source in links.items():
+        try:
+            destination.symlink_to(source)
+        except FileExistsError:
+            pass
+
+
+if __name__ == "__main__":
+    initialize(Path.home())

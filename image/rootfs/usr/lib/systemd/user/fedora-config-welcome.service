@@ -1,0 +1,8 @@
+[Unit]
+Description=Fedora Config welcome
+PartOf=hyprland-session.target
+After=quickshell.service
+
+[Service]
+ExecStart=/usr/bin/fedora-config-welcome --autostart
+Restart=no

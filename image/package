@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Assemble the RPM payload from the existing desktop and image integration."""
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import tarfile
+import urllib.request
+
+import jinja2
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    build = args.output.resolve()
+    payload = build / "payload"
+    payload.mkdir(parents=True, exist_ok=False)
+    inventory = yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
+    environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
+    environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no,
+                               to_json=json.dumps)
+    values = {"features": inventory["features"], "fedora_config_xps_2026": False,
+              "machine_keyboard_layout": "us", "machine_keyboard_variant": ""}
+
+    def write(relative, content, executable=False):
+        target = payload / str(relative).lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+        target.chmod(0o755 if executable else 0o644)
+
+    def copy(source, relative, executable=False):
+        target = payload / str(relative).lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / source, target)
+        target.chmod(0o755 if executable else 0o644)
+
+    runtime = "usr/share/fedora-config/runtime"
+    quickshell = ROOT / "roles/desktop/files/quickshell"
+    for source in sorted(quickshell.rglob("*")):
+        if not source.is_file() or source.is_symlink() or "__pycache__" in source.parts or source.suffix == ".pyc":
+            continue
+        relative = f"{runtime}/quickshell/{source.relative_to(quickshell)}"
+        copy(source.relative_to(ROOT), relative, source.parent.name == "scripts" and source.suffix != ".py")
+        if source.suffix in (".qml", ".js"):
+            target = payload / relative
+            target.write_text(target.read_text().replace("/usr/local/libexec/fedora-config-", "/usr/libexec/fedora-config-"))
+    for name in ("hyprland.lua", "bindings.lua", "autostart.lua"):
+        content = (ROOT / "roles/desktop/files" / name).read_text()
+        content = content.replace("/usr/local/libexec/fedora-config-", "/usr/libexec/fedora-config-")
+        write(f"{runtime}/hypr/{name}", content)
+    for name in ("features.lua", "monitors.lua", "input.lua", "looknfeel.lua", "hypridle.conf", "hyprlock.conf"):
+        content = environment.from_string((ROOT / "roles/desktop/templates" / (name + ".j2")).read_text()).render(**values)
+        content = content.replace("/usr/local/libexec/fedora-config-", "/usr/libexec/fedora-config-")
+        if name == "input.lua":
+            content = content.replace('kb_layout = "us"', 'kb_layout = os.getenv("FEDORA_CONFIG_KEYBOARD_LAYOUT") or "us"')
+            content = content.replace('kb_variant = ""', 'kb_variant = os.getenv("FEDORA_CONFIG_KEYBOARD_VARIANT") or ""')
+        if name == "looknfeel.lua":
+            content += '\nhl.window_rule({ match = { class = [[^fedora-config-welcome$]] }, float = true, center = true, size = { 920, 620 } })\n'
+        write(f"{runtime}/hypr/{name}", content)
+    helpers = ("screenshot", "screen-record", "screen-ocr", "quickshell-reminder", "clipboard-copy-image",
+               "clipboard-image-to-file", "clipboard-history-store", "fedora-config-agent", "fedora-config-runtime",
+               "fedora-config-update-run")
+    for name in helpers:
+        copy(f"assets/scripts/{name}", f"usr/share/fedora-config/bin/{name}", True)
+    updater = payload / "usr/share/fedora-config/bin/fedora-config-update-run"
+    updater.write_text(updater.read_text().replace("snapshot_helper_root=/usr/local/libexec", "snapshot_helper_root=/usr/libexec"))
+    copy("roles/dotfiles/templates/brightness-control.j2", "usr/share/fedora-config/bin/brightness-control", True)
+    copy("roles/base/files/fedora-config-system-snapshot", "usr/libexec/fedora-config-system-snapshot", True)
+    for name in ("fedora-config-session-action", "hyprland-session-start"):
+        output_name = name if name.startswith("fedora-config") else "fedora-config-" + name
+        copy(f"roles/desktop/files/{name}", f"usr/libexec/{output_name}", True)
+    for source in sorted((ROOT / "image/rootfs").rglob("*")):
+        if source.is_file():
+            relative = source.relative_to(ROOT / "image/rootfs")
+            copy(source.relative_to(ROOT), relative, relative.parts[1] in ("bin", "libexec"))
+    # The fonts are already checksum-pinned by the project. Preserve upstream
+    # license texts and fail the build on any mismatch.
+    for font in inventory["pinned_font_files"]:
+        for url_key, checksum_key, target in (
+            ("url", "checksum", "usr/share/fonts/fedora-config/" + font["filename"]),
+            ("license_url", "license_checksum", "usr/share/licenses/fedora-config-fonts/" + font["name"] + "-" + font["license_filename"]),
+        ):
+            destination = payload / target
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            urllib.request.urlretrieve(font[url_key], destination)
+            if hashlib.sha256(destination.read_bytes()).hexdigest() != font[checksum_key].split(":", 1)[1]:
+                raise RuntimeError(f"checksum mismatch for {font['name']} {url_key}")
+            destination.chmod(0o644)
+    manifest = {}
+    for file in sorted(payload.rglob("*")):
+        if file.is_file():
+            manifest[str(file.relative_to(payload))] = hashlib.sha256(file.read_bytes()).hexdigest()
+    (build / "package-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    sources = build / "rpmbuild/SOURCES"
+    sources.mkdir(parents=True)
+    with tarfile.open(sources / "desktop.tar.gz", "w:gz") as archive:
+        archive.add(payload / "usr", arcname="usr")
+
+
+if __name__ == "__main__":
+    main()

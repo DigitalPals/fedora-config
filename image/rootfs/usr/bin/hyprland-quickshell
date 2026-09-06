@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_DESKTOP=Hyprland
+export DESKTOP_SESSION=hyprland-quickshell DESKTOP_SHELL=quickshell
+export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM=wayland
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin"
+/usr/libexec/fedora-config-user-init
+# Anaconda writes the system keyboard choice through locale1. Query it on
+# every login so the shared image never hardcodes the live account's layout.
+keyboard_property() {
+  busctl --system get-property org.freedesktop.locale1 /org/freedesktop/locale1 \
+    org.freedesktop.locale1 "$1" 2>/dev/null | python3 -c \
+    'import shlex,sys; values=shlex.split(sys.stdin.read()); print(values[1] if len(values)>1 else "")'
+}
+FEDORA_CONFIG_KEYBOARD_LAYOUT=$(keyboard_property X11Layout) || true
+FEDORA_CONFIG_KEYBOARD_VARIANT=$(keyboard_property X11Variant) || true
+export FEDORA_CONFIG_KEYBOARD_LAYOUT=${FEDORA_CONFIG_KEYBOARD_LAYOUT:-us}
+export FEDORA_CONFIG_KEYBOARD_VARIANT
+mkdir -p "${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
+systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP \
+  DESKTOP_SESSION DESKTOP_SHELL PATH QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND
+dbus-update-activation-environment --systemd XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
+  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL PATH QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND
+trap 'systemctl --user stop hyprland-session.target >/dev/null 2>&1 || true' EXIT
+start-hyprland -- --config /usr/share/fedora-config/runtime/hypr/hyprland.lua "$@" \
+  >>"${XDG_STATE_HOME:-$HOME/.local/state}/hyprland/session.log" 2>&1
