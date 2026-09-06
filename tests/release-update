@@ -175,7 +175,7 @@ printf '0.0.0\n' >"$fixture/source/VERSION"
 
 machine_release=$($updater --start --no-packages 2>"$fixture/machine-start.err")
 [[ $(jq -r .existing <<<"$machine_release") == false ]]
-grep -Fx 'Downloading Fedora Config 1.2.3...' \
+grep -Fx 'Downloading CybexOS 1.2.3...' \
   "$fixture/machine-start.err" >/dev/null
 grep -F -- 'start --json --system-unit --full --skip-tests --repo' \
   "$fixture/backend.log" >/dev/null

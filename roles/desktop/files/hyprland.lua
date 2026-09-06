@@ -37,7 +37,7 @@ require("looknfeel")
 require("autostart")
 
 -- The user layer is deliberately last. It is optional and never synthesized
--- or changed by Fedora Config.
+-- or changed by CybexOS.
 local user_entry = io.open(user_dir .. "/user.lua", "r")
 if user_entry then
   user_entry:close()

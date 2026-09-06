@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Resolve the active Fedora Config runtime without making a checkout mutable.
+# Resolve the active CybexOS runtime without making a checkout mutable.
 set -euo pipefail
 umask 077
 
@@ -113,7 +113,7 @@ dev_command() {
     enable)
       [[ $# -eq 1 ]] || { usage >&2; return 2; }
       source=$(validate_checkout "$1") || {
-        printf 'fedora-config dev: %s is not a safe Fedora Config checkout\n' "$1" >&2
+        printf 'fedora-config dev: %s is not a safe CybexOS checkout\n' "$1" >&2
         return 2
       }
       if [[ -e $config_root || -L $config_root ]]; then

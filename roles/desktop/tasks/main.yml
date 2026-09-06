@@ -99,7 +99,7 @@
   failed_when: false
   check_mode: false
 
-- name: Preserve GDM's package default when Fedora Config installed it
+- name: Preserve GDM's package default when CybexOS installed it
   ansible.builtin.copy:
     src: /etc/gdm/custom.conf
     dest: /var/lib/fedora-config/backups/system/etc/gdm/custom.conf
@@ -158,7 +158,7 @@
   when: not ansible_check_mode
   tags: [quickshell]
 
-- name: Inspect Fedora Config ownership of connected widgets
+- name: Inspect CybexOS ownership of connected widgets
   ansible.builtin.stat:
     path: /var/lib/fedora-config/features/connected_widgets
   register: desktop_connected_widgets_marker
@@ -168,7 +168,7 @@
   when: features.connected_widgets | bool
   tags: [quickshell, hermes-menubar]
 
-- name: Stop the Fedora Config Hermes client when connected widgets are deselected
+- name: Stop the CybexOS Hermes client when connected widgets are deselected
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.systemd_service:
@@ -184,7 +184,7 @@
     - desktop_connected_widgets_marker.stat.exists
     - not ansible_check_mode
 
-- name: Remove the Fedora Config Hermes client when connected widgets are deselected
+- name: Remove the CybexOS Hermes client when connected widgets are deselected
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
@@ -318,7 +318,7 @@
     - "{{ primary_home }}/.local/state/hyprland"
   tags: [browser]
 
-- name: Create private Fedora Config shell state directories
+- name: Create private CybexOS shell state directories
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:

@@ -26,7 +26,7 @@
         that:
           - config_schema_version | int == 1
         fail_msg: >-
-          Unsupported Fedora Config schema {{ config_schema_version | default('missing') }};
+          Unsupported CybexOS schema {{ config_schema_version | default('missing') }};
           run the current installer to migrate the saved configuration.
       tags: [always]
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Isolated lifecycle coverage for user-scoped Fedora Config skill adoption.
+# Isolated lifecycle coverage for user-scoped CybexOS skill adoption.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)

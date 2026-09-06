@@ -9,7 +9,7 @@ ApplicationWindow {
     minimumWidth: 740
     minimumHeight: 560
     visible: true
-    title: "Welcome to Fedora Config"
+    title: "Welcome to CybexOS"
     color: "#101719"
     font.family: "Figtree"
     font.pixelSize: 16
@@ -70,11 +70,11 @@ ApplicationWindow {
                 anchors.fill: parent
                 anchors.margins: 32
                 spacing: 22
-                Text { text: "FEDORA CONFIG"; color: "#b4c8bf"; font.pixelSize: 13; font.letterSpacing: 2 }
+                Text { text: "CybexOS"; color: "#b4c8bf"; font.pixelSize: 13; font.letterSpacing: 2 }
                 Item { Layout.fillHeight: true }
                 Rectangle {
                     width: 94; height: 94; radius: 26; color: "#a9e7cf"
-                    Text { anchors.centerIn: parent; text: "fc"; color: "#183c2d"; font.pixelSize: 48; font.weight: Font.DemiBold }
+                    Text { anchors.centerIn: parent; text: "Cx"; color: "#183c2d"; font.pixelSize: 48; font.weight: Font.DemiBold }
                 }
                 Text {
                     Layout.fillWidth: true
@@ -84,7 +84,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "A focused desktop, built on Fedora."
+                    text: "Cybex Opinionated System.\nA focused desktop, built on Fedora."
                     wrapMode: Text.WordWrap; color: "#afc7bb"; lineHeight: 1.3
                 }
                 Item { Layout.fillHeight: true }
@@ -148,7 +148,7 @@ ApplicationWindow {
                 spacing: 12
                 ActionButton {
                     primary: true
-                    text: welcome.isLive ? (welcome.busy ? "Installer is open…" : "Install Fedora Config") : "Personalize"
+                    text: welcome.isLive ? (welcome.busy ? "Installer is open…" : "Install CybexOS") : "Personalize"
                     enabled: !welcome.busy
                     onClicked: welcome.isLive ? welcome.install() : welcome.openSettings("appearance")
                 }

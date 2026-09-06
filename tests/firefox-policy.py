@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that the Firefox editor mutates only Fedora Config's entry."""
+"""Verify that the Firefox editor mutates only CybexOS's entry."""
 
 from __future__ import annotations
 

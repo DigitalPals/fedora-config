@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the Fedora Config skill package and its local references."""
+"""Validate the CybexOS skill package and its local references."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def main() -> None:
     description = metadata["description"]
     assert isinstance(description, str) and 80 <= len(description) <= 400
     for trigger in (
-        "installed Fedora Config",
+        "installed CybexOS",
         "Hyprland/Quickshell",
         "diagnostics",
         "screenshots",
@@ -102,7 +102,7 @@ def main() -> None:
     assert "dist/verify/scripts/manage-agent-skills" in release_workflow
     assert "dist/verify/agent-skills/fedora-config/SKILL.md" in release_workflow
 
-    print("Fedora Config skill metadata, routing, safety, and references are valid")
+    print("CybexOS skill metadata, routing, safety, and references are valid")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ Prefer installed commands over reconstructed shell pipelines. Read their
 active source under `~/.local/share/fedora-config/current` or run their help
 before using an unfamiliar option.
 
-## Fedora Config
+## CybexOS
 
 - `fedora-config version` reports the active release.
 - `fedora-config verify` and `fedora-config doctor` run non-destructive

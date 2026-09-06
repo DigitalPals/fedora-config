@@ -1,5 +1,5 @@
 ---
-- name: Inspect Fedora Config ownership of optional application groups
+- name: Inspect CybexOS ownership of optional application groups
   ansible.builtin.stat:
     path: "/var/lib/fedora-config/features/{{ item }}"
   loop:
@@ -41,7 +41,7 @@
   ansible.builtin.import_tasks: devtools.yml
   when: features.developer_tools | bool
 
-- name: Record Fedora Config ownership of selected optional application groups
+- name: Record CybexOS ownership of selected optional application groups
   ansible.builtin.copy:
     dest: "/var/lib/fedora-config/features/{{ item }}"
     content: "managed\n"

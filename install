@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Interactive public installer for Fedora Config.
+# Interactive public installer for CybexOS.
 set -euo pipefail
 
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
@@ -17,8 +17,9 @@ usage() {
   cat <<'EOF'
 Usage: ./install [--reconfigure] [--non-interactive] [--check] [-- ANSIBLE_ARGS...]
 
-Configure and install the Fedora Config Hyprland/Quickshell desktop. A normal
-first run asks questions and writes the answers to /etc/fedora-config/config.yml.
+Configure and install CybexOS (Cybex Opinionated System), a Hyprland/Quickshell
+desktop. A normal first run asks questions and writes the answers to
+/etc/fedora-config/config.yml.
 Later runs reuse those answers unless --reconfigure is supplied.
 
   --reconfigure      Ask the installation questions again
@@ -41,7 +42,7 @@ while (($#)); do
 done
 
 [[ -r /etc/fedora-release ]] || {
-  echo "Fedora Config supports Fedora only." >&2
+  echo "CybexOS supports Fedora only." >&2
   exit 1
 }
 
@@ -50,7 +51,7 @@ if [[ -r $config_path && $reconfigure == false ]]; then
     cat -- "$config_path"
     exit 0
   fi
-  ui_header 'Fedora Config'
+  ui_header 'CybexOS'
   printf 'Using saved installation choices from %s\n' "$config_path"
   sudo -v
   if ! command -v ansible-playbook >/dev/null 2>&1; then
@@ -159,7 +160,7 @@ if [[ $non_interactive == true ]]; then
   local_network_services=false
   manage_personal_dotfiles=false
 else
-  ui_header 'Fedora Config setup'
+  ui_header 'CybexOS setup'
   echo 'Detected values are offered in brackets. No inventory editing is required.'
   echo
   ask_text primary_user 'Desktop username' "$detected_user" valid_user

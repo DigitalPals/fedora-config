@@ -596,7 +596,7 @@ activate_release() {
   fi
 
   release_activated=true
-  printf '[release] activated Fedora Config %s\n' "$release_version" \
+  printf '[release] activated CybexOS %s\n' "$release_version" \
     >>"$run_dir/run.log"
 
   mapfile -t installed_releases < <(
@@ -745,7 +745,7 @@ worker() {
   fi
 
   write_status running snapshot "Creating a pre-update recovery point" 0
-  printf 'Fedora Config update %s started at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
+  printf 'CybexOS update %s started at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
   # Keep run state and logs private, but do not pass that 0077 umask through
   # sudo. DNF5 rewrites its shared system-state TOML files using the process
   # umask; making them root-only breaks every later unprivileged dnf query.
@@ -846,9 +846,9 @@ worker() {
       worker_failed ansible "Ansible exited with status $ansible_rc" "$ansible_rc"
     fi
     if [[ $release_transaction == true ]]; then
-      write_status running activation "Activating the applied Fedora Config release" 0
+      write_status running activation "Activating the applied CybexOS release" 0
       if ! activate_release; then
-        worker_failed activation "Could not activate the applied Fedora Config release" 1
+        worker_failed activation "Could not activate the applied CybexOS release" 1
       fi
     fi
   fi
@@ -857,7 +857,7 @@ worker() {
 
   local message="Update completed"
   (( flatpak_rc == 0 )) || message="Update completed; Flatpak reported status $flatpak_rc"
-  printf 'Fedora Config update %s finished at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
+  printf 'CybexOS update %s finished at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
   write_status done complete "$message" 0
   worker_finalized=true
 }

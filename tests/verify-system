@@ -7,7 +7,7 @@ source "$repo_root/tests/lib/quickshell-live"
 
 usage() {
   printf 'Usage: tests/verify-system [--require-hyprland]\n'
-  printf 'Run non-destructive checks against the installed Fedora Config system.\n'
+  printf 'Run non-destructive checks against the installed CybexOS system.\n'
 }
 
 require_hyprland=false
@@ -201,7 +201,7 @@ check_managed_quickshell_tree() {
   return 1
 }
 
-printf '%s\n' 'Fedora Config automated verification'
+printf '%s\n' 'CybexOS automated verification'
 printf 'Contract: inventory host %s (%s, Fedora %s, user %s)\n' \
   "$inventory_host" "$machine_hostname" "$fedora_release" "$primary_user"
 check "verifier runs as $primary_user" test "$(id -un)" = "$primary_user"
@@ -536,10 +536,10 @@ check 'Hyprland Lua entry point is a regular vendor-runtime file' bash -c '[[ -f
 check_diagnostic 'deployed Quickshell tree exactly matches tracked source files' check_managed_quickshell_tree
 
 agent_skill_canonical="$primary_home/.local/share/fedora-config/current/agent-skills/fedora-config"
-check 'active-release Fedora Config agent skill exists' \
+check 'active-release CybexOS agent skill exists' \
   test -r "$agent_skill_canonical/SKILL.md"
 for agent_root in .agents .claude .codex; do
-  check "$agent_root discovers the active Fedora Config skill" \
+  check "$agent_root discovers the active CybexOS skill" \
     agent_skill_link_valid \
     "$primary_home/$agent_root/skills/fedora-config" "$agent_skill_canonical"
 done

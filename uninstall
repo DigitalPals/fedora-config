@@ -11,7 +11,7 @@ usage() {
   cat <<'EOF'
 Usage: fedora-config uninstall [--keep-user-data] [--yes]
 
-Removes Fedora Config-owned services and configuration. Fedora packages and
+Removes CybexOS-owned services and configuration. Fedora packages and
 applications are retained. Existing files backed up before adoption are
 restored; namespaced user settings, themes, plugins, and overrides are never
 deleted. --keep-user-data also retains the backup and updater state.
@@ -34,7 +34,7 @@ done
 }
 
 if [[ $assume_yes == false ]]; then
-  read -r -p 'Remove Fedora Config-managed desktop configuration? [y/N]: ' answer
+  read -r -p 'Remove CybexOS-managed desktop configuration? [y/N]: ' answer
   [[ ${answer,,} == y || ${answer,,} == yes ]] || exit 0
 fi
 

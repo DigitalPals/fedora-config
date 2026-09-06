@@ -1,12 +1,18 @@
-# Fedora Config
+# CybexOS
 
-An opinionated Hyprland and Quickshell desktop for Fedora Linux, installed and
+CybexOS stands for **Cybex Opinionated System**. It is an opinionated Hyprland
+and Quickshell desktop for Fedora Linux, installed and
 kept current with Ansible. The core configuration is hardware-neutral. A
 separate, precisely gated role preserves extra support for the 2026 Dell XPS
 14 and 16.
 
 The current release target is Fedora 44 on x86_64. Fedora remains responsible
 for the kernel, drivers, SELinux, and base operating system.
+
+The project was previously called Fedora Config. Existing `fedora-config`
+commands, package and service identifiers, configuration and data paths, and
+the agent skill name remain stable for compatibility with installed systems.
+The source repository is currently hosted at `DigitalPals/fedora-config`.
 
 ## What it installs
 
@@ -20,7 +26,7 @@ for the kernel, drivers, SELinux, and base operating system.
   backlight, firmware, and power support
 - a persistent installer configuration, verifier, uninstaller, and verified
   GitHub release updater
-- one release-scoped Fedora Config skill discoverable by compatible coding
+- one release-scoped CybexOS skill discoverable by compatible coding
   agents for safe installed-system diagnosis and customization
 - a user-selectable default AI coding agent with terminal, launcher, and
   keyboard entry points
@@ -94,7 +100,7 @@ symlink without changing neighboring skills.
 ## Default AI agent
 
 Developer tooling installs pinned Claude Code, OpenCode, and Codex CLI
-versions. Fedora Config does not silently prefer one provider: the first
+versions. CybexOS does not silently prefer one provider: the first
 interactive invocation asks which installed agent to use and stores that
 per-user choice at `~/.config/fedora-config/defaults/agent`.
 

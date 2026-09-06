@@ -1,5 +1,5 @@
 [Unit]
-Description=Fedora Config welcome
+Description=CybexOS welcome
 PartOf=hyprland-session.target
 After=quickshell.service
 

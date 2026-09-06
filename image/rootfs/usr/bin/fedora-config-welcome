@@ -44,7 +44,7 @@ class Welcome(QObject):
         if not self.live or self.busy:
             return
         if not Path("/usr/bin/liveinst").is_file():
-            self.message = "The installer is missing. Please use a complete Fedora Config live image."
+            self.message = "The installer is missing. Please use a complete CybexOS live image."
             self.changed.emit()
             return
         self.message = "Opening the installer…"

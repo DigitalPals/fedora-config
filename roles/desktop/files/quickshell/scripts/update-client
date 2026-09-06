@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Quickshell's update entry point. A complete Fedora Config installation has
+# Quickshell's update entry point. A complete CybexOS installation has
 # the verified release updater; a source-tree/Quickshell-only deployment still
 # has the durable package backend and must remain able to update the system.
 set -euo pipefail

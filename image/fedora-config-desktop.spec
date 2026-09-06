@@ -1,7 +1,7 @@
 Name:           fedora-config-desktop
 Version:        0.1.0
 Release:        0.1.alpha%{?dist}
-Summary:        Fedora Config Hyprland and Quickshell desktop
+Summary:        CybexOS Hyprland and Quickshell desktop
 # No repository license has been selected. These are private evaluation
 # artifacts; this label does not grant redistribution rights.
 License:        LicenseRef-Not-Licensed
@@ -25,6 +25,7 @@ Requires:       rsms-inter-fonts google-noto-sans-fonts google-noto-color-emoji-
 Requires:       jetbrains-mono-fonts
 
 %description
+CybexOS (Cybex Opinionated System) is a Hyprland and Quickshell desktop for Fedora.
 Shared desktop defaults, session services, and first-login welcome application.
 Personal settings and overrides remain in each user's home directory.
 Private alpha image integration; not a public distribution release.

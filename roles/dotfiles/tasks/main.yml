@@ -70,7 +70,7 @@
     - not dotfiles_initial_backup_marker.stat.exists
     - not ansible_check_mode
 
-- name: Install desktop and Fedora Config user helpers
+- name: Install desktop and CybexOS user helpers
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
@@ -89,7 +89,7 @@
     - localsend-share
     - fedora-config-agent
 
-- name: Install the Fedora Config command
+- name: Install the CybexOS command
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
@@ -97,7 +97,7 @@
     dest: "{{ primary_home }}/.local/bin/fedora-config"
     mode: "0755"
 
-- name: Create the Fedora Config release store
+- name: Create the CybexOS release store
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
@@ -160,7 +160,7 @@
   when: >-
     not (config_repo | regex_search('/[.]local/share/fedora-config/releases/'))
 
-- name: Inspect the canonical skill in the active Fedora Config release
+- name: Inspect the canonical skill in the active CybexOS release
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
@@ -168,7 +168,7 @@
     follow: true
   register: dotfiles_active_agent_skill
 
-- name: Provision Fedora Config agent skill discovery links
+- name: Provision CybexOS agent skill discovery links
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.command:
@@ -256,7 +256,7 @@
     - not ansible_check_mode
     - dotfiles_t3code_update.rc | default(0) | int not in [0, 75]
 
-- name: Remove Fedora Config T3 helpers after connected widgets are deselected
+- name: Remove CybexOS T3 helpers after connected widgets are deselected
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
@@ -466,7 +466,7 @@
     - manage_personal_dotfiles | bool
     - features.proprietary_apps | bool
 
-- name: Remove the Fedora Config SSH include when proprietary integration is deselected
+- name: Remove the CybexOS SSH include when proprietary integration is deselected
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.blockinfile:
@@ -659,7 +659,7 @@
     - features.proprietary_apps | bool
     - manage_personal_dotfiles | bool
 
-- name: Remove Fedora Config Brave policy when it is not selected
+- name: Remove CybexOS Brave policy when it is not selected
   ansible.builtin.file:
     path: /etc/brave/policies/managed/fedora-config.json
     state: absent
@@ -689,7 +689,7 @@
     mode: "0755"
   tags: [browser]
 
-- name: Converge only the Fedora Config Firefox policy entry
+- name: Converge only the CybexOS Firefox policy entry
   ansible.builtin.command:
     argv:
       - /usr/local/libexec/fedora-config-firefox-policy

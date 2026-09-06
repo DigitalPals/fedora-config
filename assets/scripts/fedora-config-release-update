@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Resolve, verify, stage, and activate immutable Fedora Config GitHub releases.
+# Resolve, verify, stage, and activate immutable CybexOS GitHub releases.
 set -euo pipefail
 umask 077
 
@@ -26,7 +26,7 @@ usage() {
 Usage: fedora-config update [--check] [--channel stable|beta] [--system-only]
                             [--no-packages] [--no-flatpak] [--start] [--json]
 
-By default, check GitHub for a verified Fedora Config release, stage and apply
+By default, check GitHub for a verified CybexOS release, stage and apply
 it when newer, and then update Fedora packages and system Flatpaks.
 
   --check        Only report whether a compatible project release is available
@@ -184,10 +184,10 @@ if [[ $command_name == check ]]; then
       --arg channel "$channel" --argjson available "$available" \
       '{currentVersion:$current,availableVersion:$availableVersion,channel:$channel,available:$available}'
   elif [[ $available == true ]]; then
-    printf 'Fedora Config %s is available (installed: %s, channel: %s).\n' \
+    printf 'CybexOS %s is available (installed: %s, channel: %s).\n' \
       "$release_version" "$current_version" "$channel"
   else
-    printf 'Fedora Config %s is current on the %s channel.\n' "$current_version" "$channel"
+    printf 'CybexOS %s is current on the %s channel.\n' "$current_version" "$channel"
   fi
   exit 0
 fi
@@ -195,9 +195,9 @@ fi
 candidate=
 if [[ $available == true ]]; then
   if [[ $start_only == true ]]; then
-    printf 'Downloading Fedora Config %s...\n' "$release_version" >&2
+    printf 'Downloading CybexOS %s...\n' "$release_version" >&2
   else
-    printf 'Downloading Fedora Config %s...\n' "$release_version"
+    printf 'Downloading CybexOS %s...\n' "$release_version"
   fi
   curl --fail --silent --show-error --location --retry 3 \
     "$asset_url" -o "$archive"
@@ -224,7 +224,7 @@ if [[ $available == true ]]; then
     exit 1
   }
   compatible_manifest "$stage" "$release_version" || {
-    printf 'update: Fedora Config %s is incompatible with this system or saved configuration\n' "$release_version" >&2
+    printf 'update: CybexOS %s is incompatible with this system or saved configuration\n' "$release_version" >&2
     exit 1
   }
   candidate=$stage
@@ -260,7 +260,7 @@ else
     echo 'update: no project or package work was requested' >&2
     exit 4
   fi
-  echo 'Fedora Config is already current.'
+  echo 'CybexOS is already current.'
   exit 0
 fi
 set +e

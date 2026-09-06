@@ -1,6 +1,6 @@
 # Managed Hyprland and Quickshell changes
 
-Use this guide for persistent behavior owned by Fedora Config: Hyprland,
+Use this guide for persistent behavior owned by CybexOS: Hyprland,
 Quickshell source, services, packages, launchers, or Ansible policy. Personal
 widgets use [the user widget API](user-widgets.md), and personal Hyprland
 overrides use `~/.config/fedora-config/hypr/user.lua`. Those changes do not need

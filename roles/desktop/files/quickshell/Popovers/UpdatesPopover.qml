@@ -48,7 +48,7 @@ Surface {
             out.push({
                 key: "fedora-config",
                 glyph: "deployed_code_update",
-                name: "Fedora Config",
+                name: "CybexOS",
                 sub: "Release " + Updates.projectVersion,
                 count: 1
             });

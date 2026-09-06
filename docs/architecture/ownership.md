@@ -1,6 +1,6 @@
-# Fedora Config ownership boundary
+# CybexOS ownership boundary
 
-Fedora Config updates replace vendor runtime and integration files. They do
+CybexOS updates replace vendor runtime and integration files. They do
 not merge into user customization trees. This is the machine-enforced boundary
 for the transitional, pre-RPM layout.
 

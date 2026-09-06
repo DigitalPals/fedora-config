@@ -106,7 +106,7 @@ jobs:
           prerelease=()
           [[ $version != *-* ]] || prerelease+=(--prerelease)
           gh release create "$RELEASE_TAG" --verify-tag --draft \
-            --generate-notes --title "Fedora Config $version" "${prerelease[@]}"
+            --generate-notes --title "CybexOS $version" "${prerelease[@]}"
           gh release upload "$RELEASE_TAG" \
             "dist/fedora-config-$version.tar.zst" dist/SHA256SUMS
           gh release edit "$RELEASE_TAG" --draft=false

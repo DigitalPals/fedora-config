@@ -55,7 +55,7 @@ assert_content /home/fedora/.claude/skills/unrelated/SKILL.md \
 assert_content /home/fedora/.codex/skills/unrelated/SKILL.md \
   'unrelated codex skill'
 [[ ! -e /var/lib/AccountsService/users/fedora ]] ||
-  fail 'an AccountsService record created by Fedora Config remains after uninstall'
+  fail 'an AccountsService record created by CybexOS remains after uninstall'
 
 for path in \
   /usr/local/bin/hyprland-quickshell \
@@ -92,6 +92,6 @@ while IFS=: read -r uuid type; do
   esac
 done < <(nmcli -t -f UUID,TYPE connection show)
 firewall-cmd --permanent --get-zones | tr ' ' '\n' | grep -Fxq fedora-config &&
-  fail 'the Fedora Config firewall zone remains after uninstall'
+  fail 'the CybexOS firewall zone remains after uninstall'
 
 printf 'Fedora VM uninstall restored adopted files and removed project state\n'

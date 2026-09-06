@@ -19,7 +19,7 @@ table in the README links here instead of duplicating these details.
 | `fedora-config dev enable PATH` | Selects a validated checkout for live desktop source without changing it. |
 | `fedora-config dev status` | Reports the active development or vendor runtime. |
 | `fedora-config dev disable` | Returns desktop components to the verified vendor runtime. |
-| `./uninstall` | Removes Fedora Config-owned services and configuration, restores first-adoption backups, and retains installed applications. Pass `--keep-user-data` to retain backup/updater state after restoration. |
+| `./uninstall` | Removes CybexOS-owned services and configuration, restores first-adoption backups, and retains installed applications. Pass `--keep-user-data` to retain backup/updater state after restoration. |
 
 For repository development, run Ansible directly after the source gate. The
 saved installer configuration is deliberately supplied explicitly:
@@ -48,7 +48,7 @@ The default-agent dispatcher stores only an allowlisted command name under
 `~/.config/fedora-config/defaults/agent` when `XDG_CONFIG_HOME` is unset. It
 changes that file atomically only after confirming the selected command
 exists. Agent login tokens, API keys, models, permissions, and configuration
-are deliberately not copied into Fedora Config. A desktop launch begins in
+are deliberately not copied into CybexOS. A desktop launch begins in
 `~/Code`; an invocation from an existing terminal keeps its working directory.
 Use `fedora-config agent unset` to clear the preference.
 
@@ -82,7 +82,7 @@ bypass the Fedora 44 and architecture support contract. Do not add
 
 ## Agent skill lifecycle
 
-Fedora Config ships one canonical skill in the active release at
+CybexOS ships one canonical skill in the active release at
 `~/.local/share/fedora-config/current/agent-skills/fedora-config`. Provisioning
 always creates these discovery links, independently of whether each agent is
 installed:
@@ -104,7 +104,7 @@ the new canonical skill. A reconciliation failure rolls back the links, the
 active-release symlink, and the migrated installer configuration. Uninstall
 uses the same helper before removing project state and unconditionally
 restores each recorded original. `--keep-user-data` retains those records only
-after restoration; it does not leave the Fedora Config links installed.
+after restoration; it does not leave the CybexOS links installed.
 
 ## Release updater lifecycle
 

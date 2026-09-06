@@ -1,4 +1,4 @@
-# Publishing Fedora Config releases
+# Publishing CybexOS releases
 
 Public updates are built from semantic-version Git tags by
 `.github/workflows/release.yml`. The workflow will not publish unless the full
@@ -26,7 +26,7 @@ the archive checksum is otherwise correct.
    runtime through simulated replacement and rollback. Retain supported API
    adapters when changing the shell; see [the widget contract](architecture/user-widgets.md).
 3. Commit the intended source and create a signed semantic-version tag, such
-   as `git tag -s v1.0.0 -m 'Fedora Config 1.0.0'`.
+   as `git tag -s v1.0.0 -m 'CybexOS 1.0.0'`.
 4. Push the commit and tag. A version containing a hyphen, such as
    `v1.1.0-beta.1`, is published as a prerelease for the beta channel.
 5. Wait for the workflow to build, attest, upload, publish, and confirm the

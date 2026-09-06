@@ -87,7 +87,7 @@
     path: /var/lib/fedora-config/backups/initial-system.complete
   register: base_initial_system_backup_marker
 
-- name: Preserve shared system paths before Fedora Config can adopt them
+- name: Preserve shared system paths before CybexOS can adopt them
   ansible.builtin.shell: |
     set -euo pipefail
     backup=/var/lib/fedora-config/backups/system
@@ -179,7 +179,7 @@
     path: "{{ primary_home }}/.cache/xps-ansible-facts"
     state: absent
 
-- name: Create the Fedora Config system-state directory
+- name: Create the CybexOS system-state directory
   ansible.builtin.file:
     path: /var/lib/fedora-config/features
     state: directory
@@ -195,7 +195,7 @@
     group: root
     mode: "0700"
 
-- name: Inspect Fedora Config ownership of Docker
+- name: Inspect CybexOS ownership of Docker
   ansible.builtin.stat:
     path: /var/lib/fedora-config/features/docker
   register: base_docker_marker
@@ -224,7 +224,7 @@
   notify: Reload systemd
   when: features.docker | bool
 
-- name: Remove Fedora Config-owned Docker packages when deselected
+- name: Remove CybexOS-owned Docker packages when deselected
   ansible.builtin.dnf:
     name:
       - docker-compose
@@ -369,7 +369,7 @@
     mode: "0600"
     force: false
 
-- name: Set Fedora Config as the default firewall zone
+- name: Set CybexOS as the default firewall zone
   ansible.builtin.command: "firewall-cmd --set-default-zone={{ firewall_zone }}"
   changed_when: true
   when: base_current_firewall_zone.stdout | trim != firewall_zone and not ansible_check_mode
@@ -478,7 +478,7 @@
     - ansible_facts.getent_group.docker is defined
     - primary_user in (ansible_facts.getent_group.docker[2] | default('')).split(',')
 
-- name: Record Fedora Config ownership of Docker
+- name: Record CybexOS ownership of Docker
   ansible.builtin.copy:
     dest: /var/lib/fedora-config/features/docker
     content: "managed\n"
@@ -487,7 +487,7 @@
     mode: "0644"
   when: features.docker | bool
 
-- name: Retire Fedora Config Docker ownership after removal
+- name: Retire CybexOS Docker ownership after removal
   ansible.builtin.file:
     path: /var/lib/fedora-config/features/docker
     state: absent

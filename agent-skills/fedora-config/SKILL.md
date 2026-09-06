@@ -1,12 +1,13 @@
 ---
 name: fedora-config
-description: Operate and customize an installed Fedora Config Hyprland/Quickshell workstation. Use for Fedora Config diagnostics and commands, personal widgets, shell or bar settings, managed desktop changes, screenshots, recording, OCR, reminders, or LocalSend; not for unrelated Fedora systems.
+description: Operate and customize an installed CybexOS Hyprland/Quickshell workstation. Use for CybexOS diagnostics and commands, personal widgets, shell or bar settings, managed desktop changes, screenshots, recording, OCR, reminders, or LocalSend; not for unrelated Fedora systems.
 ---
 
-# Fedora Config
+# CybexOS
 
-Use this skill for the installed [Fedora Config](https://github.com/DigitalPals/fedora-config)
-desktop. Codex can invoke it as `$fedora-config`; Claude Code exposes the same
+Use this skill for the installed [CybexOS](https://github.com/DigitalPals/fedora-config)
+desktop (Cybex Opinionated System, previously Fedora Config). Codex can invoke
+it as `$fedora-config`; Claude Code exposes the same
 skill as `/fedora-config`. It also supports implicit invocation through the
 description above.
 

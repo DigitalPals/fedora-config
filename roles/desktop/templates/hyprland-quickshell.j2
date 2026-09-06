@@ -15,7 +15,7 @@ session_log="${XDG_STATE_HOME:-$HOME/.local/state}/hyprland/session.log"
 hypr_config={{ (fedora_config_runtime_root + '/hypr/hyprland.lua') | quote }}
 
 if [[ ! -f $hypr_config ]]; then
-  printf 'Fedora Config Hyprland runtime is missing: %s\n' "$hypr_config" >&2
+  printf 'CybexOS Hyprland runtime is missing: %s\n' "$hypr_config" >&2
   exit 1
 fi
 

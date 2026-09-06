@@ -79,7 +79,7 @@ Singleton {
         if (flatpakCount > 0)
             parts.push("flatpak " + flatpakCount);
         if (projectAvailable)
-            parts.push("Fedora Config " + projectVersion);
+            parts.push("CybexOS " + projectVersion);
         return parts.join(" · ");
     }
 
@@ -193,11 +193,11 @@ Singleton {
                 nextProjectVersion = typeof data.availableVersion === "string"
                     ? data.availableVersion : "";
             } catch (exception) {
-                projectError = "Fedora Config update check returned invalid data";
+                projectError = "CybexOS update check returned invalid data";
             }
         } else {
-            projectError = ProcHelpers.commandError("Fedora Config update check",
-                exitCode, errText, ({ 124: "Fedora Config update check timed out" }));
+            projectError = ProcHelpers.commandError("CybexOS update check",
+                exitCode, errText, ({ 124: "CybexOS update check timed out" }));
             logCheckError(projectError);
         }
         projectDone = true;

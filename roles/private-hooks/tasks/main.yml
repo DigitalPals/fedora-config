@@ -7,7 +7,7 @@
     group: root
     mode: "0755"
 
-- name: Inspect Fedora Config ownership of private-hook features
+- name: Inspect CybexOS ownership of private-hook features
   ansible.builtin.stat:
     path: "/var/lib/fedora-config/features/{{ item }}"
   loop:
@@ -24,7 +24,7 @@
   loop_control:
     label: "{{ item.item }}"
 
-- name: Remove Fedora Config-owned private-hook artifacts when disabled
+- name: Remove CybexOS-owned private-hook artifacts when disabled
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
@@ -38,7 +38,7 @@
     - not features.private_hooks | bool
     - private_hook_owned.private_hooks | bool
 
-- name: Remove Fedora Config-owned Apple display artifacts when private hooks are disabled
+- name: Remove CybexOS-owned Apple display artifacts when private hooks are disabled
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
@@ -157,7 +157,7 @@
     creates: /usr/local/share/fonts/conthrax/Typodermic Desktop EULA 2026.pdf
   notify: Refresh fonts
 
-- name: Record Fedora Config ownership of private hooks
+- name: Record CybexOS ownership of private hooks
   ansible.builtin.copy:
     dest: /var/lib/fedora-config/features/private_hooks
     content: "managed\n"
@@ -165,7 +165,7 @@
     group: root
     mode: "0644"
 
-- name: Record Fedora Config ownership of Apple display integration
+- name: Record CybexOS ownership of Apple display integration
   ansible.builtin.copy:
     dest: /var/lib/fedora-config/features/apple_display
     content: "managed\n"

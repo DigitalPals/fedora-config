@@ -390,7 +390,7 @@
     - not features.source_builds | bool
     - apps_feature_owned.source_builds | bool
 
-- name: Remove unchanged Fedora Config source-built command links
+- name: Remove unchanged CybexOS source-built command links
   ansible.builtin.file:
     path: "/usr/local/bin/{{ item.item.1 }}"
     state: absent

@@ -12,7 +12,7 @@
   changed_when: >-
     (uninstall_agent_skills.stdout | default('')) is match('^CHANGED:')
 
-- name: Stop Fedora Config user services
+- name: Stop CybexOS user services
   ansible.builtin.command:
     argv:
       - systemctl
@@ -373,7 +373,7 @@
   changed_when: false
   failed_when: false
 
-- name: Remove Fedora Config system state when it is not retained
+- name: Remove CybexOS system state when it is not retained
   ansible.builtin.file:
     path: /var/lib/fedora-config
     state: absent
@@ -405,7 +405,7 @@
     - /var/cache/fedora-config-upstream/omarchy-cybex
     - /var/lib/fedora-config-upstream/omarchy-cybex
 
-- name: Remove only the Fedora Config Firefox policy entry
+- name: Remove only the CybexOS Firefox policy entry
   ansible.builtin.command: /usr/local/libexec/fedora-config-firefox-policy disable
   changed_when: false
   failed_when: false
@@ -506,7 +506,7 @@
     executable: /bin/bash
   changed_when: true
 
-- name: Preserve or remove Fedora Config user state
+- name: Preserve or remove CybexOS user state
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
@@ -514,7 +514,7 @@
     state: absent
   when: not fedora_config_keep_user_data | bool
 
-- name: Remove staged Fedora Config source artifacts when user data is not retained
+- name: Remove staged CybexOS source artifacts when user data is not retained
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:

@@ -1,4 +1,4 @@
-# Shared helpers for Fedora Config upstream installer scripts.
+# Shared helpers for CybexOS upstream installer scripts.
 # Source this file; do not execute it. Installed at /usr/local/libexec/fedora-config-common.sh.
 # shellcheck shell=bash
 

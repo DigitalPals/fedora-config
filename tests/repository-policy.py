@@ -151,7 +151,7 @@ def verify_dependency_policy(values: dict) -> None:
         "Remove the project firewalld zone after changing the default"
     )
     assert uninstall.index("Remove the project firewalld zone after changing the default") < uninstall.index(
-        "Remove Fedora Config system state when it is not retained"
+        "Remove CybexOS system state when it is not retained"
     )
 
     command_wrapper = (ROOT / "roles/dotfiles/templates/fedora-config.j2").read_text()

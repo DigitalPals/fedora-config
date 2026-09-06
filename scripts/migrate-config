@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and migrate persistent Fedora Config installer answers."""
+"""Validate and migrate persistent CybexOS installer answers."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Adopt and restore Fedora Config's user-scoped agent skill discovery slots.
+# Adopt and restore CybexOS's user-scoped agent skill discovery slots.
 set -euo pipefail
 umask 077
 
@@ -83,7 +83,7 @@ remove_object() {
 }
 
 if [[ $action == uninstall ]] && ! object_exists "$backup_root"; then
-  printf 'UNCHANGED: Fedora Config agent skill discovery slots\n'
+  printf 'UNCHANGED: CybexOS agent skill discovery slots\n'
   exit 0
 fi
 
@@ -334,7 +334,7 @@ fi
 trap - EXIT INT TERM
 
 if [[ $changed == true ]]; then
-  printf 'CHANGED: %s Fedora Config agent skill discovery slots\n' "$action"
+  printf 'CHANGED: %s CybexOS agent skill discovery slots\n' "$action"
 else
-  printf 'UNCHANGED: Fedora Config agent skill discovery slots\n'
+  printf 'UNCHANGED: CybexOS agent skill discovery slots\n'
 fi

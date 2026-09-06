@@ -122,11 +122,11 @@ def main() -> int:
 
     # This manifest was written only by the legacy deployment. Its absence on
     # a fresh install means ~/.config/{quickshell,hypr} belongs wholly to the
-    # user and must not even be interpreted as an earlier Fedora Config tree.
+    # user and must not even be interpreted as an earlier CybexOS tree.
     if not legacy_manifest.is_file() or legacy_manifest.is_symlink():
         marker.write_text("no-legacy-deployment\n", encoding="utf-8")
         os.chmod(marker, 0o600)
-        print("Layering migration found no legacy Fedora Config deployment.")
+        print("Layering migration found no legacy CybexOS deployment.")
         return 0
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

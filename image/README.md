@@ -1,7 +1,7 @@
-# Fedora Config live image
+# CybexOS live image
 
 The live image packages the existing Hyprland/Quickshell desktop, boots into
-a temporary account, and opens a welcome window with **Install Fedora Config**
+a temporary account, and opens a welcome window with **Install CybexOS**
 and **Try the desktop first**. Installation uses Fedora 44's Anaconda Web UI.
 Anaconda owns disk selection, partitioning, encryption, account creation,
 installation progress, and its final destructive confirmation. The welcome
@@ -13,11 +13,11 @@ and optional third-party applications are not part of this initial image.
 ## Try the image
 
 In the build output directory, run `sha256sum --check SHA256SUMS`. Open
-`FC-LIVE-44.iso` in a virtual machine, or choose **Custom image** in Fedora
+`CybexOS-Live-44.iso` in a virtual machine, or choose **Custom image** in Fedora
 Media Writer and follow its prompts to write the ISO to your chosen USB drive.
 Writing an image replaces the contents of that USB drive.
 
-Boot the image and choose **Install Fedora Config** in the welcome window.
+Boot the image and choose **Install CybexOS** in the welcome window.
 Anaconda walks through language, timezone, storage, optional disk encryption,
 and your account. Review the selected disk before confirming installation.
 When installation finishes, restart and remove the USB drive. Log in to your
@@ -125,7 +125,7 @@ docker build -f image/Containerfile.tests -t fedora-config-image-tests:44 image
 docker run --rm -v "$PWD:/source:ro" fedora-config-image-tests:44
 
 # Boot and check an image (UEFI testing on Debian also requires ovmf):
-./image/test-live "$HOME/.local/share/fedora-config/images/alpha-01/FC-LIVE-44.iso" \
+./image/test-live "$HOME/.local/share/fedora-config/images/alpha-01/CybexOS-Live-44.iso" \
   --output "$HOME/.local/share/fedora-config/images/test-01"
 ```
 

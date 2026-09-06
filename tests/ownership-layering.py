@@ -231,7 +231,7 @@ def repository_contract() -> None:
     assert 'dest: "{{ primary_home }}/.config/hypr/' not in tasks
     directory_creation = tasks[
         tasks.index("Create desktop configuration directories"):
-        tasks.index("Create private Fedora Config shell state directories")
+        tasks.index("Create private CybexOS shell state directories")
     ]
     assert "mode:" not in directory_creation
     assert ".config/quickshell" not in uninstall

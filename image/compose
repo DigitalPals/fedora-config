@@ -61,8 +61,8 @@ class VerifiedDnf(DnfLiveCD):
 imgcreate.creator.DnfLiveCD = VerifiedDnf
 kickstart = imgcreate.read_kickstart(str(build / "live.ks"))
 creator = imgcreate.LiveImageCreator(
-    kickstart, "FC-LIVE-44", fslabel="FC-LIVE-44", releasever="44",
-    tmpdir=str(build / "tmp"), title="Fedora Config", product="Fedora Config",
+    kickstart, "CybexOS-Live-44", fslabel="CYBEXOS-LIVE-44", releasever="44",
+    tmpdir=str(build / "tmp"), title="CybexOS", product="CybexOS",
 )
 creator.compress_args = "xz"
 try:
