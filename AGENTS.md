@@ -1,5 +1,45 @@
 # Repository agent instructions
 
+## ISO testing location
+
+- Always place completed ISOs for testing in `/data/pxe/iso`.
+- Build in a unique task-specific staging directory, then copy the completed
+  ISO and its SHA-256 checksum into `/data/pxe/iso`. Preserve existing images
+  unless their replacement or removal is explicitly requested.
+- After adding, replacing, or removing a testing ISO, refresh iVentoy's image
+  list before handoff. Finish copying and verifying the checksum first; keep
+  incomplete ISOs outside the served ISO tree. Use ASCII filenames without
+  spaces and permissions that allow iVentoy to read the files.
+- Prefer **ISO Management → Refresh** at `http://10.10.0.7:26000/`.
+  On `thebeast`, the equivalent requests below were verified with iVentoy
+  1.0.41. They use the installed UI's internal API, so recheck
+  `http://127.0.0.1:26000/vtoy_image.html` after an iVentoy upgrade:
+
+  ```bash
+  curl --fail-with-body --silent --show-error --max-time 30 \
+    -H 'Content-Type: application/json' \
+    -d '{"method":"refresh_img_list"}' http://127.0.0.1:26000/iventoy/json
+  curl --fail-with-body --silent --show-error --max-time 10 \
+    -H 'Content-Type: application/json' \
+    -d '{"method":"query_status"}' http://127.0.0.1:26000/iventoy/json
+  curl --fail-with-body --silent --show-error --max-time 10 \
+    -H 'Content-Type: application/json' \
+    -d '{"method":"get_img_tree"}' http://127.0.0.1:26000/iventoy/json
+  ```
+
+- Require `result: success` from refresh; HTTP success alone is insufficient.
+  If busy, wait for the current operation before retrying. Poll `query_status`
+  until refresh completes, require PXE status `running`, and verify the
+  expected filename in `get_img_tree` (and absence of any removed filename).
+  Also check `systemctl is-active iventoy.service`.
+- Refresh normally keeps the service running. If it fails or leaves stale
+  entries/counts, use `sudo systemctl restart iventoy.service` only when no
+  PXE boots/installations are in progress, then repeat the status/list checks.
+  Use systemd rather than launching a second `iventoy.sh` process. The unit's
+  `-R start` restores PXE with its saved configuration; see
+  [upstream startup documentation](https://www.iventoy.com/en/doc_start.html).
+  Local deployment details are in `/data/pxe/README.md`.
+
 ## Build and test artifact cleanup
 
 - Clean up disposable artifacts created during your task before final handoff,

@@ -58,3 +58,21 @@ to disk, dual boot, manual partitioning, recovery, and hardware-specific
 graphics or networking. Public distribution also needs a repository license,
 redistribution/branding review, and signed desktop RPM update hosting, as
 described in [README.md](README.md).
+
+## Testing image rebuild — 2026-09-06
+
+Built the current source with `image/build` and placed the requested testing
+image at `/data/pxe/iso/CybexOS-Live-44.iso` (2,293,989,376 bytes). Its adjacent
+`CybexOS-Live-44.iso.sha256` records the verified delivery checksum:
+
+```text
+23cfb3c10e73955298da1ae156957e9a9d27da9f1a0c43508554f2dac6871061
+```
+
+Composition, upstream package signature checks, graphics-package checks,
+installer-tool checks, and artifact checksum verification passed. Inspection
+with `xorriso` confirmed BIOS and standard UEFI boot entries. This rebuild
+has not been boot-tested and does not inherit the previous image's validation.
+The optional `mkefiboot` Mac HFS+ image step reported a mount failure; Mac boot
+support is unverified. Temporary build outputs, logs, and the builder VM
+workspace were removed; only the ISO and its checksum were retained.
